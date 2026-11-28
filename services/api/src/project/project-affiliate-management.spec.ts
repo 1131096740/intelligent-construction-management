@@ -2,6 +2,7 @@ import { ProjectService } from "./project.service";
 
 function transactionPrisma(tx: object) {
   const client = {
+    user: { findUnique: jest.fn().mockResolvedValue({ isActive: true }) },
     userPosition: { findMany: jest.fn().mockResolvedValue([{ positionId: "chairman-position" }]) },
     position: { findMany: jest.fn().mockResolvedValue([{ key: "chairman" }]) },
     ...tx

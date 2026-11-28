@@ -2,19 +2,9 @@
 import { computed, onMounted, ref } from "vue";
 
 import {
-  confirmWageStatement,
-  createApprovedWageSource,
-  createWageStatementDraft,
-  createWageStatementRevision,
-  fetchWageStatementCapabilities,
   fetchWageStatementImportPreview,
   fetchWageStatementSummary,
   fetchWageStatementWorkbench,
-  returnWageStatement,
-  submitWageStatement,
-  updateWageStatementDraft,
-  WageStatementApiError,
-  type WageStatementCapabilities,
   type WageStatementImportPreviewReadModel,
   type WageStatementSummaryReadModel,
   type WageStatementWorkbenchItem
@@ -24,55 +14,19 @@ import JgStatusTag from "../../components/JgStatusTag.vue";
 import JgWorkbenchShell from "../../components/JgWorkbenchShell.vue";
 import { formatUnknownApiError } from "../../api/error-message";
 
-const noCapabilities: WageStatementCapabilities = {
-  canPrepare: false,
-  canSubmit: false,
-  canReturn: false,
-  canConfirm: false,
-  canReadSensitive: false,
-  canDownloadSensitive: false,
-  canExportSensitive: false
-};
 const loading = ref(false);
 const detailLoading = ref(false);
-const commandLoading = ref(false);
-const importLoading = ref(false);
 const loadError = ref("");
 const detailError = ref("");
-const importError = ref("");
 const rows = ref<WageStatementWorkbenchItem[]>([]);
 const listMeta = ref({ page: 1, pageSize: 20, total: 0, totalPages: 0 });
-const capabilities = ref<WageStatementCapabilities>({ ...noCapabilities });
 const selected = ref<WageStatementWorkbenchItem | null>(null);
 const summary = ref<WageStatementSummaryReadModel | null>(null);
 const importPreview = ref<WageStatementImportPreviewReadModel | null>(null);
-const localImportPreview = ref<LocalApprovedSourcePreview | null>(null);
-const localApprovedSource = ref<Record<string, unknown> | null>(null);
-const localImportCommand = ref<{ sourceKey: string; draftKey: string; updateKey: string } | null>(null);
-const returnDialogVisible = ref(false);
-const returnReason = ref("");
-const pendingCommandKeys = new Map<string, string>();
 const drawerVisible = computed({
   get: () => selected.value !== null,
   set: (visible: boolean) => { if (!visible) closeDetail(); }
 });
-const activeCapabilities = computed(() => summary.value?.capabilities ?? noCapabilities);
-const canSubmitSelected = computed(() => selected.value?.status === "draft" && activeCapabilities.value.canSubmit);
-const canReturnSelected = computed(() => selected.value?.status === "submitted" && activeCapabilities.value.canReturn);
-const canConfirmSelected = computed(() => selected.value?.status === "submitted" && activeCapabilities.value.canConfirm);
-const canImportApprovedSource = computed(() => capabilities.value.canPrepare);
-
-interface LocalApprovedSourcePreview {
-  sourcePurpose: "ordinary" | "full_reversal";
-  sourcePurposeLabel: string;
-  employmentCompanyLabel: string;
-  wageMonth: string;
-  sourceLabel: string;
-  personLineCount: number;
-  positionCategoryCount: number;
-  projectAllocationCount: number;
-}
-
 const columns = [
   { colKey: "wageMonth", title: "工资月份", width: 120 },
   { colKey: "employmentCompanyName", title: "承担公司", minWidth: 200 },
@@ -102,253 +56,12 @@ function dateTime(value: string) {
   return value.replace("T", " ").slice(0, 16);
 }
 
-function commandKeyFor(statementId: string, action: "submit" | "return" | "confirm", revision: number, reason = "") {
-  return `${statementId}:${action}:${revision}:${reason}`;
-}
-
-function idempotencyKeyFor(commandKey: string) {
-  const idempotencyKey = pendingCommandKeys.get(commandKey) ?? crypto.randomUUID();
-  pendingCommandKeys.set(commandKey, idempotencyKey);
-  return idempotencyKey;
-}
-
-function isKnownBusinessRejection(error: unknown): error is WageStatementApiError {
-  return error instanceof WageStatementApiError && error.status >= 400 && error.status < 500;
-}
-
-function stringField(payload: Record<string, unknown>, key: string) {
-  const value = payload[key];
-  return typeof value === "string" && value.trim() ? value.trim() : null;
-}
-
-function parseLocalApprovedSource(text: string): { payload: Record<string, unknown>; preview: LocalApprovedSourcePreview } {
-  let payload: unknown;
-  try {
-    payload = JSON.parse(text);
-  } catch {
-    throw new Error("请选择格式正确的外部批准工资 JSON 文件。");
-  }
-  if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
-    throw new Error("外部批准工资资料格式不符合导入要求。");
-  }
-  const record = payload as Record<string, unknown>;
-  const wageMonth = stringField(record, "wageMonth");
-  const sourceVersion = stringField(record, "sourceVersion");
-  const sourcePurpose = stringField(record, "sourcePurpose");
-  const companyLabel = stringField(record, "employmentCompanyName") ?? "已选择承担公司（服务端校验）";
-  const lines = record.approvedPersonLines;
-  if ((sourcePurpose !== "ordinary" && sourcePurpose !== "full_reversal") || !wageMonth || !sourceVersion || !Array.isArray(lines) || lines.length === 0) {
-    throw new Error("外部批准工资资料缺少受控用途、月份、来源版本或人员记录。");
-  }
-  if (sourcePurpose === "full_reversal") {
-    const target = record.fullReversalTarget;
-    if (!target || typeof target !== "object" || Array.isArray(target)) {
-      throw new Error("全额冲销资料缺少目标工资单和紧邻已确认版本。");
-    }
-    const targetRecord = target as Record<string, unknown>;
-    if (
-      !stringField(targetRecord, "statementId") ||
-      !stringField(targetRecord, "priorConfirmedVersionId") ||
-      !stringField(targetRecord, "priorSourceVersionId") ||
-      typeof targetRecord.priorConfirmedRevision !== "number" ||
-      !Number.isSafeInteger(targetRecord.priorConfirmedRevision) ||
-      Number(targetRecord.priorConfirmedRevision) < 1
-    ) {
-      throw new Error("全额冲销资料的目标版本坐标不完整。");
-    }
-  }
-  const categories = new Set<string>();
-  let projectAllocationCount = 0;
-  for (const line of lines) {
-    if (!line || typeof line !== "object" || Array.isArray(line)) {
-      throw new Error("外部批准工资资料的人员记录格式不符合导入要求。");
-    }
-    const positionCategory = stringField(line as Record<string, unknown>, "positionCategory");
-    if (positionCategory) categories.add(positionCategory);
-    const allocations = (line as Record<string, unknown>).projectAllocations;
-    if (Array.isArray(allocations)) projectAllocationCount += allocations.length;
-  }
-  return {
-    payload: record,
-    preview: {
-      sourcePurpose,
-      sourcePurposeLabel: sourcePurpose === "full_reversal" ? "全额冲销" : "普通工资",
-      employmentCompanyLabel: companyLabel,
-      wageMonth,
-      sourceLabel: sourceVersion,
-      personLineCount: lines.length,
-      positionCategoryCount: categories.size,
-      projectAllocationCount
-    }
-  };
-}
-
-function sourceTotalCents(lines: unknown[]) {
-  let total = 0n;
-  for (const line of lines) {
-    const value = line && typeof line === "object" && !Array.isArray(line)
-      ? (line as Record<string, unknown>).approvedAmountCents
-      : null;
-    if (typeof value !== "string" || !/^\d+$/.test(value)) {
-      throw new Error("外部批准工资资料的金额格式不符合导入要求。");
-    }
-    total += BigInt(value);
-  }
-  return total.toString();
-}
-
-function approvedAuthorityLines(lines: unknown[]) {
-  return lines.map((line) => {
-    if (!line || typeof line !== "object" || Array.isArray(line)) {
-      throw new Error("外部批准工资来源人员事实格式不正确");
-    }
-    const value = line as Record<string, unknown>;
-    return {
-      employeeId: value.employeeId,
-      employmentSnapshotId: value.employmentSnapshotId,
-      employmentCompanyId: value.employmentCompanyId,
-      employmentPeriodStart: value.employmentPeriodStart,
-      employmentPeriodEnd: value.employmentPeriodEnd,
-      positionCategory: value.positionCategory,
-      approvedAmountCents: value.approvedAmountCents,
-      costComponents: value.costComponents,
-      creditorBreakdowns: value.creditorBreakdowns
-    };
-  });
-}
-
-async function readApprovedSourceFile(event: Event) {
-  const input = event.target as HTMLInputElement;
-  const file = input.files?.[0];
-  input.value = "";
-  if (!file || importLoading.value || !canImportApprovedSource.value) return;
-  importError.value = "";
-  localImportPreview.value = null;
-  localApprovedSource.value = null;
-  localImportCommand.value = null;
-  try {
-    const text = await new Promise<string>((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onerror = () => reject(new Error("无法读取所选文件。"));
-      reader.onload = () => resolve(typeof reader.result === "string" ? reader.result : "");
-      reader.readAsText(file, "utf-8");
-    });
-    const parsed = parseLocalApprovedSource(text);
-    localApprovedSource.value = parsed.payload;
-    localImportPreview.value = parsed.preview;
-    localImportCommand.value = {
-      sourceKey: crypto.randomUUID(),
-      draftKey: crypto.randomUUID(),
-      updateKey: crypto.randomUUID()
-    };
-  } catch (error) {
-    importError.value = formatUnknownApiError(error, "外部批准工资资料解析失败。");
-  }
-}
-
-async function createImportedDraft() {
-  const sourcePayload = localApprovedSource.value;
-  if (!sourcePayload || !localImportPreview.value || !localImportCommand.value || importLoading.value || !canImportApprovedSource.value) return;
-  const lines = sourcePayload.approvedPersonLines;
-  if (!Array.isArray(lines)) {
-    importError.value = "外部批准工资资料格式不符合导入要求。";
-    return;
-  }
-  importLoading.value = true;
-  importError.value = "";
-  try {
-    const sourcePurpose = localImportPreview.value.sourcePurpose;
-    const fullReversalTarget = sourcePayload.fullReversalTarget as Record<string, unknown> | undefined;
-    const editableTarget = selected.value?.status === "draft" && summary.value?.revision === selected.value.revision
-      ? { statementId: selected.value.statementId, revision: summary.value.revision }
-      : null;
-    const draftBody = {
-      idempotencyKey: editableTarget ? localImportCommand.value.updateKey : localImportCommand.value.draftKey,
-      expectedRevision: editableTarget?.revision ?? 0,
-      wageMonth: localImportPreview.value.wageMonth,
-      sourceTotalCents: sourceTotalCents(lines),
-      personLines: lines
-    };
-    if (sourcePurpose === "full_reversal") {
-      const statementId = stringField(fullReversalTarget ?? {}, "statementId");
-      const priorConfirmedRevision = fullReversalTarget?.priorConfirmedRevision;
-      if (!statementId || typeof priorConfirmedRevision !== "number" || !Number.isSafeInteger(priorConfirmedRevision)) {
-        throw new Error("全额冲销资料的目标版本坐标不完整。");
-      }
-      await createImportedReversalWithCapability({
-        ...sourcePayload,
-        approvedPersonLines: lines,
-        idempotencyKey: localImportCommand.value.sourceKey,
-        expectedRevision: 0
-      }, {
-        statementId,
-        body: {
-          ...draftBody,
-          expectedRevision: priorConfirmedRevision,
-          disposition: "reversal"
-        }
-      });
-    } else if (editableTarget) {
-      await updateImportedDraftWithCapability(editableTarget.statementId, draftBody);
-    } else {
-      await createImportedDraftWithCapability({
-        ...sourcePayload,
-        approvedPersonLines: approvedAuthorityLines(lines),
-        idempotencyKey: localImportCommand.value.sourceKey,
-        expectedRevision: 0
-      }, draftBody);
-    }
-    localApprovedSource.value = null;
-    localImportPreview.value = null;
-    localImportCommand.value = null;
-    await loadWorkbench(editableTarget ? listMeta.value.page : 1);
-    if (editableTarget) await refreshSelectedDetail();
-  } catch (error) {
-    importError.value = formatUnknownApiError(error, "创建工资承担草稿失败");
-  } finally {
-    importLoading.value = false;
-  }
-}
-
-async function createImportedDraftWithCapability(
-  sourceBody: Parameters<typeof createApprovedWageSource>[0],
-  draftBody: Omit<Parameters<typeof createWageStatementDraft>[0], "sourceVersionId">
-) {
-  const capability = await fetchWageStatementCapabilities();
-  const operationAllowed = capability.canPrepare;
-  if (!operationAllowed) throw new Error("当前账号无权导入外部批准工资资料并创建草稿");
-  const source = await createApprovedWageSource(sourceBody);
-  return createWageStatementDraft({ ...draftBody, sourceVersionId: source.id });
-}
-
-async function createImportedReversalWithCapability(
-  sourceBody: Parameters<typeof createApprovedWageSource>[0],
-  revisionCommand: { statementId: string; body: Record<string, unknown> }
-) {
-  const capability = await fetchWageStatementCapabilities();
-  const operationAllowed = capability.canPrepare;
-  if (!operationAllowed) throw new Error("当前账号无权导入全额冲销来源并创建冲销修订");
-  const source = await createApprovedWageSource(sourceBody);
-  return createWageStatementRevision(revisionCommand.statementId, { ...revisionCommand.body, sourceVersionId: source.id });
-}
-
-async function updateImportedDraftWithCapability(
-  statementId: string,
-  draftBody: Parameters<typeof updateWageStatementDraft>[1]
-) {
-  const capability = await fetchWageStatementCapabilities();
-  const operationAllowed = capability.canPrepare;
-  if (!operationAllowed) throw new Error("当前账号无权更新工资承担草稿");
-  return updateWageStatementDraft(statementId, draftBody);
-}
-
 async function loadWorkbench(page = listMeta.value.page) {
   loading.value = true;
   loadError.value = "";
   try {
     const workbench = await fetchWageStatementWorkbench(page, listMeta.value.pageSize);
     rows.value = workbench.items;
-    capabilities.value = workbench.capabilities;
     listMeta.value = {
       page: workbench.page,
       pageSize: workbench.pageSize,
@@ -358,8 +71,7 @@ async function loadWorkbench(page = listMeta.value.page) {
   } catch (error) {
     rows.value = [];
     listMeta.value = { ...listMeta.value, total: 0, totalPages: 0 };
-    capabilities.value = { ...noCapabilities };
-    loadError.value = formatUnknownApiError(error, "加载月度工资承担工作台失败");
+    loadError.value = formatUnknownApiError(error, "加载月度工资承担历史失败");
   } finally {
     loading.value = false;
   }
@@ -399,82 +111,6 @@ function closeDetail() {
   summary.value = null;
   importPreview.value = null;
   detailError.value = "";
-  returnDialogVisible.value = false;
-  returnReason.value = "";
-}
-
-async function runCommand(action: "submit" | "confirm") {
-  if (!selected.value || !summary.value || commandLoading.value) return;
-  const allowed = action === "submit" ? canSubmitSelected.value : canConfirmSelected.value;
-  if (!allowed) return;
-  const statementId = selected.value.statementId;
-  const revision = summary.value.revision;
-  const commandKey = commandKeyFor(statementId, action, revision);
-  commandLoading.value = true;
-  detailError.value = "";
-  try {
-    const body = { idempotencyKey: idempotencyKeyFor(commandKey), expectedRevision: revision };
-    if (action === "submit") await submitWageStatementWithCapability(statementId, body);
-    else await confirmWageStatementWithCapability(statementId, body);
-    pendingCommandKeys.delete(commandKey);
-    await loadWorkbench();
-    await refreshSelectedDetail();
-  } catch (error) {
-    if (isKnownBusinessRejection(error)) pendingCommandKeys.delete(commandKey);
-    detailError.value = formatUnknownApiError(error, action === "submit" ? "提交工资承担单失败" : "确认工资承担单失败");
-  } finally { commandLoading.value = false; }
-}
-
-async function submitReturn() {
-  if (!selected.value || !summary.value || !canReturnSelected.value || commandLoading.value) return;
-  const reason = returnReason.value.trim();
-  if (!reason) { detailError.value = "请填写退回原因。"; return; }
-  const statementId = selected.value.statementId;
-  const revision = summary.value.revision;
-  const commandKey = commandKeyFor(statementId, "return", revision, reason);
-  commandLoading.value = true;
-  detailError.value = "";
-  try {
-    await returnWageStatementWithCapability(statementId, { idempotencyKey: idempotencyKeyFor(commandKey), expectedRevision: revision, reason });
-    pendingCommandKeys.delete(commandKey);
-    returnDialogVisible.value = false;
-    returnReason.value = "";
-    await loadWorkbench();
-    await refreshSelectedDetail();
-  } catch (error) {
-    if (isKnownBusinessRejection(error)) pendingCommandKeys.delete(commandKey);
-    detailError.value = formatUnknownApiError(error, "退回工资承担单失败");
-  } finally { commandLoading.value = false; }
-}
-
-async function submitWageStatementWithCapability(
-  statementId: string,
-  body: Parameters<typeof submitWageStatement>[1]
-) {
-  const capability = await fetchWageStatementCapabilities();
-  const operationAllowed = capability.canSubmit;
-  if (!operationAllowed) throw new Error("当前账号无权提交工资承担单");
-  return submitWageStatement(statementId, body);
-}
-
-async function returnWageStatementWithCapability(
-  statementId: string,
-  body: Parameters<typeof returnWageStatement>[1]
-) {
-  const capability = await fetchWageStatementCapabilities();
-  const operationAllowed = capability.canReturn;
-  if (!operationAllowed) throw new Error("当前账号无权退回工资承担单");
-  return returnWageStatement(statementId, body);
-}
-
-async function confirmWageStatementWithCapability(
-  statementId: string,
-  body: Parameters<typeof confirmWageStatement>[1]
-) {
-  const capability = await fetchWageStatementCapabilities();
-  const operationAllowed = capability.canConfirm;
-  if (!operationAllowed) throw new Error("当前账号无权确认工资承担单");
-  return confirmWageStatement(statementId, body);
 }
 
 onMounted(() => void loadWorkbench());
@@ -483,46 +119,18 @@ onMounted(() => void loadWorkbench());
 <template>
   <JgWorkbenchShell
     class="wage-statement-workbench"
-    title="月度工资承担工作台"
-    description="统一查看我方项目管理人员工资承担的月度进度、岗位汇总和来源导入状态。本页仅显示非敏感汇总信息。"
+    title="历史工资承担"
+    description="查看月度工资承担历史、岗位汇总和来源导入状态。本页仅显示非敏感汇总信息。"
   >
     <template #actions>
       <t-button variant="outline" :loading="loading" @click="loadWorkbench()">刷新数据</t-button>
     </template>
-
-    <t-card v-if="canImportApprovedSource" class="wage-statement-workbench__import" title="导入外部批准工资资料" :bordered="true">
-      <p class="wage-statement-workbench__import-note">
-        仅选择已获批准的 JSON 资料。文件内容仅在本次浏览器内存中用于生成脱敏预览，并在确认后直接提交受控服务端；本页不会展示人员、金额或证据明细。
-      </p>
-      <label class="wage-statement-workbench__file-select">
-        <span>选择外部批准工资资料</span>
-        <!-- ui-rules-ignore: native-file-input - 浏览器仅为用户明确选择的本地资料提供受控读取入口。 -->
-        <input type="file" accept="application/json" @change="readApprovedSourceFile" />
-      </label>
-      <template v-if="localImportPreview">
-        <h3 class="wage-statement-workbench__section-title">本次导入预览</h3>
-        <t-descriptions bordered :column="1">
-          <t-descriptions-item label="承担公司">{{ localImportPreview.employmentCompanyLabel }}</t-descriptions-item>
-          <t-descriptions-item label="来源用途">{{ localImportPreview.sourcePurposeLabel }}</t-descriptions-item>
-          <t-descriptions-item label="工资月份">{{ localImportPreview.wageMonth }}</t-descriptions-item>
-          <t-descriptions-item label="来源版本">{{ localImportPreview.sourceLabel }}</t-descriptions-item>
-          <t-descriptions-item label="人员记录数">{{ localImportPreview.personLineCount }}</t-descriptions-item>
-          <t-descriptions-item label="岗位类别数">{{ localImportPreview.positionCategoryCount }}</t-descriptions-item>
-          <t-descriptions-item label="项目分配记录数">{{ localImportPreview.projectAllocationCount }}</t-descriptions-item>
-        </t-descriptions>
-        <t-button class="wage-statement-workbench__create-draft" theme="primary" :loading="importLoading" @click="createImportedDraft">
-          {{ localImportPreview.sourcePurpose === "full_reversal" ? "创建全额冲销修订" : selected?.status === "draft" ? "更新当前工资草稿" : "创建工资承担草稿" }}
-        </t-button>
-      </template>
-      <t-alert v-if="importError" class="wage-statement-workbench__notice" theme="error" :message="importError" />
-    </t-card>
 
     <JgResultState
       :loading="loading"
       :has-results="rows.length > 0"
       :error="loadError"
       empty-title="当前暂无月度工资承担记录"
-      empty-description="工资承担单创建、提交和确认仍在受控业务流程中办理。"
       @retry="loadWorkbench()"
     >
       <t-card class="jg-table-region jg-table-region--wide" :bordered="true">
@@ -584,7 +192,7 @@ onMounted(() => void loadWorkbench());
             v-if="summary.latestReviewReturn"
             class="wage-statement-workbench__notice"
             theme="warning"
-            :message="`第 ${summary.latestReviewReturn.revision} 版已退回，当前草稿可修订后重新提交。`"
+            :message="`第 ${summary.latestReviewReturn.revision} 版已退回。`"
           />
 
           <h3 class="wage-statement-workbench__section-title">岗位汇总</h3>
@@ -603,25 +211,9 @@ onMounted(() => void loadWorkbench());
             <t-descriptions-item label="岗位类别数">{{ importPreview.positionCategoryCount }}</t-descriptions-item>
             <t-descriptions-item label="项目分配记录数">{{ importPreview.projectAllocationCount }}</t-descriptions-item>
           </t-descriptions>
-
-          <t-alert v-if="detailError" class="wage-statement-workbench__notice" theme="error" :message="detailError" />
-          <t-space class="wage-statement-workbench__commands">
-            <t-button v-if="canSubmitSelected" :loading="commandLoading" @click="runCommand('submit')">提交</t-button>
-            <t-button v-if="canReturnSelected" theme="warning" variant="outline" :loading="commandLoading" @click="returnDialogVisible = true">退回</t-button>
-            <t-button v-if="canConfirmSelected" theme="success" :loading="commandLoading" @click="runCommand('confirm')">确认</t-button>
-          </t-space>
         </template>
       </JgResultState>
     </t-drawer>
-
-    <t-dialog
-      v-model:visible="returnDialogVisible"
-      header="退回工资承担单"
-      :confirm-btn="{ content: '确认退回', loading: commandLoading }"
-      @confirm="submitReturn"
-    >
-      <t-textarea v-model="returnReason" :maxlength="500" placeholder="请填写退回原因" />
-    </t-dialog>
   </JgWorkbenchShell>
 </template>
 
@@ -633,9 +225,4 @@ onMounted(() => void loadWorkbench());
 }
 
 .wage-statement-workbench__notice { margin-top: 16px; }
-.wage-statement-workbench__commands { margin-top: 20px; }
-.wage-statement-workbench__import { margin-bottom: 16px; }
-.wage-statement-workbench__import-note { margin: 0 0 16px; color: var(--jg-text-secondary); }
-.wage-statement-workbench__file-select { display: inline-flex; align-items: center; gap: 12px; color: var(--jg-text-primary); }
-.wage-statement-workbench__create-draft { margin-top: 16px; }
 </style>

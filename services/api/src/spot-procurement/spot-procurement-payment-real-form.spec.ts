@@ -1,3 +1,14 @@
+import { Test } from "@nestjs/testing";
+import { Reflector } from "@nestjs/core";
+import { JwtTokenService } from "../auth/jwt-token.service";
+import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
+import { PermissionGuard } from "../auth/guards/permission.guard";
+import { RetiredWriteEntryGuard } from "../retired-write-entry/retired-write-entry.guard";
+import { createApiValidationPipe } from "../validation/api-validation";
+import { apiJsonReplacer } from "../api-json-replacer";
+import { SpotProcurementPaymentController } from "./spot-procurement-payment.controller";
+import { SpotProcurementReadService } from "./spot-procurement-read.service";
+import { SpotProcurementSettlementService } from "./spot-procurement-settlement.service";
 import { mockConfiguredApprovalAssignments } from "../../prisma/fixtures/project-approval-configuration";
 import "reflect-metadata";
 import { BadRequestException } from "@nestjs/common";
@@ -780,7 +791,8 @@ describe("SpotProcurementPaymentService real-form draft", () => {
     expect(tx.auditLog.create).not.toHaveBeenCalled();
   });
 
-  it("returns a finance-director payer change to comprehensive approval and preserves the prior approval trail", async () => {
+  it.each(["serial", "cutover", "mixed"] as const)("validates finance payer changes and preserves the approval trail for a %s round", async (protocol) => {
+    const cutover = protocol !== "serial";
     const { service, tx } = createHarness();
     const submitted = {
       ...payment,
@@ -788,42 +800,59 @@ describe("SpotProcurementPaymentService real-form draft", () => {
       paymentMethod: "bank_transfer",
       payerCompanyEntityId: "company-before"
     };
+    const frozenNodes = [
+      {
+        name: "首个审批",
+        mode: "any",
+        roleKeys: [cutover ? "material_director" : "comprehensive_director"],
+        approvedRoleKeys: [cutover ? "material_director" : "comprehensive_director"]
+      },
+      {
+        name: "项目经理审批",
+        mode: "any",
+        roleKeys: ["project_manager"],
+        ...(!cutover ? { approvedRoleKeys: ["project_manager"] } : {})
+      },
+      {
+        name: "财务主管审批",
+        mode: "any",
+        roleKeys: ["finance_director"]
+      },
+      {
+        name: "董事长或总经理审批",
+        mode: "any",
+        roleKeys: ["chairman", "general_manager"],
+        ...(cutover ? { approvedRoleKeys: ["chairman"] } : {})
+      }
+    ].map((node, index) => cutover && (protocol !== "mixed" || index !== 0) ? {
+      ...node, protocolVersion: 1, executionMode: "parallel", legacySerialCutover: true
+    } : node);
     tx.$queryRaw
       .mockResolvedValueOnce([submitted])
       .mockResolvedValueOnce([
         {
           id: "approval-1",
           status: "approval_pending",
-          currentNodeIndex: 2,
+          currentNodeIndex: protocol === "cutover" ? 1 : 2,
           applicantUserId: "material-1",
-          frozenNodes: [
-            {
-              name: "综合部主管审批",
-              mode: "any",
-              roleKeys: ["comprehensive_director"],
-              approvedRoleKeys: ["comprehensive_director"]
-            },
-            {
-              name: "项目经理审批",
-              mode: "any",
-              roleKeys: ["project_manager"],
-              approvedRoleKeys: ["project_manager"]
-            },
-            {
-              name: "财务主管审批",
-              mode: "any",
-              roleKeys: ["finance_director"]
-            }
-          ]
+          frozenNodes
         }
       ]);
     tx.projectMember.findMany.mockResolvedValue([{ positionKey: "finance_director" }]);
 
-    await service.updatePayer("payment-1", "finance-director", {
+    const update = service.updatePayer("payment-1", "finance-director", {
       companyEntityId: "company-1",
       paymentMethods: ["bank_transfer"],
       changeReason: "付款主体需要改为实际出款公司"
     });
+
+    if (protocol === "mixed") {
+      await expect(update).rejects.toThrow("历史付款审批迁移标记不一致");
+      expect(tx.spotProcurementPaymentMethodOption.deleteMany).not.toHaveBeenCalled();
+      expect(tx.approvalActionLog.create).not.toHaveBeenCalled();
+      return;
+    }
+    await update;
 
     expect(tx.approvalActionLog.create).toHaveBeenCalledWith({
       data: expect.objectContaining({
@@ -845,9 +874,9 @@ describe("SpotProcurementPaymentService real-form draft", () => {
       data: expect.objectContaining({
         currentNodeIndex: 0,
         status: "approval_pending",
-        frozenNodes: expect.arrayContaining([
-          expect.not.objectContaining({ approvedRoleKeys: expect.anything() })
-        ])
+        frozenNodes: frozenNodes.map((node) =>
+          Object.fromEntries(Object.entries(node).filter(([key]) => key !== "approvedRoleKeys"))
+        )
       })
     });
   });
@@ -937,5 +966,58 @@ describe("SpotProcurementPaymentService real-form draft", () => {
     await expect(
       service.review("payment-1", "comprehensive-1", { decision: "approve" })
     ).rejects.toThrow("首个审批节点通过前必须确定付款主体和至少一种拟付款方式");
+  });
+});
+
+
+describe("旧零采付款公开HTTP的未知申请数量围栏", () => {
+  it.each(["draft", "submission"] as const)("%s未知数量拒绝且零写，已知数量保留原办理", async action => {
+    const {service, tx, prisma} = createHarness();
+    const actor = {id: "material-1", name: "合成物资员", phone: "13800000001", isActive: true, sessionVersion: 0};
+    const database = {...prisma, user: {findUnique: jest.fn(async () => actor)},
+      userPosition: {findMany: jest.fn(async () => [])}, position: {findMany: jest.fn(async () => [])},
+      projectMember: {findMany: jest.fn(async () => [{positionKey: "material_staff"}])}};
+    if (action === "submission") {
+      const completed = {...payment, paymentType: "company_direct", merchantNameSnapshot: "昆明建材商行", payeeNameSnapshot: "昆明建材商行", approvalAmountCents: 700n};
+      tx.spotProcurementPayment.findUnique.mockResolvedValue(completed);
+      prisma.spotProcurementPayment.findUnique.mockResolvedValue(completed);
+      tx.spotProcurementPaymentLine.findMany.mockResolvedValue([{procurementLineId: "procurement-line-1", paymentQuantity: new Prisma.Decimal("1"), amountCents: 700n}]);
+      tx.spotProcurementPaymentChannel.findMany.mockResolvedValue([{isPrimary: true}]);
+      tx.spotProcurementPaymentMethodOption.findMany.mockResolvedValue([{paymentMethod: "bank_transfer"}]);
+      mockConfiguredApprovalAssignments(tx);
+    }
+    const module = await Test.createTestingModule({controllers: [SpotProcurementPaymentController], providers: [
+      {provide: SpotProcurementPaymentService, useValue: service}, {provide: SpotProcurementReadService, useValue: {}},
+      {provide: SpotProcurementSettlementService, useValue: {}}
+    ]}).compile();
+    const app = module.createNestApplication({logger: false});
+    const tokens = new JwtTokenService();
+    app.getHttpAdapter().getInstance().set("json replacer", apiJsonReplacer);
+    app.useGlobalGuards(new JwtAuthGuard(new Reflector(), tokens, database as never), new PermissionGuard(new Reflector(), database as never), new RetiredWriteEntryGuard());
+    app.useGlobalPipes(createApiValidationPipe());
+    await app.listen(0, "127.0.0.1");
+    try {
+      const address = app.getHttpServer().address() as {port: number};
+      const request = () => fetch(`http://127.0.0.1:${address.port}/spot-procurement-payments/payment-1/${action}`, {
+        method: action === "draft" ? "PATCH" : "POST",
+        headers: {authorization: `Bearer ${tokens.signAccessToken(actor)}`, "content-type": "application/json"},
+        body: JSON.stringify(action === "draft" ? realFormInput : {})
+      });
+      tx.spotProcurementLine.findMany.mockResolvedValue([{id: "procurement-line-1", quantity: null}]);
+      const unknown = await request();
+      expect([400, 409]).toContain(unknown.status);
+      expect((await unknown.json()).message).toContain("数量");
+      for (const delegate of Object.values(tx)) {
+        if (delegate && typeof delegate === "object") for (const [method, fn] of Object.entries(delegate)) {
+          if (/^(create|update|delete|upsert)/u.test(method) && jest.isMockFunction(fn)) expect(fn).not.toHaveBeenCalled();
+        }
+      }
+      tx.spotProcurementLine.findMany.mockResolvedValue([{id: "procurement-line-1", quantity: new Prisma.Decimal("1")}]);
+      const known = await request();
+      expect(known.status).toBe(action === "draft" ? 200 : 201);
+      expect(tx.spotProcurementPayment.update).toHaveBeenCalledTimes(1);
+      expect(tx.auditLog.create).toHaveBeenCalledTimes(1);
+      expect(tx.approvalInstance.create).toHaveBeenCalledTimes(action === "submission" ? 1 : 0);
+    } finally { await app.close(); }
   });
 });

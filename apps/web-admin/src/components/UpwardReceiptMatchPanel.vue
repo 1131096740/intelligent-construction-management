@@ -1,10 +1,13 @@
 <script setup lang="ts">
+import { useAuthStore } from "../auth/auth.store";
+import DutySmsStatusPanel from "./DutySmsStatusPanel.vue";
 import ApprovalDocumentDownload from "./approval/ApprovalDocumentDownload.vue";
 import {computed,onBeforeUnmount,reactive,ref,watch} from "vue";
 import {useRouter} from "vue-router";
 import {fetchReceiptMatches,prepareReceiptMatch,decideReceiptMatch,type ReceiptMatchData} from "../api/upward-receipt-match.api";
 import {centsTextToYuanText,yuanTextToCentsText} from "../lib/money";
 import {formatUnknownApiError} from "../api/error-message";
+const auth = useAuthStore();
 const props=defineProps<{projectId:string}>(),emit=defineEmits<{changed:[]}>(),router=useRouter();
 const data=ref<ReceiptMatchData|null>(null),error=ref(""),busy=ref(false),visible=ref(false),password=ref(""),key=ref(crypto.randomUUID());
 const form=reactive({receiptFactId:"",settlementLedgerId:"",originalId:"",amountYuan:"",occurredAt:new Date().toLocaleDateString("en-CA",{timeZone:"Asia/Shanghai"}),reason:""});
@@ -134,6 +137,12 @@ async function decideReceiptMatchWithCapability(arg0: Parameters<typeof decideRe
       >
         追加解除匹配
       </t-button>
+      <DutySmsStatusPanel
+        v-if="auth.user?.id && data?.canReview && row.canConfirm"
+        :key="`${auth.user.id}:${row.id}`"
+        domain="upward-receipt-matches"
+        :business-id="row.id"
+      />
       <ApprovalDocumentDownload business-type="upward_receipt_match" :business-id="row.id" :refresh-key="row.status" />
     </article>
   </section>

@@ -1,0 +1,28 @@
+--- original
++++ diagnostic
+@@ -66,2 +66,9 @@
+   };
++  const progress=mode==='pol113'?require('./pol113-progress.cjs'):null;
++  const progressFile=path.join(workDir,'pol113-progress.jsonl');
++  if(progress){
++    fs.writeFileSync(progressFile,'',{flag:'wx',mode:0o600});
++    environment.JG_POL113_PROGRESS_FILE=progressFile;
++    environment.JG_POL113_PROGRESS_STARTED_AT=String(Date.now());
++  }
+   const args=['--filter','@jiangkong/api','exec','jest','--runInBand',...recipe.args,
+@@ -69,4 +76,10 @@
+   receipt.stages.push('ORIGINAL_'+mode.toUpperCase()+'_HTTP_AND_BROWSER_JEST');
++  const started=process.hrtime.bigint();
+   const result=spawnSync('pnpm',args,{cwd:workspace,env:environment,encoding:'utf8',
+     timeout:recipe.timeout,maxBuffer:32*1024*1024});
++  if(progress) receipt.pol113Execution={
++    elapsedMs:Number((process.hrtime.bigint()-started)/1_000_000n),
++    deadlineMs:recipe.timeout,outcome:progress.executorOutcome(result),
++    browserProgress:progress.readProgress(progressFile),
++  };
+   let parsed;
+@@ -76,2 +89,4 @@
+   const rows=parsed?.testResults?.[0]?.assertionResults??[];
++  if(progress) receipt.pol113Execution.jestCaseDeadline=rows.some(row=>
++    row.status==='failed'&&progress.hasJestDeadline(row.failureMessages??[]));
+   receipt.originalSuite={

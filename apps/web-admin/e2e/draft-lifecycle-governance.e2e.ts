@@ -1259,17 +1259,22 @@ test("合同已放弃记录保持只读且不开放复制", async ({ page }, tes
   });
 });
 
-test("结算已放弃记录可携带保存时间复制为全新草稿", async ({ page }) => {
+test("历史已放弃结算可回读，忽略旧复制能力", async ({ page }) => {
   await installSession(page);
-  let copyBody: Record<string, unknown> | null = null;
-  await page.route("**/api/projects/project-1/settlement-drafts/settlement-draft-abandoned-1/copies", (route) => {
-    copyBody = route.request().postDataJSON() as Record<string, unknown>;
-    return route.fulfill({
-      contentType: "application/json",
-      body: JSON.stringify({ id: "settlement-draft-copy-1" })
-    });
+  const mutations: string[] = [];
+  await page.route("**/api/projects", route => route.fulfill({ json: [{ id: "project-1", code: "GC-1", name: "一号项目" }] }));
+  await page.route("**/api/projects/project-1/settlement-drafts/settlement-draft-abandoned-1**", route => {
+    if (route.request().method() !== "GET") {
+      mutations.push(route.request().method());
+      return route.fulfill({ status: 410 });
+    }
+    if (route.request().url().endsWith("/line-attachments")) return route.fulfill({ json: [] });
+    return route.fulfill({ json: {
+      id: "settlement-draft-abandoned-1", projectId: "project-1", code: "JSC-END-001",
+      periodLabel: "2026-07", status: "abandoned", isFinal: false, abandonReason: "重复结算草稿", lines: []
+    } });
   });
-  await page.route("**/api/settlements/lifecycle-ledger?*", (route) => route.fulfill({
+  await page.route("**/api/settlements/workbench?*", (route) => route.fulfill({
     contentType: "application/json",
     body: JSON.stringify({
       rows: [{
@@ -1303,13 +1308,14 @@ test("结算已放弃记录可携带保存时间复制为全新草稿", async ({
   }));
 
   await login(page);
-  await page.goto("/结算管理?view=ended");
+  await page.goto("/结算工作台");
   await expect(page.getByText("JSC-END-001", { exact: true })).toBeVisible();
   await expect(page.getByText("重复结算草稿", { exact: true })).toBeVisible();
-  await page.getByText("复制为新草稿", { exact: true }).click();
-  await expect.poll(() => copyBody).toEqual({ expectedUpdatedAt: savedAt });
-  await expect.poll(() => decodeURIComponent(new URL(page.url()).pathname + new URL(page.url()).search))
-    .toBe("/结算工作台?project=project-1&draftId=settlement-draft-copy-1");
+  await expect(page.getByText("复制为新草稿", { exact: true })).toHaveCount(0);
+  await page.getByRole("row", { name: /JSC-END-001/u }).locator("a").filter({ hasText: "查看历史" }).click();
+  await expect(page.getByRole("heading", { name: "历史结算草稿" })).toBeVisible();
+  await expect(page.getByText("重复结算草稿", { exact: true })).toBeVisible();
+  expect(mutations).toEqual([]);
 });
 
 test("P0 项目支出实付在 Chromium 桌面与 WebKit 390 只提交一个原子事实", async ({
@@ -1796,7 +1802,7 @@ test("P0 项目支出财务入账在 Chromium 桌面与 WebKit 390 只提交一�
   expect(pageErrors).toEqual([]);
 });
 
-test("P0 项目支出收货在 Chromium 1366 与 WebKit 390 只提交一个 CAS 事实", async ({
+test("P0 项目支出历史收货只读且遗留能力不能发起收货写入", async ({
   browserName,
   page
 }, testInfo) => {
@@ -1809,14 +1815,8 @@ test("P0 项目支出收货在 Chromium 1366 与 WebKit 390 只提交一个 CAS 
   );
   const browserErrors: string[] = [];
   const pageErrors: string[] = [];
-  const requestOrder: string[] = [];
-  const receiptBodies: Record<string, unknown>[] = [];
-  let confirmed = false;
-  let confirmedIdempotencyKey: string | null = null;
-  let releaseReceiptPost!: () => void;
-  const receiptPostGate = new Promise<void>((resolve) => {
-    releaseReceiptPost = resolve;
-  });
+  let historicalReceiptConfirmed = false;
+  let receiptWrites = 0;
   page.on("console", (message) => {
     if (message.type() === "error") browserErrors.push(message.text());
   });
@@ -1843,21 +1843,20 @@ test("P0 项目支出收货在 Chromium 1366 与 WebKit 390 只提交一个 CAS 
     remainingAmountCents: "0",
     financeRecordedAmountCents: "50000",
     financeRemainingAmountCents: "0",
-    receiptConfirmedAt: confirmed
+    receiptConfirmedAt: historicalReceiptConfirmed
       ? "2026-08-01T04:00:01.000Z"
       : null,
-    receiptConfirmedByUserId: confirmed
+    receiptConfirmedByUserId: historicalReceiptConfirmed
       ? "draft-governance-user"
       : null,
-    receiptConfirmationIdempotencyKey:
-      confirmedIdempotencyKey,
-    receiptConfirmationNote: confirmed
+    receiptConfirmationIdempotencyKey: historicalReceiptConfirmed ? "previous-receipt" : null,
+    receiptConfirmationNote: historicalReceiptConfirmed
       ? "数量、质量与现场交付无误"
       : null,
     currentNodeName: null,
     lifecycleKind: "formal_record",
     ledgerView: "formal_ledger",
-    lifecycleUpdatedAt: confirmed
+    lifecycleUpdatedAt: historicalReceiptConfirmed
       ? completedUpdatedAt
       : initialUpdatedAt,
     hasPersistentDraft: false,
@@ -1865,10 +1864,10 @@ test("P0 项目支出收货在 Chromium 1366 与 WebKit 390 只提交一个 CAS 
     reviewApprovalContext: null,
     executionContext: null,
     financeContext: null,
-    receiptContext: confirmed
+    receiptContext: historicalReceiptConfirmed
       ? null
       : { expectedExpenseUpdatedAt: initialUpdatedAt },
-    availableActions: confirmed
+    availableActions: historicalReceiptConfirmed
       ? []
       : [{
           key: "confirm_receipt",
@@ -1879,7 +1878,7 @@ test("P0 项目支出收货在 Chromium 1366 与 WebKit 390 只提交一个 CAS 
           requiredAction: "project_expense.receipt_confirm",
           requiresPassword: true
         }],
-    blockedReasons: confirmed ? ["零星采购已确认收货"] : [],
+    blockedReasons: historicalReceiptConfirmed ? ["零星采购已确认收货"] : [],
     canSetApprovedAmount: false,
     reviewAction: {
       key: "review",
@@ -1892,69 +1891,35 @@ test("P0 项目支出收货在 Chromium 1366 与 WebKit 390 只提交一个 CAS 
     approvalTimeline: []
   });
 
+  await page.route("**/api/projects", (route) => route.fulfill({ json: [] }));
+  await page.route(
+    "**/api/approval-progress?businessType=project_expense_request&businessId=expense-receipt",
+    (route) => route.fulfill({ json: { items: [], nextCursor: null } })
+  );
   await page.route(
     "**/api/projects/project-1/expense-requests/expense-receipt/approval-detail",
-    (route) => {
-      requestOrder.push("GET /approval-detail");
-      return route.fulfill({
-        contentType: "application/json",
-        body: JSON.stringify(detail())
-      });
-    }
+    (route) => route.fulfill({ json: detail() })
   );
   await page.route(
     "**/api/projects/project-1/expense-requests/expense-receipt/receipt-confirmation",
-    async (route) => {
-      requestOrder.push("POST /receipt-confirmation");
-      const body =
-        route.request().postDataJSON() as Record<string, unknown>;
-      receiptBodies.push(body);
-      await receiptPostGate;
-      confirmed = true;
-      confirmedIdempotencyKey = String(body.idempotencyKey);
-      await route.fulfill({
-        contentType: "application/json",
-        body: JSON.stringify({
-          projectId: "project-1",
-          expenseRequestId: "expense-receipt",
-          idempotencyKey: body.idempotencyKey,
-          confirmedByUserId: "draft-governance-user",
-          confirmedAt: "2026-08-01T04:00:01.000Z",
-          note: body.note,
-          updatedAt: completedUpdatedAt
-        })
-      });
+    (route) => {
+      receiptWrites += 1;
+      return route.fulfill({ status: 410 });
     }
   );
 
   await login(page);
   await page.goto("/项目支出/project-1/expense-receipt");
-  await expect(
-    page.getByRole("heading", { name: "项目支出审批详情" })
-  ).toBeVisible();
-  const receiptCard = page
-    .locator(".section-card")
-    .filter({
-      has: page.getByRole("button", {
-        name: "确认收货",
-        exact: true
-      })
-    });
-  await expect(receiptCard).toBeVisible();
-  await receiptCard
-    .locator("textarea")
-    .fill("数量、质量与现场交付无误");
-  await receiptCard
-    .getByRole("button", { name: "确认收货", exact: true })
-    .click();
+  await expect(page.getByText("CG-RECEIPT-001", { exact: true })).toBeVisible();
+  const history = page.locator(".summary-grid > div").filter({ hasText: "收货状态" });
+  await expect(history).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "确认收货", exact: true })).toHaveCount(0);
 
-  const dialog = page
-    .locator(".t-dialog")
-    .filter({ hasText: "确认历史项目支出已收货？" });
-  await expect(dialog).toBeVisible();
-  await dialog
-    .getByPlaceholder("用于确认当前操作者身份")
-    .fill("Draft@2026");
+  historicalReceiptConfirmed = true;
+  await page.getByRole("button", { name: "刷新", exact: true }).click();
+  await expect(history).toContainText("已确认");
+  await expect(page.getByRole("button", { name: "确认收货", exact: true })).toHaveCount(0);
+  expect(receiptWrites).toBe(0);
   await page.screenshot({
     path: path.join(
       testInfo.outputDir,
@@ -1962,54 +1927,6 @@ test("P0 项目支出收货在 Chromium 1366 与 WebKit 390 只提交一个 CAS 
     ),
     fullPage: false
   });
-  const confirm = dialog.getByRole("button", {
-    name: "确认收货",
-    exact: true
-  });
-  await confirm.evaluate((element) => {
-    (element as HTMLButtonElement).click();
-    (element as HTMLButtonElement).click();
-  });
-  await expect.poll(() => receiptBodies).toHaveLength(1);
-  await expect(
-    page.getByRole("button", { name: "刷新", exact: true })
-  ).toBeDisabled();
-  await expect(
-    dialog.getByRole("button", { name: "取消", exact: true })
-  ).toBeDisabled();
-  await expect(dialog.locator(".t-dialog__close")).toHaveCount(0);
-  await page.keyboard.press("Escape");
-  await expect(dialog).toBeVisible();
-  releaseReceiptPost();
-
-  await expect(
-    page.getByText(
-      "项目支出收货已确认，权威详情已刷新。",
-      { exact: true }
-    )
-  ).toBeVisible();
-  await expect(
-    page
-      .locator(".summary-grid > div")
-      .filter({ hasText: "收货状态" })
-  ).toContainText("已确认");
-  await expect(receiptCard).toHaveCount(0);
-  await expect.poll(() => requestOrder).toEqual([
-    "GET /approval-detail",
-    "GET /approval-detail",
-    "POST /receipt-confirmation",
-    "GET /approval-detail"
-  ]);
-  expect(receiptBodies).toHaveLength(1);
-  expect(receiptBodies[0]?.idempotencyKey).toMatch(
-    /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/u
-  );
-  expect(receiptBodies).toEqual([{
-    confirmationPassword: "Draft@2026",
-    note: "数量、质量与现场交付无误",
-    expectedExpenseUpdatedAt: initialUpdatedAt,
-    idempotencyKey: receiptBodies[0]?.idempotencyKey
-  }]);
   await expect(
     page.locator(
       "vite-error-overlay, #webpack-dev-server-client-overlay"

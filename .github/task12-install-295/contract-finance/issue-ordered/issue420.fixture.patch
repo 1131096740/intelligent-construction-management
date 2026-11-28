@@ -1,0 +1,51 @@
+--- a/fixture.ts
++++ b/fixture.ts
+@@ -56 +56,8 @@
+-    if (process.env.NODE_ENV !== "test" || target.hostname !== "127.0.0.1" || !target.pathname.endsWith("_issue420_approval")) {
++    const orderedDatabase = process.env.JG_ISSUE420_ORDERED_DATABASE;
++    const ordered = /^jg_task01_[a-f0-9]{32}$/u.test(orderedDatabase ?? "") &&
++      target.pathname === "/" + orderedDatabase && target.protocol === "postgresql:" &&
++      target.username === "jg_task01_owner" && Number(target.port) > 1024 &&
++      target.searchParams.get("sslmode") === "require" && target.searchParams.get("sslaccept") === "strict" &&
++      /^\/tmp\/jg394-[A-Za-z0-9]+\/ca\.crt$/u.test(target.searchParams.get("sslcert") ?? "");
++    if (process.env.NODE_ENV !== "test" || target.hostname !== "127.0.0.1" ||
++        (!target.pathname.endsWith("_issue420_approval") && !ordered)) {
+@@ -83,0 +91,20 @@
++    if (ordered) {
++      const enterprise = await owner.businessParty.create({ data: {
++        name: "隔离审批中心施工企业", normalizedName: "issue420-enterprise", createdByUserId: ids.applicant
++      } });
++      const version = await owner.businessPartyVersion.create({ data: {
++        businessPartyId: enterprise.id, versionNo: 1, snapshot: { name: enterprise.name }, createdByUserId: ids.applicant
++      } });
++      await owner.projectAffiliateAssignment.create({ data: {
++        projectId: ids.project, businessPartyId: enterprise.id, businessPartyVersionId: version.id,
++        affiliateNameSnapshot: enterprise.name, effectiveFrom: new Date("2020-01-01"),
++        changeReason: "隔离验收施工企业", assignedByUserId: ids.applicant
++      } });
++    }
++    const company = ordered ? await owner.companyEntity.create({ data: {
++      name: "隔离审批中心签约公司", isActive: true, currentVersionNo: 1
++    } }) : undefined;
++    const companyVersion = company ? await owner.companyEntityVersion.create({ data: {
++      companyEntityId: company.id, versionNo: 1, name: company.name, isActive: company.isActive,
++      action: "create", actorUserId: ids.applicant
++    } }) : undefined;
+@@ -85 +112,2 @@
+-      name: "隔离钢材采购合同", counterparty: "隔离供应商", companyEntityName: "四川建工智管建筑工程有限公司" } });
++      name: "隔离钢材采购合同", counterparty: "隔离供应商",
++      companyEntityId: company?.id, companyEntityName: company?.name ?? "四川建工智管建筑工程有限公司" } });
+@@ -87,2 +115,7 @@
+-      changeType: "initial", status: "effective", amountCents: 5_000_000n,
+-      draftData: {}, templateSnapshot: {}, clauseSnapshot: {} } });
++      changeType: ordered ? "original" : "initial", status: "effective", amountCents: 5_000_000n,
++      ...(company && companyVersion ? {
++        effectiveAt: new Date("2026-01-01"), numericProtocolVersion: 1, signingSubjectType: "our_company",
++        companyEntityIdSnapshot: company.id, companyEntityVersionId: companyVersion.id,
++        companyEntityNameSnapshot: companyVersion.name
++      } : {}),
++      draftData: {}, templateSnapshot: {}, clauseSnapshot: ordered ? [] : {} } });
+@@ -94 +127,2 @@
+-      paidAmountCents: 0n, sourceType: "contract_advance", paymentMatter: "隔离真库进度付款" } });
++      paidAmountCents: 0n, sourceType: "contract_advance", paymentMatter: "隔离真库进度付款",
++      amountCalculationExplanation: "合成合同总价 50000 元 × 本期进度 24% = 12000 元" } });

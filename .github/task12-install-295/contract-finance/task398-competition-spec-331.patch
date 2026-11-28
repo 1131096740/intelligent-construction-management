@@ -1,0 +1,198 @@
+--- original
++++ revised
+@@ -15,4 +15,10 @@
+ import { REGISTERED_PAYMENT_IMPACT_READER, readTask16RegisteredPaymentImpacts } from "../payment/registered-payment-impact-reader";
+ import { OperatingSourceReplayService } from "../operating-ledger/operating-source-replay.service";
++import { PaymentFinancialController } from "../payment/payment-financial.controller";
++import { PaymentCorrectionService } from "../payment/payment-correction.service";
++import { PaymentRefundService } from "../payment/payment-refund.service";
++import { FinancialCorrectionEntryService } from "../payment/financial-correction-entry.service";
++import { AuditModule } from "../audit/audit.module";
++import { AuthModule } from "../auth/auth.module";
+ import { AuditService } from "../audit/audit.service";
+ import { AuthService } from "../auth/auth.service";
+@@ -37,4 +43,5 @@
+ const enabled=process.env.RUN_TASK398_SHARED_PG16 === "1";
+ const overpay=process.env.TASK398_OVERPAY_MODE==="1";
++const competitionCorrection=overpay&&process.env.TASK398_COMPETITION_CORRECTION==="1";
+ const ledgerLoss=process.env.TASK398_LEDGER_LOSS_MODE==="1";
+ const transferRejection=process.env.TASK406_TRANSFER_MODE==="rejection";
+@@ -69,5 +76,5 @@
+ @Catch()
+ class SignatureFailureCapture extends Task16RegistrationErrorFilter {
+- constructor(adapter:HttpAdapterHost,private readonly report:(detail:SignatureFailureDetail)=>void,private readonly approval?:{path:string;report:(detail:SignatureFailureDetail)=>void},private readonly workItemsReport?:(detail:SignatureFailureDetail)=>void){super(adapter);}
++ constructor(adapter:HttpAdapterHost,private readonly report:(detail:SignatureFailureDetail)=>void,private readonly approval?:{path:string;report:(detail:SignatureFailureDetail)=>void},private readonly workItemsReport?:(detail:SignatureFailureDetail)=>void,private readonly correctionPath?:(path:string)=>boolean){super(adapter);}
+  override catch(exception:unknown,host:ArgumentsHost){
+   try{
+@@ -76,4 +83,6 @@
+    else if(request.method==="POST"&&this.approval&&request.originalUrl===this.approval.path)this.approval.report(signatureFailureDetail(exception));
+    else if(request.method==="GET"&&request.originalUrl==="/me/work-items"&&this.workItemsReport&&(!(exception instanceof HttpException)||exception.getStatus()===500)&&!projectOperatingConstraintMessage(exception))this.workItemsReport(signatureFailureDetail(exception));
++   else if(request.originalUrl&&this.correctionPath?.(request.originalUrl)&&(!(exception instanceof HttpException)||exception.getStatus()>=500))
++    console.error("TASK398_CORRECTION_FAILURE",JSON.stringify(signatureFailureDetail(exception)));
+   }catch{ /* Diagnostic failure must not change the original HTTP response. */ }
+   super.catch(exception,host);
+@@ -199,6 +208,12 @@
+    const outsiderPhone=`196${plan.phone.slice(3)}`;
+    await owner.user.create({data:{id:randomUUID(),phone:outsiderPhone,name:"合成无权账号",passwordHash:hashes[3],isActive:true,mustChangePassword:false}});
+-   const module=await Test.createTestingModule({imports:[Task16SharedPaymentApplicationModule]}).overrideProvider(PrismaService).useValue(runtime).overrideProvider(REGISTERED_PAYMENT_IMPACT_READER).useValue(readTask16RegisteredPaymentImpacts).compile();
+-   app=module.createNestApplication({logger:false});app.useGlobalFilters(new SignatureFailureCapture(app.get(HttpAdapterHost),detail=>console.error(`TASK398_SIGNATURE_FAILURE ${JSON.stringify(detail)}`),{path:`/payments/${plan.ids.payment}/approval`,report:detail=>console.error(`TASK398_APPROVAL_FAILURE ${JSON.stringify(detail)}`)},detail=>console.error(`TASK398_ME_FAILURE ${JSON.stringify(detail)}`)));app.getHttpAdapter().getInstance().set("json replacer",apiJsonReplacer);app.useGlobalPipes(createApiValidationPipe());
++   const module=await Test.createTestingModule({
++    imports:[Task16SharedPaymentApplicationModule,...(competitionCorrection?[AuthModule,AuditModule]:[])],
++    controllers:competitionCorrection?[PaymentFinancialController]:[],
++    providers:competitionCorrection?[PaymentCorrectionService,PaymentRefundService,FinancialCorrectionEntryService]:[]
++   }).overrideProvider(PrismaService).useValue(runtime).overrideProvider(REGISTERED_PAYMENT_IMPACT_READER).useValue(readTask16RegisteredPaymentImpacts).compile();
++   let correctionRequestPath:string|undefined,correctionConfirmationPath:string|undefined;
++   const correctionReadPath=`/payment-financial/payments/${plan.ids.payment}/corrections`;
++   app=module.createNestApplication({logger:false});app.useGlobalFilters(new SignatureFailureCapture(app.get(HttpAdapterHost),detail=>console.error(`TASK398_SIGNATURE_FAILURE ${JSON.stringify(detail)}`),{path:`/payments/${plan.ids.payment}/approval`,report:detail=>console.error(`TASK398_APPROVAL_FAILURE ${JSON.stringify(detail)}`)},detail=>console.error(`TASK398_ME_FAILURE ${JSON.stringify(detail)}`),path=>competitionCorrection&&[correctionRequestPath,correctionConfirmationPath,correctionReadPath].includes(path)));app.getHttpAdapter().getInstance().set("json replacer",apiJsonReplacer);app.useGlobalPipes(createApiValidationPipe());
+    if(transferMode){
+     const capturePath=process.env.TASK406_PRIVATE_FAILURE_PATH??"";
+@@ -223,4 +238,10 @@
+     app.useGlobalFilters(new TransferFailureCapture(app.get(HttpAdapterHost)));
+    }
++   if(competitionCorrection)app.use((req:{method:string;url:string},res:{sendStatus:(status:number)=>void},next:()=>void)=>{
++    if(!req.url.startsWith("/payment-financial/"))return next();
++    if((req.method==="GET"&&req.url===correctionReadPath)||
++       (req.method==="POST"&&[correctionRequestPath,correctionConfirmationPath].includes(req.url)))return next();
++    res.sendStatus(403);
++   });
+    let waiting:Array<()=>void>|undefined,barrierTimer:NodeJS.Timeout|undefined,arrivals=0,barrierExpired=false;
+    if(overpay||transferMode)app.use((req:{method:string;url:string},_res:unknown,next:()=>void)=>{
+@@ -615,4 +636,138 @@
+     expect(await observeRace()).toEqual(recorded);
+     expect(await json("/fund-accounts","GET",undefined,finance)).toEqual(accounts);
++    const expectSharedQueues=async(paidAmountCents:string,remainingAmountCents:string)=>{
++     for(const token of [finance,keeper]){
++      const items=await json("/payment-executions/work-items","GET",undefined,token);
++      expect(items).toMatchObject({status:200,body:{items:expect.arrayContaining([
++       expect.objectContaining({paymentId:plan.ids.payment,paidAmountCents,remainingAmountCents})
++      ])}});
++      const me=await observedMeRequest(()=>json("/me/work-items","GET",undefined,token),++meWindowIndex);
++      expect(me).toMatchObject({status:200,body:{queues:{pending:expect.arrayContaining([
++       expect.objectContaining({type:"payment_execution",businessId:plan.ids.payment})
++      ])}}});
++     }
++    };
++    await expectSharedQueues("6000","4000");
++    expect(await getResult(winner.key,winnerChoice.token)).toMatchObject({status:200,body:{execution:{voucherPending:true}}});
++    const voucher=new FormData();
++    voucher.append("file",new Blob([png],{type:"image/png"}),"voucher.png");
++    voucher.append("idempotencyKey",randomUUID());
++    const uploaded=await fetch(`${origin}/payment-executions/${executionId}/voucher-file-uploads`,{
++     method:"POST",headers:{authorization:`Bearer ${winnerChoice.token}`},body:voucher
++    });
++    expect(uploaded.status).toBe(201);
++    const file=await uploaded.json();
++    const approvalRounds=()=>observer.approvalInstance.findMany({
++     where:{businessType:"payment_request",businessId:plan.ids.payment},
++     select:{id:true,status:true},orderBy:{id:"asc"}
++    });
++    const beforeVoucherApproval=await approvalRounds();
++    expect(beforeVoucherApproval).toEqual([{id:round.id,status:"approved"}]);
++    const route=`/payment-executions/${executionId}/voucher`;
++    const digest=createHash("sha256").update(png).digest("hex");
++    await activateOwned281VoucherCheck(owner,runId,executionId,plan.ids.payment,plan.ids.project,winnerChoice.actor,file.id,digest,png.length);
++    try {
++     expect(await json(route,"POST",{fileId:file.id},outsider)).toMatchObject({status:403});
++     expect(await json(route,"POST",{fileId:file.id},winnerChoice.token)).toMatchObject({status:201});
++     expect(await json(route,"POST",{fileId:file.id},winnerChoice.token)).toMatchObject({status:201});
++     expect(await owner.registeredPaymentVoucher.findUniqueOrThrow({where:{executionId}})).toMatchObject({
++      executionId,fileId:file.id,uploadedByUserId:winnerChoice.actor,contentSha256:digest
++     });
++     expect(await owner.auditLog.count({where:{businessId:plan.ids.payment,action:"payment.execution.voucher.attach"}})).toBe(1);
++     await activateOwned282VoucherRead(owner,executionId,file.id,winnerChoice.actor);
++     expect(await json(`${route}-ticket`,"GET",undefined,outsider)).toMatchObject({status:403});
++     const ticket=await json(`${route}-ticket`,"GET",undefined,winnerChoice.token);
++     expect(ticket.status).toBe(200);
++     const download=await fetch(new URL(ticket.body.downloadUrl,origin));
++     expect(download.status).toBe(200);
++     expect(Buffer.from(await download.arrayBuffer())).toEqual(png);
++     expect(await getResult(winner.key,winnerChoice.token)).toMatchObject({status:200,body:{execution:{voucherPending:false}}});
++    } finally {
++     await releaseOwned281VoucherCheck(owner,executionId,file.id);
++    }
++    await expectSharedQueues("6000","4000");
++    expect(await approvalRounds()).toEqual(beforeVoucherApproval);
++    expect(await observeRace()).toEqual(recorded);
++    expect(await json("/fund-accounts","GET",undefined,finance)).toEqual(accounts);
++    if(competitionCorrection){
++     // Promote the actual recorder only after competition and voucher readback.
++     // The two original registrations still execute with distinct payment duties.
++     const position=await owner.position.findUniqueOrThrow({where:{key:"finance_director"},select:{id:true}});
++     await owner.userPosition.create({data:{userId:winnerChoice.actor,positionId:position.id,projectId:null}});
++     const password=passwords[winnerIndex];
++     const self=await login(winnerIndex===0?plan.phone:seeded.keeperPhone,password);
++     const originalExecution=await observer.paymentExecution.findUniqueOrThrow({where:{id:executionId}});
++     const originalVoucher=await observer.registeredPaymentVoucher.findUniqueOrThrow({where:{executionId}});
++     const originalOpening=await observer.fundAccountBalanceRegistration.findUniqueOrThrow({where:{id:winnerChoice.opening.id}});
++     correctionRequestPath=`/payment-financial/payments/${plan.ids.payment}/executions/${executionId}/corrections`;
++     const request={
++      correctedAmountCents:"5000",correctedPaidAt:plan.paidAt,
++      correctionReason:"按虚构银行或出纳实付凭据复核金额",idempotencyKey:randomUUID()
++     };
++     expect(await json(correctionRequestPath,"POST",request,outsider)).toMatchObject({status:403});
++     const requested=await observedMeRequest(()=>json(correctionRequestPath!,"POST",request,self),++meWindowIndex);
++     expect(requested).toMatchObject({status:201,body:{
++      executionId,status:"pending_confirm",requestedByUserId:winnerChoice.actor,
++      originalAmountCents:"6000",correctedAmountCents:"5000",amountDeltaCents:"-1000",netPaidCents:"6000",idempotent:false
++     }});
++     const correctionId=requested.body.correctionId as string;
++     expect(await json(correctionRequestPath,"POST",request,self)).toMatchObject({status:201,body:{correctionId,idempotent:true}});
++     expect(await json(correctionRequestPath,"POST",{...request,correctedAmountCents:"4900"},self)).toMatchObject({status:409});
++     correctionConfirmationPath=`/payment-financial/corrections/${correctionId}/confirmation`;
++     const confirm={confirmationPassword:password,idempotencyKey:randomUUID()};
++     const selfReviewReason="原登记本人核对凭据及付款日期";
++     expect(await json(correctionConfirmationPath,"POST",confirm,loserChoice.token)).toMatchObject({status:403});
++     expect(await json(correctionConfirmationPath,"POST",confirm,self)).toMatchObject({status:400,body:{message:expect.stringContaining("自审原因")}});
++     expect(await json(correctionConfirmationPath,"POST",{...confirm,confirmationPassword:randomUUID(),selfReviewReason},self))
++      .toMatchObject({status:400,body:{message:expect.stringContaining("密码不正确")}});
++     expect(await observeRace()).toEqual(recorded);
++     const compensation=()=>observer.fundAccountBalanceRegistration.findMany({where:{kind:"payment_correction"}});
++     expect(await compensation()).toEqual([]);
++     const confirmed=await observedMeRequest(
++      ()=>json(correctionConfirmationPath!,"POST",{...confirm,selfReviewReason},self),++meWindowIndex
++     );
++     expect(confirmed).toMatchObject({status:201,body:{
++      correctionId,executionId,status:"confirmed",requestedByUserId:winnerChoice.actor,confirmedByUserId:winnerChoice.actor,
++      selfReviewReason,netPaidCents:"5000",paymentStatus:"partially_paid",idempotent:false,
++      originalSnapshot:{entryKind:"original",executionId,amountCents:"6000"},
++      reversalSnapshot:{entryKind:"reversal",executionId,amountCents:"6000"},
++      correctionSnapshot:{entryKind:"correction",executionId,amountCents:"5000"}
++     }});
++     expect(await json(correctionConfirmationPath,"POST",{...confirm,selfReviewReason},self))
++      .toMatchObject({status:201,body:{correctionId,fundRegistrationId:confirmed.body.fundRegistrationId,idempotent:true}});
++     expect(await json(correctionConfirmationPath,"POST",{...confirm,idempotencyKey:randomUUID(),selfReviewReason},self))
++      .toMatchObject({status:409});
++     expect(await json(correctionReadPath,"GET",undefined,self)).toMatchObject({status:200,body:{
++      paymentId:plan.ids.payment,items:[{correctionId,executionId,status:"confirmed",netPaidCents:"5000"}]
++     }});
++     expect(await observeRace()).toEqual({...recorded,paid:5000n,settlementPaid:5000n});
++     expect(await observer.paymentExecution.findUniqueOrThrow({where:{id:executionId}})).toEqual(originalExecution);
++     expect(await observer.registeredPaymentVoucher.findUniqueOrThrow({where:{executionId}})).toEqual(originalVoucher);
++     expect(await observer.fundAccountBalanceRegistration.findUniqueOrThrow({where:{id:originalOpening.id}})).toEqual(originalOpening);
++     expect(await approvalRounds()).toEqual(beforeVoucherApproval);
++     const corrections=await observer.auditLog.findMany({
++      where:{businessId:plan.ids.payment,action:{in:["payment.execution.correction.request","payment.execution.correction.confirm"]}},
++      select:{action:true,actorUserId:true,metadata:true}
++     });
++     expect(corrections).toHaveLength(2);
++     expect(corrections).toEqual(expect.arrayContaining([
++      expect.objectContaining({action:"payment.execution.correction.request",actorUserId:winnerChoice.actor}),
++      expect.objectContaining({action:"payment.execution.correction.confirm",actorUserId:winnerChoice.actor,
++       metadata:expect.objectContaining({executionId,correctionId,selfReview:true,selfReviewReason,netPaidCents:"5000"})})
++     ]));
++     const adjustments=await compensation();
++     expect(adjustments).toHaveLength(1);
++     expect(adjustments[0]).toMatchObject({
++      id:confirmed.body.fundRegistrationId,accountId:originalOpening.accountId,previousRegistrationId:originalOpening.id,
++      version:originalOpening.version+1,status:"confirmed",evidenceReference:`payment_correction:${correctionId}`
++     });
++     expect(adjustments[0].balanceYuan!.toFixed(4)).toBe("110.0000");
++     expect(await json("/fund-accounts","GET",undefined,finance)).toMatchObject({status:200,body:{accounts:expect.arrayContaining([
++      expect.objectContaining({scopeKey:winnerChoice.scopeKey,balanceYuan:"50.0000"}),
++      expect.objectContaining({scopeKey:loserChoice.scopeKey,balanceYuan:"100.0000"})
++     ])}});
++     for(const choice of choices)expect(await registrationOptions(choice.token)).toMatchObject({paidAmountCents:"5000",remainingAmountCents:"5000"});
++     await expectSharedQueues("5000","5000");
++    }
+     return;
+    }

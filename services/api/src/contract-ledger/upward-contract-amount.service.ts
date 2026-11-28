@@ -1,6 +1,8 @@
+import { UpwardAmountNotificationService } from "./upward-amount-notification.service";
+import { upwardAmountRoles } from "./upward-amount-access";
 import { recordIndependentApproval } from "../approval/independent-approval-evidence";
 import { ledgerApprovalFacts } from "../approval/ledger-approval-facts";
-import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from "@nestjs/common";
+import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException, Optional } from "@nestjs/common";
 import type { Prisma } from "@prisma/client";
 import { createHash } from "node:crypto";
 import { PrismaService } from "../database/prisma.service";
@@ -16,10 +18,10 @@ export async function upwardAmountRevisions(tx:Pick<Prisma.TransactionClient,"up
 export interface PrepareUpwardAmount {projectId:string;contractId:string;supersedesId?:string;amountNature:"fixed"|"uncapped";amountCents?:string;effectiveAt:string;reason:string;evidenceFileId:string;confirmationPassword:string;idempotencyKey:string}
 @Injectable()
 export class UpwardContractAmountService {
- constructor(private readonly prisma:PrismaService,private readonly visibility:ProjectVisibilityService,private readonly auth:AuthService,private readonly audit:AuditService){}
+ constructor(private readonly prisma:PrismaService,private readonly visibility:ProjectVisibilityService,private readonly auth:AuthService,private readonly audit:AuditService,
+  @Optional() private readonly notifications?:UpwardAmountNotificationService){}
  private async authorize(tx:Prisma.TransactionClient,actor:string,projectId:string,action:"read"|"prepare"|"confirm"){
-  if(!(await this.visibility.visibleProjectIdsInTransaction(tx,actor)).includes(projectId))throw new ForbiddenException("无权办理本项目对上金额修订");
-  const roles=(await this.visibility.effectiveRoleKeysByProjectInTransaction(tx,actor,[projectId])).get(projectId)??[];
+  const roles=await upwardAmountRoles(tx,this.visibility,actor,projectId);
   const allowed=action==="confirm"?["contract_director"]:action==="prepare"?["contract_staff","contract_director"]:["contract_staff","contract_director","budget_staff","budget_director","finance_staff","finance_director","project_manager","chairman","general_manager"];
   if(!roles.some(r=>allowed.includes(r)))throw new ForbiddenException("当前岗位无权办理该动作");
   return roles;
@@ -37,7 +39,7 @@ export class UpwardContractAmountService {
   const date=new Date(input.effectiveAt);if(Number.isNaN(date.getTime())||date>new Date())throw new BadRequestException("请填写已发生的修订生效日期");
   await this.auth.confirmPassword(actor,input.confirmationPassword);
   const fingerprint=createHash("sha256").update(JSON.stringify({...input,confirmationPassword:undefined,actor})).digest("hex");
-  return this.prisma.$transaction(async tx=>{
+  const result=await this.prisma.$transaction(async tx=>{
    await this.authorize(tx,actor,input.projectId,"prepare");await lockEconomicProject(tx,input.projectId);
    const replay=await tx.upwardContractAmountRevision.findUnique({where:{idempotencyKey:input.idempotencyKey}});
    if(replay){if(replay.requestFingerprint!==fingerprint)throw new ConflictException("操作凭据已用于其他修订");return {id:replay.id,status:replay.status};}
@@ -51,8 +53,11 @@ export class UpwardContractAmountService {
    if(!file||file.uploadedByUserId!==actor||file.storageStatus!=="active"||!file.contentSha256||await hasNonReceiptBusinessFileBinding(tx,[file.id]))throw new BadRequestException("请上传本人持有且未重复绑定的金额修订依据");
    const row=await tx.upwardContractAmountRevision.create({data:{projectId:input.projectId,contractId:contract.id,supersedesId:previous?.id??null,amountNature:input.amountNature,amountCents:amount,effectiveAt:date,reason:input.reason.trim(),evidenceFileId:file.id,evidenceSha256:file.contentSha256,recordedByUserId:actor,idempotencyKey:input.idempotencyKey,requestFingerprint:fingerprint}});
    await this.audit.record(tx,{actorUserId:actor,action:"contract.upward_amount.prepare",businessType:"upward_contract_amount_revision",businessId:row.id,metadata:{projectId:input.projectId,contractId:contract.id}});
+   await this.notifications?.queue(tx,row);
    return {id:row.id,status:row.status};
   });
+  void this.notifications?.afterCommit();
+  return result;
  }
  async decide(actor:string,id:string,input:{decision:"confirm"|"return";confirmationPassword:string}){
   if(!input||!["confirm","return"].includes(input.decision))throw new BadRequestException("处理动作不正确");

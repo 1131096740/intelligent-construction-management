@@ -1,9 +1,10 @@
 import { Controller, Get, Query } from "@nestjs/common";
 import { RequirePositions } from "../auth/decorators/require-positions.decorator";
+import { AUDIT_READ_ROLE_KEYS } from "@jiangkong/shared-domain";
 import { AuditService } from "./audit.service";
 
 @Controller("audit-logs")
-@RequirePositions("chairman", "general_manager", "super_admin")
+@RequirePositions(...AUDIT_READ_ROLE_KEYS)
 export class AuditController {
   constructor(private readonly audit: AuditService) {}
 

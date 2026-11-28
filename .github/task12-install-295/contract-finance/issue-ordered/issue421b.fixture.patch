@@ -1,0 +1,116 @@
+--- a/fixture.ts
++++ b/fixture.ts
+@@ -38,0 +39,4 @@
++    termsA: "i421b-terms-a",
++    termsB: "i421b-terms-b",
++    settlementA: "i421b-settlement-a",
++    settlementB: "i421b-settlement-b",
+@@ -114,0 +119,6 @@
++    const orderedDatabase = process.env.JG_ISSUE421B_ORDERED_DATABASE;
++    const ordered = /^jg_task01_[a-f0-9]{32}$/u.test(orderedDatabase ?? "") &&
++      target.pathname === "/" + orderedDatabase && target.protocol === "postgresql:" &&
++      target.username === "jg_task01_owner" && Number(target.port) > 1024 &&
++      target.searchParams.get("sslmode") === "require" && target.searchParams.get("sslaccept") === "strict" &&
++      /^\/tmp\/jg394-[A-Za-z0-9]+\/ca\.crt$/u.test(target.searchParams.get("sslcert") ?? "");
+@@ -118 +128 @@
+-      !target.pathname.endsWith("_issue421b_ledger")
++      (!target.pathname.endsWith("_issue421b_ledger") && !ordered)
+@@ -170,0 +181,19 @@
++    const signingCompany = await owner.companyEntity.create({ data: {
++      id: "i421b-company", name: "四川建工智管建筑工程有限公司", isActive: true, currentVersionNo: 1
++    } });
++    const signingVersion = await owner.companyEntityVersion.create({ data: {
++      companyEntityId: signingCompany.id, versionNo: 1, name: signingCompany.name,
++      isActive: signingCompany.isActive, action: "create", actorUserId: ids.director
++    } });
++    const enterprise = await owner.businessParty.create({ data: {
++      name: "隔离四类台账施工企业", normalizedName: "issue421b-enterprise", createdByUserId: ids.director
++    } });
++    const version = await owner.businessPartyVersion.create({ data: {
++      businessPartyId: enterprise.id, versionNo: 1, snapshot: { name: enterprise.name }, createdByUserId: ids.director
++    } });
++    await owner.projectAffiliateAssignment.createMany({ data: [ids.projectA, ids.projectB].map(projectId => ({
++      projectId, businessPartyId: enterprise.id, businessPartyVersionId: version.id,
++      affiliateNameSnapshot: enterprise.name, effectiveFrom: new Date("2020-01-01"),
++      changeReason: "隔离验收施工企业", assignedByUserId: ids.director
++    })) });
++
+@@ -178,0 +208 @@
++        companyEntityId: "i421b-company",
+@@ -187 +217 @@
+-        changeType: "initial",
++        changeType: "original",
+@@ -188,0 +219,2 @@
++        effectiveAt: new Date("2026-01-01"),
++        numericProtocolVersion: 1,
+@@ -191,0 +224 @@
++        companyEntityVersionId: signingVersion.id,
+@@ -195 +228 @@
+-        clauseSnapshot: {}
++        clauseSnapshot: []
+@@ -205,0 +239 @@
++        companyEntityId: "i421b-company",
+@@ -214 +248 @@
+-        changeType: "initial",
++        changeType: "original",
+@@ -215,0 +250,2 @@
++        effectiveAt: new Date("2026-01-01"),
++        numericProtocolVersion: 1,
+@@ -218,0 +255 @@
++        companyEntityVersionId: signingVersion.id,
+@@ -222 +259 @@
+-        clauseSnapshot: {}
++        clauseSnapshot: []
+@@ -225,0 +263,18 @@
++    await owner.paymentTermsVersion.createMany({
++      data: [
++        { id: ids.termsA, contractId: ids.contractA, contractVersionId: ids.versionA,
++          versionNo: 1, status: "effective", originalText: "按结算付款" },
++        { id: ids.termsB, contractId: ids.contractB, contractVersionId: ids.versionB,
++          versionNo: 1, status: "effective", originalText: "按结算付款" }
++      ]
++    });
++    await owner.settlement.createMany({
++      data: [
++        { id: ids.settlementA, projectId: ids.projectA, contractId: ids.contractA, contractVersionId: ids.versionA,
++          paymentTermsVersionId: ids.termsA, code: "JS-421B-A", periodLabel: "隔离结算一期",
++          status: "effective", amountCents: 100_000n, payableAmountCents: 100_000n, paidAmountCents: 0n },
++        { id: ids.settlementB, projectId: ids.projectB, contractId: ids.contractB, contractVersionId: ids.versionB,
++          paymentTermsVersionId: ids.termsB, code: "JS-421B-B", periodLabel: "隔离结算一期",
++          status: "paid", amountCents: 250_000n, payableAmountCents: 250_000n, paidAmountCents: 250_000n }
++      ]
++    });
+@@ -233 +288,3 @@
+-          paymentTermsVersionId: ids.versionA,
++          paymentTermsVersionId: ids.termsA,
++          settlementId: ids.settlementA,
++          sourceType: "settlement",
+@@ -236,0 +294 @@
++          approvedAmountCents: 100_000n,
+@@ -245 +303,3 @@
+-          paymentTermsVersionId: ids.versionB,
++          paymentTermsVersionId: ids.termsB,
++          settlementId: ids.settlementB,
++          sourceType: "settlement",
+@@ -248,0 +309 @@
++          approvedAmountCents: 250_000n,
+@@ -263 +323,0 @@
+-          currentVersionId: ids.spotVersionA,
+@@ -272 +331,0 @@
+-          currentVersionId: ids.spotVersionB,
+@@ -311,0 +371,4 @@
++    for (const [id, currentVersionId] of [[ids.spotA, ids.spotVersionA], [ids.spotB, ids.spotVersionB]]) {
++      await owner.spotProcurement.update({ where: { id }, data: { currentVersionId } });
++    }
++
+@@ -332,0 +396,4 @@
++    const generalLine = (id: string, name: string, estimatedAmount: string) => ({
++      id, name, specification: null, unit: "项", quantity: "1.0000", unitPrice: estimatedAmount,
++      estimatedAmount, requiredOn: null, note: null
++    });
+@@ -349 +416 @@
+-          lines: [],
++          lines: [generalLine("00000000-0000-4000-8000-000000000001", "办公用品", "500.0000")],
+@@ -367 +434 @@
+-          lines: [],
++          lines: [generalLine("00000000-0000-4000-8000-000000000002", "设备", "800.0000")],

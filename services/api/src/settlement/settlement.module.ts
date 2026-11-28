@@ -1,3 +1,4 @@
+import { SettlementArchiveNotificationService } from "./settlement-archive-notification.service";
 import { Module } from "@nestjs/common";
 import { BusinessEntryTransactionModule } from "../business-entry-definition/business-entry-transaction.module";
 import { ApprovalModule } from "../approval/approval.module";
@@ -20,6 +21,7 @@ import { SettlementWorkbenchController } from "./settlement-workbench.controller
 import { SettlementWorkbenchService } from "./settlement-workbench.service";
 import { SettlementAttachmentTemplateService } from "./settlement-attachment-template.service";
 import { SettlementReadService } from "./settlement-read.service";
+import { SignedSettlementLedgerService } from "./signed-settlement-ledger.service";
 import { SettlementImportService } from "./settlement-import.service";
 import { SettlementTemplateService } from "./settlement-template.service";
 import { SettlementTemplateWorkbenchController } from "./settlement-template-workbench.controller";
@@ -30,6 +32,9 @@ import { SettlementSignedDocumentService } from "./settlement-signed-document.se
 import { SettlementFrozenDocumentService } from "./settlement-frozen-document.service";
 import { SettlementLineAttachmentService } from "./settlement-line-attachment.service";
 import { SettlementRecoveryService } from "./settlement-recovery.service";
+
+import { SignedContractSettlementController } from "./signed-contract-settlement.controller";
+import { SignedContractSettlementService } from "./signed-contract-settlement.service";
 
 @Module({
   imports: [
@@ -44,6 +49,7 @@ import { SettlementRecoveryService } from "./settlement-recovery.service";
   ],
   controllers: [
     SettlementController,
+    SignedContractSettlementController,
     SettlementDraftController,
     SettlementWorkbenchController,
     SettlementImportController,
@@ -53,10 +59,12 @@ import { SettlementRecoveryService } from "./settlement-recovery.service";
   ],
   providers: [
     SettlementService,
+    SignedContractSettlementService,
     SettlementDraftService,
     ContractSettlementProcessService,
     SettlementSubmissionService,
     SettlementReadService,
+    SignedSettlementLedgerService,
     SettlementAttachmentTemplateService,
     SettlementWorkbenchService,
     SettlementImportService,
@@ -65,6 +73,7 @@ import { SettlementRecoveryService } from "./settlement-recovery.service";
     SettlementFrozenDocumentService,
     SettlementLineAttachmentService,
     SettlementSignedDocumentService,
+    SettlementArchiveNotificationService,
     SettlementRecoveryService
   ],
   exports: [

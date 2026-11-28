@@ -1,0 +1,14 @@
+--- installer.cjs
++++ installer.cjs
+@@ -315,8 +315,9 @@
+ async function installer(receipt, probeOnly, consume, release=stableRelease, purpose, restore=false, forward320, retainedMode) {
+   const pol275Mode=({ORIGINAL_POL275_WARM_EXACT_295:"warm",ORIGINAL_POL275_WARM_EXACT_329:"warm",
+     ORIGINAL_POL275_WARM_EXACT_330:"warm",ORIGINAL_POL275_WARM_EXACT_331:"warm",
+-    ORIGINAL_POL275_WARM_EXACT_332:"warm",ORIGINAL_POL275_COLLISION_EXACT_295:"collision"})[receipt.purpose];
+-  const pol275ForwardCount=forward320?.upwardArchive?332:forward320?.paymentRemainder?331:forward320?.textDirect?330:329;
++    ORIGINAL_POL275_WARM_EXACT_332:"warm",ORIGINAL_POL275_WARM_EXACT_346:"warm",
++    ORIGINAL_POL275_COLLISION_EXACT_295:"collision"})[receipt.purpose];
++  const pol275ForwardCount=forward320?.expenseWitness?.count??(forward320?.upwardArchive?332:forward320?.paymentRemainder?331:forward320?.textDirect?330:329);
+   if (pol275Mode) need((!forward320 && receipt.purpose.endsWith('_295')) ||
+     (forward320 && receipt.purpose==='ORIGINAL_POL275_WARM_EXACT_'+pol275ForwardCount),
+     'POL275_ORIGINAL_MODE_SCOPE');

@@ -1,0 +1,33 @@
+--- contract-business-entry-http.spec.ts
++++ contract-business-entry-http.spec.ts
+@@ -16,6 +16,7 @@
+ import { createRequire } from "node:module";
+ import type { BusinessEntryFrozenSnapshot, BusinessEntrySceneDefinition, ContractDetailReadModel, ContractPaymentApplicationPreviewReadModel, PaymentDetailReadModel } from "@jiangkong/shared-domain";
+ import { AppModule } from "../app.module";
++import { ProjectService } from "../project/project.service";
+ import { SEED_LAYOUT_FONT } from "../contract-document/seed-layout-docx-source";
+ import { PrismaService } from "./prisma.service";
+ import { apiJsonReplacer } from "../api-json-replacer";
+@@ -808,9 +809,20 @@
+         businessType: "payment_request", businessId: payment.id,
+         roles: ["comprehensive_director", "project_manager", "finance_director", "contract_director", "chairman"], label: settlementFinance ? "结算付款" : "直接付款" });
+       const quotaEvidence = await upload("synthetic-quota.pdf", "application/pdf", await pdf.save());
+-      const quota = await request<{ quotaId: string }>("POST", `/projects/${project.id}/financing-quotas`, {
+-        idempotencyKey: randomUUID(), amountCents: "10000", reason: "合成公开付款链额度", attachmentFileId: quotaEvidence.id
++      const quotaInput = {
++        idempotencyKey: randomUUID(), amountCents: "10000", reason: "合成历史付款链额度", attachmentFileId: quotaEvidence.id
++      };
++      const retiredQuota = await fetch(`${baseUrl}/projects/${project.id}/financing-quotas`, {
++        method: "POST",
++        headers: { "content-type": "application/json", authorization: `Bearer ${token}` },
++        body: JSON.stringify(quotaInput)
+       });
++      expect(retiredQuota.status).toBe(410);
++      expect(await retiredQuota.json()).toMatchObject({ code: "OLD_WRITE_ENTRY_RETIRED" });
++      expect(await prisma.projectFinancingQuota.count({ where: { requestIdempotencyKey: quotaInput.idempotencyKey } })).toBe(0);
++
++      // Create a historical fixture through the retained service in the isolated test app.
++      const quota = await app.get(ProjectService).requestProjectFinancingQuota(project.id, projectFinanceUserId, quotaInput);
+       for (const reviewerId of [projectFinanceUserId, actorUserId]) {
+         const identity = await loginAs(reviewerId);
+         const signature = new FormData();

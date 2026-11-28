@@ -1,0 +1,139 @@
+--- installer.cjs
++++ installer.cjs
+@@ -228,7 +228,7 @@
+  return {plan:migrationPlan,setup,materials};
+ }
+ 
+-function runCommand(file, args, {stdin, timeoutMs = 120_000, extra, allowFailure, multiWitnessDiagnostic} = {}) {
++function runCommand(file, args, {stdin, timeoutMs = 120_000, extra, allowFailure, multiWitnessDiagnostic,onboardingExpectedMarker} = {}) {
+   const result = spawnSync(file, args, {
+     input: stdin, encoding:'utf8', timeout:timeoutMs, maxBuffer:16 * 1024 * 1024,
+     cwd:process.env.JG_RUN_ROOT || '/tmp', env:{ ...baseEnv, HOME:'/tmp', ...extra },
+@@ -261,6 +261,7 @@
+     });
+   }
+   return {stdout:result.stdout, code:result.status,
++    ...(onboardingExpectedMarker&&{expectedMarker:(result.stderr??"").includes(onboardingExpectedMarker)}),
+     ...(allowFailure && {scopePermissionDenied:/42501:[^\n]*permission denied for table jg_company_transfer_loan_repayment_scope_v1/u.test(result.stderr??'')})};
+ }
+ 
+@@ -268,6 +269,8 @@
+ const exactMultiWitness295 = Symbol('exact-multi-witness295');
+ async function installer(receipt, probeOnly, consume, release=stableRelease, purpose, restore=false, forward320, retainedMode) {
+   const combined = purpose===installOnly292 || purpose===exactMultiWitness295;
++  const onboarding=receipt.purpose?.startsWith('ONBOARDING_')&&Boolean(receipt.applicationSource?.lane);
++  if(onboarding) need(combined && purpose===exactMultiWitness295 && !restore,'ONBOARDING_295_FIXED_MODE');
+   if(combined) need(!probeOnly && release===ordinaryApprovalRelease,'INSTALL_ONLY_292_MODE');
+   const retainedCleanup=retainedMode==='cleanup', profileUpgrade=retainedMode==='profile';
+   need(retainedMode===undefined || (purpose===exactMultiWitness295 && !restore && !probeOnly
+@@ -307,7 +310,7 @@
+   const plan = {runId, database, historical, source:{witness:{profile}}, prismaTools:{cli, engine}, limits:{migrationMs:180000},
+     ...(profileUpgrade?{profileUpgrade:receipt,profileSchema:schema.bytes}:{})};
+   receipt.runId = runId;
+-  const credentials = Object.fromEntries(['owner','runtime','observer'].map(k => [k,randomBytes(48).toString('hex')]));
++  const credentials = Object.fromEntries(['owner','runtime','observer',...(onboarding?['onboarding']:[])].map(k => [k,randomBytes(48).toString('hex')]));
+   let pg, lifetime, postmaster;
+   const enter = stage => {
+     if (lifetime) need(lifetime.running(), 'POSTMASTER_NOT_RUNNING');
+@@ -346,7 +349,7 @@
+ hostnossl all all 127.0.0.1/32 reject
+ hostssl all ${owner} 127.0.0.1/32 scram-sha-256
+ hostssl ${database} jg_task01_runtime,jg_task01_observer 127.0.0.1/32 scram-sha-256
+-${release.procurementScope ? `hostssl ${database} general_procurement_runtime 127.0.0.1/32 scram-sha-256\n` : ''}${release.projectBusinessScope ? `hostssl ${database} project_business_scope_runtime 127.0.0.1/32 scram-sha-256\n` : ''}${release === ordinaryApprovalRelease ? `hostssl ${database} /^finance_runtime_[a-f0-9]{32}$ 127.0.0.1/32 scram-sha-256\n` : ''}${purpose===exactMultiWitness295 ? `hostssl ${database} contract_runtime,contract_backup 127.0.0.1/32 scram-sha-256\n${restore ? 'hostssl contract_restored contract_runtime,contract_backup 127.0.0.1/32 scram-sha-256\n' : ''}` : ''}hostssl all all 127.0.0.1/32 reject
++${release.procurementScope ? `hostssl ${database} general_procurement_runtime 127.0.0.1/32 scram-sha-256\n` : ''}${release.projectBusinessScope ? `hostssl ${database} project_business_scope_runtime 127.0.0.1/32 scram-sha-256\n` : ''}${release === ordinaryApprovalRelease ? `hostssl ${database} /^finance_runtime_[a-f0-9]{32}$ 127.0.0.1/32 scram-sha-256\n` : ''}${purpose===exactMultiWitness295 ? `hostssl ${database} contract_runtime,contract_backup 127.0.0.1/32 scram-sha-256\n${restore ? 'hostssl contract_restored contract_runtime,contract_backup 127.0.0.1/32 scram-sha-256\n' : ''}` : ''}${onboarding ? require('./task12-onboarding-282-admission.cjs').hbaLine(database)+'\n' : ''}hostssl all all 127.0.0.1/32 reject
+ `;
+     fs.writeFileSync(abs('data/pg_hba.conf'), hba);
+     const config = `listen_addresses='127.0.0.1,::1'
+@@ -373,9 +376,9 @@
+       PGHOST:'127.0.0.1', PGPORT:String(port), PGUSER:owner, PGPASSWORD:credentials.owner,
+       PGSSLMODE:'verify-full', PGSSLROOTCERT:abs('ca.crt'), PGCONNECT_TIMEOUT:'5',
+     };
+-    const sql = async (text, {database:target=database,extra,allowFailure}={}) =>
++    const sql = async (text, {database:target=database,extra,allowFailure,onboardingExpectedMarker}={}) =>
+       runCommand('psql',['-X','-q','-A','-t','-v','ON_ERROR_STOP=1','-v','VERBOSITY=verbose','--dbname',target],
+-        {stdin:text,extra:{...ownerEnv,...extra},allowFailure});
++        {stdin:text,extra:{...ownerEnv,...extra},allowFailure,onboardingExpectedMarker});
+     const jsonSql = async (text, options) => JSON.parse((await sql(text, options)).stdout.trim());
+     enter('POSTMASTER');
+     const logPath = abs('postgres.log');
+@@ -430,7 +433,8 @@
+     await sql(`CREATE DATABASE ${database} OWNER ${owner} ENCODING 'UTF8' TEMPLATE template0 LC_COLLATE 'C' LC_CTYPE 'C';`,{database:'postgres'});
+     const locale = await jsonSql("SELECT jsonb_build_object('encoding',pg_encoding_to_char(encoding),'collate',datcollate,'ctype',datctype,'provider',datlocprovider) FROM pg_database WHERE datname=current_database();");
+     need(equal(locale,{encoding:'UTF8',collate:'C',ctype:'C',provider:'c'}),'INVALID_DB_LOCALE');
+-    receipt.migrationMaterials = (await installHistory(plan, root, port, credentials, sql, jsonSql, command, enter, fromHistory, stageTree, receipt)).materials;
++    const history=await installHistory(plan, root, port, credentials, sql, jsonSql, command, enter, fromHistory, stageTree, receipt,onboarding);
++    receipt.migrationMaterials=history.materials;
+ 
+     const roleIdentity = receipt.databaseIdentity;
+     const endpoint = new URL(`postgresql://${owner}@127.0.0.1:${port}/${database}`);
+@@ -890,6 +894,32 @@
+               &&equal(await jsonSql(multi.catalogSql),receipt.installOnly295.after),'CORRECTION_295_PRE_APP_CATALOG');
+             return {count:current.ledger.length,ledgerSha256:multi.final,correctionShape:shape};
+           }}:{}),
++          ...(onboarding&&{
++            onboardingUrl:connection('onboarding_runtime',credentials.onboarding),
++            bootstrapOnboarding:async()=>{
++              onlyWhileOwned();
++              const fixture=require('./task12-onboarding-role-fixture.cjs');
++              await sql(fixture.renderOriginalSetup(database,credentials.onboarding,history.onboardingBaseline,
++                await jsonSql(fixture.selectCatalogSql)));
++              onlyWhileOwned();
++              const before=await sql(`SELECT has_table_privilege('onboarding_runtime','public."AuthRateLimit"','DELETE');`);
++              need(before.stdout.trim()==='f','ONBOARDING_HISTORICAL_ACL_PREIMAGE');
++              await sql(fixture.renderOriginalHardening());
++              onlyWhileOwned();
++            },
++            onboardingOriginalGrantNegative:async(statement,marker)=>{
++              onlyWhileOwned();
++              need(['unexpected effective table privileges','unexpected effective column privileges',
++                'role administration privileges','server mutation privileges','unexpected effective sequence privileges']
++                .includes(marker),'ONBOARDING_ORIGINAL_NEGATIVE_MARKER');
++              return sql(statement,{allowFailure:true,onboardingExpectedMarker:marker});
++            },
++            onboardingSql:async statement=>{
++              onlyWhileOwned();
++              return sql(statement,{extra:{PGUSER:'onboarding_runtime',PGPASSWORD:credentials.onboarding}});
++            }
++          }),
++
+           readPostgresLog:() => { assertLive(); return fs.readFileSync(logPath, 'utf8'); },
+         });
+       };
+@@ -988,9 +1018,15 @@
+   }
+ }
+ 
+-async function installHistory(plan,root,port,credentials,sql,jsonSql,command,enter,fromHistory,stageTree,receipt){
++async function installHistory(plan,root,port,credentials,sql,jsonSql,command,enter,fromHistory,stageTree,receipt,onboarding){
+ const {runId}=plan;
+ const migration=await migrateNativeTask16(plan,root,port,credentials.owner,sql,jsonSql,command,enter,fromHistory);
++if(onboarding){
++ const fixture=require('./task12-onboarding-role-fixture.cjs');
++ migration.onboardingBaseline=await jsonSql(fixture.selectCatalogSql);
++ fixture.verifyBaseline(migration.onboardingBaseline);
++ receipt.onboardingSelectBaseline={tables:migration.onboardingBaseline.length,sha256:hash(JSON.stringify(migration.onboardingBaseline))};
++}
+ enter('ROLES');const roles=fromHistory('./task16-current259-role-provision.cjs');
+   const roleIdentity=await jsonSql(`SELECT jsonb_build_object('database',current_database(),'databaseOid',d.oid::text,'namespaceOid',to_regnamespace('public')::oid::text,'ownerOid',d.datdba::text,'actorOid',current_user::regrole::oid::text,'actor',current_user,'sessionActor',session_user,'systemIdentifier',(SELECT system_identifier::text FROM pg_control_system()),'tls',(SELECT ssl FROM pg_stat_ssl WHERE pid=pg_backend_pid()),'clientAddress',host(inet_client_addr()),'serverAddress',host(inet_server_addr()),'serverPort',inet_server_port()) FROM pg_database d WHERE d.datname=current_database();`);
+   need(roleIdentity.ownerOid==='10'&&roleIdentity.actorOid==='10'&&roleIdentity.tls===true&&roleIdentity.clientAddress==='127.0.0.1'&&roleIdentity.serverAddress==='127.0.0.1'&&roleIdentity.serverPort===port,'NATIVE_DIRECT_OWNER');
+@@ -1388,3 +1424,20 @@
+   withCombinedOrdinaryLoan(receipt,consume,exactMultiWitness295,false,readForward320(material),'cleanup');
+ module.exports.withCombined320MultiWitnessForProfile=(receipt,consume,material)=>
+   withCombinedOrdinaryLoan(receipt,consume,exactMultiWitness295,false,readForward320(material),'profile');
++
++module.exports.withInstalled295Onboarding = receipt => {
++  const source=require('./contract-finance-source.json');
++  const current320=source.mode==='current-320';
++  const consume=async context=>{
++    const verify=async ()=>
++      assertOutsideWitness(289,JSON.parse((await context.sql(outsideWitnessSql(289,current320))).stdout.trim()));
++    await verify();
++    await require('./onboarding-full.cjs').run(context,receipt);
++    await verify();
++    receipt.sameInstancePostConsume=true;
++  };
++  if(current320) return module.exports.withCombined320ContractPayment(receipt,consume,{
++    sourceTree:source.sourceTree,migrations:'/qualification/workspace/services/api/prisma/migrations',tails:source.tails
++  });
++  return module.exports.withCombined295MultiWitness(receipt,consume);
++};

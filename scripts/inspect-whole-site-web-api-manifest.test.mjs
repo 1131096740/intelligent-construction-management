@@ -3421,3 +3421,40 @@ test("require-ready rejects a ready web report when Nest evidence is stale", asy
     }
   );
 });
+
+test("resolves exactly the registered duty SMS routes and rejects a cross-domain path", async () => {
+  const api = "apps/web-admin/src/api/duty-sms.api.ts";
+  const domains = ["contract-bank-verifications", "contract-economic-reviews", "contract-proxy-executions", "expense-claims", "fund-account-transfers", "fund-accounts/principal-returns", "fund-accounts/registrations", "payment-executions", "payments", "settlements", "spot-procurement-payments", "spot-procurements", "upward-contract-amount-revisions", "upward-receipt-matches"];
+  const source = await readFile(api, "utf8");
+  const routes = domains.flatMap(domain => {
+    const path = domain === "fund-accounts/principal-returns"
+      ? "/fund-accounts/principal-returns/applications/:id/duty-sms/:dutyKey"
+      : `/${domain}/:id${domain === "spot-procurements" ? "/receipt" : domain === "fund-accounts/registrations" ? "/review" : domain === "payments" ? "/approval" : ""}/duty-sms`;
+    return [
+      { method: "GET", path, normalizedKey: `GET ${path.replace(/:(?:id|dutyKey)/gu, ":param")}` },
+      { method: "POST", path: path + "/retry", normalizedKey: `POST ${path.replace(/:(?:id|dutyKey)/gu, ":param")}/retry` }
+    ];
+  });
+  await withFixture({
+    [api]: source,
+    "apps/web-admin/src/pages/FixturePage.vue": `
+      <script setup lang="ts">
+      import { fetchDutySms, retryDutySms } from "../api/duty-sms.api";
+      void fetchDutySms("settlements", "one");
+      void retryDutySms("spot-procurements", "two");
+      </script><template><main>fixture</main></template>
+    `,
+    "docs/product/manifests/nest-business-routes.json": JSON.stringify({ schemaVersion: 1, routes })
+  }, async root => {
+    const exact = await inspectWholeSiteWebApiManifest({ root });
+    assert.equal(exact.status, "ready");
+    assert.deepEqual(exact.wrappers.flatMap(wrapper => wrapper.requests.map(request => request.normalizedKey)).sort(),
+      routes.map(route => route.normalizedKey).sort());
+    const misrouted = source.replace("/receipt/duty-sms", "/duty-sms");
+    assert.notEqual(misrouted, source);
+    await writeFile(join(root, api), misrouted);
+    const wrongPath = await inspectWholeSiteWebApiManifest({ root });
+    assert.equal(wrongPath.status, "blocked");
+    assert.ok(wrongPath.wrappers.some(wrapper => wrapper.requests.some(request => request.normalizedKey === "POST /spot-procurements/:param/duty-sms/retry")));
+  });
+});

@@ -1,5 +1,6 @@
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
+import { createPinia, setActivePinia } from "pinia";
 import { effectScope, nextTick, reactive } from "vue";
 import { describe, expect, it, vi } from "vitest";
 import SpotProcurementDetailPage from "./SpotProcurementDetailPage.vue";
@@ -181,6 +182,7 @@ type ProcurementDetailPageBindings = {
 };
 
 function setupPage<T extends object>(component: unknown) {
+  setActivePinia(createPinia());
   const scope = effectScope();
   const bindings = scope.run(() =>
     (
@@ -392,7 +394,7 @@ describe("spot procurement web pages", () => {
     expect(procurement).toContain("历史单据，未按新流程采集");
   });
 
-  it("keeps the procurement application free of supplier, price and tax fields", () => {
+  it("PUR03 keeps request estimates separate from actual supplier and tax facts", () => {
     const workbench = pageSource("SpotProcurementWorkbenchPage.vue");
     const detail = pageSource("SpotProcurementDetailPage.vue");
     const editor = pageSource(
@@ -401,13 +403,13 @@ describe("spot procurement web pages", () => {
 
     expect(workbench).toContain("物资用途及采购原因");
     expect(workbench).toContain("要求采购到位日期");
-    expect(editor).toContain("采购申请只确认材料范围和数量");
-    expect(detail).toContain("价格在付款申请中确定");
+    expect(editor).toContain("规格、单位、数量、预计单价及金额未知可留空");
+    expect(detail).toContain("申请预计与实际采购分开");
     expect(detail).toContain("系统申请单编号");
     expect(`${workbench}\n${editor}`).not.toMatch(
       /fetchVatRateOptions|unitPrice|invoiceMode|vatRateOptionId|supplierName/u
     );
-    expect(`${workbench}\n${detail}\n${editor}`).toContain("最多 2 位小数");
+    expect(editor).toContain("数量（可空，最多4位）");
     expect(`${workbench}\n${detail}\n${editor}`).not.toMatch(/最多\s*6\s*位小数/u);
   });
 
@@ -658,8 +660,9 @@ describe("spot procurement web pages", () => {
       "components/PaymentExecutionDrawer.vue"
     );
 
+    expect(detail).toContain("const retryAttempt = executionAttempt.value;");
     expect(detail).toContain(
-      "executionAttempt.value ?? (await prepareExecutionAttempt(payload))"
+      "retryAttempt ?? (await prepareExecutionAttempt(payload, operationPaymentId))"
     );
     expect(detail).toContain("executionOpenedPaymentId");
     expect(detail).toContain("operationPaymentId");
@@ -815,6 +818,15 @@ describe("spot procurement web pages", () => {
     expect(upload).not.toHaveBeenCalled();
   });
 
+  it("accepts Beijing today for a refund before uploading and keeps the chosen business date", async () => {
+    vi.useFakeTimers(); vi.setSystemTime(new Date("2026-11-04T16:30:00Z"));
+    const upload = vi.fn(async () => ({ id: "synthetic-refund-file" }));
+    try {
+      const result = await prepareSpotRefundWithUpload({ ...validRefund, receivedAt: "2026-11-05" }, { name: "退款凭证.png" }, upload);
+      expect(result).toMatchObject({ receivedAt: "2026-11-05" }); expect(upload).toHaveBeenCalledOnce();
+    } finally { vi.useRealTimers(); }
+  });
+
   it.each(["3.333", "0", "0.00", "invalid"])(
     "does not upload a refund voucher for invalid or zero yuan input %s",
     async (amountYuan) => {
@@ -948,7 +960,7 @@ describe("spot procurement web pages", () => {
     expect(payment).toContain('decision: "return_to_applicant"');
     expect(payment).toContain("merchantPayeeMismatchNote");
     expect(payment).toContain("付款主体已调整");
-    expect(payment).toContain("从本轮冻结的首个节点重新审批");
+    expect(payment).toContain("按本轮冻结岗位重新审批");
     expect(payment).toContain("result.newDraftPaymentId");
     expect(payment).toContain("router.push('/零星材料付款工作台')");
     expect(payment).not.toContain("router.push('/零星材料付款')");
@@ -972,10 +984,6 @@ describe("spot procurement web pages", () => {
     expect(paymentWorkbench).toContain('view: activeView.value');
     expect(paymentWorkbench).toContain('result.viewCounts');
     expect(paymentWorkbench).toContain('result.amountSummary');
-    expect(receipt).toContain("resetSpotProcurementReceiptDraft");
-    expect(receipt).toContain("receiptResetAction");
-    expect(receipt).toContain("expectedRevision");
-    expect(receipt).toContain("不删除收货单、旧修订、锁定照片");
     expect(receipt).not.toContain("删除收货单按钮");
   });
 
@@ -991,7 +999,7 @@ describe("spot procurement web pages", () => {
     expect(procurement).toContain('title: "采购编号"');
     expect(procurement).toContain('title: "申请人 / 采购人"');
     expect(procurement).toContain('title: "材料与原因摘要"');
-    expect(procurement).toContain('title: "关联付款 / 收货"');
+    expect(procurement).toContain('title: "采购待办 / 付款"');
     expect(procurement).toContain('title: "状态 / 当前办理"');
     expect(procurement).toContain('title: "更新时间"');
     expect(procurement).toContain("row.receiptWorkbench.materialSummary");
@@ -1049,7 +1057,7 @@ describe("spot procurement web pages", () => {
     expect(status).not.toMatch(/<t-tag|<t-button|<button/u);
   });
 
-  it("connects final receipt, shortage handling, invoice append and archive facts without location or batches", () => {
+  it("shows historical receipt, shortage and invoice archive facts without reopening receipt writes", () => {
     const workbench = pageSource("SpotProcurementReceiptWorkbenchPage.vue");
     const receipt = pageSource("SpotProcurementReceiptPage.vue");
     const payment = pageSource("SpotProcurementPaymentDetailPage.vue");
@@ -1081,7 +1089,7 @@ describe("spot procurement web pages", () => {
     });
 
     expect(workbench).toContain("fetchSpotProcurements");
-    expect(workbench).toContain("待实际付款");
+    expect(workbench).toContain("历史收货记录");
     expect(workbench).toContain("materialSummary");
     expect(workbench).toContain("approvedQuantitySummary");
     expect(workbench).toContain("actualPaidAmountCents");
@@ -1089,9 +1097,9 @@ describe("spot procurement web pages", () => {
     expect(workbench).toContain("采购/付款编号");
     expect(workbench).toContain("收货责任人/受托人");
     expect(receipt).toContain("fetchSpotProcurementReceipt");
+    expect(receipt).toContain('<ReceiptLineEditor :lines="receipt.lines" readonly />');
+    expect(receipt).toContain('<ReceiptPhotoUploader :photos="receipt.photos" readonly />');
     expect(receipt).toContain("fetchSpotProcurementPaymentDetail");
-    expect(receipt).toContain("reviewSpotProcurementReceipt");
-    expect(receipt).toContain("revokeSpotProcurementReceiptReview");
     expect(receipt).toContain("createSpotProcurementDiscrepancy");
     expect(receipt).toContain("recordSpotProcurementRefund");
     expect(payment).toContain("prepareSpotRefundWithUpload(");
@@ -1188,17 +1196,11 @@ describe("spot procurement web pages", () => {
       ".then(() => completeReceiptPdfRefresh(context))"
     );
     expect(receipt).toContain("receipt.value?.availableActions?.find");
-    expect(receipt).toContain("actionEnabled('review_receipt')");
     expect(receipt).toContain("actionEnabled('record_refund')");
-    expect(receipt).toContain('actionEnabled("append_receipt_photo")');
     expect(receipt).toContain("requestId !== loadRequestId || !contextIsCurrent(context)");
     expect(receipt).toContain("assertCurrentContext(context)");
     expect(receipt).toContain("ROUTE_CHANGED_MESSAGE");
     expect(receipt).toContain("委托");
-    expect(receipt).toContain("待财务登记首笔实际付款后开放收货");
-    expect(receipt).toContain("商户继续补货");
-    expect(receipt).toContain("商户退回差额");
-    expect(receipt).toContain("发票仍可在付款申请中补充归档");
     expect(uploader).toContain("系统拍照");
     expect(uploader).toContain("相册上传");
     expect(uploader).toContain("送货单可选");
@@ -1751,7 +1753,7 @@ describe("spot procurement web pages", () => {
 
       expect(spotPageRuntime.submitProcurement).toHaveBeenCalledTimes(1);
       expect(spotPageRuntime.submitProcurement).toHaveBeenCalledWith(
-        "procurement-a"
+        "procurement-a", undefined
       );
       expect(spotPageRuntime.fetchDetail).toHaveBeenCalledTimes(1);
       expect(bindings.actionMessage.value).toBe("采购 B 已加载");

@@ -1,0 +1,12 @@
+--- entry.cjs
++++ entry.cjs
+@@ -16 +16 @@
+-const receipt={schemaVersion:1,purpose:'ORIGINAL_PFQ_EXACT_289',lane,business:'NOT_ENTERED',stages:[]};
++const receipt={schemaVersion:1,purpose:'ORIGINAL_PFQ_EXACT_290',lane,business:'NOT_ENTERED',stages:[]};
+@@ -19 +19,2 @@
+-  assert.deepEqual(receipt.pfqPostconsume,{count:289,exactB7:true});
++  assert.deepEqual(receipt.pfqPostconsume,{count:290,exactB7:true});
++  assert.equal(receipt.installOnly290?.count,290);
+@@ -47 +48 @@
+-  console.log(JSON.stringify({...receipt,status:'ORIGINAL_PFQ_EXACT_289_PASSED'}));
++  console.log(JSON.stringify({...receipt,status:'ORIGINAL_PFQ_EXACT_290_PASSED'}));

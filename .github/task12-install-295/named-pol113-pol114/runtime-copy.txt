@@ -1,0 +1,1 @@
+COPY --chmod=0644 candidate-admission.json loader-preflight.cjs owner-observation.cjs browser-evidence.cjs workspace.sha256 stage-named-browser.cjs task12-pol109-stage-browser.cjs verify-named-preimage.cjs verify-named-function-proofs.cjs verify-seven-observation.cjs pol114-pdf-worker.cjs preflight-layout-dist.cjs /qualification/

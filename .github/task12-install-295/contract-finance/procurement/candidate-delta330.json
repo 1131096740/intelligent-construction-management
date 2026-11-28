@@ -1,0 +1,277 @@
+[
+  {
+    "path": "apps/web-admin/e2e/contract-grid-http.e2e.ts",
+    "expected": "73121ea29fa725a68ab593bc4c1b6c07117db05b8046f4f780b033679f53a44f",
+    "candidate": "de2127954687bc7d63bc5686aca9fe1f6ef38510adaa7908557c813d0ef0a5c7"
+  },
+  {
+    "path": "apps/web-admin/e2e/expense-claim-workbench.e2e.ts",
+    "expected": "8c0e7d588456b25fe7e78b35255377292ac2ff7505d21cb28aff9a63571f22f3",
+    "candidate": "16f803d7fe2eed8757679d348dadc00b54a2ea450a5c3ba689d287c05fa9f261"
+  },
+  {
+    "path": "apps/web-admin/e2e/flow-detail-responsive.e2e.ts",
+    "expected": "e51effd249755ff5fe4c0a9694e984fd626248cc0ac7f1aee51febf4a08ef8a7",
+    "candidate": "145a2a01176eb0ef365c4c2d8aaf0ebc680d7379424206f7eb22fad42dea598d"
+  },
+  {
+    "path": "apps/web-admin/e2e/helpers/contract-grid-synthetic-server.cjs",
+    "expected": "e607d332a42c6bc36e9cd5096d3e585eda6b5ee0cdc4b0eba0cf10158fb8fbfd",
+    "candidate": "6d4b9ceb1f2c682ede094842ffef700786ceaa9510b7501369f5c0d6d55925a3"
+  },
+  {
+    "path": "apps/web-admin/e2e/helpers/responsive-viewports.ts",
+    "expected": "93f0e4dd3475d85444bc10168075351e93c75fabbfd1358ab4dd76f2af589016",
+    "candidate": "bb9a1ee5422c29812901be76175b8f39fe5889c4f34ab6785388301bcf315f23"
+  },
+  {
+    "path": "apps/web-admin/e2e/ledger-responsive.e2e.ts",
+    "expected": "be644574039198ed42581962f42f73a4f7966d8ab717a5138c5137fd8c0f8c54",
+    "candidate": "3f88256435bca5871cb74c655af7790e4eea952db30ce71e2da5226848127783"
+  },
+  {
+    "path": "apps/web-admin/e2e/p0-browser-smoke.e2e.ts",
+    "expected": "f8d029542a9ef2a02608c12f58b46614dbf729f56bbad29aea905b77c640c5a5",
+    "candidate": "679c6168697ed90a76dbb5608641a0e8694757289034656ddb83533755434e53"
+  },
+  {
+    "path": "apps/web-admin/e2e/payment-workbench.e2e.ts",
+    "expected": "529fe0fda777cd0927b0be7c968726da1de0d5c76cfef0102843d1cc4d4c7d36",
+    "candidate": "060074a49449f95e07879e93217ea0c6f66d1325a12e5b859c7705afb1534a80"
+  },
+  {
+    "path": "apps/web-admin/e2e/pol113-project-profile-real.e2e.ts",
+    "expected": "e6f65e9bbe3e93cc5677c6b0745639eaa83cc1fc693e272fe75f809c163dcfbf",
+    "candidate": "73de7563be2a51aceeceaa7dbcfa197e9057da6af6387dffad3fdb17f95b1394"
+  },
+  {
+    "path": "apps/web-admin/e2e/responsive-layout-foundation.e2e.ts",
+    "expected": "b3e69dffa5ec659f7b2c0b8db17502a0871da2b236e9637bcc7a2b34f1f5285e",
+    "candidate": "f6b96ff83bb111e85639a54a9d5d265cb5599083c03e2de43935a3b54e836750"
+  },
+  {
+    "path": "apps/web-admin/e2e/spot-procurement-workbenches.e2e.ts",
+    "expected": "6309ac5b274915f79c0f6e29d62b2a0d9214cdc74cf8496a9858d4737fdbc9cb",
+    "candidate": "e2428ca36f08d7dc5871380d47885e39ab2a97891bbb24126489f10d0aff51f9"
+  },
+  {
+    "path": "apps/web-admin/src/api/core-flow-read.api.ts",
+    "expected": "c83128b15dbd395bae3875c5994c11e54b13ec426b6959b3e677371bb49a303f",
+    "candidate": "64088cb039bb773fc9561978f0bad1440717c16654241ddb62ff4285ebb5dd9e"
+  },
+  {
+    "path": "apps/web-admin/src/app/AdminLayout.vue",
+    "expected": "ac4a6d0b6705499167c0d67d388f5606aadcbe19322406c51273406c3a2ab9cd",
+    "candidate": "8637add4352275a833efb60013d1dab3887d0051650f2d6e2a3593f9a620ef96"
+  },
+  {
+    "path": "apps/web-admin/src/pages/contracts/ContractListPage.vue",
+    "expected": "0c569f260e772c566dcc2660f1af32614806fb09d0ba0c3d3fd195f8f60759ad",
+    "candidate": "2a18e5b41f1a58057ba3851c7a4407015f21f615886ed8ce1f37c8feda20b2f6"
+  },
+  {
+    "path": "apps/web-admin/src/pages/contracts/contract-business-options.config.test.ts",
+    "expected": "470963a4625e6a1901c9ff1dbbab607519c7c7cb8ba4e9183211158106da3ff9",
+    "candidate": "9194b9078117fc15a3d3056199c65b7291bb9b43c2dd52d155b37c1afefcd3eb"
+  },
+  {
+    "path": "apps/web-admin/src/pages/contracts/contract-business-options.config.ts",
+    "expected": "af5576c69ba7b3e0383465d3a0067df31ddd0f22cd899106ae4c4b6c43c0bdb9",
+    "candidate": "ea24870a87d9508a749c80676a5e9ffdfd7a7d07f92c2b07e6cd2ecd92a0a3b3"
+  },
+  {
+    "path": "apps/web-admin/src/pages/contracts/contract-list.config.test.ts",
+    "expected": "f3dbf9e6bf7893472a6ebdb96454b3bd7ae86ebe8b0bb12eb42bdf3a5915c486",
+    "candidate": "012c0b3d0582abe7d52a1fdd29b258107fd01cdb4a991bd3e0ee65071866644c"
+  },
+  {
+    "path": "apps/web-admin/src/pages/payments/PaymentWorkbenchPage.vue",
+    "expected": "5553d23fc09b235929485308fa8c674c1a091e428774a1d3b393623faf56374e",
+    "candidate": "a3327454dadc8e1973828d72609d301f129f168bec02bdc4725cac6e93bcf542"
+  },
+  {
+    "path": "apps/web-admin/src/pages/payments/payment-list.config.ts",
+    "expected": "540ac3df3549a14889fc86a40fd9d3f8833c2633d4f18f6890eed982e05a9d33",
+    "candidate": "394146948083d4aca783819de07854e1bffe2834eb677400744408841590b9e3"
+  },
+  {
+    "path": "apps/web-admin/src/pages/payments/payment-workbench.structure.test.ts",
+    "expected": "c5a1d2e250f572698ca24b7fb7821770156d2ac55e129878d46c5507e8aed0e7",
+    "candidate": "7f884940bb00db8fff82e315103b682f072ac5ed596729b3efa4f9402b4f5908"
+  },
+  {
+    "path": "apps/web-admin/src/routes/index.test.ts",
+    "expected": "344b6667a827fbd0bdf2c6e60a5595b91a5f98039170576a4f232f9c18171d46",
+    "candidate": "f65dbb89d523d07ab870efaa07ad3769d439c021ae2e1d6e7c2a81b67e2ba00b"
+  },
+  {
+    "path": "apps/web-admin/src/routes/route-records.ts",
+    "expected": "7d9b2c95aef23eeb0bb20244914b77d25d4069f91b3459624a4217e3c41a1e66",
+    "candidate": "7f0017db976e6c7e1ff0d9e206f4a8f9bb37d5e0189208533f2f212b27433b33"
+  },
+  {
+    "path": "packages/shared-domain/src/core-flow-read-model.ts",
+    "expected": "4d6cc102c8114c003eb51373a7a31533e9baab52c7d9e146a4bb3125cacfa38b",
+    "candidate": "65bd92100eba776f6e9c193cb874d4778702694f71d2b0de17625498a31c96b7"
+  },
+  {
+    "path": "services/api/jest.task09-task11-document-acceptance-paths.cjs",
+    "expected": "485b4c07c5d316480586e7eba13818f8501870e89f50e3725f521e246baacaac",
+    "candidate": "4f6aef00e5e7b492616e2587bd914198b5429a359002bb34032ca6b95abee64b"
+  },
+  {
+    "path": "services/api/prisma/database-dynamic-gate-manifest.json",
+    "expected": "945ae553d511df229336f33fbbb360a60b75930835c086beab6accf549d2455c",
+    "candidate": "f1fe21938ba2dce4346546b5e98d2022ebc309f468e3d133db711faa94f9cd0f"
+  },
+  {
+    "path": "services/api/prisma/general-procurement-runtime-grants.sql",
+    "expected": "c6ed1b2f8a3d1ba7c5a4aa38087cd2425a8a2e5441c39790eeed3734f4412b09",
+    "candidate": "d98cbebc5de7f0007b62e503903ec61978619a082ca907f3f0564f3cf81feb1e"
+  },
+  {
+    "path": "services/api/prisma/run-database-dynamic-gate-local.cjs",
+    "expected": "ec39311717c5e8a4bc93910fe5a0443c3fdb45a1b40477ce39222a79effe8a89",
+    "candidate": "e5000873ff8d91fc7136de06d06294dc725b1dd1ebe48cc1545959659f0259eb"
+  },
+  {
+    "path": "services/api/prisma/run-database-dynamic-gate-local.test.cjs",
+    "expected": "78a8d474a9bef166001372b1e096b4f9b190d1d6fce3988bee01ad7f9b6eb09d",
+    "candidate": "767c2579c8eb163b06726710b17be6f6b9bfc145cbe4372b819bc94a7b562b04"
+  },
+  {
+    "path": "services/api/prisma/schema.prisma",
+    "expected": "8154b5a52bee19a0a105ea949f2fb272f6876f7c92fbf1e0b57b0104d93b87be",
+    "candidate": "b0a00a37e3df7190c9b6ca87fafe7301946ae8c983b45f982755a3ac2f86c2bc"
+  },
+  {
+    "path": "services/api/prisma/task16-current259-payment-competition.cjs",
+    "expected": "034e447eea55f7d6d443a081ba2e2cbbe96088336b9fc217de273562510b30c7",
+    "candidate": "5c97b492291a8d1c44834329d801d14703b7e3483087304f006faf92dd23d13c"
+  },
+  {
+    "path": "services/api/src/approval/approval-form.service.ts",
+    "expected": "031b17311e634ad97b838f71dd155734def4b2a2f3c307bf347e644427a6dedd",
+    "candidate": "fabca21d3ca30c9878545c12e277be103d933329404eae287807c64eb3c50b80"
+  },
+  {
+    "path": "services/api/src/approval/approval-progress.service.ts",
+    "expected": "7db2f18e02d05e265173db1a012e2055d82f5db1a8a8543b45d7a95e2a5e6ff0",
+    "candidate": "a4d422229eed4cf9472dd95b43623a6013baadf10135281865aa23849ad6e91d"
+  },
+  {
+    "path": "services/api/src/contract-document/contract-document.processor.spec.ts",
+    "expected": "eed1b542cc8956faee043c48dd71a8778c94f758e0510190b31ba5fce3ec5eb2",
+    "candidate": "7daf3e85e19a8ba4a70bd0f79ad15166f24ba4ad6c54052fe3a5e5de91fc9dcd"
+  },
+  {
+    "path": "services/api/src/contract-document/contract-document.processor.ts",
+    "expected": "743b71c1848c8de4e981dee308d0cb7197cd86c10257a683b1539a3cbf650d57",
+    "candidate": "e08e74d05ebefd1347740e65d29ba8d42e7a70a58a7e3a165e7816fafb593c2d"
+  },
+  {
+    "path": "services/api/src/contract-template/task10-material-signature-date-export.http.spec.ts",
+    "expected": "42ae4138407e9c924ec1497b0dee9753c900cb106b453a5b2936bc941c923f3a",
+    "candidate": "871de5599d4e1894bc63545e870e0d3c9e8515a2dd9125d1852d37a370055efc"
+  },
+  {
+    "path": "services/api/src/contract-template/template-pdf-physical.test-support.ts",
+    "expected": "76700cd3b865774935aed3083a676f449cbba42921015e37cfc05f11a83a1d00",
+    "candidate": "d05e87c34773b6a32244d6ea9b0a8511cb0e431317180b54a74f9902aa8a01eb"
+  },
+  {
+    "path": "services/api/src/contract/contract-duty-notification.service.spec.ts",
+    "expected": "e4a6d99948f5ae7918025c3c19b75d09aaca0a817605f9347e90b4c9690b673b",
+    "candidate": "0e4f21625a97061f9e80b8ccb7e69ed6ff1c5bdf8e2fc70b1cfbd813ac5e980d"
+  },
+  {
+    "path": "services/api/src/contract/contract-duty-notification.service.ts",
+    "expected": "c65021265bd4139634c9ba424110580905f71eaddb6389a5befc5136c82a97f4",
+    "candidate": "f12584e9fc1cb8c8656a7cda4c205a59c6b3984f69f631f3e667b24cbe37c28f"
+  },
+  {
+    "path": "services/api/src/contract/contract-read.service.ts",
+    "expected": "40ebfc93d098ef6d715843cff509d50ae26cccbb11a5e903f8415fb18570d6bb",
+    "candidate": "196054b0d777d2ff9e06c5f15fb305647a9758130fa2895f0b42ff0b8d1c5239"
+  },
+  {
+    "path": "services/api/src/contract/contract.controller.ts",
+    "expected": "ec5a7333fc1016d6e49a02d3c23e6d852f018e27f878a03e9e4f7d727b490d0c",
+    "candidate": "22ad5d74f1d9566e03bfda5935e87ee3aa70b1e622e64b84bb845ece3e49cddf"
+  },
+  {
+    "path": "services/api/src/contract/contract.module.ts",
+    "expected": "e6f59d9423765445ecfa1d884475366846f3f79c69308e3a5e958536086f435e",
+    "candidate": "5a4cad5586302ddffe5fed14d2a8fe4b078b1f4242e837f48a278c7a0bd43132"
+  },
+  {
+    "path": "services/api/src/database/direct-payment-capacity-concurrency.spec.ts",
+    "expected": "de31ee9d13952de4b0a03e239e490703bc2787662bdb7f167f0a39b1535e0f6d",
+    "candidate": "a29c42e5969183edbf80cb0677db37f45efe11cedc1704b1826af95da0be92c7"
+  },
+  {
+    "path": "services/api/src/database/task16-shared-standard-fixture.ts",
+    "expected": "a89ccc4373a973d88c67b93c75b2d0072aa745a81c6b9c47401febdcf0822dc7",
+    "candidate": "9a596a48851f73b80d45eccd2ffcf95d5c52b5af0f8df86f16c3d35148065cb3"
+  },
+  {
+    "path": "services/api/src/fund-movement/fund-movement.service.ts",
+    "expected": "ab05dbeae977446de52172206fc701eaf5638853f18fef8e59db4c4b32b85694",
+    "candidate": "d34592585082c223b383520253e32e289551d28e9ca604ea9e1415b8cf2976de"
+  },
+  {
+    "path": "services/api/src/me/me.service.ts",
+    "expected": "439db3745de0160d9db7dc5819bdf2f73c2ac0c595d8f8b5250e83d54aba5b25",
+    "candidate": "cdccd68bde81f461dc4bbe7cd1b6d94f8a399eb4465ddf9c84f0c0c727aa6ae3"
+  },
+  {
+    "path": "services/api/src/organization/organization-role.service.spec.ts",
+    "expected": "1e0d1dded333444f35e3d0ca33d6f4c4f588de05c53e50f4d7af018bf24f31a9",
+    "candidate": "3242c75e3f80f5eab9232688cf7526174e5d44cc469b0358b7133e837ab08576"
+  },
+  {
+    "path": "services/api/src/organization/organization-role.service.ts",
+    "expected": "cb97b740ed3f90c282958bc1c3edd038dedd267eeb4e115dfb71614ca7a4b2f0",
+    "candidate": "27cd2a2e45c0ab5fcaf7725a612fb08082820253b93fb45c08a737344f28629a"
+  },
+  {
+    "path": "services/api/src/organization/organization.module.ts",
+    "expected": "94dd84cadfcb91f5d01cb08cbd0e70497bf55be8fee3b82c4e9941fd91b45726",
+    "candidate": "da420a9a7eed7a31d5fb3915680e8e95e1e5bde7b99f4cd179d7e6006a8c95e7"
+  },
+  {
+    "path": "services/api/src/payment/dto/create-payment-request.dto.ts",
+    "expected": "01c66c49fb21c24ea1b453bdcb4f9f664332884a5e9a9baa90ea4a19bea9a926",
+    "candidate": "01129e70d4f798fc9def706cc4b3fe6301260326e80d8ddfab9629b430786d6c"
+  },
+  {
+    "path": "services/api/src/payment/payment-operating-source.adapter.spec.ts",
+    "expected": "4bb00e4fe252e01958d770368f3555289080b35eb8267acb4b1c463b60cce7fb",
+    "candidate": "aa1c929ce50e2157d0f4891e86a027ea59dbb58ecf9ef910050939f00637669d"
+  },
+  {
+    "path": "services/api/src/payment/payment-operating-source.adapter.ts",
+    "expected": "bdb65e534f76d069eb7089f53c1e1d429d5a3666aa6868567ac72c82dc798768",
+    "candidate": "790d5983dbabf2444ae6aaab4e1f7ae98a92a2cbc66ce49d214656bdee235610"
+  },
+  {
+    "path": "services/api/src/payment/payment-read.service.spec.ts",
+    "expected": "a6043b569703db85112a1dc2c3e245600c596021f92707c4f65520a428c93558",
+    "candidate": "f1d1f3087700efca25b802471564a5896ec8df58f55a3dc7f3d428c08a62b973"
+  },
+  {
+    "path": "services/api/src/payment/payment-read.service.ts",
+    "expected": "7d2378c22ec148759df4848beb7ddc684537735390815d112eb4cda3170d9197",
+    "candidate": "e0e22a9d16dec72e4047bd516c83a27663dad1bdb3eac7e256486b2347be0036"
+  },
+  {
+    "path": "services/api/src/payment/payment-request.service.spec.ts",
+    "expected": "174e0354c964991e970bcb232a2a2e160eab3e93e7c5f167b0d2488b49e13393",
+    "candidate": "d3556b44acc4f12ce48b5287c8d4e6ce70c1801873ea94a1f7151b3407ba77e5"
+  },
+  {
+    "path": "services/api/src/payment/payment-request.service.ts",
+    "expected": "0a283f62d03fc5f22fe776d1a9da00b9becf80a2cdff44808fa1d944f96fd74f",
+    "candidate": "4a8ffa8b4594f0105e6fdee20444f7687e4fa6f27e1e4cfdb5f06115e45883ca"
+  }
+]

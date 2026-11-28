@@ -1,5 +1,53 @@
 jest.mock("../contract-ledger/contract-proxy-capacity", () => ({ contractProxyPaid: jest.fn().mockResolvedValue(0n), contractProxyPaidForContract: jest.fn().mockResolvedValue(0n) }));
+import * as ExcelJS from "exceljs";
 import { PaymentReadService } from "./payment-read.service";
+
+function withSignedAgreementLookup(prisma: object, explicitDetailProjection = false): never {
+  const fixture = prisma as {
+    $queryRaw?: (query: unknown, ...args: unknown[]) => unknown;
+    paymentExecution?: { findMany(args: object): Promise<object[]> };
+    financeRecord?: { findMany(args: object): Promise<object[]> };
+    paymentExecutionAllocation?: { findMany(args: object): Promise<object[]> };
+    pdfDocument?: { findMany(args: object): Promise<object[]> };
+    businessEntrySubmissionSnapshot?: { findMany(args: object): Promise<object[]> };
+  };
+  return {
+    ...prisma,
+    async $queryRaw(query: unknown, ...args: unknown[]) {
+      if (!explicitDetailProjection && Array.isArray(query) && query.join("").includes("jg_read_payment_detail_activity_v1")) {
+        const where = { paymentRequestId: args[0] };
+        const [executions, finance] = await Promise.all([
+          fixture.paymentExecution?.findMany({ where, orderBy: { paidAt: "desc" } }) ?? [],
+          fixture.financeRecord?.findMany({ where }) ?? []
+        ]);
+        return [
+          ...executions.map(row => ({ kind: "execution", ...row })),
+          ...finance.map(row => ({ kind: "finance", ...row }))
+        ];
+      }
+      if (!explicitDetailProjection && Array.isArray(query)) {
+        const sql = query.join("");
+        if (sql.includes("jg_read_payment_detail_allocations_v1")) return fixture.paymentExecutionAllocation?.findMany({
+          where: { paymentRequestId: args[0] }, orderBy: [{ createdAt: "asc" }, { allocationOrder: "asc" }]
+        }) ?? [];
+        if (sql.includes("jg_read_payment_detail_pdf_v1")) return fixture.pdfDocument?.findMany({
+          where: { businessType: "payment_request", businessId: args[0] }, orderBy: { createdAt: "desc" }
+        }) ?? [];
+        if (sql.includes("jg_read_payment_detail_snapshots_v1")) {
+          const finance = Boolean(args[3]);
+          return fixture.businessEntrySubmissionSnapshot?.findMany({
+            where: finance
+              ? { projectId: args[1], sceneKey: "payment_finance_record", entityType: "finance_record" }
+              : { projectId: args[1], sceneKey: { in: ["payment_request", "payment_approval_amount"] },
+                  entityType: "payment_request", entityId: args[0] },
+            orderBy: [{ frozenAt: "asc" }, { id: "asc" }]
+          }) ?? [];
+        }
+      }
+      return fixture.$queryRaw?.(query, ...args) ?? [];
+    }
+  } as never;
+}
 
 describe("PaymentReadService", () => {
   beforeEach(() => {
@@ -74,7 +122,7 @@ describe("PaymentReadService", () => {
         ])
       }
     };
-    const service = new PaymentReadService(prisma as never);
+    const service = new PaymentReadService(withSignedAgreementLookup(prisma));
 
     const ledger = await service.listRecent(20);
 
@@ -179,7 +227,7 @@ describe("PaymentReadService", () => {
         findMany: jest.fn().mockResolvedValue([])
       }
     };
-    const service = new PaymentReadService(prisma as never);
+    const service = new PaymentReadService(withSignedAgreementLookup(prisma), {effectiveRoleKeys: async () => ["finance_staff"]} as never);
 
     const ledger = await service.listLedger(
       { view: "formal_ledger", page: 1, pageSize: 20 },
@@ -241,7 +289,7 @@ describe("PaymentReadService", () => {
         findMany: jest.fn()
       }
     };
-    const service = new PaymentReadService(prisma as never);
+    const service = new PaymentReadService(withSignedAgreementLookup(prisma));
 
     await service.listRecent(20, ["project-1"]);
 
@@ -298,10 +346,10 @@ describe("PaymentReadService", () => {
         ])
       },
       approvalActionLog: {
-        findMany: jest.fn().mockResolvedValue([{ approvalInstanceId: "approval-returned" }])
+        findMany: jest.fn().mockResolvedValue([{ approvalInstanceId: "approval-returned", action: "return_to_applicant", actorUserId: "reviewer" }])
       }
     };
-    const service = new PaymentReadService(prisma as never);
+    const service = new PaymentReadService(withSignedAgreementLookup(prisma), {effectiveRoleKeys: async () => ["finance_staff"]} as never);
 
     const ledger = await service.listRecent(20);
 
@@ -371,6 +419,7 @@ describe("PaymentReadService", () => {
         currentNodeIndex: 0
       };
       const prisma = {
+        $queryRaw: async () => actorUserId === "applicant-1" ? [{id:"approval-returned"}] : [],
         paymentRequest: {
           findFirst: jest.fn().mockResolvedValue({
             id: "payment-returned",
@@ -432,8 +481,12 @@ describe("PaymentReadService", () => {
       const projectVisibility = {
         effectiveRoleKeys: jest.fn().mockResolvedValue([])
       };
-      const service = new PaymentReadService(prisma as never, projectVisibility as never);
+      const service = new PaymentReadService(withSignedAgreementLookup(prisma), projectVisibility as never);
 
+      if (actorUserId !== "applicant-1") {
+        await expect(service.getDetail("payment-returned", undefined, actorUserId)).rejects.toThrow("未找到付款申请");
+        return;
+      }
       const detail = await service.getDetail("payment-returned", undefined, actorUserId);
 
       expect(detail.availableActions.some((action) => action.key === "abandon_application"))
@@ -507,7 +560,7 @@ describe("PaymentReadService", () => {
         findMany: jest.fn().mockResolvedValue([])
       }
     };
-    const service = new PaymentReadService(prisma as never);
+    const service = new PaymentReadService(withSignedAgreementLookup(prisma));
 
     const ledger = await service.listRecent(20);
 
@@ -547,18 +600,25 @@ describe("PaymentReadService", () => {
       },
       paymentExecution: { findMany: jest.fn().mockResolvedValue([]) }
     };
-    const service = new PaymentReadService(prisma as never);
+    const service = new PaymentReadService(withSignedAgreementLookup(prisma));
 
     const ledger = await service.listRecent(20);
 
     expect(ledger.rows[0]?.settlementNo).toBe("合同冻结阶段直接付款");
   });
 
-  it("builds payment detail from persisted payment request and executions", async () => {
+  it.each([
+    { current: "按合同结算支付 85%", legacy: "按合同结算支付 85%", approved: null, snapshot: null, changed: false },
+    { current: "按合同结算支付 90%", legacy: "按合同结算支付 90%", approved: null, snapshot: null, changed: true },
+    { current: "补充约定支付 95%", legacy: "按合同结算支付 90%", approved: "补充约定支付 95%", snapshot: null, changed: true },
+    { current: "补充约定支付 95%", legacy: "按合同结算支付 90%", approved: "补充约定支付 95%", snapshot: "补充约定支付 95%", changed: false },
+    { current: "补充约定支付 95%", legacy: "按合同结算支付 90%", approved: "补充约定支付 95%", snapshot: "首次补充支付 88%", changed: true }
+  ])("compares signed payment agreement without changing the frozen stage ($changed)", async ({ current, legacy, approved, snapshot, changed }) => {
     const prisma = {
       paymentRequest: {
         findFirst: jest.fn().mockResolvedValue({
           id: "payment-1",
+          projectId: "project-1",
           settlementId: "settlement-1",
           contractId: "contract-1",
           contractVersionId: "contract-version-2",
@@ -584,11 +644,28 @@ describe("PaymentReadService", () => {
           versionNo: 2
         })
       },
+      $queryRaw: jest.fn(async (query: TemplateStringsArray) => {
+        const sql = query.join("");
+        if (sql.includes("jg_read_payment_detail_activity_v1")) return [
+          { kind: "execution", id: "execution-1", amountCents: 12000000n, voucherFileId: "file-voucher-1",
+            executedByUserId: "user-cashier", createdAt: new Date("2026-07-01T09:00:00.000Z") },
+          { kind: "finance", id: "finance-1", amountCents: 5000000n }
+        ];
+        if (sql.includes("jg_read_payment_detail_pdf_v1")) return [
+          { id: "pdf-document-1", fileId: "file-pdf-1", templateKey: "payment_finance_archive",
+            createdAt: new Date("2026-07-01T10:00:00.000Z") }
+        ];
+        if (sql.includes("jg_read_payment_detail_allocations_v1") || sql.includes("jg_read_payment_detail_snapshots_v1")) return [];
+        return [{ submittedText: snapshot, currentText: approved }];
+      }),
       paymentTermsVersion: {
         findUnique: jest.fn().mockResolvedValue({
           id: "terms-version-2",
-          versionNo: 2
-        })
+          versionNo: 2,
+          status: "superseded",
+          originalText: "按合同结算支付 85%"
+        }),
+        findFirst: jest.fn().mockResolvedValue({ originalText: legacy })
       },
       paymentTermsStage: {
         findFirst: jest.fn().mockResolvedValue({
@@ -599,33 +676,11 @@ describe("PaymentReadService", () => {
           requiresInvoice: true
         })
       },
-      paymentExecution: {
-        findMany: jest.fn().mockResolvedValue([
-          {
-            id: "execution-1",
-            amountCents: 12000000n,
-            voucherFileId: "file-voucher-1",
-            executedByUserId: "user-cashier",
-            createdAt: new Date("2026-07-01T09:00:00.000Z")
-          }
-        ])
-      },
-      financeRecord: {
-        findMany: jest.fn().mockResolvedValue([{ amountCents: 5000000n }])
-      },
-      paymentExecutionAllocation: {
-        findMany: jest.fn().mockResolvedValue([])
-      },
-      pdfDocument: {
-        findMany: jest.fn().mockResolvedValue([
-          {
-            id: "pdf-document-1",
-            fileId: "file-pdf-1",
-            templateKey: "payment_finance_archive",
-            createdAt: new Date("2026-07-01T10:00:00.000Z")
-          }
-        ])
-      },
+      paymentExecution: { findMany: jest.fn().mockRejectedValue(new Error("42501 PaymentExecution")) },
+      financeRecord: { findMany: jest.fn().mockRejectedValue(new Error("42501 FinanceRecord")) },
+      paymentExecutionAllocation: { findMany: jest.fn().mockRejectedValue(new Error("42501 PaymentExecutionAllocation")) },
+      pdfDocument: { findMany: jest.fn().mockRejectedValue(new Error("42501 PdfDocument")) },
+      businessEntrySubmissionSnapshot: { findMany: jest.fn().mockRejectedValue(new Error("42501 BusinessEntrySubmissionSnapshot")) },
       fileObject: {
         findMany: jest.fn().mockResolvedValue([
           {
@@ -653,13 +708,55 @@ describe("PaymentReadService", () => {
         ])
       }
     };
-    const service = new PaymentReadService(prisma as never);
+    const service = new PaymentReadService(withSignedAgreementLookup(prisma, true));
 
     const detail = await service.getDetail("FK-2026-011");
 
     expect(prisma.paymentRequest.findFirst).toHaveBeenCalledWith({
       where: { OR: [{ id: "FK-2026-011" }, { code: "FK-2026-011" }] }
     });
+    expect(prisma.$queryRaw).toHaveBeenCalledWith(
+      expect.arrayContaining([expect.stringContaining("jg_read_payment_contract_agreement_detail_v1")]),
+      "payment-1", "project-1", "contract-1"
+    );
+    if (approved === null) {
+      expect(prisma.paymentTermsVersion.findFirst).toHaveBeenCalledWith({
+        where: { contractId: "contract-1", status: "effective" },
+        orderBy: { versionNo: "desc" },
+        select: { originalText: true }
+      });
+    } else {
+      expect(prisma.paymentTermsVersion.findFirst).not.toHaveBeenCalled();
+    }
+    expect(prisma.$queryRaw).toHaveBeenCalledWith(
+      expect.arrayContaining([expect.stringContaining("jg_read_payment_detail_activity_v1")]),
+      "payment-1", "project-1", "contract-1"
+    );
+    expect(prisma.paymentExecution.findMany).not.toHaveBeenCalled();
+    expect(prisma.financeRecord.findMany).not.toHaveBeenCalled();
+    expect(prisma.paymentExecutionAllocation.findMany).not.toHaveBeenCalled();
+    expect(prisma.pdfDocument.findMany).not.toHaveBeenCalled();
+    expect(prisma.businessEntrySubmissionSnapshot.findMany).not.toHaveBeenCalled();
+    expect(prisma.$queryRaw).toHaveBeenCalledWith(
+      expect.arrayContaining([expect.stringContaining("jg_read_payment_detail_snapshots_v1")]),
+      "payment-1", "project-1", "contract-1", false
+    );
+    expect(prisma.$queryRaw).not.toHaveBeenCalledWith(
+      expect.arrayContaining([expect.stringContaining("jg_read_payment_detail_snapshots_v1")]),
+      "payment-1", "project-1", "contract-1", true
+    );
+    expect(detail.baseInfo).toContainEqual({ label: "付款比例", value: "85%" });
+    if (!changed) {
+      expect(detail.meta).not.toContainEqual(expect.objectContaining({ label: "付款约定" }));
+      expect(detail.baseInfo).not.toContainEqual(expect.objectContaining({ label: "最新付款约定" }));
+      expect(detail.baseInfo).toContainEqual({ label: "付款约定原文", value: current });
+    } else {
+      expect(detail.meta).toContainEqual({ label: "付款约定", value: "约定已更新，请核对提交时和最新约定" });
+      expect(detail.baseInfo).toEqual(expect.arrayContaining([
+        { label: "提交时付款约定", value: snapshot ?? "按合同结算支付 85%" },
+        { label: "最新付款约定", value: current }
+      ]));
+    }
     expect(detail.id).toBe("FK-2026-011");
     expect(detail.title).toBe("FK-2026-011 · 2026-06付款申请");
     expect(detail.baseInfo).toContainEqual({ label: "申请金额", value: "¥493,000.00" });
@@ -774,7 +871,7 @@ describe("PaymentReadService", () => {
         findMany: jest.fn().mockResolvedValue([])
       }
     };
-    const service = new PaymentReadService(prisma as never);
+    const service = new PaymentReadService(withSignedAgreementLookup(prisma));
     const evidenceFiles = await (
       service as unknown as {
         paymentEvidenceFiles(
@@ -832,7 +929,7 @@ describe("PaymentReadService", () => {
         ])
       }
     };
-    const service = new PaymentReadService(prisma as never);
+    const service = new PaymentReadService(withSignedAgreementLookup(prisma));
     const evidenceFiles = await (
       service as unknown as {
         paymentEvidenceFiles(
@@ -929,7 +1026,7 @@ describe("PaymentReadService", () => {
     const projectVisibility = {
       effectiveRoleKeys: jest.fn().mockResolvedValue(["finance_staff"])
     };
-    const service = new PaymentReadService(prisma as never, projectVisibility as never);
+    const service = new PaymentReadService(withSignedAgreementLookup(prisma), projectVisibility as never);
 
     const detail = await service.getDetail("FK-2026-011", undefined, "user-cashier");
 
@@ -966,18 +1063,7 @@ describe("PaymentReadService", () => {
     });
 
     projectVisibility.effectiveRoleKeys.mockResolvedValueOnce([]);
-    const nonFinanceDetail = await service.getDetail(
-      "FK-2026-011",
-      undefined,
-      "user-observer"
-    );
-    expect(nonFinanceDetail.availableActions).toContainEqual(
-      expect.objectContaining({
-        key: "record_execution",
-        enabled: false
-      })
-    );
-    expect(nonFinanceDetail.executionContext).toBeNull();
+    await expect(service.getDetail("FK-2026-011", undefined, "user-observer")).rejects.toThrow("未找到付款申请");
 
     projectVisibility.effectiveRoleKeys.mockResolvedValueOnce(["finance_staff"]);
     prisma.user.findUnique.mockResolvedValueOnce({
@@ -1026,7 +1112,7 @@ describe("PaymentReadService", () => {
         findFirst: jest.fn().mockResolvedValue(null)
       }
     };
-    const service = new PaymentReadService(prisma as never);
+    const service = new PaymentReadService(withSignedAgreementLookup(prisma));
 
     await expect(service.getDetail("FK-2026-011", ["project-1"])).rejects.toThrow(
       "未找到付款申请，请刷新付款台账后重试"
@@ -1093,7 +1179,7 @@ describe("PaymentReadService", () => {
         findMany: jest.fn().mockResolvedValue([])
       }
     };
-    const service = new PaymentReadService(prisma as never);
+    const service = new PaymentReadService(withSignedAgreementLookup(prisma));
 
     await expect(service.getDetail("FK-2026-011")).rejects.toThrow(message);
   });
@@ -1155,7 +1241,7 @@ describe("PaymentReadService", () => {
         findMany: jest.fn().mockResolvedValue([])
       }
     };
-    const service = new PaymentReadService(prisma as never);
+    const service = new PaymentReadService(withSignedAgreementLookup(prisma));
 
     const detail = await service.getDetail("FK-YF-2026-001");
 
@@ -1302,7 +1388,7 @@ describe("PaymentReadService", () => {
         ])
       }
     };
-    const service = new PaymentReadService(prisma as never);
+    const service = new PaymentReadService(withSignedAgreementLookup(prisma));
 
     const detail = await service.getDetail("FK-HT-2026-001");
 
@@ -1390,7 +1476,7 @@ describe("PaymentReadService", () => {
       paymentExecution: { findMany: jest.fn().mockResolvedValue([]) },
       financeRecord: { findMany: jest.fn().mockResolvedValue([]) }
     };
-    const service = new PaymentReadService(prisma as never);
+    const service = new PaymentReadService(withSignedAgreementLookup(prisma));
 
     await expect(service.getDetail("FK-TY-2026-001")).rejects.toThrow(
       "付款申请冻结的付款阶段与付款条款不一致，请联系管理员核对"
@@ -1454,7 +1540,7 @@ describe("PaymentReadService", () => {
         findMany: jest.fn().mockResolvedValue([])
       }
     };
-    const service = new PaymentReadService(prisma as never);
+    const service = new PaymentReadService(withSignedAgreementLookup(prisma));
 
     const detail = await service.getDetail("FK-2026-012");
 
@@ -1512,7 +1598,7 @@ describe("PaymentReadService", () => {
         findMany: jest.fn().mockResolvedValue([])
       }
     };
-    const service = new PaymentReadService(prisma as never);
+    const service = new PaymentReadService(withSignedAgreementLookup(prisma));
 
     const detail = await service.getDetail("FK-2026-013");
 
@@ -1599,7 +1685,7 @@ describe("PaymentReadService", () => {
     const projectVisibility = {
       effectiveRoleKeys: jest.fn().mockResolvedValue(["finance_staff"])
     };
-    const service = new PaymentReadService(prisma as never, projectVisibility as never);
+    const service = new PaymentReadService(withSignedAgreementLookup(prisma), projectVisibility as never);
 
     const detail = await service.getDetail("FK-2026-013", undefined, "user-finance");
 
@@ -1662,7 +1748,7 @@ describe("PaymentReadService", () => {
     const projectVisibility = {
       effectiveRoleKeys: jest.fn().mockResolvedValue(["finance_staff"])
     };
-    const service = new PaymentReadService(prisma as never, projectVisibility as never);
+    const service = new PaymentReadService(withSignedAgreementLookup(prisma), projectVisibility as never);
 
     const detail = await service.getDetail("FK-2026-014", undefined, "user-finance");
 
@@ -1776,7 +1862,7 @@ describe("PaymentReadService", () => {
         }])
       },
       approvalDelegation: {
-        findMany: jest.fn().mockResolvedValue(delegatorRows)
+        groupBy: jest.fn().mockResolvedValue(delegatorRows)
       },
       user: {
         findMany: jest.fn().mockResolvedValue(activeUsers)
@@ -1788,7 +1874,7 @@ describe("PaymentReadService", () => {
         return [];
       })
     };
-    const service = new PaymentReadService(prisma as never, projectVisibility as never);
+    const service = new PaymentReadService(withSignedAgreementLookup(prisma), projectVisibility as never);
 
     const detail = await service.getDetail("FK-2026-015", [], "delegatee-1");
 
@@ -1834,7 +1920,9 @@ describe("PaymentReadService", () => {
     const settlementFindUnique = jest.fn();
     const contractVersionFindUnique = jest.fn();
     const paymentTermsVersionFindUnique = jest.fn();
+    const rawQuery = jest.fn();
     const prisma = {
+      $queryRaw: rawQuery,
       paymentRequest: {
         findFirst: jest.fn().mockResolvedValue({
           id: "payment-1",
@@ -1853,7 +1941,7 @@ describe("PaymentReadService", () => {
     const projectVisibility = {
       effectiveRoleKeys: jest.fn().mockResolvedValue([])
     };
-    const service = new PaymentReadService(prisma as never, projectVisibility as never);
+    const service = new PaymentReadService(withSignedAgreementLookup(prisma), projectVisibility as never);
 
     await expect(
       service.getDetail("FK-2026-016", [], "unrelated-user")
@@ -1861,6 +1949,14 @@ describe("PaymentReadService", () => {
     expect(settlementFindUnique).not.toHaveBeenCalled();
     expect(contractVersionFindUnique).not.toHaveBeenCalled();
     expect(paymentTermsVersionFindUnique).not.toHaveBeenCalled();
+    expect(rawQuery).not.toHaveBeenCalledWith(
+      expect.arrayContaining([expect.stringContaining("jg_read_payment_contract_agreement_detail_v1")]),
+      expect.anything(), expect.anything(), expect.anything()
+    );
+    expect(rawQuery).not.toHaveBeenCalledWith(
+      expect.arrayContaining([expect.stringContaining("jg_read_payment_detail_activity_v1")]),
+      expect.anything(), expect.anything(), expect.anything()
+    );
   });
 
   it("hides a stale approval assignment after the payment leaves approval pending", async () => {
@@ -1901,7 +1997,7 @@ describe("PaymentReadService", () => {
     const projectVisibility = {
       effectiveRoleKeys: jest.fn().mockResolvedValue([])
     };
-    const service = new PaymentReadService(prisma as never, projectVisibility as never);
+    const service = new PaymentReadService(withSignedAgreementLookup(prisma), projectVisibility as never);
 
     await expect(
       service.getDetail("FK-2026-017", [], "assigned-1")
@@ -1935,7 +2031,7 @@ describe("PaymentReadService", () => {
         ])
       }
     };
-    const service = new PaymentReadService(prisma as never, {} as never) as unknown as {
+    const service = new PaymentReadService(withSignedAgreementLookup(prisma), {} as never) as unknown as {
       canReviewCurrentApproval(
         businessType: string,
         businessId: string,
@@ -1989,9 +2085,9 @@ describe("PaymentReadService", () => {
           updatedAt: new Date("2026-07-31T01:01:00.000Z")
         }])
       },
-      approvalDelegation: { findMany: jest.fn() }
+      approvalDelegation: { groupBy: jest.fn() }
     };
-    const service = new PaymentReadService(prisma as never, {} as never) as unknown as {
+    const service = new PaymentReadService(withSignedAgreementLookup(prisma), {} as never) as unknown as {
       canReviewCurrentApproval(
         businessType: string,
         businessId: string,
@@ -2013,7 +2109,7 @@ describe("PaymentReadService", () => {
     )).resolves.toMatchObject({
       access: { canAct: true, canReview: true }
     });
-    expect(prisma.approvalDelegation.findMany).not.toHaveBeenCalled();
+    expect(prisma.approvalDelegation.groupBy).not.toHaveBeenCalled();
   });
 
   it("does not enable standing delegation review when the delegator is inactive", async () => {
@@ -2028,7 +2124,7 @@ describe("PaymentReadService", () => {
         }])
       },
       approvalDelegation: {
-        findMany: jest.fn().mockResolvedValue([{ fromUserId: "finance-director-1" }])
+        groupBy: jest.fn().mockResolvedValue([{ fromUserId: "finance-director-1" }])
       },
       user: {
         findMany: jest.fn().mockResolvedValue([
@@ -2042,7 +2138,7 @@ describe("PaymentReadService", () => {
         userId === "finance-director-1" ? ["finance_director"] : []
       )
     };
-    const service = new PaymentReadService(prisma as never, projectVisibility as never) as unknown as {
+    const service = new PaymentReadService(withSignedAgreementLookup(prisma), projectVisibility as never) as unknown as {
       canReviewCurrentApproval(
         businessType: string,
         businessId: string,
@@ -2078,7 +2174,7 @@ describe("PaymentReadService", () => {
         }])
       }
     };
-    const service = new PaymentReadService(prisma as never) as unknown as {
+    const service = new PaymentReadService(withSignedAgreementLookup(prisma)) as unknown as {
       canReviewCurrentApproval(
         businessType: string,
         businessId: string,
@@ -2191,7 +2287,7 @@ describe("PaymentReadService", () => {
         findMany: jest.fn().mockResolvedValue([])
       }
     };
-    const service = new PaymentReadService(prisma as never);
+    const service = new PaymentReadService(withSignedAgreementLookup(prisma));
 
     const detail = await service.getDetail("FK-2026-014");
 
@@ -2265,7 +2361,7 @@ describe("PaymentReadService", () => {
   ])(
     "rejects contract payment application preview $name",
     async ({ prisma, contractVersionId, rawAsOf, message }) => {
-      const service = new PaymentReadService(prisma as never);
+      const service = new PaymentReadService(withSignedAgreementLookup(prisma));
 
       await expect(service.getContractApplication(contractVersionId, rawAsOf)).rejects.toThrow(
         message
@@ -2421,7 +2517,7 @@ describe("PaymentReadService", () => {
         ])
       }
     };
-    const service = new PaymentReadService(prisma as never);
+    const service = new PaymentReadService(withSignedAgreementLookup(prisma));
 
     const preview = await service.getContractApplication(
       "contract-version-1",
@@ -2519,6 +2615,39 @@ describe("PaymentReadService", () => {
     expect(preview.formula).toContain("当前生效合同金额 - 合同已占用金额");
   });
 
+  it("previews an effective V2 text-only agreement with genuinely unknown remaining capacity", async () => {
+    const prisma = {
+      contractVersion: { findUnique: jest.fn().mockResolvedValue({
+        id: "version", contractId: "contract", versionNo: 1, status: "effective",
+        numericProtocolVersion: 2, amountCents: 0n, amountLimitType: "unlimited",
+        settlementMode: "direct_payment", settlementModeConfirmedAt: new Date("2026-06-01"),
+        settlementModeConfirmedByUserId: "director", effectiveAt: new Date("2026-06-04")
+      }) },
+      contract: { findUnique: jest.fn().mockResolvedValue({
+        id: "contract", code: "HT-1", name: "巡检服务合同", projectId: "project", contractTypeKey: "other"
+      }) },
+      project: { findUnique: jest.fn().mockResolvedValue({ name: "示例项目" }) },
+      settlement: { findMany: jest.fn().mockResolvedValue([]) },
+      paymentTermsVersion: { findMany: jest.fn().mockResolvedValue([{ id: "terms", originalText: "按实际服务经双方确认后付款" }]) },
+      paymentTermsStage: { findFirst: jest.fn().mockResolvedValue(null), findMany: jest.fn().mockResolvedValue([]) },
+      settlementArchiveFile: { findMany: jest.fn().mockResolvedValue([]) },
+      paymentRequest: { findMany: jest.fn().mockResolvedValue([{
+        settlementId: null, sourceType: "contract_due", paymentTermsVersionId: "terms", status: "partially_paid",
+        requestedAmountCents: 40_000n, approvedAmountCents: 35_000n, paidAmountCents: 20_000n, paymentTermsStageId: null
+      }]) },
+      projectProxyPayment: { findMany: jest.fn().mockResolvedValue([]) },
+      $queryRaw: jest.fn().mockResolvedValue([{ agreementText: "按月核对服务记录后付款" }])
+    };
+    const service = new PaymentReadService(withSignedAgreementLookup(prisma));
+    await expect(service.getContractApplication("version", "2026-07-20")).resolves.toMatchObject({
+      paymentMode: "text_agreement", availableStages: [],
+      textAgreement: { paymentTermsVersionId: "terms", agreementText: "按月核对服务记录后付款", fingerprint: expect.stringMatching(/^[a-f0-9]{64}$/u) },
+      genericContractCapacity: { contractAmountCents: null, contractRemainingCents: null },
+      capacity: { maxRequestableCents: null, duePayableCents: null, actualPaidCents: "20000" },
+      directPaymentSummary: { cumulativeApprovedCents: "35000", cumulativePaidCents: "20000" }
+    });
+  });
+
   it("returns unlimited direct-payment cumulative risk without inventing a contract cap", async () => {
     const prisma = {
       contractVersion: {
@@ -2604,7 +2733,7 @@ describe("PaymentReadService", () => {
       },
       projectProxyPayment: { findMany: jest.fn().mockResolvedValue([]) }
     };
-    const service = new PaymentReadService(prisma as never);
+    const service = new PaymentReadService(withSignedAgreementLookup(prisma));
 
     const preview = await service.getContractApplication(
       "contract-version-unlimited",
@@ -2763,7 +2892,7 @@ describe("PaymentReadService", () => {
         findMany: jest.fn().mockResolvedValue([])
       }
     };
-    const service = new PaymentReadService(prisma as never);
+    const service = new PaymentReadService(withSignedAgreementLookup(prisma));
 
     const preview = await service.getContractApplication(
       "contract-version-1",
@@ -2921,7 +3050,7 @@ describe("PaymentReadService", () => {
         findMany: jest.fn().mockResolvedValue([])
       }
     };
-    const service = new PaymentReadService(prisma as never);
+    const service = new PaymentReadService(withSignedAgreementLookup(prisma));
 
     const preview = await service.getContractApplication(
       "contract-version-1",
@@ -2971,10 +3100,10 @@ describe("PaymentReadService", () => {
           updatedAt: new Date("2026-07-31T01:01:00.000Z")
         }])
       },
-      approvalDelegation: { findMany: jest.fn().mockResolvedValue([]) },
+      approvalDelegation: { groupBy: jest.fn().mockResolvedValue([]) },
       user: { findMany: jest.fn().mockResolvedValue([]) }
     };
-    const service = new PaymentReadService(prisma as never, {
+    const service = new PaymentReadService(withSignedAgreementLookup(prisma), {
       effectiveRoleKeys: jest.fn().mockResolvedValue([])
     } as never) as unknown as {
       canReviewCurrentApproval(
@@ -3000,4 +3129,85 @@ describe("PaymentReadService", () => {
     expect(review.access.canAct).toBe(expected);
     expect(review.access.canReview).toBe(expected);
   });
+
+  it("exports only rows already filtered by the visibility read model", async () => {
+    // ExcelJS 写缓冲区依赖真实定时器。
+    jest.useRealTimers();
+    const audit = { record: jest.fn().mockResolvedValue(undefined) };
+    const service = new PaymentReadService({} as never, {} as never, undefined, audit as never);
+    const visibleRow = {
+      id: "payment-1",
+      paymentNo: "FK-001",
+      contractRelationshipLabel: "下游合同",
+      contractNo: "HT-001 · 幕墙分包合同",
+      settlementNo: "合同累计结算",
+      project: "总部综合楼",
+      projectId: "project-1",
+      contractId: "contract-1",
+      signingParty: "四川建工智管建筑工程有限公司",
+      counterparty: "=HYPERLINK(\"http://evil.example\")",
+      requestedAmount: "¥1,000.00",
+      approvalStatus: "已批待付",
+      approvalTone: "warning",
+      paymentStatus: "未付款",
+      paymentTone: "default",
+      currentNode: "待付款",
+      ownerDepartment: "财务部",
+      pendingOwner: "财务部",
+      stalledFor: "1天",
+      returnReason: "-",
+      nextAction: "登记实付",
+      lifecycleKind: "formal_record",
+      ledgerView: "formal_ledger",
+      lifecycleUpdatedAt: "2026-11-20T01:00:00.000Z",
+      requestedAmountCents: "100000",
+      paidAmountCents: "0",
+      availableActions: [],
+      blockedReasons: [],
+      updatedAt: "2026/11/20 09:00:00"
+    };
+    jest.spyOn(service, "listRecent").mockResolvedValue({
+      rows: [visibleRow],
+      summary: { total: 1, pendingApproval: 0, orSign: 0, pendingPayment: 1, paid: 0 }
+    } as never);
+
+    const result = await service.exportLedger(["project-1"], "finance-user", {
+      keyword: "幕墙",
+      columns: "paymentNo,requestedAmountYuan"
+    });
+
+    // 导出只消费 listRecent 返回的可见行，不自行扩大范围。
+    expect(service.listRecent).toHaveBeenCalledWith(undefined, ["project-1"], {
+      all: true,
+      actorUserId: "finance-user"
+    });
+    expect(audit.record).toHaveBeenCalledWith(
+      {},
+      expect.objectContaining({
+        action: "payment.ledger.export",
+        metadata: expect.objectContaining({
+          exportedRows: 1,
+          scope: "all_filtered_visible_payment_records",
+          filters: expect.objectContaining({ keyword: "幕墙" })
+        })
+      })
+    );
+
+    const workbook = new ExcelJS.Workbook();
+    await workbook.xlsx.load(result.buffer as unknown as ExcelJS.Buffer);
+    const sheet = workbook.worksheets[0];
+    const headers = (sheet.getRow(1).values as unknown[]).slice(1) as string[];
+    expect(headers).toEqual([
+      "付款编号",
+      "项目",
+      "签约方（甲方）",
+      "相对方（乙方）",
+      "申请金额（元）"
+    ]);
+    expect(sheet.getRow(2).getCell(1).value).toBe("FK-001");
+    expect(sheet.getRow(2).getCell(4).value).toBe(
+      "'=HYPERLINK(\"http://evil.example\")"
+    );
+    expect(sheet.getRow(2).getCell(5).value).toBe(1000);
+  }, 20_000);
 });

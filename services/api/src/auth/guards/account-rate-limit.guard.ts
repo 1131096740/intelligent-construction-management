@@ -14,7 +14,7 @@ export class AccountRateLimitGuard implements CanActivate {
     await this.limits.take([
       { scope: "account-ip", value: accountClientAddress(req), seconds: 900, max: 300 },
       { scope: registration ? "registration-phone" : "login-phone", value: phone, seconds: 900, max: registration ? 5 : 30 }
-    ]);
+    ], req);
     return true;
   }
 }

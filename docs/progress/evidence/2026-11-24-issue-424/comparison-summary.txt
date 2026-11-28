@@ -1,0 +1,75 @@
+# Issue #424 drill — comparison summary (sanitized)
+
+Date: 2026-11-24 (Asia/Shanghai)
+Legacy baseline: 261 migrations, max `20261111140000_contract_direct_upward_retention_acl_source_v3`
+Forward target attempted: 328 migrations
+Reached: 277 finished migrations (51 unapplied); blocked at `20261118223000_contract_normal_generated_archive_assignment_lock`
+
+## Data scale (before migration)
+
+- public base tables: 331
+- total rows: 35,342 (35,081 business/fixture rows + 261 `_prisma_migrations` rows)
+- AuditLog: 20,000
+- OperatingTakeoverRow: 12,000
+- FileObject: 500
+- ApprovalActionLog: 400 / ApprovalInstance: 200
+- PaymentExecution: 360 / SettlementLine: 360 / PaymentRequest: 240
+- ContractVersion: 107 / Contract: 80 / Settlement: 120 / SpotProcurement: 80
+- CompanyEntity: 4 / Project: 8
+
+## Canonical metrics
+
+| metric | pre (261) | post (277) | restore(pre) migrated | restore(post) | rollback(pre backup) |
+| --- | --- | --- | --- | --- | --- |
+| table count | 331 | 349 (+18 new) | 349 | 349 | 331 |
+| legacy table row-count changes | — | 0 / 330 | 0 | 0 | 0 |
+| `_prisma_migrations` rows | 261 | 279 (277 finished + 2 rolled-back attempts) | 279 | 279 | 261 |
+| content-hash mismatches (21 key tables) | — | 0 | 0 | 0 | 0 |
+| money-sum mismatches (19 lines) | — | 0 | 0 | 0 | 0 |
+| integrity mismatches (9 lines) | — | 0 | 0 | 0 | 0 |
+| AuditLog count / hash | 20000 / c66d0bcd5169bd20c95b4500d4ae85fe | unchanged | unchanged | unchanged | unchanged |
+
+Money totals unchanged (integer cents, no invented precision):
+`ContractVersion.amountCents=1647691300`, `Settlement.payable=438911627`,
+`Settlement.paid=306616050`, `PaymentExecution=306616050`,
+`OperatingTakeoverRow.amountCents=1993067037`.
+
+Lineage: 0 cross-contract base/supersedes references; 0 orphan settlement→version,
+0 orphan request→settlement, 0 orphan execution→request, 0 paid/line-sum mismatches.
+
+## Backup / restore
+
+| dump | bytes | sha256 | restore | metrics diff |
+| --- | --- | --- | --- | --- |
+| pre (261) | 4,712,564 | 84da51c2009643c19f281dad2c071052a7df5e383967c31fc38cbfb88263078a | 2.21s | identical |
+| post (277) | 4,972,365 | 2838505e287db317fd8ffa1c96e1a44ff73934474992c245259dbb9d574d3156 | 2.15s | identical |
+| post-cutover (277 + increment) | 4,972,886 | 2654be5b03ace8ccdff03079115de0c24842a0144ae11bedd3b8e177392ded96 | 2.05s | identical |
+
+`metrics-pre.txt` and `metrics-rollback-pre.txt` are byte-identical
+(sha256 `052370aad4d45f32d46a14df54f92b242a057a6b81755b58ee745f04bb421877`).
+`metrics-post.txt` and `metrics-restore-post.txt` are byte-identical
+(sha256 `f8ca85887902a82f95ac9d9f5a80dc65a9711f17d8c5a3e3509f0b817ca3273a`).
+`metrics-postcut-fixed.txt` and `metrics-forwardfix.txt` are byte-identical
+(sha256 `7762f878810c9fbf64d1fe09b9e3f5c60420bfd688a4e8cbfbd8b2523f7b882a`).
+
+## Cutover / rollback
+
+- Freeze: `REVOKE CONNECT ... FROM PUBLIC, <appRole>`; `has_database_privilege=false`;
+  owner session connected; metrics stable; no pending ledger row.
+- Open write + increment: contract 80→81, contract version 107→108,
+  settlement 120→121, RegisteredFundAccount 0→1, AuditLog 20000→20002.
+  New version uses `numericProtocolVersion=2`, `amountYuan=1234.5678`.
+- Pre-write rollback: restore pre dump → identical to baseline; 261 ledger;
+  increment ids absent; legacy payment query returns 360 rows / 306616050.
+- Post-write rollback boundary: restoring pre dump would drop the increment
+  (AuditLog 20002→20000, Contract 81→80); old backup must not be used after writes.
+- Forward-fix: restore pre dump → migrate 261→277 → replay `increment.sql` →
+  byte-identical metrics to the post-cutover database.
+
+## Blocker
+
+`20261118223000_contract_normal_generated_archive_assignment_lock` raises
+`NORMAL_ARCHIVE_ASSIGNMENT_INSTALL_SCOPE` because
+`jg_contract_direct_upward_closure_v2` has no row. That singleton row is written
+only by the production archive installer chain (`.github/task12-install-295/contract-finance`),
+not by any migration in this repository. No row was fabricated.

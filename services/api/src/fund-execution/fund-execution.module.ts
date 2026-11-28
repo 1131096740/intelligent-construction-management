@@ -1,3 +1,4 @@
+import { ApprovalModule } from "../approval/approval.module";
 import { Module } from "@nestjs/common";
 
 import { AuditModule } from "../audit/audit.module";
@@ -15,6 +16,7 @@ import { VerifiedBankTransactionObservationService } from "./verified-bank-trans
 
 @Module({
   imports: [
+    ApprovalModule,
     DatabaseModule,
     AuthModule,
     AuditModule,

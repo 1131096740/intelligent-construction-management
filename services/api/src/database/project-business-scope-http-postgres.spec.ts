@@ -1,11 +1,12 @@
 import "reflect-metadata";
 import { type INestApplication } from "@nestjs/common";
 import { Test } from "@nestjs/testing";
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { hash } from "bcryptjs";
 import { AppModule } from "../app.module";
 import { apiJsonReplacer } from "../api-json-replacer";
 import { createApiValidationPipe } from "../validation/api-validation";
+import { PrismaClient } from "@prisma/client";
 import { PrismaService } from "./prisma.service";
 import { ContractApprovalRouteService } from "../contract/contract-approval-route.service";
 import { SettlementService } from "../settlement/settlement.service";
@@ -18,6 +19,7 @@ type Actor = { id: string; token: string };
 describePg("多项目业务范围公开 HTTP / PostgreSQL 16", () => {
   jest.setTimeout(60_000);
   let app: INestApplication;
+  let historicalFixtureOwner: PrismaClient;
   let base: string;
   let first: string;
   let second: string;
@@ -60,6 +62,25 @@ describePg("多项目业务范围公开 HTTP / PostgreSQL 16", () => {
     return { id: user.id, token: session.tokens.accessToken as string };
   }
 
+  async function seedHistoricalProcurement(projectId: string, actor: Actor, reason: string) {
+    const db = app.get(PrismaService);
+    const applicant = await db.user.findUniqueOrThrow({ where: { id: actor.id }, select: { name: true } });
+    const requestKey = randomUUID();
+    return db.generalProcurement.create({ data: {
+      code: `HISTORICAL-SCOPE-${requestKey}`, requestKey,
+      creationFingerprint: createHash("sha256").update(JSON.stringify([actor.id, projectId, company, reason])).digest("hex"),
+      requestProtocolVersion: 1, scope: "project", status: "draft", revision: 1,
+      projectId, companyEntityId: company, companyNameSnapshot: "合成我方公司",
+      applicantUserId: actor.id, applicantNameSnapshot: applicant.name,
+      category: "office_supplies", reason, requestedAmountCents: 10000n
+    } });
+  }
+
+  function newProcurement(projectId: string, name: string) {
+    return { requestKey: randomUUID(), requestProtocolVersion: 2, scope: "project", projectId, companyEntityId: company,
+      category: "office_supplies", estimatedAmount: "100.0000", lines: [{ id: randomUUID(), name }] };
+  }
+
   async function upload(route: string, actor: Actor) {
     const form = new FormData();
     form.append("file", new Blob([Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Y9Zl1sAAAAASUVORK5CYII=", "base64")], { type: "image/png" }), "合成依据.png");
@@ -72,7 +93,13 @@ describePg("多项目业务范围公开 HTTP / PostgreSQL 16", () => {
 
   beforeAll(async () => {
     const url = new URL(process.env.DATABASE_URL ?? "");
-    if (process.env.NODE_ENV === "production" || url.hostname !== "127.0.0.1" || url.pathname !== "/project_business_scope") throw new Error("仅允许本机一次性项目范围测试数据库");
+    const ownerUrl = new URL(process.env.PROJECT_BUSINESS_SCOPE_FIXTURE_DATABASE_URL ?? "");
+    if (process.env.NODE_ENV === "production" || url.protocol !== "postgresql:" || url.hostname !== "127.0.0.1" ||
+        !url.port || url.pathname !== "/project_business_scope" || url.username !== "project_business_scope_runtime" ||
+        ownerUrl.protocol !== url.protocol || ownerUrl.host !== url.host || ownerUrl.pathname !== url.pathname ||
+        ownerUrl.username !== "jiangkong" || ownerUrl.password !== url.password ||
+        ownerUrl.search || ownerUrl.hash || url.search || url.hash) throw new Error("仅允许同一本机一次性项目范围测试数据库与历史夹具所有者");
+    historicalFixtureOwner = new PrismaClient({ datasources: { db: { url: ownerUrl.toString() } } });
     const module = await Test.createTestingModule({ imports: [AppModule] }).compile();
     app = module.createNestApplication({ logger: false });
     app.getHttpAdapter().getInstance().set("json replacer", apiJsonReplacer);
@@ -108,14 +135,14 @@ describePg("多项目业务范围公开 HTTP / PostgreSQL 16", () => {
       expect((await fetch(`${base}/me/signature/canvas`, { method: "POST", headers: { authorization: `Bearer ${reviewer.token}` }, body: form })).status).toBe(201);
     }
   });
-  afterAll(async () => { await app?.close(); });
+  afterAll(async () => { await Promise.all([app?.close(), historicalFixtureOwner?.$disconnect()]); });
 
   const ids = (body: Array<{ id: string }>) => body.map((row) => row.id).sort();
 
   async function advanceInput() {
     const db = app.get(PrismaService);
     const contract = await db.contract.create({ data: { code: randomUUID(), name: "合成乙项目预付款合同", counterparty: "合成供应商", projectId: second, contractTypeKey: "material_purchase", ownerUserId: companyContract.id } });
-    const version = await db.contractVersion.create({ data: { contractId: contract.id, versionNo: 1, changeType: "original", status: "effective", effectiveAt: new Date("2026-01-01"), companyEntityIdSnapshot: company, companyEntityNameSnapshot: "合成我方公司", companyEntityCreditCodeSnapshot: "91530000SYNTHETIC01", amountCents: 10000n, draftData: {}, templateSnapshot: {}, clauseSnapshot: [] } });
+    const version = await historicalFixtureOwner.contractVersion.create({ data: { contractId: contract.id, versionNo: 1, changeType: "original", status: "effective", effectiveAt: new Date("2026-01-01"), companyEntityIdSnapshot: company, companyEntityNameSnapshot: "合成我方公司", companyEntityCreditCodeSnapshot: "91530000SYNTHETIC01", amountCents: 10000n, draftData: {}, templateSnapshot: {}, clauseSnapshot: [] } });
     const terms = await db.paymentTermsVersion.create({ data: { contractId: contract.id, contractVersionId: version.id, versionNo: 1, status: "effective", originalText: "合成预付款条款" } });
     await db.paymentTermsStage.create({ data: { paymentTermsVersionId: terms.id, name: "合成预付款", stageType: "advance", basis: "contract_amount", ratioBps: 10000, triggerAnchor: "contract_effective", triggerEvent: "contract_effective", dueDays: 0, originalText: "合成预付款" } });
     return { sourceType: "contract_advance", contractVersionId: version.id, paymentTermsVersionId: terms.id, code: randomUUID(), requestedAmountCents: "1000" };
@@ -154,9 +181,9 @@ describePg("多项目业务范围公开 HTTP / PostgreSQL 16", () => {
     try {
       expect(await request("/payments", companyContract, input)).toMatchObject({ status: 400, body: { message: expect.stringContaining("项目经理") } });
       expect(await db.paymentRequest.count({ where: { code: input.code } })).toBe(0);
-      const claim = await request("/expense-claims", materialDirector, { claimType: "loan", companyEntityId: company, projectId: second, applicantUserId: materialDirector.id, reason: "合成缺经理费用", requestedAmountCents: "100", loanExpectedClearanceOn: "2026-12-31" });
+      const claim = await request("/expense-claims", materialDirector, { claimType: "incidental_expense", incidentalExpenseCategory: "temporary_service", payeeName: "合成收款方", companyEntityId: company, projectId: second, applicantUserId: materialDirector.id, reason: "合成缺经理费用", requestedAmountCents: "100" });
       expectStatus(claim, 201);
-      expect(await request(`/expense-claims/${claim.body.id}/submission`, materialDirector, {})).toMatchObject({ status: 400, body: { message: expect.stringContaining("项目经理") } });
+      expect(await request(`/expense-claims/${claim.body.id}/submission`, materialDirector, {})).toMatchObject({ status: 201, body: { status: "approval_pending" } });
       const position = await db.position.findUniqueOrThrow({ where: { key: "project_manager" } });
       const selfManager = await db.userPosition.create({ data: { userId: companyContract.id, positionId: position.id, projectId: second } });
       try {
@@ -211,10 +238,10 @@ describePg("多项目业务范围公开 HTTP / PostgreSQL 16", () => {
     expect((await request(`/projects/${second}/operating-funds-overview`, companyContract)).status).toBe(403);
   });
 
-  it("零星采购仅同项目物资员发起，物资主管只审批", async () => {
+  it("零星采购物资主管可选所有启用项目，普通物资员限定任职项目", async () => {
     const global = await request("/spot-procurements/create-project-options", materialDirector);
     expect(global.status).toBe(200);
-    expect(ids(global.body)).toEqual([]);
+    expect(ids(global.body)).toEqual([first, second].sort());
     expect(ids((await request("/spot-procurements/create-project-options", materialStaff)).body)).toEqual([first, second].sort());
     const local = await person("material_staff", [first]);
     expect(ids((await request("/spot-procurements/create-project-options", local)).body)).toEqual([first]);
@@ -226,8 +253,185 @@ describePg("多项目业务范围公开 HTTP / PostgreSQL 16", () => {
     const options = await request("/expense-claims/create-options", materialDirector);
     expect(options.status).toBe(200);
     expect(options.body.selfProjectIds).toEqual(expect.arrayContaining([first, second]));
-    const input = { claimType: "loan", companyEntityId: company, projectId: second,
-      reason: "合成乙项目备用金", requestedAmountCents: "12300", loanExpectedClearanceOn: "2026-12-31" };
+    const input = { claimType: "incidental_expense", incidentalExpenseCategory: "temporary_service", payeeName: "合成收款方", companyEntityId: company, projectId: second,
+      reason: "合成乙项目费用", requestedAmountCents: "12300" };
+    const loanInput = { claimType: "loan", companyEntityId: company, projectId: second, applicantUserId: materialDirector.id,
+      reason: "历史借款受理验收", requestedAmountCents: "12500", loanExpectedClearanceOn: "2026-12-01" };
+    expectStatus(await request("/expense-claims", materialDirector, loanInput), 410);
+    const projectExpensePath = `/projects/${second}/expense-requests`;
+    const projectLoanInput = {
+      code: `RETIRED-${randomUUID()}`, expenseType: "loan_reserve", expenseSubtype: "employee_loan",
+      paymentSubject: "项目使用", reason: loanInput.reason, requestedAmountCents: loanInput.requestedAmountCents, paymentMethod: "cash"
+    };
+    expectStatus(await request(projectExpensePath, materialDirector, projectLoanInput), 403);
+    expectStatus(await request(projectExpensePath, secondManager, projectLoanInput), 410);
+    expect(await historicalFixtureOwner.expenseClaim.count({ where: { projectId: second, reason: loanInput.reason } })).toBe(0);
+
+    const projectLoanData = {
+      ...projectLoanInput, projectId: second, requestedAmountCents: 12500n, status: "approval_pending",
+      applicantUserId: materialDirector.id, handlerUserId: materialDirector.id
+    };
+    const projectLoan = await historicalFixtureOwner.projectExpenseRequest.create({ data: {
+      ...projectLoanData, code: `HISTORICAL-PROJECT-LOAN-${randomUUID()}`
+    } });
+    const projectLoanNodes = [{ name: "项目经理", mode: "any", roleKeys: ["project_manager"],
+      candidateUserIds: [secondManager.id], candidateUserIdsByRole: { project_manager: [secondManager.id] } }];
+    const projectLoanRound = await historicalFixtureOwner.approvalInstance.create({ data: {
+      businessType: "project_expense_request", businessId: projectLoan.id, flowType: "project_expense.approve",
+      status: "in_progress", applicantUserId: materialDirector.id, currentNodeIndex: 0, frozenNodes: projectLoanNodes
+    } });
+    const projectLoanPath = `${projectExpensePath}/${projectLoan.id}`;
+    const reviewCoordinates = {
+      expectedExpenseUpdatedAt: projectLoan.updatedAt.toISOString(), expectedApprovalInstanceId: projectLoanRound.id,
+      expectedNodeIndex: 0, expectedApprovalUpdatedAt: projectLoanRound.updatedAt.toISOString()
+    };
+    expect(await request(projectLoanPath + "/approval-detail", secondManager)).toMatchObject({
+      status: 200, body: { id: projectLoan.id, status: "approval_pending", expenseSubtypeLabel: "员工借款",
+        requestedAmountCents: "12500", reviewAction: { enabled: false }, reviewApprovalContext: null }
+    });
+    expectStatus(await request(projectLoanPath + "/approval", firstManager, { decision: "approve", ...reviewCoordinates }), 403);
+    expectStatus(await request(projectLoanPath + "/approval", secondManager, { decision: "approve", ...reviewCoordinates }), 410);
+    const loanProgressPath = `/approval-progress/${projectLoanRound.id}`;
+    const loanProgress = await request(loanProgressPath, secondManager);
+    expect(loanProgress).toMatchObject({ status: 200, body: { canHandle: false, canRemind: false, pendingRecipients: [] } });
+    expectStatus(await request(loanProgressPath + "/remind", materialDirector, {
+      requestId: randomUUID(), reminderToken: loanProgress.body.reminderToken
+    }), 410);
+    expect(await historicalFixtureOwner.projectExpenseRequest.findUnique({ where: { id: projectLoan.id } })).toEqual(projectLoan);
+    expect(await historicalFixtureOwner.approvalInstance.findUnique({ where: { id: projectLoanRound.id } })).toEqual(projectLoanRound);
+    expect(await historicalFixtureOwner.approvalActionLog.count({ where: { approvalInstanceId: projectLoanRound.id } })).toBe(0);
+
+    const payableProjectLoan = await historicalFixtureOwner.projectExpenseRequest.create({ data: {
+      ...projectLoanData, code: `HISTORICAL-PROJECT-LOAN-FUND-${randomUUID()}`, status: "approved_pending_payment", approvedAmountCents: 12500n
+    } });
+    const projectCashier = await person("finance_staff", [second]);
+    const executionPath = `${projectExpensePath}/${payableProjectLoan.id}/executions`;
+    expectStatus(await request(executionPath, projectCashier, {
+      amountCents: "12500", paidAt: "2026-11-01", voucherFileId: "unused-historical-voucher",
+      idempotencyKey: randomUUID(), expectedExpenseUpdatedAt: payableProjectLoan.updatedAt.toISOString(),
+      confirmationPassword: password
+    }), 410);
+    expect(await historicalFixtureOwner.projectExpenseRequest.findUnique({ where: { id: payableProjectLoan.id } })).toEqual(payableProjectLoan);
+    expect(await historicalFixtureOwner.projectExpenseExecution.count({ where: { projectExpenseRequestId: payableProjectLoan.id } })).toBe(0);
+    expect(await historicalFixtureOwner.auditLog.count({ where: {
+      businessType: "project_expense_request", businessId: { in: [projectLoan.id, payableProjectLoan.id] }
+    } })).toBe(0);
+
+    for (const expenseSubtype of ["owner_loan", "project_reserve"]) {
+      const adjacent = await historicalFixtureOwner.projectExpenseRequest.create({ data: {
+        ...projectLoanData, code: `HISTORICAL-ADJACENT-${randomUUID()}`, expenseSubtype
+      } });
+      await historicalFixtureOwner.approvalInstance.create({ data: {
+        businessType: "project_expense_request", businessId: adjacent.id, flowType: "project_expense.approve",
+        status: "in_progress", applicantUserId: materialDirector.id, currentNodeIndex: 0, frozenNodes: projectLoanNodes
+      } });
+      const adjacentPath = `${projectExpensePath}/${adjacent.id}`;
+      const detail = await request(adjacentPath + "/approval-detail", secondManager);
+      expect(detail).toMatchObject({ status: 200, body: { reviewAction: { enabled: true } } });
+      expectStatus(await request(adjacentPath + "/approval", secondManager, {
+        decision: "approve", ...detail.body.reviewApprovalContext
+      }), 201);
+      expect(await historicalFixtureOwner.projectExpenseRequest.findUnique({ where: { id: adjacent.id } }))
+        .toMatchObject({ status: "approved_pending_payment", approvedAmountCents: 12500n });
+    }
+
+    const historical = await historicalFixtureOwner.expenseClaim.create({ data: {
+      code: `HISTORICAL-LOAN-${randomUUID()}`, claimType: "loan", status: "draft", companyEntityId: company,
+      companyEntityNameSnapshot: "合成我方公司", projectId: second, applicantUserId: materialDirector.id,
+      applicantNameSnapshot: "合成物资主管", handledByUserId: materialDirector.id, handledByNameSnapshot: "合成物资主管",
+      reason: loanInput.reason, requestedAmountCents: 12500n, submittedAt: new Date("2026-11-01T00:00:00Z"),
+      loanExpectedClearanceAt: new Date("2026-12-01T00:00:00Z")
+    } });
+    const path = `/expense-claims/${historical.id}`;
+    expect(await request(path, materialDirector)).toMatchObject({ status: 200, body: {
+      id: historical.id, claimType: "loan", status: "draft", canDeleteDraft: false
+    } });
+    expectStatus(await request(path + "/submission", materialDirector, {}), 410);
+    expect(await historicalFixtureOwner.expenseClaim.findUniqueOrThrow({ where: { id: historical.id } })).toEqual(historical);
+    expect(await historicalFixtureOwner.approvalInstance.count({ where: { businessId: historical.id } })).toBe(0);
+
+    const frozenNodes = [{ name: "综合部主管", mode: "any", roleKeys: ["comprehensive_director"],
+      candidateUserIds: [director.id], candidateUserIdsByRole: { comprehensive_director: [director.id] } }];
+    const round = await historicalFixtureOwner.approvalInstance.create({ data: {
+      businessType: "expense_claim", businessId: historical.id, flowType: "expense_claim.approve", status: "in_progress",
+      applicantUserId: materialDirector.id, currentNodeIndex: 0, frozenNodes
+    } });
+    const pending = await historicalFixtureOwner.expenseClaim.update({ where: { id: historical.id }, data: {
+      status: "approval_pending", approvalInstanceId: round.id
+    } });
+    expect(await request(path, director)).toMatchObject({ status: 200, body: { approval: { canReview: false } } });
+    expectStatus(await request(path + "/approval", director, { decision: "approve" }), 410);
+    expectStatus(await request(path + "/approval", director, { decision: "reject", comment: "保留历史" }), 410);
+    expectStatus(await request(`/other-project-payments/${historical.id}/approval`, director, { decision: "approve" }), 404);
+    const progressPath = "/approval-progress/" + round.id;
+    const progress = await request(progressPath, director);
+    expect(progress).toMatchObject({ status: 200, body: { canHandle: false, canRemind: false, pendingRecipients: [] } });
+    expectStatus(await request(progressPath + "/remind", materialDirector, {
+      requestId: randomUUID(), reminderToken: progress.body.reminderToken
+    }), 410);
+    expect(await historicalFixtureOwner.expenseClaim.findUnique({ where: { id: historical.id } })).toEqual(pending);
+    expect(await historicalFixtureOwner.approvalInstance.findUnique({ where: { id: round.id } })).toEqual(round);
+    expect(await historicalFixtureOwner.approvalActionLog.count({ where: { approvalInstanceId: round.id } })).toBe(0);
+
+    const fundedLoan = await historicalFixtureOwner.expenseClaim.create({ data: {
+      code: `HISTORICAL-CASH-${randomUUID()}`, claimType: "loan", status: "disbursed", companyEntityId: company,
+      companyEntityNameSnapshot: "合成我方公司", projectId: second, applicantUserId: materialDirector.id,
+      applicantNameSnapshot: "合成物资主管", handledByUserId: materialDirector.id, handledByNameSnapshot: "合成物资主管",
+      reason: "保留历史资金", requestedAmountCents: 12500n, fundedAmountCents: 12500n, approvedAt: historical.submittedAt
+    } });
+    const approvedRound = await historicalFixtureOwner.approvalInstance.create({ data: {
+      businessType: "expense_claim", businessId: fundedLoan.id, flowType: "expense_claim.approve", status: "approved",
+      applicantUserId: materialDirector.id, currentNodeIndex: 1, frozenNodes
+    } });
+    const archivePath = "/approval-forms/expense_claim/" + fundedLoan.id;
+    expect(await request(archivePath + "/capability", materialDirector)).toMatchObject({ status: 200, body: { available: false } });
+    expectStatus(await request(archivePath + "/download", materialDirector, {
+      confirmationPassword: password, downloadReason: "核验历史缺档借款"
+    }), 410);
+    expect(await historicalFixtureOwner.approvalFormGenerationClaim.count({ where: { approvalInstanceId: approvedRound.id } })).toBe(0);
+    expect(await historicalFixtureOwner.pdfDocument.count({ where: { approvalInstanceId: approvedRound.id } })).toBe(0);
+    const cashAt = new Date("2026-11-01T00:00:00Z");
+    const account = await historicalFixtureOwner.employeeProjectLoanAccount.create({ data: {
+      userId: materialDirector.id, projectId: second, companyEntityId: company, scopeKey: `project:${second}`,
+      fundedAmountCents: 12500n, balanceAmountCents: 12500n
+    } });
+    const cashVoucher = new FormData();
+    cashVoucher.append("file", new Blob([Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Y9Zl1sAAAAASUVORK5CYII=", "base64")], { type: "image/png" }), "历史放款凭证.png");
+    const cashUpload = await fetch(base + "/files", { method: "POST", body: cashVoucher, headers: { authorization: `Bearer ${financeDirector.token}` } });
+    expect(cashUpload.status).toBe(201);
+    const { id: cashVoucherId } = await cashUpload.json() as { id: string };
+    const ledgerEntry = await historicalFixtureOwner.employeeProjectLoanEntry.create({ data: {
+      loanAccountId: account.id, sequenceNo: 1n, entryType: "disbursement", amountCents: 12500n, balanceDeltaCents: 12500n,
+      sourceExpenseClaimId: fundedLoan.id, occurredAt: cashAt, createdByUserId: financeDirector.id, paymentMethod: "历史转账", voucherFileId: cashVoucherId
+    } });
+    const repayment = await historicalFixtureOwner.employeeLoanRepayment.create({ data: {
+      loanAccountId: account.id, status: "recorded", recordedByUserId: financeDirector.id, amountCents: 100n,
+      repaidAt: cashAt, paymentMethod: "历史现金"
+    } });
+    const cashPath = `/expense-claims/${fundedLoan.id}`;
+    const cashPayload = { amountCents: "100", paymentMethod: "现金", voucherFileId: cashVoucherId, confirmationPassword: password };
+    const cashDay = cashAt.toISOString().slice(0, 10);
+    for (const [suffix, body] of [
+      ["disbursements", { ...cashPayload, paidAt: cashDay }],
+      ["repayments", { ...cashPayload, repaidAt: cashDay }],
+      [`repayments/${repayment.id}/confirmation`, { confirmationPassword: password }],
+      [`repayments/${repayment.id}/reversal`, { confirmationPassword: password, reason: "合成更正" }],
+      ["final-disbursement-pdf", {}],
+      ["disbursement-voucher-file-uploads", {}],
+      ["repayment-voucher-file-uploads", {}]
+    ] as const) {
+      expectStatus(await request(cashPath + "/" + suffix, financeDirector, body), 410);
+    }
+    expect(await request(cashPath, financeDirector)).toMatchObject({ status: 200, body: {
+      fundedAmountCents: "12500", loanAccount: { balanceAmountCents: "12500" },
+      loanDisbursements: [{ id: ledgerEntry.id, paymentMethod: "历史转账", voucherFileId: cashVoucherId }],
+      loanRepayments: [{ id: repayment.id, status: "recorded", paymentMethod: "历史现金" }],
+      attachmentPermissions: { canAppendEvidence: false }
+    } });
+    expect(await historicalFixtureOwner.employeeProjectLoanAccount.findUnique({ where: { id: account.id } })).toEqual(account);
+    expect(await historicalFixtureOwner.employeeLoanRepayment.findMany({ where: { loanAccountId: account.id } })).toEqual([repayment]);
+    expect(await historicalFixtureOwner.employeeProjectLoanEntry.findMany({ where: { loanAccountId: account.id } })).toEqual([ledgerEntry]);
+
     expect((await request("/expense-claims", materialDirector, { ...input, applicantUserId: materialDirector.id })).status).toBe(201);
     expect((await request("/expense-claims", employee, { ...input, applicantUserId: employee.id })).status).toBe(403);
     expect((await request("/expense-claims", materialDirector, { ...input, applicantUserId: employee.id })).status).toBe(403);
@@ -273,7 +477,7 @@ describePg("多项目业务范围公开 HTTP / PostgreSQL 16", () => {
     const ownMaterial = await person("material_staff", [second]);
     await person("material_staff", [first]);
     const contract = await db.contract.create({ data: { code: randomUUID(), name: "合成乙项目材料合同", counterparty: "合成供应商", projectId: second, contractTypeKey: "material_purchase", ownerUserId: companyContract.id } });
-    const version = await db.contractVersion.create({ data: { contractId: contract.id, versionNo: 1, changeType: "original", status: "effective", amountCents: 10000n, draftData: {}, templateSnapshot: {}, clauseSnapshot: [] } });
+    const version = await historicalFixtureOwner.contractVersion.create({ data: { contractId: contract.id, versionNo: 1, changeType: "original", status: "effective", amountCents: 10000n, draftData: {}, templateSnapshot: {}, clauseSnapshot: [] } });
     const options = await request(`/settlement-workbench/contract-versions/${version.id}/participant-options`, companyContract);
     expectStatus(options, 200);
     expect(options.body.options.map((row: { userId: string }) => row.userId).sort()).toEqual([ownMaterial.id, materialStaff.id].sort());
@@ -297,14 +501,50 @@ describePg("多项目业务范围公开 HTTP / PostgreSQL 16", () => {
     expect((await request("/spot-procurements", applicant, { ...input, projectId: first })).status).toBe(403);
     const created = await request("/spot-procurements", applicant, input);
     expect(created).toMatchObject({ status: 201 });
-    const route = `/spot-procurements/${created.body.procurementId}`;
+    const currentRoute = `/spot-procurements/${created.body.procurementId}`;
+    const currentSubmission = { expectedVersionId: created.body.versionId, expectedDraftRevision: created.body.draftRevision };
+    expect(created.body).toMatchObject({ requestProtocolVersion: 2, draftRevision: 1, projectId: second });
+    expect((await request(`${currentRoute}/submission`, applicant, {})).status).toBe(409);
     const db = app.get(PrismaService);
     await db.user.update({ where: { id: secondManager.id }, data: { isActive: false } });
     try {
-      expect(await request(`${route}/submission`, applicant, {})).toMatchObject({ status: 400, body: { message: expect.stringContaining("项目经理") } });
+      expect(await request(`${currentRoute}/submission`, applicant, currentSubmission))
+        .toMatchObject({ status: 201, body: { status: "approval_pending" } });
     } finally {
       await db.user.update({ where: { id: secondManager.id }, data: { isActive: true } });
     }
+    const currentMaterialView = await request(currentRoute, materialDirector);
+    expect((await request(`${currentRoute}/approval`, materialDirector, { decision: "approve", ...currentMaterialView.body.reviewApprovalContext })).status).toBe(201);
+    const currentManagerView = await request(currentRoute, secondManager);
+    const currentReview = { decision: "approve", ...currentManagerView.body.reviewApprovalContext };
+    expect((await request(`${currentRoute}/approval`, firstManager, currentReview)).status).toBe(403);
+    expect((await request(`${currentRoute}/approval`, secondManager, currentReview)).status).toBe(201);
+    expect((await request(currentRoute, applicant)).body).toMatchObject({
+      procurement: { project: { id: second }, status: "approved_in_progress" }, payments: []
+    });
+
+    const oldFile = await upload(`/spot-procurements/projects/${second}/draft-file-uploads`, applicant);
+    const historical = await db.$transaction(async (tx) => {
+      const row = await tx.spotProcurement.create({ data: {
+        projectId: second, code: `HISTORICAL-SPOT-${randomUUID()}`, applicantUserId: applicant.id, handlerUserId: applicant.id, status: "draft"
+      } });
+      const version = await tx.spotProcurementVersion.create({ data: {
+        procurementId: row.id, versionNo: 1, requestProtocolVersion: 1, status: "draft",
+        reason: input.reason, requestedArrivalAt: new Date(input.requestedArrivalAt),
+        applicationDepartmentSnapshot: input.applicationDepartment, applicationNameSnapshot: input.applicationName,
+        purchaserNameSnapshot: "合成material_staff", purchaserDepartmentNameSnapshot: input.applicationDepartment,
+        handlerUserId: applicant.id, createdByUserId: applicant.id
+      } });
+      await tx.spotProcurementLine.create({ data: {
+        versionId: version.id, sortOrder: 1, materialName: "合成水泥", unit: "袋", quantity: "10"
+      } });
+      await tx.spotProcurementAttachment.create({ data: {
+        versionId: version.id, fileId: oldFile.id, category: "merchant_quote", uploadedByUserId: applicant.id
+      } });
+      await tx.spotProcurement.update({ where: { id: row.id }, data: { currentVersionId: version.id } });
+      return row;
+    });
+    const route = `/spot-procurements/${historical.id}`;
     expect((await request(`${route}/submission`, applicant, {})).status).toBe(201);
     const materialView = await request(route, materialDirector);
     expect((await request(`${route}/approval`, materialDirector, { decision: "approve", ...materialView.body.reviewApprovalContext })).status).toBe(201);
@@ -347,7 +587,7 @@ describePg("多项目业务范围公开 HTTP / PostgreSQL 16", () => {
     expect(ids((await request("/projects", multi)).body)).toEqual([first, second].sort());
     const created = await app.get(PrismaService).project.create({ data: { code: randomUUID(), name: "合成后建项目" } });
     expect(ids((await request("/projects", companyContract)).body)).toContain(created.id);
-    expect(ids((await request("/spot-procurements/create-project-options", materialDirector)).body)).not.toContain(created.id);
+    expect(ids((await request("/spot-procurements/create-project-options", materialDirector)).body)).toContain(created.id);
     expect(ids((await request("/spot-procurements/create-project-options", materialStaff)).body)).not.toContain(created.id);
     const materialPosition = await app.get(PrismaService).position.findUniqueOrThrow({ where: { key: "material_staff" } });
     await app.get(PrismaService).userPosition.create({ data: { userId: materialStaff.id, positionId: materialPosition.id, projectId: created.id } });
@@ -358,43 +598,57 @@ describePg("多项目业务范围公开 HTTP / PostgreSQL 16", () => {
     expect(ids((await request("/projects", rosterOnly)).body)).toEqual([second]);
     expect(ids((await request("/general-procurements/create-options", rosterOnly)).body.projects)).toEqual([second]);
     expect((await request(`/spot-procurements/capabilities?projectId=${second}`, rosterOnly)).body.canCreate).not.toBe(true);
-    const noManager = await request("/general-procurements", director, { requestKey: randomUUID(), projectId: created.id, companyEntityId: company,
-      category: "office_supplies", reason: "合成无经理项目申请", requestedAmountCents: "10000" });
-    expectStatus(noManager, 201);
-    const submission = await request(`/general-procurements/${noManager.body.id}/submission`, director, { revision: 1 });
+    const historical = await seedHistoricalProcurement(created.id, director, "合成无经理历史申请");
+    const submission = await request(`/general-procurements/${historical.id}/submission`, director, { revision: 1 });
     expect(submission).toMatchObject({ status: 400, body: { message: expect.stringContaining("项目经理") } });
+    const current = await request("/general-procurements", director, newProcurement(created.id, "合成无经理项目申请"));
+    expectStatus(current, 201);
+    const currentRoute = `/general-procurements/${current.body.id}`;
+    expect(await request(`${currentRoute}/submission`, director, { revision: 1 }))
+      .toMatchObject({ status: 201, body: { status: "approval_pending", revision: 2 } });
+    expect(await request(currentRoute, director)).toMatchObject({ status: 200, body: {
+      approvals: [expect.objectContaining({ nodes: [
+        { name: "综合部主管", approved: false }, { name: "项目经理", approved: false }
+      ] })]
+    } });
     for (const [actor, projectId] of [[employee, second], [director, inactive]] as const) {
-      expect((await request("/general-procurements", actor, { requestKey: randomUUID(), projectId, companyEntityId: company,
-        category: "office_supplies", reason: "合成越界申请", requestedAmountCents: "10000" })).status).toBe(403);
+      expect((await request("/general-procurements", actor, newProcurement(projectId, "合成越界申请"))).status).toBe(403);
     }
   });
 
   it("综合采购在乙项目提交后只有乙项目经理能审批，甲项目经理不能看到待办或代批", async () => {
-    const created = await request("/general-procurements", materialDirector, { requestKey: randomUUID(), projectId: second,
-      companyEntityId: company, category: "office_supplies", reason: "合成乙项目采购", requestedAmountCents: "10000" });
-    expect(created.status).toBe(201);
-    const route = `/general-procurements/${created.body.id}`;
+    const { id } = await seedHistoricalProcurement(second, materialDirector, "合成乙项目采购");
+    const route = `/general-procurements/${id}`;
     expect((await request(`${route}/submission`, materialDirector, { revision: 1 })).status).toBe(201);
     expect((await request(`${route}/review`, director, { revision: 2, decision: "approve" })).status).toBe(201);
     const denied = await request(`${route}/review`, firstManager, { revision: 3, decision: "approve" });
     expect(denied.status).toBe(403);
     const todo = await request("/me/work-items", firstManager);
-    expect(todo.body.approvalCenter.pendingApproval).not.toEqual(expect.arrayContaining([expect.objectContaining({ businessId: created.body.id })]));
+    expect(todo.body.approvalCenter.pendingApproval).not.toEqual(expect.arrayContaining([expect.objectContaining({ businessId: id })]));
     expect((await request(`${route}/review`, secondManager, { revision: 3, decision: "approve" })).status).toBe(201);
     expect((await request(`${route}/review`, chairman, { revision: 4, decision: "approve" })).status).toBe(201);
     expect((await request(route, director)).body).toMatchObject({ projectId: second, status: "approved_pending_archive" });
     const file = await upload(`${route}/archive-file-uploads`, director);
     expect((await request(`${route}/archive`, director, { revision: 5, fileId: file.id, note: "合成归档依据" })).status).toBe(201);
-    const payment = { claimType: "incidental_expense", incidentalExpenseCategory: "procurement_office_supplies", generalProcurementId: created.body.id,
+    const payment = { claimType: "incidental_expense", incidentalExpenseCategory: "procurement_office_supplies", generalProcurementId: id,
       generalProcurementRequestKey: randomUUID(), companyEntityId: company, projectId: second, reason: "合成乙项目采购请款", requestedAmountCents: "10000", payeeName: "合成供应商" };
     expect((await request("/expense-claims", director, { ...payment, projectId: first })).status).toBe(400);
     const claim = await request("/expense-claims", director, payment);
     expect(claim.status).toBe(201);
     const claimRoute = `/expense-claims/${claim.body.id}`;
     expect((await request(`${claimRoute}/submission`, director, {})).status).toBe(201);
-    expect((await request(`${claimRoute}/approval`, director, { decision: "approve", selfReviewReason: "按已归档采购办理", confirmationPassword: password })).status).toBe(201);
-    expect((await request(`${claimRoute}/approval`, firstManager, { decision: "approve" })).status).toBe(403);
-    for (const reviewer of [secondManager, financeDirector, chairman]) expectStatus(await request(`${claimRoute}/approval`, reviewer, { decision: "approve" }), 201);
+    const managerView = await request(claimRoute, secondManager);
+    expectStatus(managerView, 200);
+    const approvalInstanceId = managerView.body.approval.approvalInstanceId;
+    expect((await request(`${claimRoute}/approval`, firstManager, {
+      decision: "approve", approvalInstanceId, approvalDutyIndex: 1
+    })).status).toBe(403);
+    for (const [reviewer, approvalDutyIndex] of [[financeDirector, 2], [chairman, 3], [secondManager, 1], [director, 0]] as const) {
+      expectStatus(await request(`${claimRoute}/approval`, reviewer, {
+        decision: "approve", approvalInstanceId, approvalDutyIndex,
+        ...(reviewer.id === director.id ? { selfReviewReason: "按已归档采购办理", confirmationPassword: password } : {})
+      }), 201);
+    }
     expect((await request(claimRoute, director)).body).toMatchObject({ projectId: second, status: "approved_pending_payment", companyPayableAmountCents: "10000" });
   });
 
@@ -403,6 +657,7 @@ describePg("多项目业务范围公开 HTTP / PostgreSQL 16", () => {
       const env: NodeJS.ProcessEnv = { ...process.env, PROJECT_SCOPE_API: base,
         PROJECT_SCOPE_SESSIONS: JSON.stringify({ chairman: sessions.get(chairman.id), employee: sessions.get(employee.id), materialStaff: sessions.get(materialStaff.id) }) };
       delete env.JEST_WORKER_ID;
+      delete env.PROJECT_BUSINESS_SCOPE_FIXTURE_DATABASE_URL;
       const child = spawn("pnpm", ["exec", "playwright", "test", "--config", "playwright.project-business-scope.config.ts"], { cwd: resolve(__dirname, "../../../../apps/web-admin"), env, stdio: "inherit" });
       child.on("error", reject);
       child.on("exit", (code) => code === 0 ? done() : reject(new Error("多项目真实浏览器验收失败")));

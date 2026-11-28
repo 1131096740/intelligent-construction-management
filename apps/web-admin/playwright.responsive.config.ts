@@ -8,6 +8,7 @@ export default defineConfig({
   testDir: "./e2e",
   testMatch: [
     "responsive-layout-foundation.e2e.ts",
+    "home-todo-entries.e2e.ts",
     "ledger-responsive.e2e.ts",
     "flow-detail-responsive.e2e.ts"
   ],

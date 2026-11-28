@@ -5,8 +5,8 @@ const detail = readFileSync(
   new URL("./ContractDetailPage.vue", import.meta.url),
   "utf8"
 );
-const changeState = readFileSync(
-  new URL("./contract-change.state.ts", import.meta.url),
+const signedChanges = readFileSync(
+  new URL("./SignedContractChanges.vue", import.meta.url),
   "utf8"
 );
 
@@ -25,8 +25,6 @@ describe("contract lifecycle capability gates", () => {
   it.each([
     ["download_approval_form", "downloadContractApprovalFormWithCapability"],
     ["confirm_archive", "confirmContractArchiveWithCapability"],
-    ["approve_seal", "approveLegacyContractSealWithCapability"],
-    ["complete_seal", "completeContractSealWithCapability"],
     ["upload_final_contract", "associateContractFinalFileWithCapability"],
     ["return_final_contract", "returnContractFinalFileWithCapability"],
     ["confirm_final_contract", "confirmContractFinalFileWithCapability"],
@@ -39,10 +37,12 @@ describe("contract lifecycle capability gates", () => {
     expect(detail).toContain(`"${action}"`);
   });
 
-  it("publishes and validates a dedicated contract-change action", () => {
-    expect(changeState).toContain('"create_contract_change_draft"');
-    expect(detail).toContain("capability.availableActions.includes(");
-    expect(detail).toContain('"create_contract_change_draft"');
+  it("publishes and validates the dedicated signed-supplement capability gates", () => {
+    expect(detail).toContain("<SignedContractChanges");
+    expect(detail).toContain(':version-id="contractDetail.contractVersionId"');
+    expect(detail).not.toContain("createContractChangeDraftWithCapability");
+    expect(signedChanges).toContain("if (!details?.canSubmit");
+    expect(signedChanges).toContain("!detail.value?.canReview");
   });
 
   it("prepares every private-file ticket from the exact file ACL capability", () => {

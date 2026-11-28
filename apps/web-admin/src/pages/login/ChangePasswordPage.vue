@@ -3,7 +3,7 @@
     <section class="password-panel">
       <div class="brand-block">
         <h1>修改初始密码</h1>
-        <p>试运行账号首次登录后需设置个人密码</p>
+        <p>首次登录或管理员重置后，请设置与当前密码不同的本人密码</p>
       </div>
 
       <form
@@ -57,6 +57,7 @@
 </template>
 
 <script setup lang="ts">
+import { formatUnknownApiError } from "../../api/error-message";
 import { reactive, ref } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { useAuthStore } from "../../auth/auth.store";
@@ -107,7 +108,7 @@ async function submitChangePassword() {
     await auth.changePassword(form.oldPassword, form.newPassword, name);
     await router.replace(redirectPath());
   } catch (error) {
-    errorMessage.value = error instanceof Error ? error.message : "修改密码失败";
+    errorMessage.value = formatUnknownApiError(error, "修改密码失败");
   } finally {
     clearPasswordFields();
     submitting.value = false;

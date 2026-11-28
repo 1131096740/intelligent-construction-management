@@ -2,31 +2,27 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
 const detail = readFileSync(new URL("./ContractDetailPage.vue", import.meta.url), "utf8");
+const ledger = readFileSync(new URL("./ContractListPage.vue", import.meta.url), "utf8");
+const signedChanges = readFileSync(new URL("./SignedContractChanges.vue", import.meta.url), "utf8");
 const workbench = readFileSync(new URL("./ContractWorkbenchPage.vue", import.meta.url), "utf8");
 const draft = readFileSync(new URL("./workbench/use-contract-draft.ts", import.meta.url), "utf8");
 
 describe("contract change Web closure", () => {
-  it("creates only after a fresh eligibility check and carries the expected version coordinate", () => {
-    expect(detail).toContain("fetchContractChangeEligibility(contractVersionId)");
-    expect(detail).toContain("createContractChangeDraftWithCapability(\n      capturedBaseVersionId,");
-    expect(detail).toContain("currentEffective.id === contractVersionId");
-    expect(detail).toContain("currentEffective.contractId === contractId");
-    expect(detail).toContain("created.baseVersionId !== capturedBaseVersionId");
-    expect(detail).toContain("if (!submissionIsCurrent()) return");
-    expect(detail).toContain("workbench?versionId=${created.id}");
-  });
-
-  it("creates only the unified contract change while preserving historical supplement reads", () => {
-    expect(detail).toContain('header="发起合同变更"');
-    expect(detail).toContain('changeType: "change"');
-    expect(detail).not.toContain('v-model="changeForm.changeType"');
-    expect(detail).not.toContain("发起变更/补充协议");
+  it("opens one signed supplement workflow from the formal ledger and effective contract", () => {
+    expect(ledger).toContain('@click="openDetail(row.id, undefined, true)"');
+    expect(detail).toContain('<SignedContractChanges');
+    expect(detail).toContain(':version-id="contractDetail.contractVersionId"');
+    expect(detail).not.toContain("createContractChangeDraftWithCapability");
+    expect(signedChanges).toContain("补充/变更");
+    expect(signedChanges).toContain("提交合同部主管复核");
     expect(workbench).toContain("补充协议（历史）");
   });
 
-  it("shows the exact eligibility denial instead of silently hiding the reason", () => {
-    expect(detail).toContain('v-if="changeEligibility && !changeEligibility.eligible"');
-    expect(detail).toContain("changeEligibility.reason");
+  it("uses server capabilities separately for submitting and reviewing the current supplement", () => {
+    expect(signedChanges).toContain("fetchSignedContractChanges(versionId)");
+    expect(signedChanges).toContain("details?.canSubmit");
+    expect(signedChanges).toContain("detail.value?.canReview");
+    expect(signedChanges).toContain("reviewSignedContractChange(row.baseVersionId, row.id,");
   });
 
   it("renders backend route/history and fails closed around change policy", () => {
@@ -88,16 +84,14 @@ describe("contract change Web closure", () => {
     expect(detail).toContain("archiveEffectText(version)");
   });
 
-  it("accepts change amounts in yuan and keeps the API amount fact in cents", () => {
-    expect(detail).toContain("变更金额（元）");
-    expect(detail).toContain('v-model="changeForm.changeAmountYuan"');
-    expect(detail).toContain("yuanTextToCentsText(changeForm.changeAmountYuan.trim())");
-    expect(detail).toContain("changeAmountCents: amountCents");
-    expect(detail).not.toContain("变更金额必须按分填写");
-    const submission = detail.slice(
-      detail.indexOf("async function submitChangeDraft()"),
-      detail.indexOf("function requiredText(")
-    );
-    expect(submission).not.toContain('changeForm.changeAmountYuan = ""');
+  it("shows original, changed and current values without converting four decimal input to cents", () => {
+    expect(signedChanges).toContain("原合同金额");
+    expect(signedChanges).toContain("当前合同金额");
+    expect(signedChanges).toContain("变更后金额");
+    expect(signedChanges).toContain("normalizeBusinessAmount(delta.value.trim(), { allowNegative: true })");
+    expect(signedChanges).toContain("signedChangeBalanceWarning(detail.value, delta.value)");
+    expect(signedChanges).toContain("balanceWarning.message");
+    expect(signedChanges).toContain("submitSignedContractChange(details.baseVersionId, {");
+    expect(signedChanges).toContain("...(paymentAgreementText ? { paymentAgreementText } : {})");
   });
 });

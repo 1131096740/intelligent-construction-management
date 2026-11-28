@@ -1,0 +1,51 @@
+{
+  "installer": {
+    "base": "86d62f558f8a9e38ef0c3fa4acfd3aaae988d2b23874392802061047be3f9b10",
+    "patch": "878fe39d5b743efe313f4dccf4a6b1ed197091eab0023dd214267429c25d2c79",
+    "result": "804f5facf011c73fb321a4d84fae9629f7aad778dcb66ee2d939d356d0f80eb8"
+  },
+  "originalScope": {
+    "before": "4d9c63eee4feca4a33d476b851366283ac423b9477fcbec8f91842a44f779651",
+    "after": "31b6f3d3388f6a0b344cfbbadd254c5d8c1f834c4bc55b735d8bd76574e2fdb7",
+    "count": 3690
+  },
+  "browserOverlays": {
+    "services/api/prisma/run-task398-shared-standard-local.cjs": {
+      "base": "2764fa86dbf04307ca4282df6228b384710a66de5db726ec8761a42df1515e27",
+      "patch": "36a6ca2e6df7adc509a13257e45d2a4d04bfe09c0e1a65278e6be226055d5d8e",
+      "result": "3d5f55c074ad69c96d13adb3a36b2184f7a7502d57a667c52dca31965e3c31ff"
+    },
+    "services/api/prisma/contract-bank-runtime-fixture.cjs": {
+      "base": "5a66b1783cc597983a08e8381f9df34afeacf36e71681bd5e982a363247fd171",
+      "patch": "29f20d644720472f75dd634f51f3c69fa99b4a13818e0704f89a935c517c73da",
+      "result": "594c180e22acc8453dc5ea5f758baa03e95b98047019a676d34db7b505d503b8"
+    },
+    "services/api/src/database/task398-owned-database.test-support.ts": {
+      "verbatim": "e8cab9ed9d2e1822e3d75023b91f404f409ef9baf4dca779789d745adb37ae3a"
+    },
+    "services/api/prisma/task398-owned-280-business-read-baseline.json": {
+      "verbatim": "88b44411322e857b9c1b3f6a562ca7655d998a41fd15db8449b8e79ae4b309b2"
+    },
+    "apps/web-admin/vite.config.ts": {
+      "base": "5eab7509cde0cc5753638d652ad02789a4f506ece5339075f4867d9cd6eb2293",
+      "patch": "21d088bb0dc4d756784855acfb11419a529f05f278b2c32fa2bb637aa28ef765",
+      "result": "60f0494cd14ce36d7bf5e0dc244bef9cb6218c36c8cf35cdfaf96820e9d79fa6"
+    },
+    "services/api/src/database/task16-real-browser.pg.spec.ts": {
+      "base": "bf4da64241aca7ccc198ed01df7af575b68586e54bdcd3ec872cbd0dda5fe9b9",
+      "patch": "6fa9d5be83638b76614302b827155d52018b067be215dde12621e0ef34e2148f",
+      "result": "f1d73217d4a308e3bd8bb436f1b7f62ff3b00c1a22228c1e19c16e59ae551477"
+    }
+  },
+  "pol109FixturePins": {
+    "services/api/prisma/task12-pol109-ci.cjs": "a0b17ba53bb4a403cc0804eca19944839f6df52b50eedcdd4873546008aa2bae",
+    "services/api/prisma/task12-pol109-stage-browser.cjs": "8adbaf1cd69af3d8154f163c490922bf5a5150ae8b21d3f705389282babbe71f",
+    "services/api/prisma/task12-pol109-stage-workspace.cjs": "eed760e392bb8a212e96ed0fb083c49b1dac9d062847efea4f5700f2a52eb2cc",
+    "services/api/src/project-close-profit/project-close-profit.owned282.http.pg.spec.ts": "3894bbde1ebb0b7bcae424171a9fdffe4e5ae23d3f76b5cf103a8406a9013ae3"
+  },
+  "pol109Launcher": {
+    "base": "1e5872213ee91fc5e138df52e21860e2282c467485e6930e295049d7dd6b37ae",
+    "patch": "d2cd8dc3afaa994699560984c7b4179bf0d0e8c70467b5a9682c0ad564fad269",
+    "result": "a0b17ba53bb4a403cc0804eca19944839f6df52b50eedcdd4873546008aa2bae"
+  }
+}

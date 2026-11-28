@@ -29,18 +29,14 @@ describe("C-P0-01 private file and canvas signature actions", () => {
     );
   });
 
-  it("rechecks the selected archive row capability at sensitive confirmation", () => {
-    const start = archiveSource.indexOf("function confirmDownload()");
-    const end = archiveSource.indexOf("\nfunction ", start + 1);
+  it("rechecks the selected archive row capability before issuing a short-lived link", () => {
+    const start = archiveSource.indexOf("async function createArchiveFileDownloadTicketWithCapability(");
+    const end = archiveSource.indexOf("\nasync function ", start + 1);
     const handler = archiveSource.slice(start, end);
 
-    expect(archiveSource).toContain("getPrivateFileDownloadTicketCapability");
-    expect(archiveSource).toContain(
-      "v-if=\"archiveDownloadAction && archiveDownloadAction.enabled\""
-    );
-    expect(handler).toContain("createPrivateFileDownloadTicket");
-    expect(archiveSource).toContain("const capabilityRequestId = ++downloadCapabilityRequestId");
-    expect(archiveSource).toContain("if (capabilityRequestId !== downloadCapabilityRequestId) return");
+    expect(handler).toContain("getPrivateFileDownloadTicketCapability(fileId)");
+    expect(handler).toContain('capability.availableActions.includes(');
+    expect(handler).toContain("createPrivateFileDownloadTicket(fileId");
   });
 
   it("coalesces duplicate desktop handoff creation attempts", () => {
@@ -52,12 +48,14 @@ describe("C-P0-01 private file and canvas signature actions", () => {
   it("coalesces duplicate signature and download submissions", () => {
     expect(settingsSource).toContain("if (canvasSignaturePromise) return canvasSignaturePromise");
     expect(handwrittenSource).toContain("if (handoffCompletionPromise) return handoffCompletionPromise");
-    expect(archiveSource).toContain("if (downloadTicketPromise) return downloadTicketPromise");
+    expect(archiveSource).toContain("if (!row.canDownload || fileBusyId.value) return");
+    expect(archiveSource).toContain("packageBusy.value = true");
   });
 
   it("registers the four server-gated production consumers", () => {
     expect(registry.actions).toEqual(expect.arrayContaining([
-      expect.objectContaining({ id: "archive.create-private-file-download-ticket" }),
+      expect.objectContaining({ id: "archive.download-private-attachment" }),
+      expect.objectContaining({ id: "archive.download-package" }),
       expect.objectContaining({ id: "signature.upload-canvas" }),
       expect.objectContaining({ id: "signature.create-canvas-handoff" }),
       expect.objectContaining({ id: "signature.complete-canvas-handoff" })

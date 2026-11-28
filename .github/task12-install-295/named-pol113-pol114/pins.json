@@ -1,0 +1,112 @@
+{
+  "runtime": {
+    "install-only.cjs": {
+      "file": "lanes/pol113/runtime/install-only.cjs",
+      "digest": "9e60f34b8277a18cfc007fa10106144ba1c7941dbee40a4def981fe260c76a74"
+    },
+    "loader-preflight.cjs": {
+      "file": "lanes/pol113/runtime/loader-preflight.cjs",
+      "digest": "7bfe07e0efd947637a8c6ba7fe5a32cde8240e9415ce8306c406b971ff92baf9"
+    },
+    "browser-evidence.cjs": {
+      "file": "lanes/pol113/runtime/browser-evidence.cjs",
+      "digest": "da0afeb7c1473cd0ad7d4f4a8c0835e73c2dd1ed4c522a444fd078886c102f87"
+    },
+    "owner-observation.cjs": {
+      "file": "runtime/owner-observation.cjs",
+      "digest": "e7d79e3b8c702bb30c5ec9c609d22632860192093b9f7f383190b829248aacbf"
+    },
+    "stage-named-browser.cjs": {
+      "file": "lanes/pol113/runtime/stage-named-browser.cjs",
+      "digest": "b4ff5fe30a278a3cbfe53adc4192cd511ba72fcba905bb6048d6fd0ec965d944"
+    },
+    "task12-pol109-stage-browser.cjs": {
+      "file": "lanes/pol113/runtime/task12-pol109-stage-browser.cjs",
+      "digest": "8adbaf1cd69af3d8154f163c490922bf5a5150ae8b21d3f705389282babbe71f",
+      "repoFile": ".github/task12-install-289/fixtures/task12-pol109-stage-browser.cjs"
+    },
+    "verify-named-function-proofs.cjs": {
+      "file": "runtime/verify-named-function-proofs.cjs",
+      "digest": "b69672d83c772658bf20c78f2a283d09c2ee7fd4e78d5f414b62705e81fc1cb7"
+    },
+    "verify-named-preimage.cjs": {
+      "file": "runtime/verify-named-preimage.cjs",
+      "digest": "0e2a7bfe7c27cc57b9f8e4d977ad4f57c0df18e79d45dbf9434868f1dfaf2ce3"
+    },
+    "verify-seven-observation.cjs": {
+      "file": "runtime/verify-seven-observation.cjs",
+      "digest": "73dc825ccf12e9806d7289f93f1b41eb34d3d68041c6528f74cd75fa475fc03c"
+    },
+    "pol114-pdf-worker.cjs": {
+      "file": "lanes/pol113/runtime/pol114-pdf-worker.cjs",
+      "digest": "b951129b38b738b78b81efe4f961be3ad07d57c4496efeae33b7916cc87657d6"
+    },
+    "preflight-layout-dist.cjs": {
+      "file": "lanes/pol113/runtime/preflight-layout-dist.cjs",
+      "digest": "db8babe3c03c62833db773b09d2c4be8a0bc7b87b9f377a946c8eac15fe62d64"
+    }
+  },
+  "named": {
+    "task16-current259-archive-install.cjs": {
+      "base": "53fc410d05c60747b7f79cd5ceaf5d09cc96e72b282ac2d47361a8cc3610c75c",
+      "result": "6544cccc1d8ee15d47042d82a915ea519635eb7a9c189dd90e87828205a63de4",
+      "file": "lanes/pol113/patches/task16-current259-archive-install.cjs.gz"
+    },
+    "task16-current259-role-provision.cjs": {
+      "base": "9ccc2ce1752a789ceb0f20bcffdf0f39f4adf65760b0ecd965358f0fb02194ea",
+      "result": "0b331eb00dff4455c8438c01005df68c7c0fd07ecf59ada775f10f398b5c351a",
+      "file": "lanes/pol113/patches/task16-current259-role-provision.cjs.gz"
+    },
+    "task16-current259-seven-install.cjs": {
+      "base": "b68ab131d87abe562ba46665ec5f3a6ca44022db84b272c3636fcec983eca387",
+      "result": "786188db1926fc506402f09eb68fd2ebdf05ee12f233282c8f86d751e76a8287",
+      "file": "lanes/pol113/patches/task16-current259-seven-install.cjs.gz"
+    },
+    "task16-seven-preimage-named-owner.cjs": {
+      "result": "a9f0576d3832545a1b359e05d7e3f737f3f83fe443d968e316a5016146ae1d61",
+      "file": "runtime/task16-seven-preimage-named-owner.cjs"
+    }
+  },
+  "workspace": {
+    "apps/web-admin/playwright.layout-preview-real.config.ts": {
+      "base": "3e801d3ef595de801163280e6026b459eba6904d49d0e4ecd5e6c7d792103240",
+      "result": "58edde37eff971db1621e8b3f8cb85911c0ec46fa05b393378870b144e873ccb",
+      "file": "patches/playwright.layout-preview-real.config.ts.gz"
+    },
+    "apps/web-admin/playwright.pol113-project-real.config.ts": {
+      "base": "f344cad5b9fc2a31750fc8ddc5bf34b8c764b7c8d4681057b218ab22cdd07b1d",
+      "result": "8f3be3ab6820f979b5ed7d764726f0ad999a96a97f5e04fc7689e672b85c1641",
+      "file": "patches/playwright.pol113-project-real.config.ts.gz"
+    },
+    "apps/web-admin/playwright.settlement-entry-history-real.config.ts": {
+      "base": "e1ba4effd4bb2ad4b7eefef8a611c3819f9017af7357722a8bc998a27d3604a4",
+      "result": "6cf9f694c05802bcafa2fc01f4b29febc6f93398355cad59761e0560d71e1ae2",
+      "file": "patches/playwright.settlement-entry-history-real.config.ts.gz"
+    },
+    "services/api/prisma/database-dynamic-gate-manifest.json": {
+      "base": "7d606b8c52f09fbaf00bd3c8699fdf352be66fd570e990b821f045799a020160",
+      "result": "c7e118dae90b04c3117a683318f9eef5005f61bfc7d0069243179127839a1418",
+      "file": "patches/database-dynamic-gate-manifest.json.gz"
+    },
+    "services/api/src/database/base-entry-http-postgres.spec.ts": {
+      "base": "e96c975ac58db3fa1a6bbc3d069668a6ffcea8456f2f03532c5745844fcfa2e4",
+      "result": "26fb6fb5220d50607aa2f78013c3b4b66185e19b41e78e794b20a007dff6ef08",
+      "file": "patches/base-entry-http-postgres.spec.ts.gz"
+    },
+    "services/api/src/database/contract-business-entry-http.spec.ts": {
+      "base": "b0d8436f1d65a0585e26a029a1baea1a95dfbc974fa862d221d715353334fff5",
+      "result": "e80cb42f1b1c2db91f7c44947be2a848a13748983f2fb39207360d71a114b5b2",
+      "file": "patches/contract-business-entry-http.spec.ts.gz"
+    },
+    "services/api/src/database/layout-preview-http.acceptance.ts": {
+      "base": "590ee7d9914e9ceba0313e9ecee7a2a7f6f6bb30b454136dc94adf7ac03115b7",
+      "result": "ce346b402e707337c67bf1ffdc3cfc7228f5f327988b9fb0c5c658b926947492",
+      "file": "patches/layout-preview-http.acceptance.ts.gz"
+    }
+  },
+  "installer": {
+    "base": "86d62f558f8a9e38ef0c3fa4acfd3aaae988d2b23874392802061047be3f9b10",
+    "result": "9b78f838c5888503203afeddbcb07299ad2a5941ac8bb66aa7918cc572339d7e",
+    "file": "lanes/pol113/patches/installer.cjs.gz"
+  }
+}

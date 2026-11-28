@@ -39,8 +39,10 @@ describe("payment workbench structure", () => {
   it("makes the contract-specific payment route explicit and only exposes valid sources", () => {
     expect(workbench).toContain("contractPaymentRoute");
     expect(workbench).toContain("availablePaymentSourceOptions");
-    expect(workbench).toContain("通用合同按已冻结付款阶段直接申请付款");
-    expect(workbench).toContain("其他合同必须从已生效结算发起付款");
+    expect(workbench).toContain("依据生效的合同付款约定办理");
+    expect(workbench).toContain("需要结算的合同从已生效结算发起付款");
+    expect(workbench).toContain("contract.canApplyContractDirectPayment");
+    expect(workbench).toContain("合同总价未确定，无法计算余额");
     expect(workbench).toContain('contract.contractTypeKey === "generic_contract"');
     expect(workbench).toContain('"unselected" | "generic_direct" | "settlement_required" | "unsupported"');
     expect(workbench).toContain("当前合同类型尚未明确，不能判断合法付款来源");
@@ -53,6 +55,23 @@ describe("payment workbench structure", () => {
     expect(workbench).toContain("selectedPaymentStage.value?.maxRequestableCents");
     expect(workbench).toContain("selectedPaymentStage.value.requiresInvoice");
     expect(workbench).toContain("toGenericDirectCapacityItems(preview, selectedPaymentStage.value)");
+  });
+
+  it("uses the server-selected latest confirmed signed settlement as a legal payment basis", () => {
+    expect(workbench).toContain("fetchSignedSettlementPaymentBasis");
+    expect(workbench).toContain('sourceType === "signed_settlement"');
+    expect(workbench).toContain("signedSettlementId");
+    expect(workbench).toContain("合同累计结算");
+    expect(workbench).toContain("已签结算付款依据");
+    expect(workbench).toContain("该合同暂无已确认的已签结算，请先在结算工作台完成主管复核。");
+  });
+
+  it("shows the unsettled advance, overpayment and suspension of the contract capacity (PAY-04/PAY-08)", () => {
+    expect(workbench).toContain("unsettledAdvanceYuan");
+    expect(workbench).toContain("尚未结算预付款");
+    expect(workbench).toContain("downstreamCapacity.overpayYuan");
+    expect(workbench).toContain("已暂停（合同累计可付余额不足）");
+    expect(workbench).toContain("downstreamCapacity.suspended");
   });
 
   it("keeps system capacity validation and manual requested amount before creation", () => {

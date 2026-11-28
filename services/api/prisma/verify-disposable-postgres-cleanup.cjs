@@ -17,7 +17,7 @@ function listPostgresRunners() {
   });
 }
 
-const cleanupIdentifiers = new Set(["name", "containerName", "containerId", "endpoint"]);
+const cleanupIdentifiers = new Set(["name", "containerName", "containerId", "activeContainer", "endpoint"]);
 
 // Cleanup argv need only plain option literals and these per-run identifiers.
 // Reject expressions instead of evaluating JavaScript from a runner's source.
@@ -108,7 +108,7 @@ function main() {
       for (const command of commands) {
         const name = `jgzg-cleanup-regression-${checked}-${suffix}`;
         const args = resolveCleanupArguments(command, {
-          name, containerName: name, containerId: name, endpoint
+          name, containerName: name, containerId: name, activeContainer: name, endpoint
         });
         assert.deepEqual(args.slice(-4), ["rm", "--force", "--volumes", name],
           `${file}: cleanup must target only this regression container`);

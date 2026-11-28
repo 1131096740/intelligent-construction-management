@@ -9,6 +9,7 @@ import { TencentSmsGateway } from "../auth/tencent-sms.gateway";
 import { spawn } from "node:child_process";
 import * as path from "node:path";
 
+// Task04 expectation updates are PREPARED / NOT RUN in this source-only change.
 const describePostgres = process.env.RUN_EMPLOYEE_ONBOARDING_PG16 === "1" ? describe : describe.skip;
 
 describePostgres("员工入职公开 HTTP / PostgreSQL 16", () => {
@@ -41,7 +42,11 @@ describePostgres("员工入职公开 HTTP / PostgreSQL 16", () => {
     return { id: user.id, token: login.body.tokens.accessToken as string, phone };
   }
 
+  const initialPassword = "Synthetic-Task04-Initial-Only";
+  let previousInitialPassword: string | undefined;
   beforeAll(async () => {
+    previousInitialPassword = process.env.INITIAL_USER_TEMPORARY_PASSWORD;
+    process.env.INITIAL_USER_TEMPORARY_PASSWORD = initialPassword;
     const url = new URL(process.env.DATABASE_URL ?? "");
     if (process.env.NODE_ENV === "production" || url.hostname !== "127.0.0.1" || url.pathname !== "/onboarding") {
       throw new Error("仅允许本机一次性 onboarding 数据库");
@@ -60,7 +65,11 @@ describePostgres("员工入职公开 HTTP / PostgreSQL 16", () => {
     expect(role).toEqual({ name: "onboarding_runtime", superuser: false, canDeleteApplications: false, canWriteLedger: false, canReadSecret: false });
     base = await app.getUrl();
   });
-  afterAll(async () => { await app?.close(); });
+  afterAll(async () => {
+    await app?.close();
+    if (previousInitialPassword === undefined) delete process.env.INITIAL_USER_TEMPORARY_PASSWORD;
+    else process.env.INITIAL_USER_TEMPORARY_PASSWORD = previousInitialPassword;
+  });
 
   it("员工提交注册后只能查看本人待审核申请，不能读取公司业务", async () => {
     const response = await fetch(`${base}/employee-onboarding/register`, {
@@ -143,7 +152,7 @@ describePostgres("员工入职公开 HTTP / PostgreSQL 16", () => {
     expect((await request("/employee-onboarding/applications", "GET", undefined, registered.body.applicationToken)).status).toBe(401);
   });
 
-  it("管理员重置按岗位分权，临时密码须修改，所有旧会话立即失效", async () => {
+  it("管理员重置按岗位分权，恢复受控初始策略且不返回密码，所有旧会话立即失效", async () => {
     const manager = await actor("comprehensive_director");
     const chairman = await actor("chairman");
     const ordinary = await actor("contract_staff");
@@ -154,19 +163,38 @@ describePostgres("员工入职公开 HTTP / PostgreSQL 16", () => {
     expect((await request(`/account-security/users/${manager.id}/reset-password`, "POST", input, manager.token)).status).toBe(403);
     const reset = await request(`/account-security/users/${ordinary.id}/reset-password`, "POST", input, manager.token);
     expect(reset.status).toBe(201);
-    expect(typeof reset.body.temporaryPassword).toBe("string");
+    expect(reset.body).toEqual({ ok: true, mustChangePassword: true });
     expect((await request("/projects", "GET", undefined, ordinary.token)).status).toBe(401);
     expect((await request("/auth/refresh", "POST", { refreshToken: oldLogin.body.tokens.refreshToken })).status).toBe(401);
     expect((await request("/auth/login", "POST", { phone: ordinary.phone, password })).status).toBe(401);
-    const temporary = await request("/auth/login", "POST", { phone: ordinary.phone, password: reset.body.temporaryPassword });
+    const temporary = await request("/auth/login", "POST", { phone: ordinary.phone, password: initialPassword });
     expect(temporary.body.user.mustChangePassword).toBe(true);
     expect((await request("/projects", "GET", undefined, temporary.body.tokens.accessToken)).status).toBe(403);
-    const changed = await request("/auth/change-password", "POST", { name: "合成合同人员", oldPassword: reset.body.temporaryPassword, newPassword: "Local-Changed-02" }, temporary.body.tokens.accessToken);
+    const changed = await request("/auth/change-password", "POST", { name: "合成合同人员", oldPassword: initialPassword, newPassword: "Local-Changed-02" }, temporary.body.tokens.accessToken);
     expect(changed.status).toBe(201);
     expect(changed.body.user.mustChangePassword).toBe(false);
     expect((await request("/projects", "GET", undefined, ordinary.token)).status).toBe(401);
     expect((await request("/projects", "GET", undefined, temporary.body.tokens.accessToken)).status).toBe(401);
     expect((await request(`/account-security/users/${finance.id}/reset-password`, "POST", input, chairman.token)).status).toBe(201);
+    // Task04 prepared-only: verify stable user/signature/role references on real PG.
+    const db = app.get(PrismaService);
+    const identityBefore = await db.user.findUniqueOrThrow({ where: { id: ordinary.id }, select: { id: true, signatureFileId: true } });
+    const assignmentsBefore = await db.userPosition.findMany({ where: { userId: ordinary.id } });
+    const previousSms = { ...process.env };
+    try {
+      Object.assign(process.env, { SMS_ENABLED: "true", SMS_SECRET_ID: "synthetic-only", SMS_SECRET_KEY: "synthetic-only",
+        SMS_SDK_APP_ID: "synthetic-only", SMS_SIGN_NAME: "合成测试", SMS_TEMPLATE_ID: "synthetic-only", SMS_CODE_SECRET: "synthetic-task04-sms-code-secret-only" });
+      const newPhone = `1391000${String(sequence++).padStart(4, "0")}`;
+      expect((await request(`/account-security/users/${ordinary.id}/phone-change-sms`, "POST", { phone: newPhone }, manager.token)).status).toBe(201);
+      const code = [...sent].reverse().find(row => row.phone === newPhone)!.code;
+      expect((await request(`/account-security/users/${ordinary.id}/change-phone`, "POST", { phone: newPhone, code, confirmationPassword: password }, manager.token)).status).toBe(201);
+      expect((await request("/auth/login", "POST", { phone: ordinary.phone, password: "Local-Changed-02" })).status).toBe(401);
+      const newLogin = await request("/auth/login", "POST", { phone: newPhone, password: "Local-Changed-02" });
+      expect(newLogin.status).toBe(201);
+      expect(newLogin.body.user.id).toBe(ordinary.id);
+      expect(await db.user.findUniqueOrThrow({ where: { id: ordinary.id }, select: { id: true, signatureFileId: true } })).toEqual(identityBefore);
+      expect(await db.userPosition.findMany({ where: { userId: ordinary.id } })).toEqual(assignmentsBefore);
+    } finally { process.env = previousSms; }
   });
 
   it("代建和调岗入口不能绕过财务审核，普通账号可由综合部跨部门管理", async () => {
@@ -270,16 +298,17 @@ describePostgres("员工入职公开 HTTP / PostgreSQL 16", () => {
     const reset = await request(`/account-security/applications/${id}/reset-password`, "POST", resetInput, chairman.token);
     expect(reset.status).toBe(201);
     expect((await request("/employee-onboarding/mine", "GET", undefined, registration.body.applicationToken)).status).toBe(401);
-    const temporary = await request("/employee-onboarding/login", "POST", { phone, password: reset.body.temporaryPassword });
+    const temporary = await request("/employee-onboarding/login", "POST", { phone, password: initialPassword });
     expect(temporary.body.application.mustChangePassword).toBe(true);
     const changed = await request("/employee-onboarding/mine/password", "POST", { newPassword: "Applicant-Own-Password" }, temporary.body.applicationToken);
     expect(changed.status).toBe(201);
     expect(changed.body.application).toMatchObject({ status: "pending", mustChangePassword: false });
     expect((await request("/projects", "GET", undefined, changed.body.applicationToken)).status).toBe(401);
     const resetAgain = await request(`/account-security/applications/${id}/reset-password`, "POST", resetInput, chairman.token);
+    expect(resetAgain.body).toEqual({ ok: true, mustChangePassword: true });
     const db = app.get(PrismaService);
     await db.employeeRegistration.update({ where: { id }, data: { temporaryPasswordExpiresAt: new Date(Date.now() - 1) } });
-    expect((await request("/employee-onboarding/login", "POST", { phone, password: resetAgain.body.temporaryPassword })).status).toBe(401);
+    expect((await request("/employee-onboarding/login", "POST", { phone, password: initialPassword })).status).toBe(401);
 
     const previous = { ...process.env };
     Object.assign(process.env, { SMS_ENABLED: "true", SMS_SECRET_ID: "local-only", SMS_SECRET_KEY: "local-only",

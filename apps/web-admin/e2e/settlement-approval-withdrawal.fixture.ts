@@ -80,7 +80,7 @@ export async function installSettlementWithdrawalSession(
 ): Promise<SettlementWithdrawalSessionFixture> {
   const unexpectedApiRequests: string[] = [];
 
-  await page.route("**/api/**", (route) => {
+  await page.route(/^https?:\/\/[^/]+\/api\//u, (route) => {
     unexpectedApiRequests.push(
       `${route.request().method()} ${new URL(route.request().url()).pathname}`
     );
@@ -374,9 +374,9 @@ export async function expectSettlementWithdrawalPageHealthy(
   } else {
     expect(userAgent).toContain("Chrome/");
   }
+  expect(unexpectedApiRequests).toEqual([]);
   expect(health.consoleErrors).toEqual([]);
   expect(health.pageErrors).toEqual([]);
-  expect(unexpectedApiRequests).toEqual([]);
 }
 
 export async function openSettlementWithdrawalProcess(

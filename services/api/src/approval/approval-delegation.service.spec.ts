@@ -9,7 +9,7 @@ describe("ApprovalDelegationService", () => {
     audit.record.mockReset();
   });
 
-  it("creates a standing delegation and records an audit entry", async () => {
+  it("rejects new unscoped standing delegation without modifying historical consumers", async () => {
     const prisma = {
       approvalDelegation: {
         create: jest.fn().mockResolvedValue({
@@ -33,36 +33,11 @@ describe("ApprovalDelegationService", () => {
       projectVisibility as never
     );
 
-    const result = await service.create("user-a", {
-      toUserId: "user-b",
-      startsAt: "2026-06-23T00:00:00.000Z",
-      endsAt: "2026-07-23T00:00:00.000Z"
-    });
-
-    expect(result.id).toBe("delegation-1");
-    expect(prisma.approvalDelegation.create).toHaveBeenCalledWith({
-      data: {
-        fromUserId: "user-a",
-        toUserId: "user-b",
-        startsAt: new Date("2026-06-23T00:00:00.000Z"),
-        endsAt: new Date("2026-07-23T00:00:00.000Z")
-      }
-    });
-    expect(prisma.user.findFirst).toHaveBeenCalledWith({
-      where: { id: "user-b", isActive: true },
-      select: { id: true }
-    });
-    expect(audit.record).toHaveBeenCalledWith(prisma, {
-      actorUserId: "user-a",
-      action: "approval.delegation.create",
-      businessType: "approval_delegation",
-      businessId: "delegation-1",
-      metadata: {
-        toUserId: "user-b",
-        startsAt: "2026-06-23T00:00:00.000Z",
-        endsAt: "2026-07-23T00:00:00.000Z"
-      }
-    });
+    await expect(service.create("user-a", {
+      toUserId: "user-b", startsAt: "2026-06-23T00:00:00.000Z", endsAt: "2026-07-23T00:00:00.000Z"
+    })).rejects.toThrow("请选择明确的审批职责");
+    expect(prisma.approvalDelegation.create).not.toHaveBeenCalled();
+    expect(audit.record).not.toHaveBeenCalled();
   });
 
   it("persists an exact action and resource scope for clearing delegation", async () => {

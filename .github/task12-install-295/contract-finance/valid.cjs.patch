@@ -1,0 +1,33 @@
+--- valid.cjs
++++ valid.cjs
+@@ -1,12 +1,24 @@
+ "use strict";
+-const {withPayment290}=require("./installer.cjs");
++const {withCombined295MultiWitness,withCombined320ContractPayment,withCombined330TextAgreement}=require("./installer.cjs");
+ const {load,verifyFacts}=require("./retained-payment.cjs");
+-const receipt={schemaVersion:1,purpose:"PAYMENT_EXECUTION_ORIGINAL_RETAINED_VALID_290",status:"STOPPED",stages:[]};
+-withPayment290(receipt,async context=>{
+-  if(context.candidateTree!=="a1be083076018686dd8afba68c44ff9c75502014" ||
++const source=require('./contract-finance-source.json');
++const forward=source.mode==='current-320'||source.mode==='text-direct-330';
++const count=source.mode==='text-direct-330'?330:forward?329:295;
++const install=(receipt,consume)=>forward
++  ? (count===330?withCombined330TextAgreement:withCombined320ContractPayment)(receipt,consume,{sourceTree:source.sourceTree,
++    migrations:'/qualification/workspace/services/api/prisma/migrations',tails:source.tails})
++  : withCombined295MultiWitness(receipt,consume);
++const receipt={schemaVersion:1,sourceSha:source.sourceSha,purpose:"PAYMENT_EXECUTION_ORIGINAL_RETAINED_VALID_"+count,status:"STOPPED",stages:[]};
++install(receipt,async context=>{
++  if(context.candidateTree!==(forward?source.sourceTree:"67644d9465a0ab4ee80ede099139d9c129d66f14") ||
+      context.database!==receipt.retainedPayment?.identity.database)throw new Error("PAYMENT_RETAINED_FINAL_CONTEXT");
+-  receipt.retainedPayment.at290=await verifyFacts(load("/qualification/retained-payment.json"),context.sql);
+-}).then(()=>{receipt.status="PAYMENT_EXECUTION_RETAINED_VALID_290_PASSED";}).catch(error=>{
++  receipt.retainedPayment["at"+count]=await verifyFacts(load("/qualification/retained-payment.json"),context.sql);
++}).then(()=>{
++  if(forward && (receipt.forward320?.ledgerSha256!==source.ledgerSha256 ||
++    receipt.combinedAfterBusiness?.ledgerSha256!==source.ledgerSha256 || receipt.combinedAfterBusiness?.count!==count))
++    throw new Error("PAYMENT_FORWARD_320_LEDGER");
++  receipt.status="PAYMENT_EXECUTION_RETAINED_VALID_"+count+"_PASSED";
++}).catch(error=>{
+   receipt.status="STOPPED";
+   receipt.failure={stage:receipt.stages.at(-1)??"INPUTS",code:/^[A-Z0-9_]+$/u.test(error.message)?error.message:"UNCLASSIFIED",exit:error.exit,signal:error.signal};
+   process.exitCode=1;

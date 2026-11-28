@@ -372,3 +372,34 @@ describe("contract PDF A4 normalizer", () => {
     ).rejects.toThrow("合同附件图片像素超过系统限制");
   });
 });
+
+
+it("preserves a PDF between two identity-card images when the upload order is frozen", async () => {
+  const body = await createPdf([[A4_WIDTH, A4_HEIGHT]]);
+  const appendix = await createPdf([[A4_HEIGHT, A4_WIDTH]]);
+  const result = await normalizeContractPdf(body, [
+    { name: "身份证人像面.png", type: "png", buffer: PNG },
+    { name: "附件.pdf", type: "pdf", buffer: appendix },
+    { name: "身份证国徽面.jpg", type: "jpeg", buffer: JPEG }
+  ], { preserveUploadOrder: true });
+  expect((await loadOutput(result.buffer)).getPageCount()).toBe(4);
+  expect(result.pageSizes).toEqual(["A4_portrait", "A4_portrait", "A4_landscape", "A4_portrait"]);
+});
+
+it.each([
+  { placement: "adjacent", order: ["portrait", "emblem", "pdf"], pages: ["A4_portrait", "A4_portrait", "A4_landscape"] },
+  { placement: "across another image", order: ["portrait", "other", "emblem", "pdf"], pages: ["A4_portrait", "A4_portrait", "A4_portrait", "A4_portrait", "A4_landscape"] },
+  { placement: "reverse", order: ["emblem", "portrait", "pdf"], pages: ["A4_portrait", "A4_portrait", "A4_portrait", "A4_landscape"] }
+])("preserves frozen PDF identity card ordering for $placement", async ({ order, pages }) => {
+  const body = await createPdf([[A4_WIDTH, A4_HEIGHT]]);
+  const appendix = await createPdf([[A4_HEIGHT, A4_WIDTH]]);
+  const files = {
+    portrait: { name: "身份证人像面.png", type: "png", buffer: PNG },
+    emblem: { name: "身份证国徽面.jpg", type: "jpeg", buffer: JPEG },
+    other: { name: "现场.png", type: "png", buffer: PNG },
+    pdf: { name: "附件.pdf", type: "pdf", buffer: appendix }
+  } as const;
+  const normal = await normalizeContractPdf(body, order.map(key => files[key as keyof typeof files]), { preserveUploadOrder: true });
+  expect(normal.pageSizes).toEqual(pages);
+  expect((await loadOutput(normal.buffer)).getPageCount()).toBe(pages.length);
+});

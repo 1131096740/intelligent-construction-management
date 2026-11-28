@@ -28,8 +28,6 @@ import {
   recreateSpotProcurementPaymentDraft,
   refreshSpotProcurementReceiptPdf,
   requestSpotProcurementAbnormalTermination,
-  resetSpotProcurementReceiptDraft,
-  submitSpotProcurementReceipt,
   submitSpotProcurement,
   submitSpotProcurementPayment,
   updateSpotProcurementDraft,
@@ -133,16 +131,14 @@ describe("spot procurement API client", () => {
     ]);
   });
 
-  it("connects the final receipt read and submission routes", async () => {
+  it("reads historical receipt facts", async () => {
     await fetchSpotProcurementReceipt("procurement/1");
-    await submitSpotProcurementReceipt("procurement/1");
     expect(mockApiFetch.mock.calls.map(([path]) => path)).toEqual([
-      "/spot-procurements/procurement%2F1/receipt",
-      "/spot-procurements/procurement%2F1/receipt/submission"
+      "/spot-procurements/procurement%2F1/receipt"
     ]);
   });
 
-  it("connects semantic procurement, payment draft and receipt lifecycle routes with CAS", async () => {
+  it("connects semantic procurement and payment draft lifecycle routes with CAS", async () => {
     await abandonSpotProcurementDraft("procurement/1", {
       action: "abandon_application",
       reason: "现场需求取消"
@@ -152,13 +148,11 @@ describe("spot procurement API client", () => {
       reason: "付款对象需要重新确认"
     });
     await recreateSpotProcurementPaymentDraft("procurement/1");
-    await resetSpotProcurementReceiptDraft("procurement/1", 3);
 
     expect(mockApiFetch.mock.calls.map(([path]) => path)).toEqual([
       "/spot-procurements/procurement%2F1/abandonment",
       "/spot-procurement-payments/payment%2F1/abandonment",
-      "/spot-procurements/procurement%2F1/payment-drafts",
-      "/spot-procurements/procurement%2F1/receipt/draft-reset"
+      "/spot-procurements/procurement%2F1/payment-drafts"
     ]);
     expect(mockApiFetch.mock.calls.map(([, init]) => init?.body)).toEqual([
       JSON.stringify({ action: "abandon_application", reason: "现场需求取消" }),
@@ -166,12 +160,11 @@ describe("spot procurement API client", () => {
         expectedUpdatedAt: "2026-07-19T10:00:00.000Z",
         reason: "付款对象需要重新确认"
       }),
-      JSON.stringify({}),
-      JSON.stringify({ expectedRevision: 3 })
+      JSON.stringify({})
     ]);
   });
 
-  it("uses only replenishment or refund for real-form shortage handling", async () => {
+  it("confirms an existing historical discrepancy and preserves refund recording", async () => {
     const refund = {
       amountCents: "1200",
       receivedAt: "2026-07-18",
@@ -181,9 +174,7 @@ describe("spot procurement API client", () => {
     };
 
     await createSpotProcurementDiscrepancy("procurement/1", {
-      operation: "initiate",
-      resolutionType: "replenishment",
-      note: "商户承诺补货"
+      operation: "confirm"
     });
     await recordSpotProcurementRefund("procurement/1", refund);
 
@@ -193,9 +184,7 @@ describe("spot procurement API client", () => {
     ]);
     expect(mockApiFetch.mock.calls.map(([, init]) => init?.body)).toEqual([
       JSON.stringify({
-        operation: "initiate",
-        resolutionType: "replenishment",
-        note: "商户承诺补货"
+        operation: "confirm"
       }),
       JSON.stringify(refund)
     ]);
@@ -1423,6 +1412,33 @@ describe("spot procurement API client", () => {
     }
   });
 
+  it("sends an unchanged registered account receipt and source allocation when retrying with a new password", async () => {
+    const frozen = {
+      amountCents: "50000",
+      paidAt: "2026-07-17T08:00:00.000Z",
+      paymentMethod: "bank_transfer" as const,
+      paymentChannelId: "approved-channel",
+      voucherFileIds: ["voucher-1", "voucher-2"],
+      idempotencyKey: "original-attempt",
+      registeredFunding: {
+        scopeKey: "company:actual-payer",
+        expectedRegistrationId: "registered-balance-version",
+        sourceAllocations: [
+          {sourceBatchId: "source-1", amountCents: "30000"},
+          {sourceBatchId: "source-2", amountCents: "20000"}
+        ]
+      }
+    };
+    const url = "/spot-procurement-payments/payment%2F1/executions";
+
+    await recordSpotProcurementPaymentExecution("payment/1", {...frozen, confirmationPassword: "first-password"});
+    await recordSpotProcurementPaymentExecution("payment/1", {...frozen, confirmationPassword: "reentered-password"});
+
+    expect(mockApiFetch.mock.calls).toEqual(["first-password", "reentered-password"].map(confirmationPassword => [
+      url, expect.objectContaining({method: "POST", body: JSON.stringify({...frozen, confirmationPassword})})
+    ]));
+  });
+
   it("surfaces server validation messages and masks technical failures", async () => {
     mockApiFetch
       .mockResolvedValueOnce(
@@ -1578,3 +1594,20 @@ function deferred<T>() {
   });
   return { promise, reject, resolve };
 }
+
+it("新并联自审保留独立原因与本人密码直到对应职责POST，普通审批不混入确认字段", async () => {
+  mockApiFetch.mockReset();
+  mockApiFetch.mockResolvedValueOnce(jsonResponse(reviewDetail({availableActions:[{key:"review_approval",enabled:true,requiresSelfReviewConfirmation:true}]})));
+  const prepared=await prepareSpotProcurementReviewAction(reviewActionInput({requiresSelfReviewConfirmation:true,selfReviewReason:"  本人核对当前职责  ",confirmationPassword:"own-synthetic-password"}));
+  expect(prepared.status).toBe("ready");
+  if(prepared.status!=="ready")throw new Error("自审预检未通过");
+  mockApiFetch.mockResolvedValueOnce(jsonResponse({}));
+  await executeSpotProcurementReviewAction({decision:"approve",capture:()=>prepared.context,preflight:async()=>prepared,current:()=>true,complete:vi.fn(),fail:vi.fn(),finish:vi.fn()});
+  const body=JSON.parse(String(mockApiFetch.mock.calls[1]![1]?.body));
+  expect(body).toMatchObject({expectedNodeIndex:1,selfReviewReason:"本人核对当前职责",confirmationPassword:"own-synthetic-password"});
+});
+it("新并联自审缺独立原因先拒绝，不用普通驳回意见充当原因",async()=>{
+  mockApiFetch.mockReset();
+  await expect(prepareSpotProcurementReviewAction(reviewActionInput({decision:"reject",comment:"退回补充",requiresSelfReviewConfirmation:true,selfReviewReason:"",confirmationPassword:"own-password"}))).rejects.toThrow("自审原因");
+  expect(mockApiFetch).not.toHaveBeenCalled();
+});

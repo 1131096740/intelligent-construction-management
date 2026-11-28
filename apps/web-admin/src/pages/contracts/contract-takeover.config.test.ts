@@ -11,6 +11,7 @@ import {
   companyEntityMatchStatus,
   canConfirmHistoricalChangeBaseline,
   canReturnTakeoverForSupplement,
+  canReturnTakeoverForFinanceSupplement,
   canEditTakeover,
   canSubmitTakeoverReview,
   centsToYuanText,
@@ -118,6 +119,9 @@ describe("contract takeover page configuration", () => {
       canEditFinance: true,
       canEditContract: false,
       canConfirmFinance: false
+    });
+    expect(takeoverDepartmentAccess(["finance_staff"], false, true)).toMatchObject({
+      canConfirmFinance: true
     });
     expect(takeoverDepartmentAccess(["finance_director"], false)).toMatchObject({
       canEditFinance: true,
@@ -502,7 +506,11 @@ describe("contract takeover page configuration", () => {
 
   it("maps takeover status and lifecycle status to Chinese display", () => {
     expect(takeoverLevelLabel("A")).toBe("A级");
+    expect(takeoverLevelLabel("NONE")).toBe("无等级");
+    expect(takeoverStatusLabel("pending_finance")).toBe("待财务填写");
     expect(takeoverStatusLabel("pending_review")).toBe("待复核");
+    expect(canReturnTakeoverForFinanceSupplement({ takeoverStatus: "pending_finance" })).toBe(true);
+    expect(canReturnTakeoverForFinanceSupplement({ takeoverStatus: "pending_review" })).toBe(false);
     expect(takeoverStatusTone("confirmed")).toBe("success");
     expect(lifecycleStatusLabel("signed_not_started")).toBe("已签未开工");
     expect(takeoverLevelLabel("internal_level")).toBe("等级未读取");
@@ -525,10 +533,11 @@ describe("contract takeover page configuration", () => {
   });
 
   it("shows workflow actions only for allowed statuses", () => {
-    expect(canSubmitTakeoverReview({ takeoverStatus: "draft" })).toBe(true);
-    expect(canSubmitTakeoverReview({ takeoverStatus: "needs_supplement" })).toBe(true);
-    expect(canSubmitTakeoverReview({ takeoverStatus: "pending_review" })).toBe(false);
-    expect(canSubmitTakeoverReview({ takeoverStatus: "confirmed" })).toBe(false);
+    expect(canSubmitTakeoverReview({ ...takeover(), takeoverStatus: "draft", takeoverLevel: "B" })).toBe(true);
+    expect(canSubmitTakeoverReview({ ...takeover(), takeoverStatus: "needs_supplement", takeoverLevel: "B" })).toBe(true);
+    expect(canSubmitTakeoverReview({ ...takeover(), takeoverStatus: "pending_review", takeoverLevel: "B" })).toBe(false);
+    expect(canSubmitTakeoverReview({ ...takeover(), takeoverStatus: "confirmed", takeoverLevel: "B" })).toBe(false);
+    expect(canSubmitTakeoverReview({ takeoverStatus: "draft", takeoverLevel: "NONE", contractSide: null })).toBe(false);
 
     expect(canEditTakeover({ takeoverStatus: "draft" })).toBe(true);
     expect(canEditTakeover({ takeoverStatus: "needs_supplement" })).toBe(true);
@@ -850,14 +859,15 @@ describe("contract takeover page configuration", () => {
 
     expect(summary.items).toEqual([
       { label: "接管截止日", value: "2026-06-30" },
-      { label: "系统建议等级", value: "B级" },
-      { label: "确认接管等级", value: "B级" },
+      { label: "合同关系", value: "表外（外部相对方）" },
+      { label: "历史事实状态", value: "待核对" },
       { label: "发票类型", value: "增值税专用发票" },
       { label: "计税模式", value: "单一税率" },
       { label: "默认税率", value: "13%" },
       { label: "历史计价项目", value: "1 项" },
       { label: "历史累计结算", value: "¥600,000.00" },
       { label: "历史累计已付", value: "¥300,000.00" },
+      { label: "历史已付/结算/超付", value: "¥300,000.00 / ¥600,000.00 / ¥0.00（未超付）" },
       { label: "历史在途/待付", value: "¥30,000.00" },
       { label: "历史预付款已付/已扣回", value: "¥50,000.00 / ¥10,000.00" },
       { label: "历史质保金扣留/释放", value: "¥30,000.00 / ¥10,000.00" }
@@ -1118,6 +1128,18 @@ function takeover(): ContractTakeoverReadModel {
         settlementBasis: "按实际验收量结算"
       }
     ],
+    relationship: "outside",
+    relationshipLabel: "表外（外部相对方）",
+    frameworkNoTotal: false,
+    historicalFactStatus: "pending_verification",
+    historicalFactStatusLabel: "待核对",
+    historicalPaidTotalCents: "30000000",
+    historicalOverpaidCents: "0",
+    historicalOverpaymentKind: "none",
+    historicalOverpaymentLabel: "未超付",
+    historicalReceiptsCents: "0",
+    historicalOverReceivedCents: "0",
+    historicalOverReceivedPendingVerification: false,
     takeoverLevel: "B",
     suggestedTakeoverLevel: "B",
     takeoverLevelAdjustmentReason: null,

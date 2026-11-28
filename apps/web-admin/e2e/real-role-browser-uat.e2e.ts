@@ -12,6 +12,7 @@ type RoleCase = {
 const initialPassword = process.env.REAL_ROLE_PASSWORD;
 const evidencePath = process.env.REAL_BROWSER_EVIDENCE_PATH;
 const freezeApiBaseUrl = process.env.REAL_FREEZE_API_BASE_URL;
+const signedSettlementApiBaseUrl = process.env.REAL_SIGNED_SETTLEMENT_API_BASE_URL;
 const selfArchiveContractIdsRaw = process.env.REAL_BROWSER_SELF_ARCHIVE_CONTRACT_IDS;
 let selfArchiveContractIds: Record<string, unknown> = {};
 try {
@@ -19,6 +20,9 @@ try {
 } catch {
   selfArchiveContractIds = {};
 }
+
+const signedSettlementReviewFixtures = JSON.parse(process.env.REAL_BROWSER_SIGNED_SETTLEMENT_REVIEW_FIXTURES ?? "{}") as
+  Record<string, { projectId: string; settlementId: string; revision: number }>;
 
 const roleCases: RoleCase[] = [
   {
@@ -53,20 +57,6 @@ const roleCases: RoleCase[] = [
   }
 ];
 
-const settlementRaceAccount: RoleCase = {
-  key: "material_staff",
-  phone: "13800001009",
-  name: "物资员",
-  routes: []
-};
-
-const settlementLaborRaceAccount: RoleCase = {
-  key: "engineering_foreman",
-  phone: "13800001011",
-  name: "工程工长",
-  routes: []
-};
-
 type RequestLedgerEntry = {
   role: string;
   method: string;
@@ -85,7 +75,11 @@ function assertRuntimeConfiguration() {
   expect(freezeApiBaseUrl, "REAL_FREEZE_API_BASE_URL 必须由隔离 UAT runner 注入").toMatch(
     /^http:\/\/(?:127\.0\.0\.1|localhost):[0-9]+$/u
   );
+  expect(signedSettlementApiBaseUrl, "已签结算复核须使用隔离本机 API").toMatch(/^http:\/\/(?:127\.0\.0\.1|localhost):[0-9]+$/u);
   for (const browser of ["chromium", "webkit"]) {
+    expect(signedSettlementReviewFixtures[browser], `缺少 ${browser} 已签结算复核夹具`).toMatchObject({
+      projectId: expect.any(String), settlementId: expect.any(String), revision: expect.any(Number)
+    });
     expect(
       selfArchiveContractIds[browser],
       `REAL_BROWSER_SELF_ARCHIVE_CONTRACT_IDS.${browser} 必须由治理证据解析后注入`
@@ -138,7 +132,7 @@ async function login(page: Page, account: RoleCase) {
   await expect(page.getByText("建工智管").first()).toBeVisible();
 }
 
-async function rawRequest(page: Page, role: string, method: string, path: string, body?: unknown) {
+async function rawRequest(page: Page, role: string, method: string, path: string, body?: unknown, origin?: string) {
   const auth = await page.evaluate(() => {
     const raw = window.localStorage.getItem("jiangkong-web-admin-auth");
     if (!raw) return null;
@@ -148,7 +142,7 @@ async function rawRequest(page: Page, role: string, method: string, path: string
       return null;
     }
   });
-  const response = await page.request.fetch(`/api${path}`, {
+  const response = await page.request.fetch(origin ? origin + path : `/api${path}`, {
     method,
     headers: {
       ...(auth?.accessToken ? { Authorization: `Bearer ${auth.accessToken}` } : {}),
@@ -229,34 +223,24 @@ test.describe("RC-06 real API-backed four-role browser acceptance", () => {
     const forbiddenOrganizationWrite = await rawRequest(page, "contract_staff", "POST", "/business-entry-definitions/organization_user/create-target", { entityType: "organization_user" });
     expect(forbiddenOrganizationWrite.status()).toBe(403);
 
-    const trialRunId = process.env.TRIAL_RUN_ID;
-    expect(trialRunId, "隔离治理 UAT 必须注入 TRIAL_RUN_ID").toBeTruthy();
-    const useLaborRace = testInfo.project.name.includes("webkit");
-    const raceAccount = useLaborRace ? settlementLaborRaceAccount : settlementRaceAccount;
-    const settlementCode = `JS-UAT-${trialRunId}-${useLaborRace ? "settlement_labor_route" : "settlement_material_route"}`;
-    const existingSettlement = await rawRequest(
-      page,
-      "contract_staff",
-      "GET",
-      `/settlements/${encodeURIComponent(settlementCode)}`
-    );
-    expect(existingSettlement.ok()).toBeTruthy();
-    const settlementData = (await existingSettlement.json()) as { settlementId?: unknown; id?: unknown };
-    const settlementId = settlementData.settlementId ?? settlementData.id;
-    expect(typeof settlementId).toBe("string");
+    const browserKey = testInfo.project.name.includes("webkit") ? "webkit" : "chromium";
+    const { projectId, settlementId, revision } = signedSettlementReviewFixtures[browserKey];
+    const retiredApprovalPath = `/settlements/${encodeURIComponent(settlementId)}/approval`;
+    const retired = await Promise.all([
+      rawRequest(page, "contract_staff", "POST", retiredApprovalPath, { decision: "approve" }),
+      rawRequest(page, "contract_staff", "POST", retiredApprovalPath, { decision: "approve" })
+    ]);
+    expect(retired.map((response) => response.status())).toEqual([410, 410]);
 
     const reviewerContext = await browser.newContext({ viewport });
     const reviewerPage = await reviewerContext.newPage();
-    await captureApiResponses(reviewerPage, raceAccount.key);
-    await login(reviewerPage, raceAccount);
-    const [firstApproval, duplicateApproval] = await Promise.all([
-      rawRequest(reviewerPage, raceAccount.key, "POST", `/settlements/${encodeURIComponent(String(settlementId))}/approval`, { decision: "approve" }),
-      rawRequest(reviewerPage, raceAccount.key, "POST", `/settlements/${encodeURIComponent(String(settlementId))}/approval`, { decision: "approve" })
-    ]);
-    const approvalStatuses = [firstApproval.status(), duplicateApproval.status()];
-    expect(approvalStatuses).toContain(409);
-    expect(approvalStatuses.filter((status) => status === 200 || status === 201)).toHaveLength(1);
-
+    const reviewer = roleCases.find((role) => role.key === "contract_director")!;
+    await captureApiResponses(reviewerPage, reviewer.key);
+    await login(reviewerPage, reviewer);
+    const currentPath = `/projects/${encodeURIComponent(projectId)}/signed-contract-settlements/${encodeURIComponent(settlementId)}/review`;
+    const staleReview = await rawRequest(reviewerPage, reviewer.key, "POST", currentPath,
+      { revision, decision: "confirm" }, signedSettlementApiBaseUrl);
+    expect(staleReview.status()).toBe(409);
     await reviewerContext.close();
     await context.close();
   });

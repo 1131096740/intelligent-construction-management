@@ -1,0 +1,66 @@
+{
+  "scope": "technical-probe-only; not production template adoption",
+  "base": "f352d187b720a2e8231874775616c24e91eb3bd8",
+  "templates": [
+    {
+      "file": "equipment-rental-real-v1.docx",
+      "bytes": 43038,
+      "sha256": "9139d5eb2905cb659e90c00f053c8b17c40d265bca5c660da5d2d8e1028d4c32",
+      "origin": "preserved-user-workspace/services/api/assets/templates/equipment-rental-real-v1.docx",
+      "mainSha256": "b846a2f93a3f118581a58fe137b9a74c0433a7faa271eed1569068da6d5cef89"
+    },
+    {
+      "file": "equipment-rental-v1.docx",
+      "bytes": 4389,
+      "sha256": "7dc970b866b2a4a35acf332947847f3fa4758a2b5027837528d8044ce2d9d4ef",
+      "origin": "preserved-user-workspace/services/api/assets/templates/equipment-rental-v1.docx",
+      "mainSha256": "b4bfb1ea407373704333d64723bff73c873998096e404c1d48d052e23fe16331"
+    },
+    {
+      "file": "generic-contract-v1.docx",
+      "bytes": 7001,
+      "sha256": "3a3d0fb5e9b5e49798f3773f213296b9cfa224874d14bda6aa89006b63bd366a",
+      "origin": "preserved-user-workspace/services/api/assets/templates/generic-contract-v1.docx",
+      "mainSha256": "ef9b75b39a487903d33bfc239f7c9754b8172ff1a1f6c6b6b3ba20178e098e5d"
+    },
+    {
+      "file": "labor-subcontract-real-v1.docx",
+      "bytes": 22581,
+      "sha256": "faae3cebc8e377764df12e999bcfddb1beefe6958cb728175f33f8e6fa4a187f",
+      "origin": "preserved-user-workspace/services/api/assets/templates/labor-subcontract-real-v1.docx",
+      "mainSha256": "d82812b363391fe9e629cd18555ce7ce951aa9fa9a479d0bada1092fc0174c47"
+    },
+    {
+      "file": "labor-subcontract-v1.docx",
+      "bytes": 4354,
+      "sha256": "72b5c633ce9417e3553712500279bd6dc9fd01cb5cebe0c696fe977d256477e6",
+      "origin": "preserved-user-workspace/services/api/assets/templates/labor-subcontract-v1.docx",
+      "mainSha256": "6f6d7ece0056dcaa80458d60659d6c4cf043fd47366d5d7508706e87e5a79650"
+    },
+    {
+      "file": "material-purchase-real-v1.docx",
+      "bytes": 41157,
+      "sha256": "8d707f8ecd65e2ca69c6920991dcb542cbc23ada42cf39a62299ab25e5820334",
+      "origin": "preserved-user-workspace/services/api/assets/templates/material-purchase-real-v1.docx",
+      "mainSha256": "44be99630d27578e9828bd7c6fa4925cdc26f552b84637e125c8acb0632b17bd"
+    },
+    {
+      "file": "material-purchase-v1.docx",
+      "bytes": 4546,
+      "sha256": "4da16afa0fb02d88ef670174cc4560772d56266e27a3d61ccba28f0fd158fa48",
+      "origin": "preserved-user-workspace/services/api/assets/templates/material-purchase-v1.docx",
+      "mainSha256": "c74a251dc07fef4178fa4000c1308c6ffd3f52efbf9b49e709c7b1c5238ca77d"
+    },
+    {
+      "file": "professional-subcontract-v1.docx",
+      "bytes": 7094,
+      "sha256": "6ae812af212498638036a24fbc7ce793497a82894a76b28b087b51a1cef366f4",
+      "origin": "preserved-user-workspace/services/api/assets/templates/professional-subcontract-v1.docx",
+      "mainSha256": null
+    }
+  ],
+  "fontStandard": {
+    "source": "preserved-user-workspace/docs/design/建工智管_合同Word版式标准.md",
+    "sha256": "8790ffcc29fcb2d9e1d00a4e3a974071b1807784d94dbfbc01bd862eb8daa6f7"
+  }
+}

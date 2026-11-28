@@ -1,0 +1,21 @@
+--- valid.cjs
++++ valid.cjs
+@@ -2 +2 @@
+-const {withCombined295MultiWitness,withCombined320ContractPayment,withCombined330TextAgreement,withCombined331PaymentRemainder,withCombined332UpwardArchive}=require("./installer.cjs");
++const {withCombined295MultiWitness,withCombined320ContractPayment,withCombined330TextAgreement,withCombined331PaymentRemainder,withCombined332UpwardArchive,withCombined334HistoricalSettlement}=require("./installer.cjs");
+@@ -4,0 +5 @@
++const historicalSettlement=source.mode==='historical-settlement-334';
+@@ -7,2 +8,2 @@
+-const forward=upwardArchive||paymentRemainder||source.mode==='current-320'||source.mode==='text-direct-330';
+-const count=upwardArchive?332:paymentRemainder?331:source.mode==='text-direct-330'?330:forward?329:295;
++const forward=historicalSettlement||upwardArchive||paymentRemainder||source.mode==='current-320'||source.mode==='text-direct-330';
++const count=historicalSettlement?334:upwardArchive?332:paymentRemainder?331:source.mode==='text-direct-330'?330:forward?329:295;
+@@ -10 +11 @@
+-  ? (upwardArchive?withCombined332UpwardArchive:paymentRemainder?withCombined331PaymentRemainder:count===330?withCombined330TextAgreement:withCombined320ContractPayment)(receipt,consume,{sourceTree:source.sourceTree,
++  ? (historicalSettlement?withCombined334HistoricalSettlement:upwardArchive?withCombined332UpwardArchive:paymentRemainder?withCombined331PaymentRemainder:count===330?withCombined330TextAgreement:withCombined320ContractPayment)(receipt,consume,{sourceTree:source.sourceTree,
+@@ -18,0 +20,5 @@
++  if(historicalSettlement) {
++    require('./historical-settlement-334-profile.cjs').assertFinanceInstallation(receipt,source);
++    if(receipt.historicalTakeoverCatalogAfterBusiness!==true || receipt.historicalSettlementCatalogAfterBusiness!==true)
++      throw new Error("PAYMENT_334_POST_BUSINESS_CATALOG");
++  }

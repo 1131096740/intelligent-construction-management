@@ -1,0 +1,133 @@
+--- a/fixture.ts
++++ b/fixture.ts
+@@ -91,0 +92,6 @@
++    const orderedDatabase = process.env.JG_ISSUE421_ORDERED_DATABASE;
++    const ordered = /^jg_task01_[a-f0-9]{32}$/u.test(orderedDatabase ?? "") &&
++      target.pathname === "/" + orderedDatabase && target.protocol === "postgresql:" &&
++      target.username === "jg_task01_owner" && Number(target.port) > 1024 &&
++      target.searchParams.get("sslmode") === "require" && target.searchParams.get("sslaccept") === "strict" &&
++      /^\/tmp\/jg394-[A-Za-z0-9]+\/ca\.crt$/u.test(target.searchParams.get("sslcert") ?? "");
+@@ -95 +101 @@
+-      !target.pathname.endsWith("_issue421_ledger")
++      (!target.pathname.endsWith("_issue421_ledger") && !ordered)
+@@ -153,0 +160,22 @@
++    let signingVersionId: string | undefined;
++    if (ordered) {
++      const signingCompany = await owner.companyEntity.create({ data: {
++        id: "i421-company", name: "四川建工智管建筑工程有限公司", isActive: true, currentVersionNo: 1
++      } });
++      const signingVersion = await owner.companyEntityVersion.create({ data: {
++        companyEntityId: signingCompany.id, versionNo: 1, name: signingCompany.name,
++        isActive: signingCompany.isActive, action: "create", actorUserId: ids.director
++      } });
++      signingVersionId = signingVersion.id;
++      const enterprise = await owner.businessParty.create({ data: {
++        name: "隔离台账施工企业", normalizedName: "issue421-enterprise", createdByUserId: ids.director
++      } });
++      const version = await owner.businessPartyVersion.create({ data: {
++        businessPartyId: enterprise.id, versionNo: 1, snapshot: { name: enterprise.name }, createdByUserId: ids.director
++      } });
++      await owner.projectAffiliateAssignment.createMany({ data: [ids.projectA, ids.projectB].map(projectId => ({
++        projectId, businessPartyId: enterprise.id, businessPartyVersionId: version.id,
++        affiliateNameSnapshot: enterprise.name, effectiveFrom: new Date("2020-01-01"),
++        changeReason: "隔离验收施工企业", assignedByUserId: ids.director
++      })) });
++    }
+@@ -161,0 +190 @@
++        companyEntityId: ordered ? "i421-company" : undefined,
+@@ -170 +199 @@
+-        changeType: "initial",
++        changeType: ordered ? "original" : "initial",
+@@ -171,0 +201,2 @@
++        effectiveAt: ordered ? new Date("2026-01-01") : undefined,
++        numericProtocolVersion: 1,
+@@ -174,0 +206 @@
++        companyEntityVersionId: signingVersionId,
+@@ -178 +210 @@
+-        clauseSnapshot: {}
++        clauseSnapshot: ordered ? [] : {}
+@@ -188,0 +221 @@
++        companyEntityId: ordered ? "i421-company" : undefined,
+@@ -197 +230 @@
+-        changeType: "initial",
++        changeType: ordered ? "original" : "initial",
+@@ -198,0 +232,2 @@
++        effectiveAt: ordered ? new Date("2026-01-01") : undefined,
++        numericProtocolVersion: 1,
+@@ -203,0 +239 @@
++        companyEntityVersionId: signingVersionId,
+@@ -207 +243 @@
+-        clauseSnapshot: {}
++        clauseSnapshot: ordered ? [] : {}
+@@ -463,0 +500,10 @@
++    const confirmedContractSource = {
++      relationship: "inside",
++      sourceRecordId: preciseVersion.id,
++      sourceVersion: 1,
++      contractTypeKey: "labor_subcontract",
++      name: contractName,
++      signingParty: "四川建工智管建筑工程有限公司",
++      counterparty: "高精度结算测试单位",
++      payerKind: "participating_company"
++    };
+@@ -477,10 +523 @@
+-        confirmedContractSource: {
+-          relationship: "inside",
+-          sourceRecordId: preciseVersion.id,
+-          sourceVersion: 1,
+-          contractTypeKey: "labor_subcontract",
+-          name: contractName,
+-          signingParty: "四川建工智管建筑工程有限公司",
+-          counterparty: "高精度结算测试单位",
+-          payerKind: "participating_company"
+-        }
++        confirmedContractSource
+@@ -504,0 +542,48 @@
++
++    // The confirmed offset stays a signed four-place fact in the ledger and its export.
++    const offsetAmountYuan = "-25.5001";
++    const offsetNumber = "JS-421-PRECISION-OFFSET";
++    const totalAmountYuan = "1234567890123431.2889";
++    await owner.signedContractSettlement.create({
++      data: {
++        projectId: ids.projectA,
++        contractKind: "downstream",
++        contractId: preciseContract.id,
++        ownerUserId: ids.staffA,
++        number: offsetNumber,
++        amountYuan: new Prisma.Decimal(offsetAmountYuan),
++        state: "confirmed",
++        submittedAt: new Date("2026-11-20T02:00:00.000Z"),
++        reviewedAt: new Date("2026-11-20T02:30:00.000Z"),
++        reviewedByUserId: ids.director,
++        confirmationNo: 2n,
++        confirmedContractSource
++      }
++    });
++    const query = "keyword=高精度幕墙&sort=confirmedAt:asc";
++    const listed = await callJson("staffA", `/settlements/signed-ledger?${query}`);
++    expect(listed).toMatchObject({
++      status: 200,
++      body: {
++        rows: [
++          { settlementNo: "JS-421-PRECISION", amountYuan, status: "confirmed" },
++          { settlementNo: offsetNumber, amountYuan: offsetAmountYuan, amount: "¥-25.5001", status: "confirmed" }
++        ],
++        summary: { total: 2, knownAmountRows: 2, unknownAmountRows: 0, totalAmountYuan }
++      }
++    });
++    const exported = await callWorkbook("staffA", `/settlements/signed-ledger-export?${query}`);
++    expect(exported.status).toBe(200);
++    const sheet = exported.sheet!;
++    const headers = headersOf(sheet);
++    const numberColumn = headers.indexOf("结算编号") + 1;
++    const amountColumn = headers.indexOf("结算金额（元）") + 1;
++    expect(sheet.rowCount).toBe(4);
++    expect(sheet.getRow(2).getCell(numberColumn).value).toBe("JS-421-PRECISION");
++    expect(sheet.getRow(2).getCell(amountColumn).value).toBe(amountYuan);
++    expect(sheet.getRow(3).getCell(numberColumn).value).toBe(offsetNumber);
++    expect(sheet.getRow(3).getCell(amountColumn).value).toBe(-25.5001);
++    expect(sheet.getRow(3).getCell(amountColumn).numFmt).toBe("#,##0.0000");
++    expect(sheet.getRow(4).getCell(numberColumn).value).toBe("合计（不含待确定金额）");
++    expect(sheet.getRow(4).getCell(amountColumn).value).toBe(totalAmountYuan);
++    expect(sheet.getRow(4).getCell(amountColumn).numFmt).toBe("@");

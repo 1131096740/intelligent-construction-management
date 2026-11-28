@@ -6,10 +6,7 @@ type CapturedRequest = {
   body?: Record<string, unknown>;
 };
 
-type WorkbenchStatus = "empty" | "draft" | "submitted" | "confirmed";
-
-const expiresAt = "2026-08-27T17:55:00.000Z";
-const selectionRef = "pes1.opaque-selection-reference";
+type WorkbenchStatus = "draft" | "submitted" | "confirmed";
 
 function json(route: Route, body: unknown, status = 200) {
   return route.fulfill({
@@ -19,11 +16,11 @@ function json(route: Route, body: unknown, status = 200) {
   });
 }
 
-function workbenchRow(status: Exclude<WorkbenchStatus, "empty">) {
+function workbenchRow(status: WorkbenchStatus) {
   const revision = status === "draft" ? 1 : status === "submitted" ? 2 : 3;
   const statusLabel = status === "draft" ? "草稿" : status === "submitted" ? "已提交" : "已确认";
   return {
-    settlementCaseId: "settlement-case-e2e",
+    settlementCaseId: `settlement-case-${status}`,
     status,
     statusLabel,
     revision,
@@ -35,10 +32,8 @@ function workbenchRow(status: Exclude<WorkbenchStatus, "empty">) {
   };
 }
 
-async function installHarness(page: Page) {
+async function installHarness(page: Page, staleWageCapabilities = false) {
   const requests: CapturedRequest[] = [];
-  let status: WorkbenchStatus = "empty";
-  let relationshipStatus: "open" | "returned" = "open";
 
   await page.addInitScript(() => {
     window.localStorage.setItem("jiangkong-web-admin-auth", JSON.stringify({
@@ -55,7 +50,7 @@ async function installHarness(page: Page) {
     }));
   });
 
-  await page.route("**/api/**", async (route) => {
+  await page.route((url) => url.pathname.startsWith("/api/"), async (route) => {
     const request = route.request();
     const pathname = new URL(request.url()).pathname.replace(/^\/api/u, "");
     const captured: CapturedRequest = { method: request.method(), pathname };
@@ -85,7 +80,14 @@ async function installHarness(page: Page) {
     }
     if (pathname === "/approval-delegations/user-options") return json(route, []);
     if (pathname === "/payable-settlements/capabilities") {
-      return json(route, { read: true, allocate: true, submit: true, confirm: true, return: true });
+      return json(route, {
+        read: true,
+        allocate: staleWageCapabilities,
+        submit: staleWageCapabilities,
+        confirm: staleWageCapabilities,
+        return: staleWageCapabilities,
+        returnRelationship: true
+      });
     }
     if (pathname === "/payable-settlements/wage-payable-cases") {
       return json(route, [{
@@ -95,28 +97,13 @@ async function installHarness(page: Page) {
         debtorCompanyLabel: "甲公司",
         creditorLabel: "工资代发机构",
         status: "allocatable",
-        statusLabel: "可核销",
+        statusLabel: "历史余额",
         remainingAmountCents: "10000",
         overSettledAmountCents: "0"
       }]);
     }
-    if (pathname === "/payable-settlements/wage-payable-cases/payable-safe-1/payment-execution-candidates") {
-      return json(route, {
-        caseRevision: 3,
-        expiresAt,
-        candidates: [{
-          selectionRef,
-          expiresAt,
-          displayLabel: "2026-08-27 · 甲公司 · 候选01",
-          executedAt: "2026-08-27T16:00:00.000Z",
-          payerLabel: "甲公司",
-          statusLabel: "已执行",
-          availableAmountCents: "10000"
-        }]
-      });
-    }
     if (pathname === "/payable-settlements/workbench") {
-      return json(route, status === "empty" ? [] : [workbenchRow(status)]);
+      return json(route, [workbenchRow("draft"), workbenchRow("submitted"), workbenchRow("confirmed")]);
     }
     if (pathname === "/payable-settlements/inter-entity-relationships") {
       return json(route, [{
@@ -125,166 +112,57 @@ async function installHarness(page: Page) {
         creditorLabel: "实际付款公司",
         approvedPayerLabel: "批准付款公司",
         amountCents: "10000",
-        remainingAmountCents: relationshipStatus === "open" ? "10000" : "0",
-        status: relationshipStatus,
-        statusLabel: relationshipStatus === "open" ? "未结" : "已归还"
+        remainingAmountCents: "10000",
+        status: "open",
+        statusLabel: "未结"
       }]);
     }
-    if (
-      pathname === "/payable-settlements/inter-entity-relationships/relationship-e2e/evidence" &&
-      request.method() === "POST"
-    ) {
-      return json(route, {
-        id: "relationship-return-evidence",
-        claimId: "relationship-return-claim"
-      });
+    if (pathname.startsWith("/company-transfers/") || pathname === "/company-transfers") {
+      return json(route, []);
     }
-    if (
-      pathname === "/payable-settlements/inter-entity-relationships/relationship-e2e/returns" &&
-      request.method() === "POST"
-    ) {
-      relationshipStatus = "returned";
-      return json(route, {
-        relationshipEntryId: "relationship-e2e",
-        returnEntryId: "relationship-return-e2e",
-        returnedAmountCents: "3000",
-        remainingAmountCents: "7000",
-        status: "open"
-      });
-    }
-    if (
-      pathname === "/payable-settlements/wage-payable-cases/payable-safe-1/allocations" &&
-      request.method() === "POST"
-    ) {
-      status = "draft";
-      return json(route, workbenchRow(status));
-    }
-    if (pathname === "/payable-settlements/settlement-case-e2e/submit" && request.method() === "POST") {
-      status = "submitted";
-      return json(route, workbenchRow(status));
-    }
-    if (pathname === "/payable-settlements/settlement-case-e2e/confirm" && request.method() === "POST") {
-      status = "confirmed";
-      return json(route, workbenchRow(status));
-    }
-
     return json(route, { message: `未登记的动态验收接口：${request.method()} ${pathname}` }, 501);
   });
 
   return requests;
 }
 
-function mutationRequest(requests: CapturedRequest[], suffix: string) {
-  const request = requests.find((item) => item.method === "POST" && item.pathname.endsWith(suffix));
-  expect(request, `应调用 ${suffix}`).toBeDefined();
-  return request!;
-}
-
-function expectFreshCapabilityBefore(requests: CapturedRequest[], mutation: CapturedRequest) {
-  const mutationIndex = requests.indexOf(mutation);
-  expect(mutationIndex).toBeGreaterThan(0);
-  expect(requests[mutationIndex - 1]).toMatchObject({
-    method: "GET",
-    pathname: "/payable-settlements/capabilities"
-  });
-}
-
-async function clickTableAction(page: Page, name: "提交" | "确认") {
-  const action = page.getByRole("table").getByText(name, { exact: true });
-  await action.evaluate((element) => element.scrollIntoView({ block: "center", inline: "center" }));
-  await action.click();
-}
-
-test.describe("#220/#221 工资应付核销与跨主体往来非生产动态验收", () => {
+test.describe("工资应付历史与跨主体往来", () => {
   test.setTimeout(60_000);
 
-  test("使用 opaque selectionRef 完成真实候选选择、提交和确认闭环", async ({ page }) => {
-    const requests = await installHarness(page);
+  test("显示历史工资应付和核销记录，忽略过期的可写能力", async ({ page }) => {
+    const requests = await installHarness(page, true);
 
     await page.goto("/工资应付核销工作台");
-    await expect(page.getByRole("heading", { name: "工资应付核销工作台" })).toBeVisible();
-    await expect(page.getByRole("textbox", {
-      name: "选择已确认且仍有余额的工资应付案件"
-    })).toHaveValue("XM-01 · 工资代发机构 · 可核销 100.00 元");
-
-    const candidateSelect = page.getByRole("textbox", {
-      name: "选择服务端当前允许核销的付款"
-    });
-    await candidateSelect.click();
-    await page.getByText("2026-08-27 · 甲公司 · 候选01 · 可用 100.00 元", { exact: true }).click();
-    await page.getByPlaceholder("例如 4000.00").fill("100.00");
-    await page.getByRole("button", { name: "保存核销草稿" }).click();
-
+    await expect(page.getByRole("heading", { name: "历史工资应付核销" })).toBeVisible();
+    await expect(page.getByText("XM-01 · 工资代发机构", { exact: true })).toBeVisible();
     await expect(page.getByText("草稿", { exact: true })).toBeVisible();
-    const allocation = mutationRequest(requests, "/allocations");
-    expectFreshCapabilityBefore(requests, allocation);
-    expect(allocation.body).toMatchObject({
-      selectionRef,
-      selectionExpiresAt: expiresAt,
-      amountCents: "10000",
-      expectedCaseRevision: 3
-    });
-    expect(allocation.body).toHaveProperty("idempotencyKey");
-    expect(allocation.body).not.toHaveProperty("paymentExecutionId");
-
-    await clickTableAction(page, "提交");
-    await expect(page.getByText("提交核销案件", { exact: true })).toBeVisible();
-    await page.getByRole("button", { name: "确认", exact: true }).click();
     await expect(page.getByText("已提交", { exact: true })).toBeVisible();
-    const submit = mutationRequest(requests, "/submit");
-    expectFreshCapabilityBefore(requests, submit);
-
-    await clickTableAction(page, "确认");
-    await expect(page.getByText("确认核销案件", { exact: true })).toBeVisible();
-    await page.getByRole("button", { name: "确认", exact: true }).click();
     await expect(page.getByText("已确认", { exact: true })).toBeVisible();
-    const confirm = mutationRequest(requests, "/confirm");
-    expectFreshCapabilityBefore(requests, confirm);
-
-    const browserVisibleText = await page.locator("body").innerText();
-    expect(browserVisibleText).not.toContain("paymentExecutionId");
-    expect(browserVisibleText).not.toContain("PaymentExecution");
-    expect(JSON.stringify(requests)).not.toContain("paymentExecutionId");
+    await expect(page.getByRole("button", { name: "保存核销草稿" })).toHaveCount(0);
+    for (const name of ["提交", "确认", "退回"]) {
+      await expect(page.getByRole("link", { name, exact: true })).toHaveCount(0);
+    }
+    expect(requests.filter((request) => request.pathname.startsWith("/payable-settlements/"))).toEqual(
+      expect.arrayContaining([expect.objectContaining({ method: "GET", pathname: "/payable-settlements/workbench" })])
+    );
+    expect(requests.some((request) =>
+      request.pathname.startsWith("/payable-settlements/") &&
+      (request.method !== "GET" || request.pathname.endsWith("/payment-execution-candidates"))
+    )).toBe(false);
+    const visibleText = await page.locator("body").innerText();
+    expect(visibleText).not.toContain("paymentExecutionId");
+    expect(visibleText).not.toContain("PaymentExecution");
   });
 
-  test("使用受控证据上传和 fresh capability 完成跨主体往来部分归还", async ({ page }) => {
-    const requests = await installHarness(page);
+  test("工资核销停止后仍可从历史代付往来进入归还台账", async ({ page }) => {
+    await installHarness(page);
 
     await page.goto("/工资应付核销工作台");
-    await expect(page.getByRole("heading", { name: "工资应付核销工作台" })).toBeVisible();
     await expect(page.getByText("实际付款公司", { exact: true })).toBeVisible();
     await page.getByText("追加归还", { exact: true }).click();
-
-    await page.getByPlaceholder(/不超过 100\.00 元/u).fill("30.00");
-    await page.getByPlaceholder("填写可核验的业务原因").fill("跨主体代付部分归还");
-    await page.locator('input[type="file"]').setInputFiles({
-      name: "return-evidence.pdf",
-      mimeType: "application/pdf",
-      buffer: Buffer.from("non-production-evidence")
-    });
-    await page.getByRole("button", { name: "核对并追加归还" }).click();
-    await expect(page.getByText("确认追加往来归还", { exact: true })).toBeVisible();
-    const evidenceRequestPromise = page.waitForRequest((request) =>
-      request.method() === "POST" && request.url().endsWith("/evidence")
+    await expect(page).toHaveURL((url) =>
+      decodeURIComponent(url.pathname) === "/公司互转台账" &&
+      url.searchParams.get("originalInterEntityRelationshipId") === "relationship-e2e"
     );
-    const returnRequestPromise = page.waitForRequest((request) =>
-      request.method() === "POST" && request.url().endsWith("/returns")
-    );
-    await page.getByRole("button", { name: "确认", exact: true }).last().click();
-    await Promise.all([evidenceRequestPromise, returnRequestPromise]);
-    await expect.poll(() => requests.some((item) => item.method === "POST" && item.pathname.endsWith("/returns"))).toBe(true);
-
-    const evidence = mutationRequest(requests, "/evidence");
-    expectFreshCapabilityBefore(requests, evidence);
-    const returned = mutationRequest(requests, "/returns");
-    expectFreshCapabilityBefore(requests, returned);
-    expect(returned.body).toMatchObject({
-      amountCents: "3000",
-      evidenceFileId: "relationship-return-evidence",
-      evidenceClaimId: "relationship-return-claim",
-      reason: "跨主体代付部分归还"
-    });
-    expect(JSON.stringify(requests)).not.toContain("paymentExecutionId");
-    expect(await page.locator("body").innerText()).not.toContain("PaymentExecution");
   });
 });

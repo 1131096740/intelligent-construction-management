@@ -1,0 +1,76 @@
+--- contract-bank-runtime-fixture.cjs
++++ contract-bank-runtime-fixture.cjs
+@@ -31,11 +31,18 @@
+   return renderFixtureFileGuardGrant("jg_task01_runtime", "jiangkong_payment_execution_concurrency", "HandwrittenSignatureVersion", "fileId");
+ }
+ 
++function renderTask398Owned280FileGuardGrant(database) {
++  if (typeof database !== "string" || !/^jg_task01_[a-f0-9]{32}$/u.test(database)) {
++    throw new Error("Task398 file guard requires the owned 280 fixture");
++  }
++  return renderFixtureFileGuardGrant("jg_task01_runtime", database, "HandwrittenSignatureVersion", "fileId", true);
++}
++
+ function renderProjectBusinessScopeFileGuardGrant() {
+   return renderFixtureFileGuardGrant("project_business_scope_runtime", "project_business_scope", "HandwrittenSignatureVersion", "fileId");
+ }
+ 
+-function renderFixtureFileGuardGrant(role, database, table, column) {
++function renderFixtureFileGuardGrant(role, database, table, column, owned280 = false) {
+   return `DO $contract_finance_file_guard$
+ DECLARE
+   fixture_role CONSTANT name := '${role}';
+@@ -47,7 +54,7 @@
+   owner_settlement_lookup oid := pg_catalog.to_regprocedure('public.jg_project_owner_settlement_voucher_bound(pg_catalog.text)');
+ BEGIN
+   IF current_database() <> '${database}'
+-    OR current_user <> 'jiangkong' OR session_user <> current_user
++    OR current_user <> '${owned280 ? "jg_task01_owner" : "jiangkong"}' OR session_user <> current_user
+     OR NOT EXISTS (SELECT 1 FROM pg_catalog.pg_database WHERE datname=current_database() AND datdba=owner_oid) THEN
+     RAISE EXCEPTION 'Contract finance file guard requires the owned fixture database';
+   END IF;
+@@ -88,14 +95,35 @@
+       )<>2 THEN
+       RAISE EXCEPTION 'Owner settlement voucher lookup requires the complete restricted catalog';
+     END IF;
+-    EXECUTE pg_catalog.format('GRANT EXECUTE ON FUNCTION public.jg_file_business_binding_columns_before_owner_settlement(), public.jg_project_owner_settlement_voucher_bound(pg_catalog.text) TO %I',fixture_role);
++    ${owned280 ? `IF has_function_privilege(fixture_oid,owner_settlement_lookup,'EXECUTE')
++      OR EXISTS (SELECT FROM pg_catalog.pg_proc p
++        CROSS JOIN LATERAL pg_catalog.aclexplode(coalesce(p.proacl,pg_catalog.acldefault('f',p.proowner))) a
++        WHERE p.oid=owner_settlement_lookup AND (a.grantee<>owner_oid OR a.grantor<>owner_oid OR a.is_grantable))
++      THEN RAISE EXCEPTION 'Owned 280 settlement lookup must remain owner-only'; END IF;
++    EXECUTE pg_catalog.format('GRANT EXECUTE ON FUNCTION public.jg_file_business_binding_columns_before_owner_settlement() TO %I',fixture_role);` :
++    `EXECUTE pg_catalog.format('GRANT EXECUTE ON FUNCTION public.jg_file_business_binding_columns_before_owner_settlement(), public.jg_project_owner_settlement_voucher_bound(pg_catalog.text) TO %I',fixture_role);`}
+     IF NOT pg_catalog.has_function_privilege(fixture_oid,owner_settlement_alias,'EXECUTE')
+-      OR NOT pg_catalog.has_function_privilege(fixture_oid,owner_settlement_lookup,'EXECUTE')
++      OR ${owned280
++        ? "pg_catalog.has_function_privilege(fixture_oid,owner_settlement_lookup,'EXECUTE')"
++        : "NOT pg_catalog.has_function_privilege(fixture_oid,owner_settlement_lookup,'EXECUTE')"}
+       OR pg_catalog.has_function_privilege(fixture_oid,owner_settlement_alias,'EXECUTE WITH GRANT OPTION')
+       OR pg_catalog.has_function_privilege(fixture_oid,owner_settlement_lookup,'EXECUTE WITH GRANT OPTION') THEN
+       RAISE EXCEPTION 'Owner settlement voucher fixture grant did not match';
+     END IF;
+   END IF;
++  IF pg_catalog.to_regprocedure('public.jg_file_business_binding_columns_before_signed_settlement()') IS NOT NULL THEN
++    IF NOT EXISTS (SELECT 1 FROM pg_catalog.pg_proc p
++      WHERE p.oid=pg_catalog.to_regprocedure('public.jg_file_business_binding_columns_before_signed_settlement()')
++        AND p.pronamespace=pg_catalog.to_regnamespace('public') AND p.proowner=owner_oid
++        AND p.prokind='f' AND NOT p.prosecdef) THEN
++      RAISE EXCEPTION 'Signed settlement file guard fixture source mismatch';
++    END IF;
++    EXECUTE pg_catalog.format('GRANT EXECUTE ON FUNCTION public.jg_file_business_binding_columns_before_signed_settlement() TO %I',fixture_role);
++    IF NOT pg_catalog.has_function_privilege(fixture_oid,'public.jg_file_business_binding_columns_before_signed_settlement()','EXECUTE')
++      OR pg_catalog.has_function_privilege(fixture_oid,'public.jg_file_business_binding_columns_before_signed_settlement()','EXECUTE WITH GRANT OPTION') THEN
++      RAISE EXCEPTION 'Signed settlement file guard fixture grant did not match';
++    END IF;
++  END IF;
+ END;
+ $contract_finance_file_guard$;`;
+ }
+@@ -152,5 +180,6 @@
+   renderEmployeeOnboardingFileGuardGrant,
+   renderGeneralProcurementFileGuardGrant,
+   renderTask398FileGuardGrant,
++  renderTask398Owned280FileGuardGrant,
+   renderProjectBusinessScopeFileGuardGrant
+ };

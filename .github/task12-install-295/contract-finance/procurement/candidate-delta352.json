@@ -1,0 +1,157 @@
+[
+  {
+    "path": "apps/web-admin/src/api/company-transfer.api.ts",
+    "expected": "d2232a1088e5d487397ecdede02eee0a1d51f1be35598ba0a0d15f204ec6c6a8",
+    "candidate": "3d8c0012e434aa61c8ac00d88d7adf06ff2cab3a8f05e667a3a09ea16812f463"
+  },
+  {
+    "path": "apps/web-admin/src/pages/fund-movements/CompanyTransferPage.vue",
+    "expected": "6f755eccb31a22d998f1901bd055f0fdf015bca65631aa043f85ea95c1d44152",
+    "candidate": "df46dc742f87086eabb8185ec8ac4fe5e7231ca0bb9b3445c97fb843bf3c9448"
+  },
+  {
+    "path": "services/api/prisma/database-dynamic-gate-manifest.json",
+    "expected": "945ae553d511df229336f33fbbb360a60b75930835c086beab6accf549d2455c",
+    "candidate": "f9b300c3817dfe546fbd53ac065ede604319c7d1aa33b0e409091c9edec7316d"
+  },
+  {
+    "path": "services/api/prisma/schema.prisma",
+    "expected": "8154b5a52bee19a0a105ea949f2fb272f6876f7c92fbf1e0b57b0104d93b87be",
+    "candidate": "d9edfcc928f927554673b9203d5bc6803464d15d05b498a28ccdd4e91b6a4210"
+  },
+  {
+    "path": "services/api/src/audit/audit.service.ts",
+    "expected": "aa1445637c50ebe9f0dc441bc5427920bbaa6b8846e579bbc50491ec9f80aaaf",
+    "candidate": "7cc4af48194cdae04a4be3a126973d9898a8674d865d78dde113d29757fc24b4"
+  },
+  {
+    "path": "services/api/src/company-transfer/company-transfer-correction-duty.ts",
+    "expected": "d449e6e787f7302e719ab4f19c1128701f69aab82044419633536ef1cd606de3",
+    "candidate": "180a15b6378372323e7038b3fe3f57b44e87e019711092bbfdaf40a0d223d67b"
+  },
+  {
+    "path": "services/api/src/company-transfer/company-transfer-correction.service.ts",
+    "expected": "751d74c504ed6d905ed63fe066d8034430489f81eadc14dca0ddaf13915e853d",
+    "candidate": "0c2e067fcff95a471441a0f1a6c800267fff5e8773add095b21fb64484c79807"
+  },
+  {
+    "path": "services/api/src/company-transfer/company-transfer-legacy-operating.ts",
+    "expected": "a548616c67d0abbdbd6db8354c2160872f8fa9be2561071e59c629cfee42c9a3",
+    "candidate": "5340d5c94b8d6c8c0108e5ddbef8a671c73d898c05495f253818055c9dec3acd"
+  },
+  {
+    "path": "services/api/src/company-transfer/company-transfer-legacy.ts",
+    "expected": "e5dc0e30cb05e8b1f230c98400d5512880b41b4ae70ee4d129698c693c1c1f3a",
+    "candidate": "a285b03a95387780829885328c90e1832fee2626c8df8b6714b1c54a89df07ee"
+  },
+  {
+    "path": "services/api/src/company-transfer/company-transfer-notification.service.spec.ts",
+    "expected": "06b375f61fd098c7626f9f4a5dee8a2c57cf638c3bb33de98806e3bd6df1323d",
+    "candidate": "3b98001b427654176fb2d294b66e6fa8804ed7cb9855d1fd25ba72da70a60a0d"
+  },
+  {
+    "path": "services/api/src/company-transfer/company-transfer-notification.service.ts",
+    "expected": "79c06d04f7244ea755e2080ff549ab7bd929e9ebdb346789642d466f0a6aa17e",
+    "candidate": "61468077e03f137f6c7ac40265ad1822aa859329ccbce362d70d06d2cd568778"
+  },
+  {
+    "path": "services/api/src/company-transfer/company-transfer-operating-source.adapter.ts",
+    "expected": "ee7f3b2745f81ad74a20b80ac072969c1d92b8d9a03a39c3cced407c1eab5360",
+    "candidate": "7c6ac795fdf0dea6fa58362524783092af0be74475dc1a3f182f1ec766b13cea"
+  },
+  {
+    "path": "services/api/src/company-transfer/company-transfer-ownership.ts",
+    "expected": "949e295174b29c0f14388033a845a927e85ecd6b76a350fa0849c06128a77d09",
+    "candidate": "f63e8e2555f69995c8c1b293c8d57831bbfd865bf1f44f27c032a76895e622d6"
+  },
+  {
+    "path": "services/api/src/company-transfer/company-transfer-read.service.ts",
+    "expected": "7affb3da08245439562f96d8747c796d32ca229fae3745c9ad88de235a31f75f",
+    "candidate": "bc11a6ecfbb02c99a96f8c2d648056fd639237d6daca79906f54456938afeb5d"
+  },
+  {
+    "path": "services/api/src/company-transfer/company-transfer-summary.spec.ts",
+    "expected": "a2af75fe9dff3a0f09125b17009e25c3110fa1d83f50de927bd061ceb88e002b",
+    "candidate": "a058267abc9f0526826e5ba78c2d7d80621b4c4b5989ff5e02f2cf3dc192544e"
+  },
+  {
+    "path": "services/api/src/company-transfer/company-transfer-summary.ts",
+    "expected": "a3251e5273e07933e700732bfd4fd470b191d55584aa57309a1429b7a820269d",
+    "candidate": "a4332ee9489b29a4d620825dbc3e2c5c0e1208dda1d45bc22c3d82360713b86d"
+  },
+  {
+    "path": "services/api/src/company-transfer/company-transfer-workitems.ts",
+    "expected": "4bee9eeded6e3753e964dbe7b470d292d9ddb05b5dcfcb8b8c8a4111c8348fde",
+    "candidate": "30a3f8a246b68a6de0b88709038bcee549e36c6c92633bec4737a732468f1297"
+  },
+  {
+    "path": "services/api/src/company-transfer/company-transfer.balance.ts",
+    "expected": "59e49e05e73d4bc1883a1199a4155b1b87938b7fd523246b8e6274ddb2ece9f3",
+    "candidate": "3208633b1fb055fc9590c1651fc234e9e8f88dd07ff745b338a08584b48fb9a7"
+  },
+  {
+    "path": "services/api/src/company-transfer/company-transfer.domain.ts",
+    "expected": "9fa7de810a87385cd1481cda1264fb9f655751bee5ba0c514154a0ce9fb9cb67",
+    "candidate": "70e856b0dbc2887cd35e3d3f61188432ea43aaaf172428aebe5b9849102fbb9f"
+  },
+  {
+    "path": "services/api/src/company-transfer/company-transfer.service.ts",
+    "expected": "4daee34470bf135380922d9d610673a8e748f521006ec4fe3dca1031bb532c23",
+    "candidate": "ed3943d51bf8f792cacdff2d87ab4279b3d3d769e4edc547dbe6403e0dc6d3dc"
+  },
+  {
+    "path": "services/api/src/operational-write-freeze/operational-write-freeze.registry.ts",
+    "expected": "86b58394c010a1988eef862ade413c6f36017788fa7824a23a6cbc353af65692",
+    "candidate": "d7c0316b15a660992bd6b626f9cbf26efb8ef11075c3de515bbc9a32bce40e81"
+  },
+  {
+    "path": "services/api/src/database/task16-real-browser-scope.spec.ts",
+    "expected": "06f18cf30346330345f24a9b3e3d3cab53570053baf8183f564c0f3057eb39d5",
+    "candidate": "a91555e2433d3dc34f841bee9027bc96ab0e4fc1cfe8c0502e62eb99055af2bc"
+  },
+  {
+    "path": "services/api/src/database/task16-real-browser-scope.ts",
+    "expected": "c4e7517be9efbe27e42f595d3cdc6f2d5d9da7677720f8d4f0cdf60a0132adc1",
+    "candidate": "1fe2ebe644c8832ac7d8dd7fceeceb5edca14e5a0a0e500a20c77b1d547ed8fa"
+  },
+  {
+    "path": "services/api/prisma/run-database-dynamic-gate-local.cjs",
+    "expected": "ec39311717c5e8a4bc93910fe5a0443c3fdb45a1b40477ce39222a79effe8a89",
+    "candidate": "b76712e690a49826d3186439adc275f67b407ee02d033ac6ea0c52b65fde3d97"
+  },
+  {
+    "path": "services/api/src/expense-claim/expense-claim.service.spec.ts",
+    "expected": "509550e06797e74897e0c471211f3b046c7af5e6a9dda1677d691518ee1fb3a1",
+    "candidate": "8ced58d671f3ef35cfb8ef48a321f3788276a06749e10e9b6e87979c72e55de8"
+  },
+  {
+    "path": "services/api/prisma/task16-current259-payment-case.test.cjs",
+    "expected": "3a5f0ad07a37cbda453f311069e5e2e78ae16d11db2280b08c9a1c92926096cf",
+    "candidate": "a0ff3b7ad2a854a19e567cd2c446962436ae804d320e9ca7300dd27d5cff46f8"
+  },
+  {
+    "path": "services/api/scripts/business-zeroing-policy.cjs",
+    "expected": "42722a432f8e03ab1cc15339439b49af9953454438fd18d75c93e5505b5d6195",
+    "candidate": "cc8581b795bf86a1d9e8e7f9d68bbcb3b7436f90a9f5021d8d2d93ec289bb1e4"
+  },
+  {
+    "path": "services/api/scripts/business-zeroing-tool.test.cjs",
+    "expected": "d44e510d9ce7d8a545886d5dd398e1c99fac613debfb2b8af72846194947b2e1",
+    "candidate": "fb09393a28c9b1ddc4efcee08d77f2718ff7c061bb5a612c7b8db534da4a8fea"
+  },
+  {
+    "path": "services/api/src/contract-template/task10-net-export.http.spec.ts",
+    "expected": "d9f99116703d618104d75c4ad394ced33660e1e2daccbac560a5e864a83c68fe",
+    "candidate": "7790330b975e45d9c002174a2dbaf7d44b9c3a2ffddb403e44d0052f192eb301"
+  },
+  {
+    "path": "services/api/src/payment/payment-operating-source.adapter.spec.ts",
+    "expected": "4bb00e4fe252e01958d770368f3555289080b35eb8267acb4b1c463b60cce7fb",
+    "candidate": "9db0a80eabae1b90caeb4533ece0e93e7932e006a2b3369618e90aecfbd511e9"
+  },
+  {
+    "path": "services/api/src/payment/payment-operating-source.adapter.ts",
+    "expected": "bdb65e534f76d069eb7089f53c1e1d429d5a3666aa6868567ac72c82dc798768",
+    "candidate": "077242d3a820801bbe73095a23920ba0990adc3ffeeb1f2832113d7c76d6a0df"
+  }
+]

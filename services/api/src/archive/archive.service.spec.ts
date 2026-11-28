@@ -223,7 +223,8 @@ describe("ArchiveService", () => {
             projectId: "project-1",
             code: "HT-001",
             temporaryCode: null,
-            name: "材料采购合同"
+            name: "材料采购合同",
+            counterparty: "四川钢材供应商"
           }
         ])
       },
@@ -304,6 +305,37 @@ describe("ArchiveService", () => {
       contractArchives: 1,
       paymentFiles: 2
     });
+    expect(result.rows[4]).toMatchObject({
+      contractNo: "HT-001",
+      contractName: "材料采购合同",
+      counterpartyName: "四川钢材供应商"
+    });
+
+    const byContract = await service.listRecent(20, undefined, { contract: "HT-001" });
+    expect(byContract.rows.map((row) => row.fileId)).toEqual(["file-contract"]);
+    expect(byContract.summary).toMatchObject({ total: 1, contractArchives: 1 });
+
+    const byCounterparty = await service.listRecent(20, undefined, { counterparty: "钢材" });
+    expect(byCounterparty.rows.map((row) => row.fileId)).toEqual(["file-contract"]);
+
+    const byBusinessNumber = await service.listRecent(20, undefined, { keyword: "CG-001" });
+    expect(byBusinessNumber.rows.map((row) => row.fileId)).toEqual(["file-spot-purchase-pdf"]);
+    expect(byBusinessNumber.summary.paymentFiles).toBe(0);
+
+    const byFileKeyword = await service.listRecent(20, undefined, { keyword: "银行回单" });
+    expect(byFileKeyword.rows.map((row) => row.fileId)).toEqual(["file-voucher"]);
+
+    const byProjectAndType = await service.listRecent(20, undefined, {
+      project: "一号",
+      documentType: "合同归档件",
+      dateFrom: "2026-07-01",
+      dateTo: "2026-07-01"
+    });
+    expect(byProjectAndType.rows.map((row) => row.fileId)).toEqual(["file-contract"]);
+
+    const noMatch = await service.listRecent(20, undefined, { contract: "HT-404" });
+    expect(noMatch.rows).toEqual([]);
+    expect(noMatch.summary).toMatchObject({ total: 0, contractArchives: 0, paymentFiles: 0 });
   });
 
   it("does not expose internal user accounts when archive ledger operator names are unavailable", async () => {

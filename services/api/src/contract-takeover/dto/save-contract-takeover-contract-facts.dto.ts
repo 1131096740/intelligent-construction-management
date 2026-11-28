@@ -72,6 +72,14 @@ export class HistoricalContractFactsInput {
   })
   counterparty!: string;
 
+  @ValidateIf((_object, value) => value !== undefined)
+  @IsUUID("4", { message: "请重新选择原合同相对方版本" })
+  counterpartyVersionId?: string;
+
+  @ValidateIf((_object, value) => value !== undefined)
+  @IsUUID("4", { message: "请重新选择原签约施工企业版本" })
+  signingPartyVersionId?: string;
+
   @IsCanonicalMoneyText({
     typeMessage: "历史合同原始金额格式不正确",
     formatMessage: "历史合同原始金额必须按分填写为 0 或更大的整数"

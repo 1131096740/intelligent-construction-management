@@ -1,3 +1,4 @@
+import { isHistoricalUpwardDraft, requireHistoricalUpwardAuthority } from "./historical-upward-authority";
 import { BadRequestException } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
 
@@ -32,8 +33,6 @@ import {
 export const CONTRACT_TAKEOVER_HISTORICAL_PAYMENT_SOURCE_TYPE =
   "contract_takeover_historical_payment";
 
-const FORMAL_TAKEOVER_LEVELS = ["A", "B"] as const;
-
 export class ContractTakeoverHistoricalPaymentOperatingSourceAdapter
   implements OperatingSourceAdapter
 {
@@ -47,8 +46,7 @@ export class ContractTakeoverHistoricalPaymentOperatingSourceAdapter
       where: {
         projectId,
         takeoverStatus: "confirmed",
-        activatedAt: { not: null },
-        takeoverLevel: { in: [...FORMAL_TAKEOVER_LEVELS] }
+        activatedAt: { not: null }
       },
       select: { id: true }
     });
@@ -147,22 +145,36 @@ export class ContractTakeoverHistoricalPaymentOperatingSourceAdapter
       requiredJsonText(source, "actualPayerId", "历史接管实付")
     );
     const sameApprovedPayer = sameSubject(approvedPayer, actualPayer);
-    const payee: OperatingSubjectReference = {
-      kind: "downstream_counterparty",
-      id: requiredJsonText(source, "payeeVersionId", "历史接管实付")
-    };
+    const upward = source.contractRelationship === "upward";
+    const payee: OperatingSubjectReference = upward
+      ? { kind: "participating_company", id: requiredJsonText(source, "receiptCompanyEntityId", "对上历史实收") }
+      : { kind: "downstream_counterparty", id: requiredJsonText(source, "payeeVersionId", "历史接管实付") };
     const allocations = paymentAllocations(source);
-    const evidenceLevel = requiredJsonText(
+    const storedLevel = requiredJsonText(
       source,
       "takeoverLevel",
       "历史接管实付"
     );
-    if (evidenceLevel !== "A" && evidenceLevel !== "B") {
-      throw new BadRequestException("历史接管实付只有 A/B 级可以进入正式经营账");
-    }
+    const historicalOpeningPayment = source.contractRelationship === "inside" && source.historicalOpeningPayment === true;
+    const evidenceLevel: "A" | "B" | "C" =
+      upward || historicalOpeningPayment || storedLevel === "A" ? "A" : storedLevel === "B" ? "B" : "C";
     const impacts: AppendOperatingFactInput["impacts"] = [];
     for (const allocation of allocations) {
       if (allocation.allocationType !== "settlement") continue;
+      if (upward) {
+        impacts.push({
+          idempotencyKey: `${snapshot.sourceType}:${snapshot.sourceBusinessId}:receivable:${allocation.sourceId}`,
+          sourceImpactKey: `receivable:${allocation.sourceId}`,
+          impactKind: "receivable_decrease",
+          amountCents: allocation.amountCents,
+          direction: "decrease",
+          subjectRole: "creditor",
+          subject: payee,
+          description: "对上历史实收核销期初应收，不重计启用资金",
+          impactSnapshot: sourceJson({ relationship: "upward", projectConsolidation: "exclude_internal" })
+        });
+        continue;
+      }
       impacts.push({
         idempotencyKey: `${snapshot.sourceType}:${snapshot.sourceBusinessId}:payable:${allocation.sourceId}`,
         sourceImpactKey: `payable:${allocation.sourceId}`,
@@ -187,58 +199,73 @@ export class ContractTakeoverHistoricalPaymentOperatingSourceAdapter
       }
     }
 
-    const fundsImpactKind =
-      actualPayer.kind === "construction_enterprise"
-        ? "construction_enterprise_funds_decrease"
-        : "company_project_funds_decrease";
-    impacts.push({
-      idempotencyKey: `${snapshot.sourceType}:${snapshot.sourceBusinessId}:funds`,
-      sourceImpactKey: fundsImpactKind,
-      impactKind: fundsImpactKind,
-      amountCents,
-      direction: "decrease",
-      subjectRole: "actual_payer",
-      subject: actualPayer,
-      description: "历史逐笔实付减少实际付款主体项目资金"
-    });
-
-    const advance = allocations.find(
-      (allocation) => allocation.allocationType === "historical_advance"
-    );
-    if (advance) {
-      const advanceImpactKind =
-        sameApprovedPayer && actualPayer.kind === "participating_company"
-          ? "company_advance_for_project_increase"
-          : "inter_subject_balance_increase";
+    if (upward && impacts.length === 0) {
       impacts.push({
-        idempotencyKey: `${snapshot.sourceType}:${snapshot.sourceBusinessId}:historical_advance`,
-        sourceImpactKey: "historical_advance",
-        impactKind: advanceImpactKind,
-        amountCents: advance.amountCents,
-        direction: "increase",
-        subjectRole: "actual_payer",
-        subject: actualPayer,
-        description: "历史实付超出累计结算形成历史预付款余额"
+        idempotencyKey: `${snapshot.sourceType}:${snapshot.sourceBusinessId}:unmatched-receipt`,
+        sourceImpactKey: "unmatched_receipt_notice",
+        impactKind: "evidence_gap_notice",
+        amountCents,
+        direction: "notice",
+        subjectRole: "payee",
+        subject: payee,
+        description: "对上历史实收已核实，尚无可核销结算，超收待核对",
+        impactSnapshot: sourceJson({ relationship: "upward", unmatchedReceiptCents: amountCents.toString() })
       });
     }
-    const abnormalOverpay = allocations.find(
-      (allocation) => allocation.allocationType === "abnormal_overpay"
-    );
-    if (abnormalOverpay) {
-      const abnormalImpactKind =
-        sameApprovedPayer && actualPayer.kind === "participating_company"
-          ? "company_returnable_to_project_increase"
-          : "inter_subject_balance_increase";
+    if (!upward && !historicalOpeningPayment) {
+      const fundsImpactKind =
+        actualPayer.kind === "construction_enterprise"
+          ? "construction_enterprise_funds_decrease"
+          : "company_project_funds_decrease";
       impacts.push({
-        idempotencyKey: `${snapshot.sourceType}:${snapshot.sourceBusinessId}:abnormal_overpay`,
-        sourceImpactKey: "abnormal_overpay",
-        impactKind: abnormalImpactKind,
-        amountCents: abnormalOverpay.amountCents,
-        direction: "increase",
+        idempotencyKey: `${snapshot.sourceType}:${snapshot.sourceBusinessId}:funds`,
+        sourceImpactKey: fundsImpactKind,
+        impactKind: fundsImpactKind,
+        amountCents,
+        direction: "decrease",
         subjectRole: "actual_payer",
         subject: actualPayer,
-        description: "历史异常超付形成待返还或主体间往来余额"
+        description: "历史逐笔实付减少实际付款主体项目资金"
       });
+
+      const advance = allocations.find(
+        (allocation) => allocation.allocationType === "historical_advance"
+      );
+      if (advance) {
+        const advanceImpactKind =
+          sameApprovedPayer && actualPayer.kind === "participating_company"
+            ? "company_advance_for_project_increase"
+            : "inter_subject_balance_increase";
+        impacts.push({
+          idempotencyKey: `${snapshot.sourceType}:${snapshot.sourceBusinessId}:historical_advance`,
+          sourceImpactKey: "historical_advance",
+          impactKind: advanceImpactKind,
+          amountCents: advance.amountCents,
+          direction: "increase",
+          subjectRole: "actual_payer",
+          subject: actualPayer,
+          description: "历史实付超出累计结算形成历史预付款余额"
+        });
+      }
+      const abnormalOverpay = allocations.find(
+        (allocation) => allocation.allocationType === "abnormal_overpay"
+      );
+      if (abnormalOverpay) {
+        const abnormalImpactKind =
+          sameApprovedPayer && actualPayer.kind === "participating_company"
+            ? "company_returnable_to_project_increase"
+            : "inter_subject_balance_increase";
+        impacts.push({
+          idempotencyKey: `${snapshot.sourceType}:${snapshot.sourceBusinessId}:abnormal_overpay`,
+          sourceImpactKey: "abnormal_overpay",
+          impactKind: abnormalImpactKind,
+          amountCents: abnormalOverpay.amountCents,
+          direction: "increase",
+          subjectRole: "actual_payer",
+          subject: actualPayer,
+          description: "历史异常超付形成待返还或主体间往来余额"
+        });
+      }
     }
 
     return {
@@ -257,14 +284,12 @@ export class ContractTakeoverHistoricalPaymentOperatingSourceAdapter
           "confirmedByUserId",
           "历史接管实付"
         ),
-        factKind: "downstream_payment",
-        operatingLevel: sameSubject(approvedPayer, actualPayer)
-          ? "project"
-          : "inter_subject",
+        factKind: upward ? "fund_movement" : "downstream_payment",
+        operatingLevel: upward ? "participating_company" : sameApprovedPayer ? "project" : "inter_subject",
         evidenceLevel,
         amountCents,
         currencyCode: "CNY",
-        direction: "outflow",
+        direction: upward ? "inflow" : "outflow",
         isBeforeOperatingLedgerEffectiveDate: occurredBeforeEffectiveDate(
           occurredAt,
           effectiveDate
@@ -285,7 +310,7 @@ export class ContractTakeoverHistoricalPaymentOperatingSourceAdapter
           : {}),
         sourceSnapshot: snapshot.sourceSnapshot,
         basisSnapshot: sourceJson({
-          authority: "activated_historical_payment_with_voucher",
+          authority: upward ? "activated_historical_upward_receipt_with_voucher" : "activated_historical_payment_with_voucher",
           voucherFileIds: requiredJsonTextList(
             source,
             "voucherFileIds",
@@ -296,7 +321,8 @@ export class ContractTakeoverHistoricalPaymentOperatingSourceAdapter
           debtor: approvedPayer,
           approvedPayer,
           actualPayer,
-          payee
+          payee,
+          ...(upward ? { creditor: payee } : {})
         },
         impacts
       }
@@ -313,8 +339,7 @@ export class ContractTakeoverHistoricalPaymentOperatingSourceAdapter
         id: row.takeoverId,
         ...(projectId ? { projectId } : {}),
         takeoverStatus: "confirmed",
-        activatedAt: { not: null },
-        takeoverLevel: { in: [...FORMAL_TAKEOVER_LEVELS] }
+        activatedAt: { not: null }
       },
       select: {
         id: true,
@@ -343,6 +368,7 @@ export class ContractTakeoverHistoricalPaymentOperatingSourceAdapter
           where: { id: takeover.contractVersionId },
           select: {
             signingSubjectType: true,
+            draftData: true,
             companyEntityIdSnapshot: true,
             companyEntityVersionId: true,
             companyEntityNameSnapshot: true,
@@ -374,31 +400,52 @@ export class ContractTakeoverHistoricalPaymentOperatingSourceAdapter
     if (
       !contract ||
       !version ||
-      !counterparty?.businessPartyVersionId ||
       !takeover.activatedAt ||
       !(takeover.activatedByUserId ?? takeover.confirmedByUserId)
     ) {
       throw new BadRequestException("历史接管实付缺少合同、主体或激活确认快照");
     }
+    const upward = takeover.takeoverLevel === "NONE" && isHistoricalUpwardDraft(version.draftData)
+      ? requireHistoricalUpwardAuthority(version.draftData)
+      : null;
+    if (!upward && !counterparty?.businessPartyVersionId) {
+      throw new BadRequestException("历史接管实付缺少合同、主体或激活确认快照");
+    }
     const affiliate = await readAffiliateSnapshot(tx, {
       projectId: takeover.projectId,
       occurredAt: row.paidAt,
-      assignmentId: version.affiliateAssignmentId,
-      businessPartyVersionId: version.affiliateBusinessPartyVersionId
+      assignmentId: upward?.affiliate.assignmentId ?? version.affiliateAssignmentId,
+      businessPartyVersionId: upward?.affiliate.businessPartyVersionId ?? version.affiliateBusinessPartyVersionId
     });
     if (!occurredBeforeEffectiveDate(row.paidAt, effectiveDate)) {
       throw new BadRequestException(
         "生效日后的我方付款必须走正式付款流程，不能通过历史接管进入经营账"
       );
     }
-    const approvedPayer = approvedPayerIdentity(version);
-    const actualPayer = await actualPayerIdentity(
-      tx,
-      takeover.projectId,
-      row.paidAt,
-      row.payerName,
-      approvedPayer
+    const approvedPayer = upward
+      ? { type: "affiliate" as const, id: affiliate.businessPartyVersionId, displayName: affiliate.name }
+      : approvedPayerIdentity(version);
+    if (upward && (row.payerName?.trim() !== affiliate.name || row.payeeName?.trim() !== upward.companyName)) {
+      throw new BadRequestException("对上历史实收的付款方和收款方必须与已核实的施工企业和我方公司一致");
+    }
+    const actualPayer = upward ? approvedPayer : await actualPayerIdentity(
+      tx, takeover.projectId, row.paidAt, row.payerName, approvedPayer
     );
+    const draft = version.draftData;
+    const authority = draft && typeof draft === "object" && !Array.isArray(draft) &&
+      draft.historicalTakeover === true && draft.relationship === "inside" ? draft.historicalSettlementAuthority : null;
+    // 已复核的逐笔实付只清偿原期初应付，保留原回单和日期，不再次减少启用资金。
+    const historicalOpeningPayment = takeover.takeoverLevel === "NONE" &&
+      authority && typeof authority === "object" && !Array.isArray(authority) &&
+      authority.status === "verified" && authority.relationship === "inside" &&
+      authority.payerKind === "participating_company" && approvedPayer.type === "our_company" &&
+      authority.companyEntityId === approvedPayer.id && authority.payerVersionId === version.companyEntityVersionId &&
+      actualPayer.type === approvedPayer.type && actualPayer.id === approvedPayer.id &&
+      authority.counterpartyKind === "downstream_counterparty" &&
+      authority.counterpartyVersionId === counterparty?.businessPartyVersionId && row.payeeName?.trim() === authority.counterparty &&
+      vouchers.length > 0 && Boolean(takeover.historicalInitialSettlementId) &&
+      allocations.length > 0 && allocations.every((allocation) => allocation.allocationType === "settlement") &&
+      allocations.reduce((sum, allocation) => sum + allocation.amountCents, 0n) === row.amountCents;
     return {
       projectId: takeover.projectId,
       sourceType: this.sourceType,
@@ -441,7 +488,17 @@ export class ContractTakeoverHistoricalPaymentOperatingSourceAdapter
           actualPayer.type === approvedPayer.type
             ? "payer_name_matches_approved_subject_snapshot"
             : "payer_name_matches_project_subject_snapshot",
-        payeeVersionId: counterparty.businessPartyVersionId,
+        ...(upward ? {
+          contractRelationship: "upward",
+          receiptCompanyEntityId: upward.companyEntityId,
+          receiptCompanyEntityVersionId: upward.companyEntityVersionId,
+          unmatchedReceiptCents: allocations
+            .filter((allocation) => allocation.allocationType !== "settlement")
+            .reduce((sum, allocation) => sum + allocation.amountCents, 0n).toString()
+        } : {
+          payeeVersionId: counterparty?.businessPartyVersionId,
+          ...(historicalOpeningPayment ? { contractRelationship: "inside", historicalOpeningPayment: true } : {})
+        }),
         historicalInitialSettlementId: takeover.historicalInitialSettlementId,
         allocationRows: allocations.map((allocation) => ({
           allocationType: allocation.allocationType,

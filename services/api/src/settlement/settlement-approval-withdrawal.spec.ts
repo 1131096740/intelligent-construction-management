@@ -358,6 +358,7 @@ function readFixture(
     amountCents: 500_000n,
     payableAmountCents: 500_000n,
     governanceVersion: null,
+    preparedByUserId: "applicant-1",
     updatedAt: SETTLEMENT_UPDATED_AT
   };
   const instance = approvalInstance();
@@ -399,28 +400,34 @@ function readFixture(
     approvalActionLog: { findMany: jest.fn().mockResolvedValue([]) }
   };
   const projectVisibility = {
-    effectiveRoleKeys: jest.fn().mockResolvedValue([])
+    effectiveRoleKeys: jest.fn((actorUserId: string) =>
+      Promise.resolve(actorUserId === "reviewer-1" ? ["contract_director"] : [])
+    )
   };
   return {
     service: new SettlementReadService(prisma as never, projectVisibility as never)
   };
 }
 
-describe("Settlement approval withdrawal read coordinates", () => {
-  it("publishes four-coordinate context and one enabled action only to the applicant", async () => {
+describe("Historical settlement approval actions", () => {
+  it.each(["applicant-1", "reviewer-1"])("keeps the old settlement readable without live approval actions for %s", async (actorId) => {
     const { service } = readFixture();
+    const detail = await service.getDetail("JS-2026-001", ["project-1"], actorId);
 
-    const detail = await service.getDetail(
-      "JS-2026-001",
-      ["project-1"],
-      "applicant-1"
-    );
-
-    expect(detail).toHaveProperty("withdrawApprovalContext", WITHDRAWAL_COORDINATES);
+    expect(detail).toHaveProperty("withdrawApprovalContext", null);
     expect(detail.lifecycleUpdatedAt).toBe(SETTLEMENT_UPDATED_AT.toISOString());
-    expect(detail.availableActions.filter(
-      (action) => action.key === "withdraw_approval" && action.enabled
-    )).toHaveLength(1);
+    expect(detail.availableActions.some((action) => action.enabled &&
+      ["review_approval", "withdraw_approval", "remind_approval", "transfer_approval", "delegate_approval"].includes(action.key)
+    )).toBe(false);
+    expect(detail.approvalTimeline).toEqual([]);
+  });
+
+  it("keeps archive confirmation and access to the completed approval PDF", async () => {
+    const { service } = readFixture(1, "pending_archive_confirm");
+    const detail = await service.getDetail("JS-2026-001", ["project-1"], "reviewer-1");
+
+    expect(detail.availableActions.filter((action) => action.enabled).map((action) => action.key))
+      .toEqual(expect.arrayContaining(["confirm_archive", "download_approval_form"]));
   });
 
   it.each([

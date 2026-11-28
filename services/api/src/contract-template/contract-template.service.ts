@@ -1,3 +1,4 @@
+import { CompanyRoleResolverService, COMPANY_ROLE_RESOLUTION_ERROR } from "../auth/company-role-resolver.service";
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from "@nestjs/common";
 import {
   validateContractTemplateSchema,
@@ -26,9 +27,7 @@ type Delegate = {
   update(args: unknown): Promise<any>;
 };
 
-type ContractTemplateTx = {
-  userPosition: { findMany(args: unknown): Promise<Array<{ positionId: string }>> };
-  position: { findMany(args: unknown): Promise<Array<{ key: string }>> };
+type ContractTemplateTx = Pick<Prisma.TransactionClient, "user" | "userPosition" | "position"> & {
   contractBusinessTemplate: Pick<Delegate, "create">;
   contractBusinessTemplateVersion: Pick<Delegate, "create" | "findUnique" | "findMany" | "update">;
   standardClause: Pick<Delegate, "create" | "findMany">;
@@ -70,48 +69,38 @@ export class ContractTemplateService {
   // Global role check
   // ---------------------------------------------------------------------------
 
+  private async currentTemplateRoles(
+    tx: Pick<Prisma.TransactionClient, "user" | "userPosition" | "position">,
+    actorUserId: string
+  ): Promise<string[]> {
+    try { return await new CompanyRoleResolverService(this.prisma).resolveActiveRoleScopesInTransaction(tx, actorUserId); }
+    catch { throw new ForbiddenException(COMPANY_ROLE_RESOLUTION_ERROR); }
+  }
+
   private async assertGlobalRole(
-    tx: {
-      userPosition: { findMany: (args: { where: Record<string, unknown> }) => Promise<Array<{ positionId: string }>> };
-      position: { findMany: (args: { where: Record<string, unknown> }) => Promise<Array<{ key: string }>> };
-    },
+    tx: Pick<Prisma.TransactionClient, "user" | "userPosition" | "position">,
     actorUserId: string,
     roleKey: string
   ): Promise<void> {
-    const positions = await tx.userPosition.findMany({
-      where: { userId: actorUserId, projectId: null }
-    });
-    if (!positions.length) {
-      throw new ForbiddenException(this.roleErrorMessage(roleKey));
-    }
-    const positionIds = positions.map((p: { positionId: string }) => p.positionId);
-    const positionRows = await tx.position.findMany({
-      where: { id: { in: positionIds } }
-    });
-    const hasRole = positionRows.some((p: { key: string }) => p.key === roleKey);
-    if (!hasRole) {
-      throw new ForbiddenException(this.roleErrorMessage(roleKey));
-    }
+    if (!(await this.currentTemplateRoles(tx, actorUserId)).includes(roleKey)) throw new ForbiddenException(this.roleErrorMessage(roleKey));
   }
 
   private async assertTemplateMaintenanceRole(
-    tx: {
-      userPosition: { findMany: (args: { where: Record<string, unknown> }) => Promise<Array<{ positionId: string }>> };
-      position: { findMany: (args: { where: Record<string, unknown> }) => Promise<Array<{ key: string }>> };
-    },
+    tx: Pick<Prisma.TransactionClient, "user" | "userPosition" | "position">,
     actorUserId: string
   ): Promise<string[]> {
-    const positions = await tx.userPosition.findMany({
-      where: { userId: actorUserId, projectId: null }
-    });
-    const positionIds = positions.map((p: { positionId: string }) => p.positionId);
-    const positionRows = positionIds.length
-      ? await tx.position.findMany({ where: { id: { in: positionIds } } })
-      : [];
-    if (!positionRows.some((p: { key: string }) => p.key === "contract_staff" || p.key === "contract_director")) {
-      throw new ForbiddenException("只有合同经办人或合同主管可以执行该模板操作");
-    }
-    return positionRows.map((position) => position.key);
+    const roles = await this.currentTemplateRoles(tx, actorUserId);
+    if (!roles.includes("contract_director")) throw new ForbiddenException("只有合同主管可以维护模板");
+    return roles;
+  }
+
+  private async assertTemplateReadRole(
+    tx: Pick<Prisma.TransactionClient, "user" | "userPosition" | "position">,
+    actorUserId: string
+  ): Promise<string[]> {
+    const roles = await this.currentTemplateRoles(tx, actorUserId);
+    if (!roles.some(role => role === "contract_staff" || role === "contract_director")) throw new ForbiddenException("当前账号无权读取合同模板");
+    return roles;
   }
 
   private roleErrorMessage(roleKey: string) {
@@ -514,15 +503,16 @@ export class ContractTemplateService {
 
   async getTemplate(templateId: string, actorUserId: string, includeHistory = false) {
     return this.prisma.$transaction(async (tx) => {
-      const roleKeys = await this.assertTemplateMaintenanceRole(tx, actorUserId);
+      const roleKeys = await this.assertTemplateReadRole(tx, actorUserId);
       const template = await tx.contractBusinessTemplate.findUnique({ where: { id: templateId } });
       if (!template || (!includeHistory && template.status === "discarded")) {
         throw new NotFoundException("业务模板不存在");
       }
       const versions = await tx.contractBusinessTemplateVersion.findMany({
-        where: { templateId, ...(includeHistory ? {} : { status: { not: "discarded" } }) },
+        where: { templateId, ...(roleKeys.includes("contract_director") ? (includeHistory ? {} : { status: { not: "discarded" } }) : { status: { in: ["published", "stopped", "revoked"] } }) },
         orderBy: { versionNo: "desc" }
       });
+      if (!roleKeys.includes("contract_director") && !versions.length) throw new NotFoundException("业务模板不存在");
       const actions = await Promise.all(versions.map(async (version) => {
         const [mapping, activeMapping, contract] = await Promise.all([
           tx.contractScenarioTemplateMapping.findFirst({
@@ -985,7 +975,7 @@ export class ContractTemplateService {
 
   async listClauseHistory(actorUserId: string, category?: string) {
     return this.prisma.$transaction(async (tx) => {
-      await this.assertTemplateMaintenanceRole(tx, actorUserId);
+      await this.assertTemplateReadRole(tx, actorUserId);
       const clauses = await tx.standardClause.findMany({
         where: category ? { category } : undefined,
         orderBy: { createdAt: "asc" }

@@ -1,3 +1,4 @@
+import { paymentExecutionVoucherFileId } from "../payment/payment-execution-voucher";
 import { randomUUID } from "node:crypto";
 import {
   ConflictException,
@@ -550,10 +551,12 @@ export class HistoricalFinancialTakeoverService {
       if (!request || request.projectId !== projectId || !["paid", "partially_paid"].includes(request.status)) {
         throw new ConflictException("PaymentExecution 不属于当前项目或付款请求状态不具备正式权威");
       }
+      const voucherFileId = await paymentExecutionVoucherFileId(tx,payment);
+      if (!voucherFileId) throw new ConflictException("既有付款凭证待补充，不能作为已具备完整证据的历史实付复用");
       const target: HistoricalPaymentExecutionTarget = {
         id: payment.id,
         idempotencyKey: payment.idempotencyKey,
-        voucherFileId: payment.voucherFileId,
+        voucherFileId,
         amountCents: payment.amountCents,
         paidAt: payment.paidAt,
         payerCompanyEntityId: payment.companyEntityIdSnapshot
@@ -622,6 +625,8 @@ export class HistoricalFinancialTakeoverService {
           allocation.beneficiaryProjectId !== projectId || !["paid", "partially_paid"].includes(paymentRequest.status)) {
         throw new ConflictException("当前项目不存在已确认且绑定既有 PaymentExecution 的正式核销分配");
       }
+      const paymentVoucherFileId = await paymentExecutionVoucherFileId(tx,allocation.paymentExecution);
+      if (!paymentVoucherFileId) throw new ConflictException("既有实付凭证待补充，不能作为完整证据的历史核销复用");
       const target: HistoricalSettlementAllocationTarget = {
         id: allocation.id,
         settlementCaseId: allocation.settlementCase.id,
@@ -638,7 +643,7 @@ export class HistoricalFinancialTakeoverService {
         amountCents: allocation.amountCents,
         currencyCode: allocation.currencyCode,
         paymentIdempotencyKey: allocation.paymentExecution.idempotencyKey,
-        paymentVoucherFileId: allocation.paymentExecution.voucherFileId,
+        paymentVoucherFileId,
         paymentPaidAt: allocation.paymentExecution.paidAt,
         payerCompanyEntityId: allocation.paymentExecution.companyEntityIdSnapshot
       };

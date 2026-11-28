@@ -1,0 +1,30 @@
+{
+  "--pfq-pre115-clean-289-local": {
+    "prefix": 114,
+    "terminal": {
+      "ordinal": 114,
+      "directory": "20260728161000_spot_procurement_application_revision_status",
+      "sha256": "01c1163e5c7519c2f2884343ca742b1373fc48b8cd0574994bddaad3b6552784"
+    },
+    "seed": [
+      "\n      INSERT INTO \"User\" (\n        \"id\", \"name\", \"updatedAt\"\n      ) VALUES (\n        'pfq-pre115-user', '#115 历史用户',\n        TIMESTAMP '2026-08-02 00:00:00'\n      );\n      INSERT INTO \"Project\" (\n        \"id\", \"code\", \"name\", \"updatedAt\"\n      ) VALUES (\n        'pfq-pre115-project', 'PFQ-PRE115', '#115 历史项目',\n        TIMESTAMP '2026-08-02 00:00:00'\n      );\n      INSERT INTO \"FileObject\" (\n        \"id\", \"bucket\", \"objectKey\", \"originalName\", \"mimeType\",\n        \"sizeBytes\", \"uploadedByUserId\", \"contentSha256\", \"storageStatus\"\n      ) VALUES\n        (\n          'pfq-pre115-attachment', 'local-test',\n          'pfq/pre115/attachment.pdf', '#115 历史附件.pdf',\n          'application/pdf', 128, 'pfq-pre115-user', repeat('a', 64), 'active'\n        ),\n        (\n          'pfq-pre115-replacement', 'local-test',\n          'pfq/pre115/replacement.pdf', '#115 替换链文件.pdf',\n          'application/pdf', 128, 'pfq-pre115-user', repeat('b', 64), 'active'\n        );\n    ",
+      "\n      INSERT INTO \"ProjectFinancingQuota\" (\n        \"id\", \"projectId\", \"amountCents\", \"reason\", \"validUntil\",\n        \"attachmentFileId\", \"requestedByUserId\", \"status\", \"updatedAt\"\n      ) VALUES (\n        'pfq-pre115-quota', 'pfq-pre115-project', 1000,\n        '#115 历史额度', TIMESTAMP '2026-12-31 00:00:00',\n        'pfq-pre115-attachment', 'pfq-pre115-user', 'approval_pending',\n        TIMESTAMP '2026-08-02 00:00:00'\n      );\n    "
+    ],
+    "readback": "\n      SELECT count(*), count(*) FILTER (\n        WHERE \"attachmentFileSha256Snapshot\" IS NULL\n          AND \"requestedByRoleKey\" IS NULL\n          AND \"requestIdempotencyKey\" IS NULL\n          AND \"requestFingerprint\" IS NULL\n      )\n      FROM \"ProjectFinancingQuota\"\n      WHERE \"id\" LIKE 'pfq-pre115-quota%';\n    ",
+    "expected": "1|1"
+  },
+  "--pfq-pre116-legacy-289-local": {
+    "prefix": 115,
+    "terminal": {
+      "ordinal": 115,
+      "directory": "20260802010000_project_financing_quota_request_idempotency",
+      "sha256": "d3d0d07a6cc9a49da1cca1478822a873fad7c7324b9d189e2a55a4d3f57bfe61"
+    },
+    "seed": [
+      "\n      INSERT INTO \"User\" (\"id\", \"name\", \"updatedAt\")\n      VALUES ('pfq-legacy-user', '历史终止用户', NOW());\n      INSERT INTO \"Project\" (\"id\", \"code\", \"name\", \"updatedAt\")\n      VALUES ('pfq-legacy-project', 'PFQ-LEGACY', '历史终止项目', NOW());\n      INSERT INTO \"FileObject\" (\n        \"id\", \"bucket\", \"objectKey\", \"originalName\", \"mimeType\",\n        \"sizeBytes\", \"uploadedByUserId\", \"contentSha256\", \"storageStatus\"\n      ) VALUES\n        ('pfq-legacy-attachment', 'local-test', 'pfq/legacy/attachment.pdf',\n          '历史附件.pdf', 'application/pdf', 128, 'pfq-legacy-user',\n          repeat('a', 64), 'active'),\n        ('pfq-legacy-signature', 'local-test', 'pfq/legacy/signature.png',\n          '历史签名.png', 'image/png', 128, 'pfq-legacy-user',\n          repeat('b', 64), 'active');\n      INSERT INTO \"HandwrittenSignatureVersion\" (\n        \"id\", \"userId\", \"fileId\", \"contentSha256\", \"source\"\n      ) VALUES (\n        'pfq-legacy-signature-version', 'pfq-legacy-user',\n        'pfq-legacy-signature', repeat('b', 64), 'canvas'\n      );\n      INSERT INTO \"ProjectFinancingQuota\" (\n        \"id\", \"projectId\", \"amountCents\", \"reason\", \"validUntil\",\n        \"attachmentFileId\", \"attachmentFileSha256Snapshot\",\n        \"requestedByUserId\", \"requestedByRoleKey\",\n        \"requestIdempotencyKey\", \"requestFingerprint\",\n        \"approvedByUserId\", \"approvedAt\", \"status\",\n        \"terminatedAt\", \"terminatedByUserId\", \"terminationReason\",\n        \"terminationSignatureFileId\", \"terminationSignatureSha256\",\n        \"terminationSignatureVersionId\", \"updatedAt\"\n      ) VALUES (\n        'pfq-legacy-quota', 'pfq-legacy-project', 1000,\n        '历史终止额度', NULL, 'pfq-legacy-attachment', repeat('a', 64),\n        'pfq-legacy-user', 'finance_staff',\n        '00000000-0000-4000-8000-000000000116', repeat('c', 64),\n        'pfq-legacy-user', NOW(), 'terminated', NOW(), 'pfq-legacy-user',\n        '历史终止', 'pfq-legacy-signature', repeat('b', 64),\n        'pfq-legacy-signature-version', NOW()\n      );\n    "
+    ],
+    "readback": "\n      SELECT \"status\", \"terminationActionId\" IS NULL,\n        \"terminationRequestFingerprint\" IS NULL, \"terminationReason\"\n      FROM \"ProjectFinancingQuota\"\n      WHERE \"id\" = 'pfq-legacy-quota';\n    ",
+    "expected": "terminated|t|t|历史终止",
+    "immutable": "UPDATE \"ProjectFinancingQuota\"\n       SET \"terminationReason\" = '被篡改'\n       WHERE \"id\" = 'pfq-legacy-quota';"
+  }
+}

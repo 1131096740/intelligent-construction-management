@@ -1,22 +1,15 @@
 import {
   DUAL_SCOPE_ROLE_KEYS,
   GLOBAL_USER_POSITION_ROLE_KEYS,
+  ORGANIZATION_DIRECTORY_READ_ROLE_KEYS,
   type RoleKey
 } from "@jiangkong/shared-domain";
 import { BadRequestException } from "@nestjs/common";
 import { ORDINARY_EMPLOYEE_ROLES } from "./employee-management-policy";
 
-export const ORGANIZATION_MANAGER_ROLE_KEYS: readonly RoleKey[] = [
-  "chairman",
-  "general_manager",
-  "engineering_department_director",
-  "finance_director",
-  "contract_director",
-  "budget_director",
-  "material_director",
-  "comprehensive_director",
-  "super_admin"
-];
+/** 组织目录与人员管理的岗位集合由 shared-domain 单点定义，导航矩阵同源引用。 */
+export const ORGANIZATION_MANAGER_ROLE_KEYS: readonly RoleKey[] =
+  ORGANIZATION_DIRECTORY_READ_ROLE_KEYS;
 
 export function roleScope(roleKey: RoleKey): "global" | "project" {
   return GLOBAL_USER_POSITION_ROLE_KEYS.includes(roleKey) ? "global" : "project";

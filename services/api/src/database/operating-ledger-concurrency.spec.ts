@@ -446,7 +446,7 @@ async function seedFixture(client: PrismaClient, fixture: ReturnType<typeof fixt
 function baseInput(
   fixture: ReturnType<typeof fixtureIds>,
   suffix: string
-): AppendOperatingFactInput {
+): Omit<Extract<AppendOperatingFactInput, { amountCents: bigint }>, "impacts"> & { impacts: Array<Extract<AppendOperatingFactInput["impacts"][number], { amountCents: bigint }>> } {
   return {
     projectId: fixture.projectId,
     sourceType: "pol03_test_source",

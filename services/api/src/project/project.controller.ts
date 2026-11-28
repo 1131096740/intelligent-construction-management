@@ -35,6 +35,11 @@ import { ConfirmProjectOwnerContractDto } from "./dto/confirm-project-owner-cont
 import { ConfirmProjectUpstreamSettlementDto } from "./dto/confirm-project-upstream-settlement.dto";
 import { ConfirmProjectUpstreamFundFactDto } from "./dto/confirm-project-upstream-fund-fact.dto";
 import { ListProjectUpstreamFundFactsDto } from "./dto/list-project-upstream-fund-facts.dto";
+import { ListConstructionEnterprisePaidDto } from "./dto/list-construction-enterprise-paid.dto";
+import {
+  ListProjectConstructionEnterpriseDeductionsDto,
+  RecordProjectConstructionEnterpriseDeductionDto
+} from "./dto/record-project-construction-enterprise-deduction.dto";
 import type { CreateProjectDto } from "./dto/create-project.dto";
 import { RecordProjectOwnerContractDto } from "./dto/record-project-owner-contract.dto";
 import { RecordProjectAffiliateCompanyContractDto } from "./dto/record-project-affiliate-company-contract.dto";
@@ -43,6 +48,7 @@ import { RecordProjectAffiliatePaymentFactDto } from "./dto/record-project-affil
 import { RecordProjectAffiliateSettlementFactDto } from "./dto/record-project-affiliate-settlement-fact.dto";
 import { RecordProjectProxyPaymentDto } from "./dto/record-project-proxy-payment.dto";
 import { RecordProjectReceiptDto } from "./dto/record-project-receipt.dto";
+import { RecordProjectOwnerSettlementDto } from "./dto/record-project-owner-settlement.dto";
 import { RecordProjectUpstreamSettlementDto } from "./dto/record-project-upstream-settlement.dto";
 import { RecordProjectUpstreamFundFactDto } from "./dto/record-project-upstream-fund-fact.dto";
 import { RequestProjectFinancingQuotaDto } from "./dto/request-project-financing-quota.dto";
@@ -54,10 +60,15 @@ import { SupplementProjectAffiliateBusinessEvidenceDto } from "./dto/supplement-
 import type { UpdateProjectDto } from "./dto/update-project.dto";
 import { UpdateProjectOperatingProfileDto } from "./dto/update-project-operating-profile.dto";
 import { ProjectAffiliateBusinessService } from "./project-affiliate-business.service";
+import { ProjectConstructionPaymentCorrectionService } from "./project-construction-payment-correction.service";
+import { ProjectConstructionEnterpriseDeductionService } from "./project-construction-enterprise-deduction.service";
+import {
+  ConfirmConstructionPaymentCorrectionDto,
+  RequestConstructionPaymentCorrectionDto
+} from "./dto/request-construction-payment-correction.dto";
 import { ProjectAffiliateCompanyContractService } from "./project-affiliate-company-contract.service";
 import { ProjectService } from "./project.service";
 import { ProjectOperatingProfileService } from "./project-operating-profile.service";
-import { PROJECT_CREATE_DEFINITION } from "./project-base-entry";
 
 @Controller("projects")
 export class ProjectController {
@@ -70,8 +81,26 @@ export class ProjectController {
     @Optional()
     private readonly files?: FileService,
     @Optional()
-    private readonly operatingProfiles?: ProjectOperatingProfileService
+    private readonly operatingProfiles?: ProjectOperatingProfileService,
+    @Optional()
+    private readonly constructionPaymentCorrections?: ProjectConstructionPaymentCorrectionService,
+    @Optional()
+    private readonly constructionDeductions?: ProjectConstructionEnterpriseDeductionService
   ) {}
+
+  private constructionPaymentCorrectionService(): ProjectConstructionPaymentCorrectionService {
+    if (!this.constructionPaymentCorrections) {
+      throw new Error("施工企业付款更正服务不可用");
+    }
+    return this.constructionPaymentCorrections;
+  }
+
+  private constructionDeductionService(): ProjectConstructionEnterpriseDeductionService {
+    if (!this.constructionDeductions) {
+      throw new Error("施工企业扣款服务不可用");
+    }
+    return this.constructionDeductions;
+  }
 
   private operatingProfileService(): ProjectOperatingProfileService {
     if (!this.operatingProfiles) {
@@ -95,25 +124,25 @@ export class ProjectController {
   }
 
   @Post()
-  @RequireProjectRole("project.master_data.manage")
+  @RequireProjectRole("project.basics.manage")
   create(@CurrentUser() user: AuthenticatedUser, @Body() body: CreateProjectDto) {
     return this.projects.createProject(user.id, body);
   }
 
   @Get("create-capability")
-  @RequireProjectRole("project.master_data.manage")
-  createCapability() {
-    return { availableActions: ["create_project"], definition: PROJECT_CREATE_DEFINITION };
+  @RequireProjectRole("project.basics.manage")
+  createCapability(@CurrentUser() user: AuthenticatedUser) {
+    return this.projects.basicCapability(user.id);
   }
 
   @Post("create-validation")
-  @RequireProjectRole("project.master_data.manage")
-  validateCreation(@Body() body: CreateProjectDto) {
-    return this.projects.validateCreation(body);
+  @RequireProjectRole("project.basics.manage")
+  validateCreation(@CurrentUser() user: AuthenticatedUser, @Body() body: CreateProjectDto) {
+    return this.projects.validateCreationWithWarnings(user.id, body);
   }
 
   @Patch(":projectId")
-  @RequireProjectRole("project.master_data.manage")
+  @RequireProjectRole("project.basics.manage")
   update(
     @Param("projectId") projectId: string,
     @CurrentUser() user: AuthenticatedUser,
@@ -123,9 +152,9 @@ export class ProjectController {
   }
 
   @Get(":projectId/update-capability")
-  @RequireProjectRole("project.master_data.manage")
-  updateCapability(@Param("projectId") projectId: string) {
-    return { projectId, availableActions: ["update_project", "update_project_status"] };
+  @RequireProjectRole("project.basics.manage")
+  updateCapability(@Param("projectId") projectId: string, @CurrentUser() user: AuthenticatedUser) {
+    return this.projects.basicCapability(user.id, projectId);
   }
 
   @Get()
@@ -134,7 +163,7 @@ export class ProjectController {
   }
 
   @Get("management")
-  @RequirePositions("comprehensive_director", "chairman")
+  @RequireProjectRole("project.basics.manage")
   management(@CurrentUser() user: AuthenticatedUser) {
     return this.projects.listForManagement(user.id);
   }
@@ -168,6 +197,26 @@ export class ProjectController {
     @CurrentUser() user: AuthenticatedUser
   ) {
     return this.projects.getOperatingFundsOverview(projectId, user.id);
+  }
+
+  @Get(":projectId/construction-enterprise-paid")
+  @RequirePositions(...PROJECT_OVERVIEW_READ_POSITION_KEYS)
+  constructionEnterprisePaid(
+    @Param("projectId") projectId: string,
+    @Query() query: ListConstructionEnterprisePaidDto
+  ) {
+    const rawPageSize = query.pageSize?.trim();
+    const pageSize = rawPageSize ? Number(rawPageSize) : undefined;
+    if (
+      pageSize !== undefined &&
+      (!Number.isInteger(pageSize) || pageSize < 1 || pageSize > 200)
+    ) {
+      throw new BadRequestException("施工企业已付明细每页条数必须是 1 到 200 的整数");
+    }
+    return this.projects.listConstructionEnterprisePaidFacts(projectId, {
+      cursor: query.cursor?.trim() || undefined,
+      pageSize
+    });
   }
 
   @Get(":projectId/operating-profile")
@@ -499,6 +548,101 @@ export class ProjectController {
     );
   }
 
+  @Get(":projectId/construction-enterprise-deductions/capability")
+  @RequireProjectRole("project.upstream_fund_fact.record")
+  constructionEnterpriseDeductionCapability(
+    @Param("projectId") projectId: string,
+    @CurrentUser() user: AuthenticatedUser
+  ) {
+    return this.constructionDeductionService().getCapability(projectId, user.id);
+  }
+
+  @Get(":projectId/construction-enterprise-deductions")
+  @RequireProjectRole("project.upstream_fund_fact.record")
+  constructionEnterpriseDeductions(
+    @Param("projectId") projectId: string,
+    @Query() query: ListProjectConstructionEnterpriseDeductionsDto
+  ) {
+    const rawPageSize = query.pageSize?.trim();
+    const pageSize = rawPageSize ? Number(rawPageSize) : undefined;
+    if (
+      pageSize !== undefined &&
+      (!Number.isInteger(pageSize) || pageSize < 1 || pageSize > 200)
+    ) {
+      throw new BadRequestException("扣费明细每页条数必须是 1 到 200 的整数");
+    }
+    return this.constructionDeductionService().listDeductions(projectId, {
+      cursor: query.cursor?.trim() || undefined,
+      pageSize
+    });
+  }
+
+  @Post(":projectId/construction-enterprise-deductions")
+  @RequireProjectRole("project.upstream_fund_fact.record")
+  recordConstructionEnterpriseDeduction(
+    @Param("projectId") projectId: string,
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() body: RecordProjectConstructionEnterpriseDeductionDto
+  ) {
+    return this.constructionDeductionService().recordDeduction(
+      projectId,
+      user.id,
+      body
+    );
+  }
+
+  @Get(":projectId/construction-payment-corrections/capability")
+  @RequireProjectRole("project.construction_payment_correction.request")
+  constructionPaymentCorrectionCapability(
+    @Param("projectId") projectId: string,
+    @CurrentUser() user: AuthenticatedUser
+  ) {
+    return this.constructionPaymentCorrectionService().getCorrectionCapability(
+      projectId,
+      user.id
+    );
+  }
+
+  @Post(":projectId/construction-payment-corrections")
+  @RequireProjectRole("project.construction_payment_correction.request")
+  requestConstructionPaymentCorrection(
+    @Param("projectId") projectId: string,
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() body: RequestConstructionPaymentCorrectionDto
+  ) {
+    return this.constructionPaymentCorrectionService().requestCorrection(
+      projectId,
+      user.id,
+      body
+    );
+  }
+
+  @Post(":projectId/construction-payment-corrections/:sourceType/:originalFactId/confirmation")
+  @RequireProjectRole("project.construction_payment_correction.confirm")
+  confirmConstructionPaymentCorrection(
+    @Param("projectId") projectId: string,
+    @Param("sourceType")
+    sourceType: RequestConstructionPaymentCorrectionDto["sourceType"],
+    @Param("originalFactId") originalFactId: string,
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() body: ConfirmConstructionPaymentCorrectionDto
+  ) {
+    if (
+      sourceType !== "downstream_payment" &&
+      sourceType !== "affiliate_remittance_to_company" &&
+      sourceType !== "affiliate_deduction"
+    ) {
+      throw new BadRequestException("施工企业付款更正来源类型不正确");
+    }
+    return this.constructionPaymentCorrectionService().confirmCorrection(
+      projectId,
+      sourceType,
+      originalFactId,
+      user.id,
+      body
+    );
+  }
+
   @Post(":projectId/affiliate-contract-facts")
   @RequireProjectRole("project.affiliate_contract_fact.record")
   recordAffiliateContractFact(
@@ -674,6 +818,37 @@ export class ProjectController {
     throw new GoneException(
       "旧施工企业代付一步式写入口已停用，请使用施工企业业务持续接管的合同、结算、付款事实链"
     );
+  }
+
+  @Post(":projectId/owner-settlements")
+  @RequireProjectRole("project.owner_settlement.record")
+  recordOwnerSettlement(
+    @Param("projectId") projectId: string,
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() body: RecordProjectOwnerSettlementDto
+  ) {
+    return this.projects.recordOwnerSettlement(projectId, user.id, body);
+  }
+
+  @Post(":projectId/owner-settlements/file-uploads")
+  @RequireProjectRole("project.owner_settlement.record")
+  @UseInterceptors(
+    FileInterceptor("file", {
+      limits: { fileSize: Number(process.env.FILE_UPLOAD_MAX_BYTES ?? 104_857_600) }
+    })
+  )
+  uploadOwnerSettlementFile(
+    @UploadedFile() file: MemoryUploadedFile | undefined,
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() { idempotencyKey }: UploadPrivateFileDto = new UploadPrivateFileDto()
+  ) {
+    return this.uploadPrivateFile(file, user, idempotencyKey, "业主结算凭证");
+  }
+
+  @Get(":projectId/owner-settlements/record-capability")
+  @RequireProjectRole("project.owner_settlement.record")
+  ownerSettlementRecordCapability(@Param("projectId") projectId: string) {
+    return { projectId, availableActions: ["record_owner_settlement"] };
   }
 
   @Post(":projectId/upstream-settlements")

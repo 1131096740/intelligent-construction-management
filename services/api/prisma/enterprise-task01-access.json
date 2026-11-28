@@ -1,0 +1,717 @@
+{
+  "schemaVersion": 1,
+  "purpose": "task01-initial-explicit-upper-bound-not-minimal-or-runtime-verified",
+  "runtime": {
+    "role": "jg_task01_runtime",
+    "tables": [
+      {
+        "table": "User",
+        "select": [
+          "id",
+          "phone",
+          "name",
+          "departmentId",
+          "wxOpenid",
+          "passwordHash",
+          "mustChangePassword",
+          "sessionVersion",
+          "temporaryPasswordExpiresAt",
+          "recoveryCodeHash",
+          "requiresChairmanManagement",
+          "lastLoginAt",
+          "isActive",
+          "signatureFileId",
+          "createdAt",
+          "updatedAt"
+        ],
+        "insert": [],
+        "update": [
+          "lastLoginAt",
+          "updatedAt"
+        ]
+      },
+      {
+        "table": "UserPosition",
+        "select": [
+          "id",
+          "userId",
+          "positionId",
+          "projectId",
+          "createdAt"
+        ],
+        "insert": [],
+        "update": []
+      },
+      {
+        "table": "Position",
+        "select": [
+          "id",
+          "key",
+          "name",
+          "createdAt",
+          "updatedAt"
+        ],
+        "insert": [],
+        "update": []
+      },
+      {
+        "table": "ProjectMember",
+        "select": [
+          "id",
+          "projectId",
+          "userId",
+          "positionKey",
+          "createdAt"
+        ],
+        "insert": [],
+        "update": []
+      },
+      {
+        "table": "RefreshToken",
+        "select": [
+          "id",
+          "userId",
+          "tokenHash",
+          "expiresAt",
+          "revokedAt",
+          "createdAt"
+        ],
+        "insert": [
+          "id",
+          "userId",
+          "tokenHash",
+          "expiresAt",
+          "revokedAt",
+          "createdAt"
+        ],
+        "update": []
+      },
+      {
+        "table": "AuditLog",
+        "select": [
+          "id",
+          "actorUserId",
+          "action",
+          "businessType",
+          "businessId",
+          "ipAddress",
+          "userAgent",
+          "metadata",
+          "createdAt"
+        ],
+        "insert": [
+          "id",
+          "actorUserId",
+          "action",
+          "businessType",
+          "businessId",
+          "ipAddress",
+          "userAgent",
+          "metadata",
+          "createdAt"
+        ],
+        "update": []
+      },
+      {
+        "table": "CompanyEntity",
+        "select": [
+          "id",
+          "name",
+          "unifiedSocialCreditCode",
+          "registeredAddress",
+          "dataStatus",
+          "currentVersionNo",
+          "isActive",
+          "createdAt",
+          "updatedAt"
+        ],
+        "insert": [],
+        "update": []
+      },
+      {
+        "table": "CompanyEntityVersion",
+        "select": [
+          "id",
+          "companyEntityId",
+          "versionNo",
+          "name",
+          "unifiedSocialCreditCode",
+          "registeredAddress",
+          "isActive",
+          "action",
+          "actorUserId",
+          "actorRoleKey",
+          "createdAt"
+        ],
+        "insert": [],
+        "update": []
+      },
+      {
+        "table": "Project",
+        "select": [
+          "id",
+          "code",
+          "name",
+          "operatingLedgerEffectiveDate",
+          "takeoverCompletedDate",
+          "takeoverStatus",
+          "constructionEnterpriseLockedAt",
+          "isActive",
+          "createdAt",
+          "updatedAt"
+        ],
+        "insert": [],
+        "update": []
+      },
+      {
+        "table": "ProjectAffiliateAssignment",
+        "select": [
+          "id",
+          "projectId",
+          "businessPartyId",
+          "businessPartyVersionId",
+          "affiliateNameSnapshot",
+          "affiliateCreditCodeSnapshot",
+          "effectiveFrom",
+          "endedAt",
+          "changeReason",
+          "assignedByUserId",
+          "endedByUserId",
+          "createdAt",
+          "updatedAt"
+        ],
+        "insert": [],
+        "update": []
+      },
+      {
+        "table": "ProjectParticipatingCompany",
+        "select": [
+          "id",
+          "projectId",
+          "companyEntityId",
+          "companyEntityVersionId",
+          "companyNameSnapshot",
+          "companyCreditCodeSnapshot",
+          "effectiveFrom",
+          "endedAt",
+          "changeReason",
+          "addedByUserId",
+          "endedByUserId",
+          "createdAt",
+          "updatedAt"
+        ],
+        "insert": [],
+        "update": []
+      },
+      {
+        "table": "BusinessParty",
+        "select": [
+          "id",
+          "type",
+          "name",
+          "normalizedName",
+          "unifiedSocialCreditCode",
+          "status",
+          "createdByUserId",
+          "createdAt",
+          "updatedAt"
+        ],
+        "insert": [],
+        "update": []
+      },
+      {
+        "table": "BusinessPartyVersion",
+        "select": [
+          "id",
+          "businessPartyId",
+          "versionNo",
+          "snapshot",
+          "createdByUserId",
+          "createdAt"
+        ],
+        "insert": [],
+        "update": []
+      },
+      {
+        "table": "FileObject",
+        "select": [
+          "id",
+          "bucket",
+          "objectKey",
+          "originalName",
+          "mimeType",
+          "sizeBytes",
+          "uploadedByUserId",
+          "contentSha256",
+          "storageStatus",
+          "purgeReceiptId",
+          "supersedesFileObjectId",
+          "createdAt"
+        ],
+        "insert": [],
+        "update": []
+      },
+      {
+        "table": "PaymentExecutionPayerVerification",
+        "select": [
+          "id",
+          "reference",
+          "holderCompanyEntityId",
+          "holderNameSnapshot",
+          "holderCreditCodeSnapshot",
+          "verificationReference",
+          "verifiedByUserId",
+          "verifiedAt",
+          "verificationEvidenceFileId",
+          "verificationEvidenceContentSha256",
+          "status",
+          "sourceType",
+          "sourceRecordId",
+          "issuedByDatabaseRole",
+          "createdAt"
+        ],
+        "insert": [],
+        "update": []
+      },
+      {
+        "table": "VerifiedBankTransactionObservation",
+        "select": [
+          "id",
+          "reference",
+          "payerVerificationId",
+          "payerVerificationReference",
+          "holderCompanyEntityId",
+          "holderNameSnapshot",
+          "holderCreditCodeSnapshot",
+          "verificationReference",
+          "verifiedByUserId",
+          "verifiedAt",
+          "verificationEvidenceFileId",
+          "verificationEvidenceContentSha256",
+          "verificationSourceType",
+          "verificationSourceRecordId",
+          "verificationIssuedByDatabaseRole",
+          "transactionSourceType",
+          "transactionSourceId",
+          "transactionSourceIdentity",
+          "transactionEvidenceFileId",
+          "transactionEvidenceContentSha256",
+          "transactionExecutedByUserId",
+          "amountCents",
+          "currencyCode",
+          "direction",
+          "occurredAt",
+          "payloadFingerprint",
+          "createdByUserId",
+          "auditAction",
+          "auditRequestId",
+          "createdTransactionId",
+          "createdBackendPid",
+          "createdAt"
+        ],
+        "insert": [],
+        "update": []
+      },
+      {
+        "table": "FundExecution",
+        "select": [
+          "id",
+          "idempotencyKey",
+          "executionKind",
+          "direction",
+          "amountCents",
+          "currencyCode",
+          "occurredAt",
+          "reversesPaymentExecutionId",
+          "reversesFundExecutionId",
+          "payloadFingerprint",
+          "createdByUserId",
+          "handledByUserId",
+          "paymentExecutedByUserId",
+          "auditAction",
+          "auditRequestId",
+          "createdTransactionId",
+          "createdBackendPid",
+          "createdAt"
+        ],
+        "insert": [
+          "id",
+          "idempotencyKey",
+          "executionKind",
+          "direction",
+          "amountCents",
+          "currencyCode",
+          "occurredAt",
+          "reversesPaymentExecutionId",
+          "reversesFundExecutionId",
+          "payloadFingerprint",
+          "createdByUserId",
+          "handledByUserId",
+          "paymentExecutedByUserId",
+          "auditAction",
+          "auditRequestId",
+          "createdTransactionId",
+          "createdBackendPid",
+          "createdAt"
+        ],
+        "update": []
+      },
+      {
+        "table": "FundExecutionCase",
+        "select": [
+          "id",
+          "caseKey",
+          "fundExecutionId",
+          "revision",
+          "status",
+          "predecessorCaseId",
+          "returnedFromCaseId",
+          "approvalInstanceId",
+          "reason",
+          "approvalInstanceSnapshot",
+          "approvalInstanceFingerprint",
+          "approvalActionLogSnapshot",
+          "approvalActionLogCount",
+          "approvalActionLogFingerprint",
+          "finalApprovalActionLogId",
+          "finalApprovalActionFingerprint",
+          "payloadFingerprint",
+          "idempotencyKey",
+          "createdByUserId",
+          "commandActorUserId",
+          "submittedByUserId",
+          "submittedAt",
+          "returnedByUserId",
+          "returnedAt",
+          "returnReason",
+          "confirmedByUserId",
+          "confirmedAt",
+          "auditAction",
+          "auditRequestId",
+          "createdTransactionId",
+          "createdBackendPid",
+          "createdAt"
+        ],
+        "insert": [
+          "id",
+          "caseKey",
+          "fundExecutionId",
+          "revision",
+          "status",
+          "predecessorCaseId",
+          "returnedFromCaseId",
+          "approvalInstanceId",
+          "reason",
+          "approvalInstanceSnapshot",
+          "approvalInstanceFingerprint",
+          "approvalActionLogSnapshot",
+          "approvalActionLogCount",
+          "approvalActionLogFingerprint",
+          "finalApprovalActionLogId",
+          "finalApprovalActionFingerprint",
+          "payloadFingerprint",
+          "idempotencyKey",
+          "createdByUserId",
+          "commandActorUserId",
+          "submittedByUserId",
+          "submittedAt",
+          "returnedByUserId",
+          "returnedAt",
+          "returnReason",
+          "confirmedByUserId",
+          "confirmedAt",
+          "auditAction",
+          "auditRequestId",
+          "createdTransactionId",
+          "createdBackendPid",
+          "createdAt"
+        ],
+        "update": []
+      },
+      {
+        "table": "FundExecutionCaseAxisSelection",
+        "select": [
+          "id",
+          "fundExecutionCaseId",
+          "allocationLineNo",
+          "axis",
+          "status",
+          "amountCents",
+          "axisIdentity",
+          "selectionSource",
+          "originalAxisEffectId",
+          "optionSnapshot",
+          "optionFingerprint",
+          "consequencePlanSnapshot",
+          "consequencePlanFingerprint",
+          "createdByUserId",
+          "auditRequestId",
+          "createdTransactionId",
+          "createdBackendPid",
+          "createdAt"
+        ],
+        "insert": [
+          "id",
+          "fundExecutionCaseId",
+          "allocationLineNo",
+          "axis",
+          "status",
+          "amountCents",
+          "axisIdentity",
+          "selectionSource",
+          "originalAxisEffectId",
+          "optionSnapshot",
+          "optionFingerprint",
+          "consequencePlanSnapshot",
+          "consequencePlanFingerprint",
+          "createdByUserId",
+          "auditRequestId",
+          "createdTransactionId",
+          "createdBackendPid",
+          "createdAt"
+        ],
+        "update": []
+      },
+      {
+        "table": "FundExecutionCommandReceipt",
+        "select": [
+          "id",
+          "idempotencyKey",
+          "payloadFingerprint",
+          "action",
+          "fundExecutionId",
+          "fundExecutionCaseId",
+          "expectedRevision",
+          "responseSnapshot",
+          "createdByUserId",
+          "auditRequestId",
+          "createdTransactionId",
+          "createdBackendPid",
+          "createdAt"
+        ],
+        "insert": [
+          "id",
+          "idempotencyKey",
+          "payloadFingerprint",
+          "action",
+          "fundExecutionId",
+          "fundExecutionCaseId",
+          "expectedRevision",
+          "responseSnapshot",
+          "createdByUserId",
+          "auditRequestId",
+          "createdTransactionId",
+          "createdBackendPid",
+          "createdAt"
+        ],
+        "update": []
+      },
+      {
+        "table": "FundExecutionEntrySnapshot",
+        "select": [
+          "id",
+          "fundExecutionCaseId",
+          "sceneKey",
+          "businessAction",
+          "definitionVersion",
+          "definitionSnapshot",
+          "valuesSnapshot",
+          "frozenByUserId",
+          "frozenAt"
+        ],
+        "insert": [
+          "id",
+          "fundExecutionCaseId",
+          "sceneKey",
+          "businessAction",
+          "definitionVersion",
+          "definitionSnapshot",
+          "valuesSnapshot",
+          "frozenByUserId",
+          "frozenAt"
+        ],
+        "update": []
+      },
+      {
+        "table": "BankTransactionClaim",
+        "select": [
+          "id",
+          "observationId",
+          "selectionRefFingerprint",
+          "targetType",
+          "paymentExecutionId",
+          "fundExecutionId",
+          "createdByUserId",
+          "auditAction",
+          "auditRequestId",
+          "createdTransactionId",
+          "createdBackendPid",
+          "createdAt"
+        ],
+        "insert": [
+          "id",
+          "observationId",
+          "selectionRefFingerprint",
+          "targetType",
+          "paymentExecutionId",
+          "fundExecutionId",
+          "createdByUserId",
+          "auditAction",
+          "auditRequestId",
+          "createdTransactionId",
+          "createdBackendPid",
+          "createdAt"
+        ],
+        "update": []
+      },
+      {
+        "table": "CompanyTransferBankClaim",
+        "select": [
+          "observationId",
+          "eventId",
+          "createdAt"
+        ],
+        "insert": [],
+        "update": []
+      },
+      {
+        "table": "ContractBankEventClaim",
+        "select": [
+          "observationId",
+          "sourceType",
+          "sourceId",
+          "createdByUserId",
+          "createdAt"
+        ],
+        "insert": [],
+        "update": []
+      },
+      {
+        "table": "ContractProxyBankClaim",
+        "select": [
+          "observationId",
+          "proxyExecutionId",
+          "createdAt"
+        ],
+        "insert": [],
+        "update": []
+      },
+      {
+        "table": "ApprovalInstance",
+        "select": [
+          "id",
+          "flowType",
+          "businessType",
+          "businessId",
+          "status",
+          "currentNodeIndex",
+          "frozenNodes",
+          "applicantUserId",
+          "createdAt",
+          "updatedAt"
+        ],
+        "insert": [
+          "id",
+          "flowType",
+          "businessType",
+          "businessId",
+          "status",
+          "currentNodeIndex",
+          "frozenNodes",
+          "applicantUserId",
+          "createdAt",
+          "updatedAt"
+        ],
+        "update": []
+      },
+      {
+        "table": "ApprovalActionLog",
+        "select": [
+          "id",
+          "approvalInstanceId",
+          "action",
+          "actorUserId",
+          "comment",
+          "metadata",
+          "approvedRoleKey",
+          "signatureFileIdSnapshot",
+          "signatureSha256Snapshot",
+          "signatureVersionIdSnapshot",
+          "representedUserId",
+          "createdAt"
+        ],
+        "insert": [],
+        "update": []
+      },
+      {
+        "table": "ApprovalDelegation",
+        "select": [
+          "id",
+          "fromUserId",
+          "toUserId",
+          "startsAt",
+          "endsAt",
+          "enabled",
+          "actionKey",
+          "resourceType",
+          "resourceId",
+          "createdAt"
+        ],
+        "insert": [],
+        "update": []
+      }
+    ],
+    "functions": [
+      "public.\"authorizeOperatingLedgerWrite\"(text,text)",
+      "public.\"assertOperatingLedgerWriteContext\"(text)",
+      "public.digest(text,text)",
+      "public.digest(bytea,text)",
+      "public.jg_task01_connection_identity()"
+    ]
+  },
+  "observer": {
+    "role": "jg_task01_observer",
+    "tables": [
+      {
+        "table": "FundExecutionCase",
+        "select": [
+          "id",
+          "caseKey",
+          "idempotencyKey"
+        ]
+      },
+      {
+        "table": "FundExecutionCommandReceipt",
+        "select": [
+          "idempotencyKey"
+        ]
+      },
+      {
+        "table": "FundExecutionEntrySnapshot",
+        "select": [
+          "fundExecutionCaseId"
+        ]
+      },
+      {
+        "table": "FundExecution",
+        "select": [
+          "id",
+          "idempotencyKey"
+        ],
+        "insert": [],
+        "update": []
+      },
+      {
+        "table": "BankTransactionClaim",
+        "select": [
+          "fundExecutionId"
+        ],
+        "insert": [],
+        "update": []
+      }
+    ],
+    "functions": [
+      "public.jg_task01_connection_identity()"
+    ]
+  }
+}

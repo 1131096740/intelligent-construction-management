@@ -1,0 +1,34 @@
+FROM node:20.20.2-bookworm-slim@sha256:2cf067cfed83d5ea958367df9f966191a942351a2df77d6f0193e162b5febfc0 AS node
+FROM postgres:16@sha256:ca0bd484cb98bf4b24eb1010e73fb3fcbd6714d240fbc1a10eea5b7dbecb641d
+COPY --from=node /usr/local/ /usr/local/
+ENV COREPACK_HOME=/opt/corepack
+RUN corepack enable pnpm && corepack prepare pnpm@9.15.9 --activate
+WORKDIR /qualification/workspace
+COPY workspace/package.json workspace/pnpm-lock.yaml workspace/pnpm-workspace.yaml ./
+COPY workspace/packages/shared-domain/package.json packages/shared-domain/
+COPY workspace/services/api/package.json services/api/
+COPY workspace/apps/web-admin/package.json apps/web-admin/
+RUN --mount=type=cache,id=jg-qualification-pnpm-v9-amd64,target=/var/cache/jg-pnpm,sharing=locked pnpm --filter @jiangkong/api... --filter @jiangkong/web-admin... install --frozen-lockfile --store-dir=/var/cache/jg-pnpm
+ENV PLAYWRIGHT_BROWSERS_PATH=/opt/jg-playwright
+RUN apt-get update && apt-get install --yes --no-install-recommends libreoffice-writer libreoffice-calc fonts-noto-cjk \
+ && pnpm --filter @jiangkong/web-admin exec playwright install --with-deps chromium webkit
+WORKDIR /qualification/source
+COPY source/ ./
+RUN --mount=type=cache,id=jg-qualification-pnpm-v9-amd64,target=/var/cache/jg-pnpm,sharing=locked pnpm --filter @jiangkong/api... install --frozen-lockfile --store-dir=/var/cache/jg-pnpm
+COPY --chmod=0644 checkout.cjs installer.cjs exact-source.json install-only.cjs source-seal.txt source-admission.json /qualification/
+WORKDIR /qualification/workspace
+@RUNTIME_COPY@
+RUN install -d -m 0755 /qualification/named292
+COPY --chmod=0644 named292/successor.cjs named292/scope.json named292/tree-proof.json named292/successor.sql /qualification/named292/
+COPY source/ /qualification/named-source/
+COPY named-authority-modules/ /qualification/named-source/services/api/prisma/
+COPY workspace/ ./
+RUN pnpm --filter @jiangkong/shared-domain build \
+ && pnpm --filter @jiangkong/api exec prisma generate \
+ && pnpm --filter @jiangkong/web-admin exec node scripts/verify-linux-webkit-runtime.cjs
+ARG JG_NAMED_BUILD_POL114=0
+RUN case "$JG_NAMED_BUILD_POL114" in 0) ;; 1) COREPACK_ENABLE_NETWORK=0 NODE_OPTIONS=--max-old-space-size=4096 pnpm --filter @jiangkong/api build && node /qualification/preflight-layout-dist.cjs /qualification/workspace ;; *) exit 64 ;; esac
+ARG JG_NAMED_CANDIDATE_SHA
+RUN runuser -u postgres -- env JG_NAMED_CANDIDATE_SHA="$JG_NAMED_CANDIDATE_SHA" node /qualification/loader-preflight.cjs --modules-only  && node /qualification/verify-named-preimage.cjs  && node /qualification/verify-named-function-proofs.cjs  && node /qualification/verify-seven-observation.cjs
+ARG JG_NAMED_CONTEXT_SHA
+LABEL org.jiangkong.isolated-context-sha=$JG_NAMED_CONTEXT_SHA org.jiangkong.ci.candidate-sha=$JG_NAMED_CANDIDATE_SHA

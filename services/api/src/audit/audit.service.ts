@@ -23,13 +23,24 @@ const DRAFT_DELETION_ACTION_LABELS: Record<string, string> = {
 };
 
 const AUDIT_ACTION_LABELS: Record<string, string> = {
+  "company_transfer.settled_return": "登记代还到账后退款或退回",
+  "fund_account.opening.register": "登记资金期初余额",
+  "fund_account.correction.request": "申请余额核对更正",
+  "fund_account.correction.withdraw": "撤回余额核对更正",
+  "fund_account.correction.return": "退回余额核对更正",
+  "fund_account.correction.confirm": "复核余额核对更正",
   ...DRAFT_DELETION_ACTION_LABELS,
   ...FILE_DOWNLOAD_AUDIT_ACTION_LABELS,
   "auth.login": "登录",
   "auth.application.login": "登录本人入职申请",
   "auth.logout": "退出登录",
+  "payment.capacity.recheck": "重校付款容量",
+  "payment.capacity.blocked": "付款容量不足拦截",
   "permission.change": "权限变更",
   "operating_projection.export": "导出经营投影",
+  "project.owner_settlement.record": "登记业主结算",
+  "project.construction_payment_correction.request": "提出施工企业付款更正",
+  "project.construction_payment_correction.confirm": "确认施工企业付款更正",
   "password.change": "密码变更",
   "employee.registration.submit": "提交入职申请",
   "employee.registration.resubmit": "重新提交入职申请",
@@ -48,6 +59,7 @@ const AUDIT_ACTION_LABELS: Record<string, string> = {
 };
 
 const AUDIT_BUSINESS_TYPE_LABELS: Record<string, string> = {
+  fund_account_balance: "资金余额核对",
   expense_claim: "费用申请",
   general_procurement: "综合采购",
   spot_procurement: "零星采购",
@@ -65,6 +77,7 @@ const AUDIT_BUSINESS_TYPE_LABELS: Record<string, string> = {
   file_object: "文件",
   payment: "付款",
   operating_projection: "经营投影",
+  project_owner_settlement_entry: "业主结算",
   settlement: "结算",
   settlement_import: "结算导入",
   settlement_draft: "结算草稿"

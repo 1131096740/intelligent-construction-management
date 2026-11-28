@@ -1,5 +1,6 @@
 import type { ExecutionContext } from "@nestjs/common";
 import { HttpException } from "@nestjs/common";
+import { SignedContractSettlementController } from "../settlement/signed-contract-settlement.controller";
 import { OperationalWriteFreezeGuard } from "./operational-write-freeze.guard";
 import { OperationalWriteFreezeService } from "./operational-write-freeze.service";
 
@@ -8,6 +9,35 @@ const originalModules = process.env.OPERATIONAL_WRITE_FREEZE_MODULES;
 
 class PaymentController {
   create() {}
+}
+
+class FundAccountController {
+  mutate() {}
+}
+
+class FundAccountAdvanceController {
+  register() {}
+  registerCompanyOwned() {}
+  companyOwnedBankOptions() {}
+}
+
+class FundPrincipalReturnController {
+  list() {}
+  apply() {}
+  act() {}
+  pay() {}
+  result() {}
+}
+
+class RegisteredPaymentExecutionController {
+  mutate() {}
+}
+
+class ProjectController {
+  recordOwnerSettlement() {}
+  uploadOwnerSettlementFile() {}
+  recordUpstreamFundFact() {}
+  confirmUpstreamFundFact() {}
 }
 
 class ContractController {
@@ -37,6 +67,7 @@ function contextFor(input: {
   handler: object;
   method?: string;
   params?: Record<string, string>;
+  body?: { confirmedReceipt?: boolean };
 }): ExecutionContext {
   return {
     getClass: () => input.controller,
@@ -44,7 +75,8 @@ function contextFor(input: {
     switchToHttp: () => ({
       getRequest: () => ({
         method: input.method ?? "POST",
-        params: input.params
+        params: input.params,
+        body: input.body
       })
     })
   } as unknown as ExecutionContext;
@@ -74,6 +106,45 @@ describe("OperationalWriteFreezeGuard", () => {
   const guard = new OperationalWriteFreezeGuard(new OperationalWriteFreezeService());
 
   afterEach(() => restoreEnvironment());
+
+  it("keeps the project freeze and also blocks only the new project financial writes during a finance freeze", () => {
+    process.env.OPERATIONAL_WRITE_FREEZE_MODE = "modules";
+    process.env.OPERATIONAL_WRITE_FREEZE_MODULES = "finance";
+    const projectWrite = (handler: object, body?: { confirmedReceipt: boolean }) =>
+      guard.canActivate(contextFor({ controller: ProjectController, handler, body }));
+    const project = ProjectController.prototype;
+    for (const handler of [project.recordOwnerSettlement, project.uploadOwnerSettlementFile]) {
+      expectHttpFailure(() => projectWrite(handler), 503, "OPERATIONAL_WRITE_FREEZE_ACTIVE");
+    }
+    expectHttpFailure(() => projectWrite(project.recordUpstreamFundFact, { confirmedReceipt: true }), 503, "OPERATIONAL_WRITE_FREEZE_ACTIVE");
+    expect(projectWrite(project.recordUpstreamFundFact)).toBe(true);
+    expect(projectWrite(project.confirmUpstreamFundFact)).toBe(true);
+
+    process.env.OPERATIONAL_WRITE_FREEZE_MODULES = "project";
+    expectHttpFailure(() => projectWrite(project.recordOwnerSettlement), 503, "OPERATIONAL_WRITE_FREEZE_ACTIVE");
+  });
+
+  it("keeps the new advance writes behind the finance freeze and preserves candidate reads", () => {
+    process.env.OPERATIONAL_WRITE_FREEZE_MODE = "modules";
+    process.env.OPERATIONAL_WRITE_FREEZE_MODULES = "finance";
+    const controller = FundAccountAdvanceController;
+    for (const handler of [controller.prototype.register, controller.prototype.registerCompanyOwned]) {
+      expectHttpFailure(() => guard.canActivate(contextFor({ controller, handler })), 503, "OPERATIONAL_WRITE_FREEZE_ACTIVE");
+    }
+    expect(guard.canActivate(contextFor({ controller, handler: controller.prototype.companyOwnedBankOptions, method: "GET" }))).toBe(true);
+  });
+
+  it("freezes principal return writes while preserving the list and original-key lookup", () => {
+    process.env.OPERATIONAL_WRITE_FREEZE_MODE = "modules";
+    process.env.OPERATIONAL_WRITE_FREEZE_MODULES = "finance";
+    const controller = FundPrincipalReturnController;
+    for (const handler of [controller.prototype.apply, controller.prototype.act, controller.prototype.pay]) {
+      expectHttpFailure(() => guard.canActivate(contextFor({ controller, handler })), 503, "OPERATIONAL_WRITE_FREEZE_ACTIVE");
+    }
+    for (const handler of [controller.prototype.list, controller.prototype.result]) {
+      expect(guard.canActivate(contextFor({ controller, handler, method: "GET" }))).toBe(true);
+    }
+  });
 
   it("keeps classified writes open by default", () => {
     delete process.env.OPERATIONAL_WRITE_FREEZE_MODE;
@@ -135,6 +206,19 @@ describe("OperationalWriteFreezeGuard", () => {
         })
       )
     ).toBe(true);
+  });
+
+  it.each([
+    { controller: FundAccountController, module: "finance", otherModule: "payment" },
+    { controller: RegisteredPaymentExecutionController, module: "payment", otherModule: "finance" }
+  ])("classifies $controller.name under the $module write freeze", ({ controller, module, otherModule }) => {
+    const context = contextFor({ controller, handler: controller.prototype.mutate });
+    process.env.OPERATIONAL_WRITE_FREEZE_MODE = "modules";
+    process.env.OPERATIONAL_WRITE_FREEZE_MODULES = otherModule;
+    expect(guard.canActivate(context)).toBe(true);
+
+    process.env.OPERATIONAL_WRITE_FREEZE_MODULES = module;
+    expectHttpFailure(() => guard.canActivate(context), 503, "OPERATIONAL_WRITE_FREEZE_ACTIVE");
   });
 
   it("keeps audited exports open without a freeze and blocks them in the finance freeze", () => {
@@ -213,6 +297,26 @@ describe("OperationalWriteFreezeGuard", () => {
         })
       )
     ).toBe(true);
+  });
+
+  it("keeps signed settlement mutations under settlement freeze and leaves reads available", () => {
+    const controller = SignedContractSettlementController;
+    const mutations = ["upload", "create", "update", "submit", "review", "attachmentDownloadTicket"] as const;
+    process.env.OPERATIONAL_WRITE_FREEZE_MODE = "modules";
+    process.env.OPERATIONAL_WRITE_FREEZE_MODULES = "settlement";
+    for (const action of mutations) {
+      expectHttpFailure(() => guard.canActivate(contextFor({
+        controller, handler: controller.prototype[action], method: action === "update" ? "PATCH" : "POST"
+      })), 503, "OPERATIONAL_WRITE_FREEZE_ACTIVE");
+    }
+    expect(guard.canActivate(contextFor({ controller, handler: controller.prototype.contracts, method: "GET" }))).toBe(true);
+    process.env.OPERATIONAL_WRITE_FREEZE_MODE = "off";
+    delete process.env.OPERATIONAL_WRITE_FREEZE_MODULES;
+    for (const action of mutations) {
+      expect(guard.canActivate(contextFor({
+        controller, handler: controller.prototype[action], method: action === "update" ? "PATCH" : "POST"
+      }))).toBe(true);
+    }
   });
 
   it("fails closed for every unclassified mutation even when the configured mode is off", () => {

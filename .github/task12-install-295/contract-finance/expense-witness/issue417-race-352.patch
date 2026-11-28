@@ -1,0 +1,11 @@
+--- a/historical-expense-335-race.cjs
++++ b/historical-expense-335-race.cjs
+@@ -70,7 +70,7 @@
+ }
+ 
+ async function verifyHistoryExpenseInvariant({ ownerUrl, workDir, database, runId, sql }, migrationCount) {
+-  assert.ok([335, 346, 349, 350].includes(migrationCount), 'ISSUE417_RACE_MIGRATION_COUNT');
++  assert.ok([335, 346, 349, 350, 352].includes(migrationCount), 'ISSUE417_RACE_MIGRATION_COUNT');
+   const owner = new URL(ownerUrl);
+   const run = runId.replaceAll('-', '');
+   const cert = path.join(workDir, 'ca.crt');

@@ -1,0 +1,11 @@
+--- entry.cjs
++++ entry.cjs
+@@ -6 +6 @@
+-const receipt={schemaVersion:1,purpose:'ORIGINAL_POL275_EXACT_289_'+lane.toUpperCase(),business:'NOT_ENTERED',stages:[]};
++const receipt={schemaVersion:1,purpose:'ORIGINAL_POL275_290_CANDIDATE_'+lane.toUpperCase(),business:'NOT_ENTERED',stages:[]};
+@@ -16,2 +16,3 @@
+-    assert.equal(receipt.pol275.migrationCount,289);
+-    assert.deepEqual(receipt.postconsume,{count:289,exactB7:true});
++    assert.equal(receipt.installOnly290?.count,290);
++    assert.equal(receipt.pol275.migrationCount,290);
++    assert.deepEqual(receipt.postconsume,{count:290,exactB7:true});

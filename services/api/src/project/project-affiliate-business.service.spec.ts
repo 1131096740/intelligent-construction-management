@@ -2,6 +2,7 @@ jest.mock("../contract-ledger/contract-proxy-capacity", () => ({ contractProxyPa
 // 该套件验证原审批/归档职责；履约范围事务守卫由 contract-economic-* 与 PostgreSQL 套件独立覆盖。
 jest.mock("../contract-ledger/contract-economic-coverage", () => ({ ...jest.requireActual("../contract-ledger/contract-economic-coverage"), assertEconomicContractReady: jest.fn().mockResolvedValue(undefined) }));
 import { BadRequestException } from "@nestjs/common";
+import { Prisma } from "@prisma/client";
 import { ProjectAffiliateBusinessService } from "./project-affiliate-business.service";
 
 function roleTables(roleKey: string) {
@@ -391,7 +392,7 @@ describe("ProjectAffiliateBusinessService", () => {
     ).rejects.toBeInstanceOf(BadRequestException);
   });
 
-  it.each(["normal", "advance", "direct_contract"] as const)(
+  it.each(["normal", "direct_contract"] as const)(
     "rejects a post-effective %s payment without an approved payment request",
     async (paymentKind) => {
     const tx = {
@@ -1000,19 +1001,22 @@ describe("ProjectAffiliateBusinessService", () => {
     ).rejects.toThrow("同一合同和期间存在多笔外部结算，请先明确付款申请对应的债务");
   });
 
-  it("permits a pre-settlement advance only when frozen contract terms allow it", async () => {
+  it("blocks new construction enterprise advances and preserves replay and correction of an existing advance", async () => {
     const advanceContract = contractFact({
       advanceAllowed: true,
       advanceLimitCents: 20000n,
       advanceTermsSummary: "签约后可预付不超过 20,000 分"
     });
-    const created = paymentFact({
+    const historical = paymentFact({
       settlementLedgerId: null,
+      paymentRequestId: null,
       paymentKind: "advance",
       externalPaymentReference: "BANK-ADVANCE-001",
       amountCents: 10000n,
       recordedByUserId: "finance-director-1",
-      recordedByRoleKey: "finance_director"
+      recordedByRoleKey: "finance_director",
+      status: "confirmed",
+      requestFingerprint: "b7286bd1c42748a61899c6fd9d9eee890720d0a44d1bfcfd38b712a8d79ea54b"
     });
     const tx = {
  contractProxyExecution:{findMany:jest.fn().mockResolvedValue([])},
@@ -1027,8 +1031,11 @@ describe("ProjectAffiliateBusinessService", () => {
       projectAffiliateSettlementFact: { findMany: jest.fn() },
       projectAffiliatePaymentFact: {
         findUnique: jest.fn().mockResolvedValue(null),
-        findMany: jest.fn().mockResolvedValue([]),
-        create: jest.fn().mockResolvedValue(created)
+        findFirst: jest.fn().mockResolvedValue(historical),
+        findMany: jest.fn(async ({ where }: { where: { adjustsFactId?: string } }) =>
+          where.adjustsFactId ? [] : [historical]
+        ),
+        create: jest.fn(async ({ data }) => ({ ...historical, ...data }))
       },
       fileObject: { findUnique: jest.fn() },
       auditLog: { create: jest.fn() }
@@ -1040,26 +1047,40 @@ describe("ProjectAffiliateBusinessService", () => {
     };
     const service = new ProjectAffiliateBusinessService(prisma as never);
 
-    await expect(
-      service.recordPaymentFact("project-1", "finance-director-1", {
-        contractLedgerId: "contract-ledger-1",
-        counterpartyName: "材料供应商",
-        paidAt: "2026-07-29",
-        amountCents: "10000",
-        paymentKind: "advance",
-        externalPaymentReference: "BANK-ADVANCE-001",
-        basisType: "oral",
-        idempotencyKey: "46e34999-5ccf-4a18-b010-46ed35fc37d7"
-      })
-    ).resolves.toMatchObject({
+    const original = {
+      contractLedgerId: "contract-ledger-1",
+      counterpartyName: "材料供应商",
+      paidAt: "2026-07-29",
+      amountCents: "10000",
       paymentKind: "advance",
-      settlementLedgerId: null,
-      availableActions: ["confirm", "supplement_evidence"]
+      basisType: "oral",
+      idempotencyKey: "46e34999-5ccf-4a18-b010-46ed35fc37d7"
+    } as const;
+    const registration = { ...original, externalPaymentReference: "BANK-ADVANCE-001" };
+    const record = (input: Parameters<typeof service.recordPaymentFact>[2]) =>
+      service.recordPaymentFact("project-1", "finance-director-1", input);
+    await expect(record(registration)).rejects.toThrow("施工企业预付款已停止新增登记");
+    tx.projectAffiliatePaymentFact.findUnique.mockResolvedValueOnce(historical);
+    await expect(record(registration)).resolves.toMatchObject({
+      id: historical.id, paymentKind: "advance", status: "confirmed"
+    });
+    expect(tx.projectAffiliatePaymentFact.create).not.toHaveBeenCalled();
+    expect(tx.auditLog.create).not.toHaveBeenCalled();
+
+    await expect(record({
+      ...original,
+      amountCents: "1000",
+      entryKind: "correction",
+      effectDirection: "decrease",
+      adjustsFactId: historical.id,
+      idempotencyKey: "66e34999-5ccf-4a18-b010-46ed35fc37d7"
+    })).resolves.toMatchObject({
+      adjustsFactId: historical.id, paymentKind: "advance", entryKind: "correction", status: "pending_confirm"
     });
   });
 
   it.each(["advance", "direct_contract"] as const)(
-    "accepts a post-effective %s payment with its matching contract payment request",
+    "enforces the new registration policy for post-effective %s payments with an approved request",
     async (paymentKind) => {
       const contract =
         paymentKind === "advance"
@@ -1132,22 +1153,23 @@ describe("ProjectAffiliateBusinessService", () => {
       };
       const service = new ProjectAffiliateBusinessService(prisma as never);
 
-      await expect(
-        service.recordPaymentFact("project-1", "finance-1", {
-          contractLedgerId: "contract-ledger-1",
-          counterpartyName: "材料供应商",
-          paidAt: "2026-08-02",
-          amountCents: "5000",
-          paymentKind,
-          externalPaymentReference: `BANK-${paymentKind}-001`,
-          paymentRequestId: "payment-request-1",
-          basisType: "oral",
-          idempotencyKey:
-            paymentKind === "advance"
-              ? "46e34999-5cc7-4a18-b010-46ed35fc37d7"
-              : "56e34999-5cc7-4a18-b010-46ed35fc37d7"
-        })
-      ).resolves.toMatchObject({ paymentKind, settlementLedgerId: null });
+      const registration = service.recordPaymentFact("project-1", "finance-1", {
+        contractLedgerId: "contract-ledger-1",
+        counterpartyName: "材料供应商",
+        paidAt: "2026-08-02",
+        amountCents: "5000",
+        paymentKind,
+        externalPaymentReference: `BANK-${paymentKind}-001`,
+        paymentRequestId: "payment-request-1",
+        basisType: "oral",
+        idempotencyKey: "56e34999-5cc7-4a18-b010-46ed35fc37d7"
+      });
+      if (paymentKind === "advance") {
+        await expect(registration).rejects.toThrow("施工企业预付款已停止新增登记");
+        expect(tx.projectAffiliatePaymentFact.create).not.toHaveBeenCalled();
+      } else {
+        await expect(registration).resolves.toMatchObject({ paymentKind, settlementLedgerId: null });
+      }
     }
   );
 
@@ -1191,7 +1213,7 @@ describe("ProjectAffiliateBusinessService", () => {
     ).rejects.toThrow("付款对象必须与施工企业对下合同相对方完全一致");
   });
 
-  it("does not let another pending settlement increase mask the decrease being confirmed", async () => {
+  it("confirms a settlement decrease that leaves registered payments overpaid (OPS-05)", async () => {
     const confirmedAt = new Date("2026-07-29T04:00:00.000Z");
     const pendingDecrease = settlementFact({
       id: "settlement-decrease-1",
@@ -1220,6 +1242,7 @@ describe("ProjectAffiliateBusinessService", () => {
       companyEntityVersion: { findFirst: jest.fn().mockResolvedValue(null) },
       $queryRaw: jest
         .fn()
+        .mockResolvedValueOnce([{ id: "project-1" }])
         .mockResolvedValueOnce([{ id: "settlement-decrease-1" }])
         .mockResolvedValueOnce([{ id: "settlement-ledger-1" }])
         .mockResolvedValueOnce([{ id: "budget-1", isActive: true, name: "签批人甲" }])
@@ -1296,8 +1319,8 @@ describe("ProjectAffiliateBusinessService", () => {
         },
         confirmedAt
       )
-    ).rejects.toThrow("施工企业结算有效金额不能低于已登记付款金额");
-    expect(tx.projectAffiliateSettlementFact.updateMany).not.toHaveBeenCalled();
+    ).resolves.toMatchObject({ status: "confirmed" });
+    expect(tx.projectAffiliateSettlementFact.updateMany).toHaveBeenCalledTimes(1);
   });
 
   it("requires a finance director to confirm an oral payment and freezes the signature", async () => {
@@ -1343,6 +1366,9 @@ describe("ProjectAffiliateBusinessService", () => {
         findFirst: jest.fn().mockResolvedValue(paymentFact()),
         updateMany: jest.fn().mockResolvedValue({ count: 1 })
       },
+      projectUpstreamFundFact: {
+        findMany: jest.fn().mockResolvedValue([])
+      },
       auditLog: { create: jest.fn() }
     };
     const prisma = {
@@ -1375,7 +1401,8 @@ describe("ProjectAffiliateBusinessService", () => {
         "supplement_evidence",
         "record_correction",
         "record_reversal"
-      ]
+      ],
+      settlementCoverage: { overpaidCents: "0", overpaid: false }
     });
     expect(auth.confirmPassword).toHaveBeenCalledWith(
       "finance-director-1",
@@ -1395,4 +1422,32 @@ describe("ProjectAffiliateBusinessService", () => {
       })
     });
   });
+});
+
+it("maps only the enterprise bank event duplicate to the payment conflict", async () => {
+  const findUnique = jest.fn().mockResolvedValue(null);
+  const transaction = jest.fn();
+  const service = new ProjectAffiliateBusinessService({
+    $transaction: transaction, projectAffiliatePaymentFact: { findUnique }
+  } as never);
+  const record = () => service.recordPaymentFact("project-1", "finance-1", {
+    contractLedgerId: "contract-ledger-1", settlementLedgerId: "settlement-ledger-1",
+    counterpartyName: "材料供应商", paidAt: "2026-08-02", amountCents: "5000", paymentKind: "normal",
+    externalPaymentReference: "BANK-DUPLICATE-001", basisType: "oral", idempotencyKey: "bank-duplicate-001"
+  });
+  const databaseError = (code: string, message: string) => new Prisma.PrismaClientUnknownRequestError(
+    `PostgresError { code: "${code}", message: "${message}", severity: "ERROR" }`, { clientVersion: "5.22.0" }
+  );
+  const duplicate = "施工企业该银行流水已登记，不得跨入口重复付款";
+  for (const other of [databaseError("P0001", "another constraint"), databaseError("42501", duplicate)]) {
+    transaction.mockRejectedValueOnce(other);
+    await expect(record()).rejects.toBe(other);
+  }
+  expect(findUnique).not.toHaveBeenCalled();
+
+  transaction.mockRejectedValueOnce(databaseError("P0001", duplicate));
+  await expect(record()).rejects.toMatchObject({
+    status: 409, message: "同一外部付款已登记，不能跨项目或跨业务重复绑定"
+  });
+  expect(findUnique).toHaveBeenCalledWith({ where: { idempotencyKey: "bank-duplicate-001" } });
 });

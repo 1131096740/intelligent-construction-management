@@ -33,6 +33,7 @@ const page = ref(1);
 const relationship = ref<ContractRelationship | "">("");
 const projects = ref<Array<{ label: string; value: string }>>([]);
 const data = ref<ContractRelationshipLedger | null>(null);
+const financialBalances = ref<{ refresh: () => Promise<void> } | null>(null);
 const busy = ref(false);
 const error = ref("");
 const showHandling = ref(false);
@@ -68,8 +69,14 @@ async function load() {
     if (alive && generation === request) data.value = result;
   } catch (cause) {
     if (alive && generation === request) error.value = formatUnknownApiError(cause, "分类台账读取失败，请重试");
-  } finally { if (alive && generation === request) busy.value = false; }
+  } finally {
+    if (alive && generation === request) {
+      busy.value = false;
+      await financialBalances.value?.refresh();
+    }
+  }
 }
+defineExpose({ refresh: load });
 async function download() {
   exporting.value = true;
   try {
@@ -164,7 +171,7 @@ onBeforeUnmount(() => { alive = false; generation += 1; });
     />
     <ContractFinancialBalances
       v-if="canReadReceipts"
-      :key="data?.readAt"
+      ref="financialBalances"
       :project-id="selectedProject"
       :company-entity-id="selectedCompany"
       :as-of="asOf"
@@ -242,7 +249,7 @@ onBeforeUnmount(() => { alive = false; generation += 1; });
           :key="total.relationship"
         >
           <strong>{{ total.label }}</strong>
-          <span>{{ amount(total.knownAmountCents) }} 元 · {{ total.count }} 条</span>
+          <span>{{ total.knownAmountYuan ?? amount(total.knownAmountCents) }} 元 · {{ total.count }} 条</span>
           <span v-if="total.unknownAmountCount">另有 {{ total.unknownAmountCount }} 条未定/待确认金额</span>
         </div>
       </div>
@@ -257,7 +264,7 @@ onBeforeUnmount(() => { alive = false; generation += 1; });
         @page-change="onPageChange"
       >
         <template #amountCents="{ row }">
-          {{ amount(row.amountCents) }}
+          {{ row.amountYuan ?? amount(row.amountCents) }}
           <small v-if="row.documentAmountCents">（原文书 {{ amount(row.documentAmountCents) }} 元）</small>
         </template>
         <template #actualPayer="{ row }">
@@ -281,7 +288,7 @@ onBeforeUnmount(() => { alive = false; generation += 1; });
           <strong>{{ row.relationshipLabel }} · {{ row.statusLabel }}</strong>
           <p>{{ row.projectName }} · {{ row.reference }}</p>
           <p>签约/原债务主体：{{ row.signingParty }}<br>相对方：{{ row.counterparty }}</p>
-          <p>{{ row.amountLabel }}：{{ amount(row.amountCents) }} 元</p>
+          <p>{{ row.amountLabel }}：{{ row.amountYuan ?? amount(row.amountCents) }} 元</p>
           <p v-if="row.documentAmountCents">
             原文书金额：{{ amount(row.documentAmountCents) }} 元
           </p>

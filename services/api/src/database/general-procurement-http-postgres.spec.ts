@@ -1,10 +1,12 @@
+import { Prisma } from "@prisma/client";
+import { runPreparedGeneralRequestPgCase, type PreparedGeneralRequestPgHttp } from "./general-procurement-request.http.pg.prepared";
 import { verifyApprovedPdf } from "./approval-pdf-acceptance.test-support";
 import "reflect-metadata";
 import { type INestApplication } from "@nestjs/common";
 import { Test } from "@nestjs/testing";
 import { spawn } from "node:child_process";
 import { resolve } from "node:path";
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { PDFDocument } from "pdf-lib";
 import { hash } from "bcryptjs";
 import { AppModule } from "../app.module";
@@ -12,7 +14,8 @@ import { apiJsonReplacer } from "../api-json-replacer";
 import { createApiValidationPipe } from "../validation/api-validation";
 import { PrismaService } from "./prisma.service";
 
-const describePg = process.env.RUN_GENERAL_PROCUREMENT_PG16 === "1" ? describe : describe.skip;
+const orderedIssue434Database = process.env.JG_ISSUE434_ORDERED_DATABASE;
+const describePg = process.env.RUN_GENERAL_PROCUREMENT_PG16 === "1" || orderedIssue434Database !== undefined ? describe : describe.skip;
 
 describePg("综合采购公开 HTTP / PostgreSQL 16", () => {
   jest.setTimeout(60_000);
@@ -56,7 +59,15 @@ describePg("综合采购公开 HTTP / PostgreSQL 16", () => {
 
   beforeAll(async () => {
     const url = new URL(process.env.DATABASE_URL ?? "");
-    if (process.env.NODE_ENV === "production" || url.hostname !== "127.0.0.1" || url.pathname !== "/general_procurement") throw new Error("仅允许本机一次性采购测试数据库");
+    const isolatedName = orderedIssue434Database ?? "general_procurement";
+    const orderedOwner = orderedIssue434Database === undefined ||
+      (/^jg_task01_[0-9a-f]{32}$/u.test(orderedIssue434Database) && url.username === "jg_task01_owner" &&
+        url.searchParams.get("sslmode") === "require" && url.searchParams.get("sslaccept") === "strict");
+    if (process.env.NODE_ENV === "production" || (orderedIssue434Database !== undefined && process.env.NODE_ENV !== "test") ||
+        url.hostname !== "127.0.0.1" ||
+        url.pathname !== "/" + isolatedName || !orderedOwner) {
+      throw new Error("仅允许本机一次性采购测试数据库");
+    }
     const module = await Test.createTestingModule({ imports: [AppModule] }).compile();
     app = module.createNestApplication({ logger: false });
     app.getHttpAdapter().getInstance().set("json replacer", apiJsonReplacer);
@@ -82,6 +93,143 @@ describePg("综合采购公开 HTTP / PostgreSQL 16", () => {
   });
   afterAll(async () => { if (app) await app.close(); });
 
+  if (orderedIssue434Database !== undefined) {
+    it("实际综合采购批次付款四岗同时待办，审批单按冻结岗位签署顺序呈现", async () => {
+      const modern = await request("/general-procurements", "POST", {
+        requestKey: randomUUID(), requestProtocolVersion: 2, scope: "project", projectId, companyEntityId,
+        category: "office_supplies", reason: "采购实际办公用品", lines: [{ id: randomUUID(), name: "办公用品" }]
+      });
+      expect(modern.status).toBe(201);
+      const requestPath = `/general-procurements/${modern.body.id}`;
+      const submittedRequest = await request(`${requestPath}/submission`, "POST", { revision: modern.body.revision });
+      expect(submittedRequest.status).toBe(201);
+      const directorReview = await request(`${requestPath}/review`, "POST", {
+        revision: submittedRequest.body.revision, expectedNodeIndex: 0, decision: "approve"
+      }, director.token);
+      expect(directorReview.status).toBe(201);
+      expect(await request(`${requestPath}/review`, "POST", {
+        revision: directorReview.body.revision, expectedNodeIndex: 1, decision: "approve"
+      }, manager.token)).toMatchObject({ status: 201, body: { status: "approved_pending_procurement" } });
+
+      const batch = await request("/actual-purchase-batches", "POST", {
+        kind: "general", procurementId: modern.body.id, companyEntityId,
+        supplierName: "合成批次供应商", totalAmountCents: "50000", idempotencyKey: randomUUID(),
+        lines: [{ materialName: "办公用品一批", amountCents: "50000" }]
+      }, director.token);
+      expect(batch).toMatchObject({ status: 201, body: { kind: "general", procurementId: modern.body.id } });
+      const batchClaim = await request("/expense-claims", "POST", {
+        claimType: "incidental_expense", incidentalExpenseCategory: "procurement_office_supplies",
+        generalProcurementId: modern.body.id, generalProcurementRequestKey: randomUUID(),
+        actualPurchaseBatchId: batch.body.id, companyEntityId, projectId,
+        reason: "综合采购批次首笔付款", requestedAmountCents: "20000", payeeName: "合成批次供应商"
+      }, director.token);
+      expect(batchClaim.status).toBe(201);
+      const batchClaimPath = `/expense-claims/${batchClaim.body.id}`;
+      const batchSubmission = await request(`${batchClaimPath}/submission`, "POST", {}, director.token);
+      expect(batchSubmission).toMatchObject({ status: 201, body: { status: "approval_pending" } });
+      const approvalInstanceId = batchSubmission.body.approvalInstanceId;
+
+      // Each role can act immediately. Approval order differs from the document's fixed duty slots.
+      const reviews = [
+        { reviewer: financeDirector, index: 2 }, { reviewer: chairman, index: 3 },
+        { reviewer: director, index: 0 }, { reviewer: manager, index: 1 }
+      ];
+      for (const { reviewer, index } of reviews) {
+        expect(await request(batchClaimPath, "GET", undefined, reviewer.token)).toMatchObject({
+          status: 200, body: { actualPurchaseBatchId: batch.body.id, approval: { approvalInstanceId, canReview: true, actionableDuties: [{ index }] } }
+        });
+      }
+      const materialDirector = await actor("material_director");
+      expect(await request(`${batchClaimPath}/approval`, "POST", {
+        approvalInstanceId, approvalDutyIndex: 0, decision: "approve"
+      }, materialDirector.token)).toMatchObject({ status: 403 });
+      for (const { reviewer, index } of reviews) {
+        expect(await request(`${batchClaimPath}/approval`, "POST", {
+          approvalInstanceId, approvalDutyIndex: index, decision: "approve",
+          ...(reviewer.id === director.id ? { selfReviewReason: "按实际采购批次办理付款", confirmationPassword: password } : {})
+        }, reviewer.token)).toMatchObject({
+          status: 201, body: { status: index === 1 ? "approved_pending_payment" : "approval_pending" }
+        });
+      }
+      const bytes = await verifyApprovedPdf({ db: app.get(PrismaService), baseUrl: base, token: director.token, password,
+        businessType: "expense_claim", businessId: batchClaim.body.id,
+        roles: ["finance_director", "chairman", "comprehensive_director", "project_manager"], label: "综合采购实际批次付款" });
+      const dutyLabels = ["综合部主管", "项目经理", "财务主管", "董事长"];
+      const { pdfPublicTextItems } = await import("../approval/approval-pdf-text.test-support");
+      const visibleRoles = pdfPublicTextItems(bytes).map(item => item.text.trim())
+        .filter(label => dutyLabels.includes(label) || label === "物资部主管");
+      expect(visibleRoles).toEqual(dutyLabels);
+    });
+    return;
+  }
+
+
+  async function seedHistoricalDraft(input: {
+    category: string; reason: string; requestedAmountCents: string; applicantId?: string;
+  }) {
+    const db = app.get(PrismaService);
+    const applicant = await db.user.findUniqueOrThrow({
+      where: { id: input.applicantId ?? employee.id },
+      select: { id: true, name: true }
+    });
+    const requestKey = randomUUID();
+    return db.generalProcurement.create({ data: {
+      code: `HISTORICAL-GP-${requestKey}`, requestKey,
+      creationFingerprint: createHash("sha256").update(JSON.stringify([applicant.id, input, projectId, companyEntityId])).digest("hex"),
+      requestProtocolVersion: 1, scope: "project", status: "draft", revision: 1,
+      projectId, companyEntityId, companyNameSnapshot: "合成费用承担公司",
+      applicantUserId: applicant.id, applicantNameSnapshot: applicant.name,
+      category: input.category, reason: input.reason, requestedAmountCents: BigInt(input.requestedAmountCents)
+    } });
+  }
+
+  // New requests use the public v2 contract. Existing v1 records continue through their historical workflow.
+  async function preparedGeneralRequestAdapter(): Promise<{ http: PreparedGeneralRequestPgHttp; close(): Promise<void> }> {
+    const db = app.get(PrismaService);
+    const secondDirector = await actor("comprehensive_director"); await sign(secondDirector.token);
+    let createdId = "";
+    const tokens = { applicant: employee.token, directorA: director.token, directorB: secondDirector.token, manager: manager.token };
+    const http: PreparedGeneralRequestPgHttp = {
+      create: async scope => {
+        const reply = await request("/general-procurements", "POST", { requestKey: randomUUID(), requestProtocolVersion: 2, scope,
+          projectId: scope === "project" ? projectId : null, companyEntityId: null, category: "office_supplies", reason: "", requestedAmountCents: null,
+          lines: [{ id: randomUUID(), name: "任务20待定办公需求", specification: null, unit: null, quantity: null, unitPrice: null, estimatedAmount: null, requiredOn: null, note: null }] });
+        createdId = reply.body.id; return reply;
+      },
+      submit: (id, revision) => request(`/general-procurements/${id}/submission`, "POST", { revision }),
+      detail: id => request(`/general-procurements/${id}`),
+      review: (id, actorKey, input) => request(`/general-procurements/${id}/review`, "POST", input, tokens[actorKey]),
+      readPersistedNullableFacts: async id => {
+        const row = await db.generalProcurement.findUniqueOrThrow({ where: { id } });
+        const line = (row.lines as Prisma.JsonArray)[0] as Prisma.JsonObject;
+        expect(line.quantity).toBeNull();
+        return { projectId: row.projectId, companyEntityId: row.companyEntityId, requestedAmountCents: row.requestedAmountCents?.toString() ?? null, quantity: null };
+      },
+      invalidV2MissingNameConstraintCode: async () => {
+        try {
+          await db.$transaction(async tx => {
+            await tx.$executeRaw(Prisma.sql`UPDATE "GeneralProcurement" SET "lines" = "lines" #- ARRAY['0','name'] WHERE "id" = ${createdId}`);
+            throw new Error("缺少名称的采购清单不应被数据库接受");
+          });
+        } catch (error) { return String((error as { meta?: { code?: unknown } }).meta?.code ?? "CONSTRAINT_NOT_REJECTED"); }
+        return "CONSTRAINT_NOT_REJECTED";
+      }
+    };
+    return { http, close: async () => { await db.user.update({ where: { id: secondDirector.id }, data: { isActive: false } }); } };
+  }
+  it("任务20公司日常未知值在真实PG仍为NULL且清单名称约束拒绝缺失", async () => {
+    const prepared = await preparedGeneralRequestAdapter();
+    try { await runPreparedGeneralRequestPgCase(prepared.http, "company-null-and-constraint"); } finally { await prepared.close(); }
+  });
+  it("任务20同一综合审批职责竞争只接受一个动作并保留另一职责待办", async () => {
+    const prepared = await preparedGeneralRequestAdapter();
+    try { await runPreparedGeneralRequestPgCase(prepared.http, "same-duty-competition"); } finally { await prepared.close(); }
+  });
+  it("任务20末同意与合法退回竞争不能形成双终态", async () => {
+    const prepared = await preparedGeneralRequestAdapter();
+    try { await runPreparedGeneralRequestPgCase(prepared.http, "last-decision-competition"); } finally { await prepared.close(); }
+  });
+
   it("同人兼三节点及领导双岗须逐次签字，或签只记录一个实际岗位", async () => {
     const db = app.get(PrismaService);
     const applicant = await actor("employee", projectId);
@@ -91,24 +239,23 @@ describePg("综合采购公开 HTTP / PostgreSQL 16", () => {
     }
     try {
       await sign(applicant.token);
-      const created = await request("/general-procurements", "POST", { requestKey: randomUUID(), projectId, companyEntityId, category: "office_supplies", reason: "兼岗逐节点签批验证", requestedAmountCents: "10000" }, applicant.token);
-      expect(created.status).toBe(201);
-      const path = `/general-procurements/${created.body.id}`;
+      const { id } = await seedHistoricalDraft({ category: "office_supplies", reason: "兼岗逐节点签批验证", requestedAmountCents: "10000", applicantId: applicant.id });
+      const path = `/general-procurements/${id}`;
       expect((await request(`${path}/submission`, "POST", { revision: 1 }, applicant.token)).status).toBe(201);
       expect((await request(`${path}/review`, "POST", { revision: 2, decision: "approve" }, applicant.token)).status).toBe(400);
       for (const revision of [2, 3, 4]) {
         expect(await request(`${path}/review`, "POST", { revision, decision: "approve", selfReviewReason: "本人兼任当前审批岗位，已逐项核验", confirmationPassword: password }, applicant.token))
           .toMatchObject({ status: 201, body: { revision: revision + 1 } });
       }
-      const instance = await db.approvalInstance.findFirstOrThrow({ where: { businessType: "general_procurement", businessId: created.body.id } });
+      const instance = await db.approvalInstance.findFirstOrThrow({ where: { businessType: "general_procurement", businessId: id } });
       const actions = await db.approvalActionLog.findMany({ where: { approvalInstanceId: instance.id }, orderBy: { createdAt: "asc" } });
       expect(actions.map(action => action.action)).toEqual(["approve", "approve", "approve"]);
       expect(actions.map(action => action.approvedRoleKey)).toEqual(["comprehensive_director", "project_manager", "chairman"]);
       expect(actions.every(action => action.actorUserId === applicant.id && action.signatureVersionIdSnapshot)).toBe(true);
       await verifyApprovedPdf({ db, baseUrl: base, token: applicant.token, password,
-        businessType: "general_procurement", businessId: created.body.id,
+        businessType: "general_procurement", businessId: id,
         roles: ["comprehensive_director", "project_manager", "chairman"], label: "综合采购-同人三节点" });
-      const response = await fetch(`${base}/approval-forms/general_procurement/${created.body.id}/download`, { method: "POST", headers: { authorization: `Bearer ${applicant.token}`, "content-type": "application/json" }, body: JSON.stringify({ confirmationPassword: password, downloadReason: "兼岗签批本地验收" }) });
+      const response = await fetch(`${base}/approval-forms/general_procurement/${id}/download`, { method: "POST", headers: { authorization: `Bearer ${applicant.token}`, "content-type": "application/json" }, body: JSON.stringify({ confirmationPassword: password, downloadReason: "兼岗签批本地验收" }) });
       expect(response.status).toBe(201);
       expect((await PDFDocument.load(await response.arrayBuffer())).getPageCount()).toBeGreaterThan(0);
     } finally {
@@ -116,13 +263,31 @@ describePg("综合采购公开 HTTP / PostgreSQL 16", () => {
     }
   });
 
-  it("普通员工可以建立综合采购草稿并从公开详情读回元金额对应的分值", async () => {
-    const created = await request("/general-procurements", "POST", {
-      requestKey: randomUUID(), projectId, companyEntityId, category: "office_supplies", reason: "购买办公纸张与笔", requestedAmountCents: "12345"
-    });
+  it("普通员工可新建四位元估价的草稿，历史申请分值保持原样", async () => {
+    const legacy = { category: "office_supplies", reason: "购买办公纸张与笔", requestedAmountCents: "12345" };
+    const requestKey = randomUUID();
+    expect((await request("/general-procurements", "POST", {
+      ...legacy, requestKey, projectId, companyEntityId
+    })).status).toBe(400);
+    const current = {
+      requestKey, requestProtocolVersion: 2, scope: "project", projectId, companyEntityId,
+      category: legacy.category, reason: legacy.reason, estimatedAmount: "123.4567",
+      lines: [{ id: randomUUID(), name: "办公纸张与笔" }]
+    };
+    const created = await request("/general-procurements", "POST", current);
     expect(created.status).toBe(201);
+    expect(await request("/general-procurements", "POST", current)).toEqual(created);
     expect(await request(`/general-procurements/${created.body.id}`)).toMatchObject({ status: 200, body: {
-      status: "draft", reason: "购买办公纸张与笔", requestedAmountCents: "12345", categoryLabel: "办公用品", revision: 1
+      status: "draft", reason: legacy.reason, requestedAmountCents: null, estimatedAmount: "123.4567",
+      requestProtocolVersion: 2, categoryLabel: "办公用品", revision: 1
+    } });
+    expect(await request(`/general-procurements/${created.body.id}/draft-deletion`, "POST", { revision: 1 }))
+      .toMatchObject({ status: 201, body: { id: created.body.id, deleted: true } });
+    expect((await request("/general-procurements", "POST", current)).status).toBe(409);
+    const historical = await seedHistoricalDraft(legacy);
+    expect(historical.requestProtocolVersion).toBe(1);
+    expect(await request(`/general-procurements/${historical.id}`)).toMatchObject({ status: 200, body: {
+      status: "draft", reason: legacy.reason, requestedAmountCents: "12345", categoryLabel: "办公用品", revision: 1
     } });
   });
   it("采购台账支持翻页和全量检索，不能绕过人员可见范围", async () => {
@@ -144,25 +309,22 @@ describePg("综合采购公开 HTTP / PostgreSQL 16", () => {
   it("固定综合部、项目经理顺序，末节点允许总经理或签并形成真实签名PDF", async () => {
     const generalManager = await actor("general_manager");
     await sign(generalManager.token);
-    const created = await request("/general-procurements", "POST", {
-      requestKey: randomUUID(), projectId, companyEntityId, category: "meals", reason: "项目现场工作餐", requestedAmountCents: "10000"
-    });
-    expect(created.status).toBe(201);
-    const path = `/general-procurements/${created.body.id}`;
+    const { id } = await seedHistoricalDraft({ category: "meals", reason: "项目现场工作餐", requestedAmountCents: "10000" });
+    const path = `/general-procurements/${id}`;
     expect(await request(`${path}/submission`, "POST", { revision: 1 })).toMatchObject({ status: 201, body: { status: "approval_pending", revision: 2 } });
-    expect(await request(`/approval-forms/general_procurement/${created.body.id}/capability`)).toMatchObject({ status: 200, body: { available: false } });
+    expect(await request(`/approval-forms/general_procurement/${id}/capability`)).toMatchObject({ status: 200, body: { available: false } });
     expect((await request(`${path}/review`, "POST", { revision: 2, decision: "approve" }, chairman.token)).status).toBe(403);
     expect(await request(`${path}/review`, "POST", { revision: 2, decision: "approve" }, director.token)).toMatchObject({ status: 201, body: { revision: 3 } });
     expect((await request(`${path}/review`, "POST", { revision: 2, decision: "approve" }, director.token)).status).toBe(409);
     expect(await request(`${path}/review`, "POST", { revision: 3, decision: "approve" }, manager.token)).toMatchObject({ status: 201, body: { revision: 4 } });
     expect(await request(`${path}/review`, "POST", { revision: 4, decision: "approve" }, generalManager.token)).toMatchObject({ status: 201, body: { revision: 5, status: "approved_pending_archive" } });
     expect((await request(`${path}/review`, "POST", { revision: 4, decision: "approve" }, chairman.token)).status).toBe(409);
-    expect(await request(`/approval-forms/general_procurement/${created.body.id}/capability`)).toMatchObject({ status: 200, body: { available: true } });
+    expect(await request(`/approval-forms/general_procurement/${id}/capability`)).toMatchObject({ status: 200, body: { available: true } });
     const detail = await request(path);
     expect(detail.body.approvals[0].nodes.map((node: { name: string }) => node.name)).toEqual(["综合部主管", "项目经理", "董事长/总经理"]);
     expect(detail.body.canArchive).toBe(false);
     const db = app.get(PrismaService);
-    const instance = await db.approvalInstance.findFirstOrThrow({ where: { businessType: "general_procurement", businessId: created.body.id } });
+    const instance = await db.approvalInstance.findFirstOrThrow({ where: { businessType: "general_procurement", businessId: id } });
     const logs = await db.approvalActionLog.findMany({ where: { approvalInstanceId: instance.id, action: "approve" }, orderBy: [{ createdAt: "asc" }, { id: "asc" }] });
     expect(logs.map(log => log.actorUserId)).toEqual([director.id, manager.id, generalManager.id]);
     expect(logs.map(log => log.approvedRoleKey)).toEqual(["comprehensive_director", "project_manager", "general_manager"]);
@@ -173,7 +335,7 @@ describePg("综合采购公开 HTTP / PostgreSQL 16", () => {
       expect(version.contentSha256).toBe(log.signatureSha256Snapshot);
     }
     await verifyApprovedPdf({ db, baseUrl: base, token: employee.token, password,
-      businessType: "general_procurement", businessId: created.body.id,
+      businessType: "general_procurement", businessId: id,
       roles: ["comprehensive_director", "project_manager", "general_manager"], label: "综合采购-总经理或签" });
     // Renaming and replacing the profile signature must not alter the approved document's evidence.
     const oldMetadata = logs[2].metadata;
@@ -182,7 +344,7 @@ describePg("综合采购公开 HTTP / PostgreSQL 16", () => {
     const replacementSignature = await db.handwrittenSignatureVersion.findFirstOrThrow({ where: { userId: generalManager.id }, orderBy: [{ createdAt: "desc" }, { id: "desc" }] });
     expect(replacementSignature.id).not.toBe(logs[2].signatureVersionIdSnapshot);
     expect(replacementSignature.contentSha256).not.toBe(logs[2].signatureSha256Snapshot);
-    const response = await fetch(`${base}/approval-forms/general_procurement/${created.body.id}/download`, {
+    const response = await fetch(`${base}/approval-forms/general_procurement/${id}/download`, {
       method: "POST", headers: { "content-type": "application/json", authorization: `Bearer ${employee.token}` },
       body: JSON.stringify({ confirmationPassword: password, downloadReason: "本机验收留存" })
     });
@@ -194,9 +356,8 @@ describePg("综合采购公开 HTTP / PostgreSQL 16", () => {
   });
 
   it("退回保留原申请快照，修改重提从综合部重新开始，重复审批只成功一次", async () => {
-    const input = { requestKey: randomUUID(), projectId, companyEntityId, category: "logistics", reason: "后勤用品待核实", requestedAmountCents: "8000" };
-    const created = await request("/general-procurements", "POST", input);
-    const path = `/general-procurements/${created.body.id}`;
+    const { id } = await seedHistoricalDraft({ category: "logistics", reason: "后勤用品待核实", requestedAmountCents: "8000" });
+    const path = `/general-procurements/${id}`;
     expect((await request(`${path}/submission`, "POST", { revision: 1 })).status).toBe(201);
     expect((await request(`${path}/review`, "POST", { revision: 2, decision: "return", comment: "请补充明细" }, director.token)).status).toBe(201);
     const updated = await request(`${path}/draft`, "POST", { revision: 3, projectId, companyEntityId, category: "logistics", reason: "后勤用品清洁剂十瓶", requestedAmountCents: "7000" });
@@ -212,14 +373,13 @@ describePg("综合采购公开 HTTP / PostgreSQL 16", () => {
   });
 
   async function approvedApplication(amount = "20000") {
-    const created = await request("/general-procurements", "POST", { requestKey: randomUUID(), projectId, companyEntityId, category: "construction_tools", reason: "项目手工具", requestedAmountCents: amount });
-    expect(created.status).toBe(201);
-    const path = `/general-procurements/${created.body.id}`;
+    const { id } = await seedHistoricalDraft({ category: "construction_tools", reason: "项目手工具", requestedAmountCents: amount });
+    const path = `/general-procurements/${id}`;
     expect((await request(`${path}/submission`, "POST", { revision: 1 })).status).toBe(201);
     for (const [index, reviewer] of [director, manager, chairman].entries()) {
       expect((await request(`${path}/review`, "POST", { revision: 2 + index, decision: "approve" }, reviewer.token)).status).toBe(201);
     }
-    return { id: created.body.id as string, path };
+    return { id, path };
   }
 
   async function uploadArchive(path: string, token = director.token) {
@@ -280,13 +440,12 @@ describePg("综合采购公开 HTTP / PostgreSQL 16", () => {
     expect(claim.body.generalProcurement).toMatchObject({ id, code: detail.body.code });
   });
 
-  it("采购工作台与审批中心显示当前员工应办事项，付款延续原审批链", async () => {
+  it("采购工作台与审批中心显示当前员工应办事项，付款走并联职责", async () => {
     const options = await request("/general-procurements/create-options");
     expect(options).toMatchObject({ status: 200, body: { canCreate: true, projects: expect.arrayContaining([expect.objectContaining({ id: projectId })]) } });
     const beforeSummary = await request("/me/workbench-summary", "GET", undefined, director.token);
     const beforeCount = beforeSummary.body.cards.find((card: { id: string }) => card.id === "approval_todo").count;
-    const created = await request("/general-procurements", "POST", { requestKey: randomUUID(), projectId, companyEntityId, category: "utilities", reason: "项目网络服务", requestedAmountCents: "30000" });
-    const id = created.body.id;
+    const { id } = await seedHistoricalDraft({ category: "utilities", reason: "项目网络服务", requestedAmountCents: "30000" });
     const path = `/general-procurements/${id}`;
     expect((await request(`${path}/submission`, "POST", { revision: 1 })).status).toBe(201);
     const todo = await request("/me/work-items", "GET", undefined, director.token);
@@ -312,9 +471,13 @@ describePg("综合采购公开 HTTP / PostgreSQL 16", () => {
     expect((await request(`/expense-claims/${payment.body.id}`, "GET", undefined, director.token)).body.approval).toMatchObject({ currentNodeName: "综合部主管", canReview: true, requiresSelfReviewConfirmation: true });
   });
 
-  (process.env.RUN_GENERAL_PROCUREMENT_BROWSER === "1" ? it : it.skip)("电脑和手机通过真实页面完成申请、三步审批、归档和创建付款草稿", async () => {
+  (process.env.RUN_GENERAL_PROCUREMENT_BROWSER === "1" ? it : it.skip)("电脑和手机保存新申请，办理历史三步审批、归档和付款草稿", async () => {
+    const legacy = { category: "office_supplies", reason: "历史采购办公用品", requestedAmountCents: "12345" };
+    const desktop = await seedHistoricalDraft(legacy);
+    const mobile = await seedHistoricalDraft(legacy);
     await new Promise<void>((done, reject) => {
       const env: NodeJS.ProcessEnv = { ...process.env, GP_API_URL: base, GP_PASSWORD: password,
+        GP_HISTORICAL_DRAFTS: JSON.stringify({ desktop: desktop.id, mobile: mobile.id }),
         GP_SESSIONS: JSON.stringify({ employee: sessions.get(employee.id), director: sessions.get(director.id), manager: sessions.get(manager.id), chairman: sessions.get(chairman.id) }) };
       delete env.JEST_WORKER_ID;
       const child = spawn("pnpm", ["exec", "playwright", "test", "--config", "playwright.general-procurement.config.ts"], { cwd: resolve(__dirname, "../../../../apps/web-admin"), env, stdio: "inherit" });
@@ -337,7 +500,7 @@ describePg("综合采购公开 HTTP / PostgreSQL 16", () => {
     expect((await request(`/expense-claims/${claim.body.id}/submission`, "POST", {}, director.token)).status).toBe(400);
   });
 
-  it("关联付款走原四步审批，财务分次实付及重复凭证不会重复实付", async () => {
+  it("关联付款四岗并联审批，财务分次实付及重复凭证不会重复实付", async () => {
     const { id, path } = await approvedApplication("50000");
     const uploaded = await uploadArchive(path);
     expect((await request(`${path}/archive`, "POST", { revision: 5, fileId: uploaded.body.id, note: "合成归档" }, director.token)).status).toBe(201);
@@ -349,17 +512,25 @@ describePg("综合采购公开 HTTP / PostgreSQL 16", () => {
     expect(await request(claimPath, "GET", undefined, generalManager.token)).toMatchObject({ status: 200, body: { status: "draft" } });
     expect((await request(claimPath, "GET", undefined, employee.token)).status).toBe(404);
     expect((await request(`${claimPath}/submission`, "POST", {}, director.token)).status).toBe(201);
-    expect((await request(`${claimPath}/approval`, "POST", { decision: "approve" }, director.token)).status).toBe(400);
-    expect(await request(claimPath, "GET", undefined, generalManager.token)).toMatchObject({ status: 200, body: { approval: { canReview: false } } });
-    expect((await request(`${claimPath}/approval`, "POST", { decision: "approve" }, generalManager.token)).status).toBe(403);
-    for (const reviewer of [director, manager, financeDirector, chairman]) {
-      const result = await request(`${claimPath}/approval`, "POST", { decision: "approve", ...(reviewer.id === director.id ? { selfReviewReason: "综合部按已批准采购办理付款", confirmationPassword: password } : {}) }, reviewer.token);
+    expect((await request(`${claimPath}/approval`, "POST", { decision: "approve" }, director.token)).status).toBe(409);
+    const alternateLeader = await request(claimPath, "GET", undefined, generalManager.token);
+    expect(alternateLeader.body.approval).toMatchObject({ canReview: true, actionableDuties: [{ index: 3 }] });
+    for (const reviewer of [financeDirector, chairman, director, manager]) {
+      const detail = await request(claimPath, "GET", undefined, reviewer.token);
+      const { approvalInstanceId, actionableDuties } = detail.body.approval;
+      const result = await request(`${claimPath}/approval`, "POST", {
+        decision: "approve", approvalInstanceId, approvalDutyIndex: actionableDuties[0].index,
+        ...(reviewer.id === director.id ? { selfReviewReason: "综合部按已批准采购办理付款", confirmationPassword: password } : {})
+      }, reviewer.token);
       expect(result).toMatchObject({ status: 201 });
+      if (reviewer.id === chairman.id) {
+        expect((await request(`${claimPath}/approval`, "POST", { decision: "approve", approvalInstanceId, approvalDutyIndex: 3 }, generalManager.token)).status).toBe(409);
+      }
     }
     expect((await request(claimPath, "GET", undefined, finance.token)).body).toMatchObject({ status: "approved_pending_payment", companyPayableAmountCents: "20000" });
     await verifyApprovedPdf({ db: app.get(PrismaService), baseUrl: base, token: director.token, password,
       businessType: "expense_claim", businessId: claim.body.id,
-      roles: ["comprehensive_director", "project_manager", "finance_director", "chairman"], label: "综合采购付款" });
+      roles: ["finance_director", "chairman", "comprehensive_director", "project_manager"], label: "综合采购付款" });
     const uploadVoucher = async (token: string) => {
       const form = new FormData(); form.append("file", new Blob([Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Y9Zl1sAAAAASUVORK5CYII=", "base64")], { type: "image/png" }), "合成银行付款凭证.png");
       const response = await fetch(`${base}${claimPath}/payment-voucher-file-uploads`, { method: "POST", headers: { authorization: `Bearer ${token}` }, body: form });
@@ -386,14 +557,15 @@ describePg("综合采购公开 HTTP / PostgreSQL 16", () => {
 
   it("技术管理员没有业务审批权，岗位变更预览不能让冻结审批链无人可办", async () => {
     const admin = await actor("super_admin");
-    const input = { requestKey: randomUUID(), projectId, companyEntityId, category: "office_supplies", reason: "合成岗位变更校验", requestedAmountCents: "1000" };
-    expect((await request("/general-procurements", "POST", { ...input, requestKey: randomUUID() }, admin.token)).status).toBe(201);
+    const current = { requestKey: randomUUID(), requestProtocolVersion: 2, scope: "company_daily",
+      category: "office_supplies", lines: [{ id: randomUUID(), name: "合成岗位变更校验" }] };
+    expect((await request("/general-procurements", "POST", current, admin.token)).status).toBe(201);
     expect((await request("/me/work-items", "GET", undefined, admin.token)).status).toBe(200);
-    const created = await request("/general-procurements", "POST", input);
-    expect((await request(`/general-procurements/${created.body.id}/submission`, "POST", { revision: 1 })).status).toBe(201);
-    expect((await request(`/general-procurements/${created.body.id}/review`, "POST", { revision: 2, decision: "approve" }, admin.token)).status).toBe(403);
+    const { id } = await seedHistoricalDraft({ category: "office_supplies", reason: "合成岗位变更校验", requestedAmountCents: "1000" });
+    expect((await request(`/general-procurements/${id}/submission`, "POST", { revision: 1 })).status).toBe(201);
+    expect((await request(`/general-procurements/${id}/review`, "POST", { revision: 2, decision: "approve" }, admin.token)).status).toBe(403);
     const newDirector = await actor("comprehensive_director");
-    expect((await request(`/general-procurements/${created.body.id}/review`, "POST", { revision: 2, decision: "approve" }, newDirector.token)).status).toBe(403);
+    expect((await request(`/general-procurements/${id}/review`, "POST", { revision: 2, decision: "approve" }, newDirector.token)).status).toBe(403);
     const preview = await request("/organization/role-changes/preview", "POST", { operation: "remove", userId: director.id, scope: "global", roleKey: "comprehensive_director" }, chairman.token);
     expect(preview).toMatchObject({ status: 201, body: { canApply: false } });
     expect(preview.body.summary.blockingInstances).toBeGreaterThan(0);

@@ -4,6 +4,7 @@ import {
   BadRequestException,
   ConflictException,
   ForbiddenException,
+  GoneException,
   Injectable,
   NotFoundException
 } from "@nestjs/common";
@@ -13,19 +14,6 @@ import { createHash } from "node:crypto";
 import { PrismaService } from "../database/prisma.service";
 import { readAffiliateSnapshot } from "../operating-ledger/formal-operating-source.helpers";
 import {
-  deriveEffectiveWagePayableAmount,
-  payableSourceAdapterRegistry,
-  type RegisteredPayable
-} from "../payable-registry/wage-payable-source.adapter";
-import {
-  loadPayableSettlementAllocationTotals,
-  payableSettlementAllocationTotalsFor
-} from "../payable-registry/payable-settlement-balance-authority";
-import {
-  ProjectFundingAvailabilityService,
-  type FundingAllocationPlan
-} from "../project-funding/project-funding-availability.service";
-import {
   assertCompleteFundExecutionSelectionSet,
   type FundExecutionAxisOptionSnapshot,
   type FundExecutionConsequencePlanItem,
@@ -33,10 +21,7 @@ import {
   type FundExecutionIssuedPlan,
   type FundExecutionResolvedAxisSelection
 } from "./fund-execution-axis-plan";
-import {
-  executionOperatingPayee,
-  stableExecutionIdentity
-} from "./fund-execution-canonical-identity";
+import { stableExecutionIdentity } from "./fund-execution-canonical-identity";
 import {
   EXECUTION_ALLOCATION_AXES,
   type ExecutionAllocationAxis,
@@ -49,6 +34,8 @@ import {
   type BankObservationSelectionBinding,
   type ReversalTargetSelectionBinding
 } from "./fund-execution-selection-ref.service";
+
+import { isRetiredWageOutflow, WAGE_OUTFLOW_RETIRED } from "./fund-execution-wage-retirement";
 
 type FundExecutionTransaction = Prisma.TransactionClient;
 
@@ -86,22 +73,6 @@ export type MatchedObservationCandidate = Readonly<{
   binding: BankObservationSelectionBinding;
 }>;
 
-type AvailablePayable = Readonly<{
-  registered: RegisteredPayable;
-  sourceSnapshot: Record<string, unknown>;
-  availableAmountCents: bigint;
-  projectName: string;
-  debtorName: string;
-}>;
-
-type PlanLineSeed = Readonly<{
-  lineNo: number;
-  amountCents: bigint;
-  payable: AvailablePayable | null;
-  projectId: string;
-  projectName: string;
-}>;
-
 type ParticipantSnapshot = Readonly<{
   id: string;
   companyEntityId: string;
@@ -126,8 +97,6 @@ type AxisDraft = Readonly<{
   originalAxisEffectId: string | null;
 }>;
 
-type FundingPiece = FundingAllocationPlan & Readonly<{ lineNo: number }>;
-
 type ReversalTargetCandidate = Readonly<{
   targetType: "payment_execution" | "fund_execution";
   targetExecutionId: string;
@@ -143,8 +112,7 @@ type ReversalTargetCandidate = Readonly<{
 export class FundExecutionSelectionOptionsService {
   constructor(
     private readonly prisma: PrismaService,
-    private readonly selectionRefs: FundExecutionSelectionRefService,
-    private readonly projectFunding: ProjectFundingAvailabilityService
+    private readonly selectionRefs: FundExecutionSelectionRefService
   ) {}
 
   async capabilities(actorUserId: string) {
@@ -158,16 +126,13 @@ export class FundExecutionSelectionOptionsService {
   async listObservationCandidates(
     actorUserId: string,
     now = new Date(),
-    purpose: "fund_execution_case" | "payment_execution" =
+    purpose: "fund_execution_case" | "fund_execution_reversal" | "payment_execution" =
       "fund_execution_case"
   ) {
     await this.assertGlobalFinanceActor(actorUserId);
-    const observations = (
-      await this.loadUnclaimedObservations(this.prisma)
-    ).filter(
-      (observation) =>
-        purpose === "fund_execution_case" || observation.direction === "outflow"
-    );
+    const direction = purpose === "fund_execution_reversal" ? undefined :
+      purpose === "payment_execution" ? "outflow" : "inflow";
+    const observations = await this.loadUnclaimedObservations(this.prisma, direction);
     return observations.map((observation) => ({
       selectionRef: this.selectionRefs.issueBankObservation(
         this.observationBinding(actorUserId, observation),
@@ -217,7 +182,7 @@ export class FundExecutionSelectionOptionsService {
     selectionRef: string,
     now = new Date()
   ): Promise<MatchedObservationCandidate> {
-    const observations = await this.loadUnclaimedObservations(tx);
+    const observations = await this.loadUnclaimedObservations(tx, "each_direction");
     const matches = observations.filter((observation) =>
       this.selectionRefs.matchesBankObservation(
         selectionRef,
@@ -326,6 +291,9 @@ export class FundExecutionSelectionOptionsService {
     ) {
       throw new ConflictException("资金执行案件版本或状态已变化，请刷新后重试");
     }
+    if (isRetiredWageOutflow(context.execution)) {
+      throw new GoneException(WAGE_OUTFLOW_RETIRED);
+    }
     const plans = await this.buildPlansForContext(
       tx,
       context,
@@ -381,261 +349,8 @@ export class FundExecutionSelectionOptionsService {
     if (context.execution.direction === "inflow") {
       return this.buildInflowPlans(tx, context, actorUserId, now);
     }
-    if (context.execution.direction !== "outflow") {
-      throw new ConflictException("资金执行方向无效");
-    }
-    return this.buildOutflowPlans(tx, context, actorUserId, now);
-  }
-
-  private async buildOutflowPlans(
-    tx: FundExecutionTransaction,
-    context: Awaited<ReturnType<FundExecutionSelectionOptionsService["loadCaseContext"]>>,
-    actorUserId: string,
-    now: Date
-  ) {
-    const bankProject = await contractBankProject(tx,context.observation);
-    const payables = (await this.loadAvailablePayables(tx)).filter(p=>!bankProject||p.registered.beneficiaryProjectId===bankProject);
-    const amount = context.execution.amountCents;
-    const seeds: PlanLineSeed[][] = [];
-    for (const payable of payables) {
-      if (payable.availableAmountCents >= amount) {
-        seeds.push([
-          {
-            lineNo: 1,
-            amountCents: amount,
-            payable,
-            projectId: payable.registered.beneficiaryProjectId,
-            projectName: payable.projectName
-          }
-        ]);
-      }
-      if (seeds.length >= 12) break;
-    }
-    const projectIds = [
-      ...new Set(
-        payables.map(({ registered }) => registered.beneficiaryProjectId)
-      )
-    ].sort();
-    for (const projectId of projectIds) {
-      let remaining = amount;
-      const combined: PlanLineSeed[] = [];
-      for (const payable of payables.filter(
-        ({ registered }) => registered.beneficiaryProjectId === projectId
-      )) {
-        if (remaining === 0n || combined.length >= 20) break;
-        const allocated =
-          payable.availableAmountCents >= remaining
-            ? remaining
-            : payable.availableAmountCents;
-        if (allocated <= 0n) continue;
-        combined.push({
-          lineNo: combined.length + 1,
-          amountCents: allocated,
-          payable,
-          projectId,
-          projectName: payable.projectName
-        });
-        remaining -= allocated;
-      }
-      if (remaining === 0n && combined.length > 1) seeds.push(combined);
-    }
-
-    const plans: InternalIssuedPlan[] = [];
-    for (const [index, lines] of seeds.entries()) {
-      try {
-        plans.push(
-          await this.materializeOutflowPlan(
-            tx,
-            context,
-            actorUserId,
-            now,
-            lines,
-            index + 1
-          )
-        );
-      } catch (error) {
-        if (
-          error instanceof BadRequestException ||
-          error instanceof ConflictException
-        ) {
-          continue;
-        }
-        throw error;
-      }
-    }
-    if (!plans.length) {
-      throw new BadRequestException(
-        "没有可完整覆盖该笔出账的正式应付与项目资金方案"
-      );
-    }
-    return plans;
-  }
-
-  private async materializeOutflowPlan(
-    tx: FundExecutionTransaction,
-    context: Awaited<ReturnType<FundExecutionSelectionOptionsService["loadCaseContext"]>>,
-    actorUserId: string,
-    now: Date,
-    lines: readonly PlanLineSeed[],
-    planOrdinal: number
-  ): Promise<InternalIssuedPlan> {
-    const fundingPieces = await this.planFundingByLine(tx, lines);
-    const drafts: AxisDraft[] = [];
-    for (const line of lines) {
-      const payable = line.payable!;
-      const projectContext = await this.loadProjectContext(
-        tx,
-        line.projectId,
-        context.execution.occurredAt,
-        context.observation.holderCompanyEntityId,
-        payable.registered.debtorCompanyId
-      );
-      const sliceIdentity = stableExecutionIdentity("outflow-slice", {
-        fundExecutionId: context.execution.id,
-        payableRef: payable.registered.payableRef,
-        amountCents: line.amountCents.toString()
-      });
-      const lineSnapshot = {
-        lineNo: line.lineNo,
-        allocationLineId: this.deterministicUuid(
-          "fund-execution-allocation-line",
-          context.execution.id,
-          sliceIdentity
-        ),
-        direction: "outflow",
-        amountCents: line.amountCents.toString(),
-        currencyCode: "CNY",
-        businessType: payable.registered.sourceType,
-        businessId: payable.registered.payableRef,
-        sourceIdentity: payable.registered.payableRef,
-        sliceIdentity,
-        projectId: line.projectId
-      } as const;
-      const payableConsequence = this.consequence(
-        1,
-        "payable_settlement_allocation",
-        `payable:${payable.registered.payableRef}:${sliceIdentity}`,
-        sliceIdentity,
-        line.amountCents
-      );
-      drafts.push(
-        this.axisDraft(
-          "payable",
-          "applied",
-          `payable:${payable.registered.payableRef}`,
-          `核销已确认应付 · ${payable.debtorName} · ${line.projectName}`,
-          lineSnapshot,
-          {
-            registered: this.jsonPayable(payable.registered),
-            sourceSnapshot: payable.sourceSnapshot
-          },
-          [payableConsequence]
-        )
-      );
-
-      const lineFunding = fundingPieces.filter(
-        (piece) => piece.lineNo === line.lineNo
-      );
-      drafts.push(
-        this.axisDraft(
-          "project_fund",
-          "applied",
-          `project_fund:${line.projectId}:${stableExecutionIdentity("funding", lineFunding)}`,
-          `占用 ${line.projectName} 的正式项目资金来源`,
-          lineSnapshot,
-          { projectId: line.projectId, allocations: lineFunding },
-          lineFunding.map((piece, pieceIndex) =>
-            this.consequence(
-              pieceIndex + 1,
-              "project_funding_allocation",
-              `project_fund:${piece.sourceType}:${piece.sourceId ?? "project_cash"}:${sliceIdentity}`,
-              sliceIdentity,
-              piece.amountCents
-            )
-          )
-        )
-      );
-
-      const relationshipApplied =
-        payable.registered.debtorCompanyId !==
-        context.observation.holderCompanyEntityId;
-      drafts.push(
-        this.axisDraft(
-          "relationship",
-          relationshipApplied ? "applied" : "not_applicable",
-          relationshipApplied
-            ? `relationship:${payable.registered.debtorCompanyId}:${context.observation.holderCompanyEntityId}`
-            : `relationship:not_applicable:${payable.registered.debtorCompanyId}`,
-          relationshipApplied
-            ? "实际账户持有人与原债务主体不同，生成正式代付往来"
-            : "实际账户持有人与原债务主体一致，无往来后果",
-          lineSnapshot,
-          {
-            debtorCompany: projectContext.debtorCompany,
-            holderCompany: projectContext.holderCompany,
-            observationEvidence: this.observationEvidence(context.observation)
-          },
-          relationshipApplied
-            ? [
-                this.consequence(
-                  1,
-                  "inter_entity_relationship_entry",
-                  `relationship:${payable.registered.debtorCompanyId}:${context.observation.holderCompanyEntityId}:${sliceIdentity}`,
-                  sliceIdentity,
-                  line.amountCents
-                )
-              ]
-            : []
-        )
-      );
-
-      drafts.push(
-        this.axisDraft(
-          "operating",
-          "applied",
-          `operating:${line.projectId}:${projectContext.affiliate.assignmentId}:${context.observation.holderCompanyEntityId}`,
-          `登记 ${line.projectName} 的公司项目资金减少`,
-          lineSnapshot,
-          {
-            affiliate: projectContext.affiliate,
-            participant: projectContext.participant,
-            payee: executionOperatingPayee(payable.registered),
-            impactKind: "company_project_funds_decrease",
-            observationEvidence: this.observationEvidence(context.observation)
-          },
-          [
-            this.consequence(
-              1,
-              "operating_fact_impact",
-              `operating:${line.projectId}:${sliceIdentity}`,
-              sliceIdentity,
-              line.amountCents
-            )
-          ]
-        )
-      );
-    }
-    const selections = await this.issueDrafts(
-      tx,
-      drafts,
-      context,
-      actorUserId,
-      now
-    );
-    return {
-      planKey: stableExecutionIdentity("outflow-plan", {
-        executionId: context.execution.id,
-        lines: lines.map((line) => ({
-          payableRef: line.payable!.registered.payableRef,
-          amountCents: line.amountCents.toString()
-        }))
-      }),
-      summary:
-        lines.length === 1
-          ? `方案 ${planOrdinal}：单笔应付完整分类`
-          : `方案 ${planOrdinal}：${lines.length} 笔应付组合完整分类`,
-      selections
-    };
+    if (isRetiredWageOutflow(context.execution)) return [];
+    throw new ConflictException("资金执行方向无效");
   }
 
   private async buildInflowPlans(
@@ -890,127 +605,6 @@ export class FundExecutionSelectionOptionsService {
     return { caseRow, execution, claim, observation };
   }
 
-  private async loadAvailablePayables(
-    tx: FundExecutionTransaction
-  ): Promise<readonly AvailablePayable[]> {
-    const rows = await tx.wagePayableRef.findMany({
-      where: {
-        direction: "increase",
-        adjustsPayableRefId: null,
-        confirmedVersion: { status: "confirmed" }
-      },
-      include: {
-        confirmedVersion: { select: { status: true } },
-        creditorBreakdown: {
-          select: {
-            creditorSubjectType: true,
-            creditorSubjectIdentityKey: true,
-            creditorNameSnapshot: true
-          }
-        },
-        adjustments: { select: { direction: true, amountCents: true } }
-      },
-      orderBy: [{ createdAt: "asc" }, { id: "asc" }],
-      take: 200
-    });
-    if (!rows.length) return [];
-    const payableRefs = rows.map(({ id }) => id);
-    const allocationTotals = await loadPayableSettlementAllocationTotals(
-      tx,
-      payableRefs
-    );
-    const projectIds = [...new Set(rows.map(({ projectId }) => projectId))];
-    const companyIds = [...new Set(rows.map(({ debtorCompanyId }) => debtorCompanyId))];
-    const [projects, companies] = await Promise.all([
-      tx.project.findMany({
-        where: { id: { in: projectIds }, isActive: true },
-        select: { id: true, name: true }
-      }),
-      tx.companyEntity.findMany({
-        where: { id: { in: companyIds }, isActive: true },
-        select: { id: true, name: true }
-      })
-    ]);
-    const projectById = new Map(projects.map((row) => [row.id, row.name]));
-    const companyById = new Map(companies.map((row) => [row.id, row.name]));
-    return rows.flatMap((row) => {
-      const registered = payableSourceAdapterRegistry
-        .require("wage_payable_ref")
-        .toRegisteredPayable(row);
-      const effective = deriveEffectiveWagePayableAmount(
-        row.amountCents,
-        row.adjustments
-      );
-      const available = effective - payableSettlementAllocationTotalsFor(
-        allocationTotals,
-        row.id
-      ).activeAmountCents;
-      const projectName = projectById.get(row.projectId);
-      const debtorName = companyById.get(row.debtorCompanyId);
-      if (available <= 0n || !projectName || !debtorName) return [];
-      return [
-        {
-          registered,
-          availableAmountCents: available,
-          projectName,
-          debtorName,
-          sourceSnapshot: {
-            payableRef: registered.payableRef,
-            confirmedVersionId: registered.confirmedVersionId,
-            confirmedAmountCents: registered.confirmedAmountCents.toString(),
-            effectiveAmountCents: effective.toString(),
-            debtorCompanyId: registered.debtorCompanyId,
-            payeeSubjectType: registered.payeeSubjectType,
-            payeeSubjectId: registered.payeeSubjectId,
-            beneficiaryProjectId: registered.beneficiaryProjectId
-          }
-        }
-      ];
-    });
-  }
-
-  private async planFundingByLine(
-    tx: FundExecutionTransaction,
-    lines: readonly PlanLineSeed[]
-  ): Promise<readonly FundingPiece[]> {
-    const pieces: FundingPiece[] = [];
-    const projectIds = [...new Set(lines.map(({ projectId }) => projectId))].sort();
-    for (const projectId of projectIds) {
-      const projectLines = lines
-        .filter((line) => line.projectId === projectId)
-        .sort((left, right) => left.lineNo - right.lineNo);
-      const total = projectLines.reduce(
-        (sum, line) => sum + line.amountCents,
-        0n
-      );
-      const funding = await this.projectFunding.previewExecutionAllocation(tx, {
-        projectId,
-        amountCents: total
-      });
-      let fundingIndex = 0;
-      let fundingRemaining = funding[0]?.amountCents ?? 0n;
-      for (const line of projectLines) {
-        let lineRemaining = line.amountCents;
-        while (lineRemaining > 0n) {
-          const source = funding[fundingIndex];
-          if (!source || fundingRemaining <= 0n) {
-            throw new ConflictException("项目资金来源规划不完整");
-          }
-          const amount =
-            fundingRemaining >= lineRemaining ? lineRemaining : fundingRemaining;
-          pieces.push({ ...source, amountCents: amount, lineNo: line.lineNo });
-          lineRemaining -= amount;
-          fundingRemaining -= amount;
-          if (fundingRemaining === 0n) {
-            fundingIndex += 1;
-            fundingRemaining = funding[fundingIndex]?.amountCents ?? 0n;
-          }
-        }
-      }
-    }
-    return pieces;
-  }
-
   private async loadProjectContext(
     tx: FundExecutionTransaction,
     projectId: string,
@@ -1038,11 +632,11 @@ export class FundExecutionSelectionOptionsService {
       }),
       tx.companyEntity.findUnique({
         where: { id: holderCompanyEntityId },
-        select: { id: true, name: true, unifiedSocialCreditCode: true }
+        select: { id: true, name: true, unifiedSocialCreditCode: true, isActive: true }
       }),
       tx.companyEntity.findUnique({
         where: { id: debtorCompanyEntityId },
-        select: { id: true, name: true, unifiedSocialCreditCode: true }
+        select: { id: true, name: true, unifiedSocialCreditCode: true, isActive: true }
       })
     ]);
     if (!participant || !holderCompany || !debtorCompany) {
@@ -1053,20 +647,29 @@ export class FundExecutionSelectionOptionsService {
     return {
       affiliate,
       participant: participant satisfies ParticipantSnapshot,
+      holderDirectoryIsActive: holderCompany.isActive,
       holderCompany: this.companySnapshot(holderCompany),
       debtorCompany: this.companySnapshot(debtorCompany)
     };
   }
 
   private async loadUnclaimedObservations(
-    db: PrismaService | FundExecutionTransaction
+    db: PrismaService | FundExecutionTransaction,
+    direction?: "inflow" | "outflow" | "each_direction"
   ): Promise<readonly ObservationCandidate[]> {
     const claims = [...await db.companyTransferBankClaim.findMany({select:{observationId:true}}),...await db.contractBankEventClaim.findMany({select:{observationId:true}}),...await db.bankTransactionClaim.findMany({select:{observationId:true}}),...await db.contractProxyBankClaim.findMany({select:{observationId:true}})];
-    const observations = await db.verifiedBankTransactionObservation.findMany({
-      where: { id: { notIn: claims.map(({ observationId }) => observationId) } },
-      orderBy: [{ occurredAt: "desc" }, { id: "asc" }],
-      take: 100
-    });
+    const load = (candidateDirection?: "inflow" | "outflow") =>
+      db.verifiedBankTransactionObservation.findMany({
+        where: {
+          id: { notIn: claims.map(({ observationId }) => observationId) },
+          ...(candidateDirection ? { direction: candidateDirection } : {})
+        },
+        orderBy: [{ occurredAt: "desc" }, { id: "asc" }],
+        take: 100
+      });
+    const observations = direction === "each_direction"
+      ? (await Promise.all([load("inflow"), load("outflow")])).flat()
+      : await load(direction);
     return observations.filter(
       (observation) =>
         (observation.direction === "inflow" ||
@@ -1292,13 +895,6 @@ export class FundExecutionSelectionOptionsService {
       verificationEvidenceContentSha256:
         observation.verificationEvidenceContentSha256,
       verificationReference: observation.verificationReference
-    };
-  }
-
-  private jsonPayable(registered: RegisteredPayable) {
-    return {
-      ...registered,
-      confirmedAmountCents: registered.confirmedAmountCents.toString()
     };
   }
 

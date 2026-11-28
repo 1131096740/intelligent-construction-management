@@ -13,14 +13,18 @@ import { join } from "node:path";
 import { AuditService } from "../audit/audit.service";
 import { CompanyRoleResolverService } from "../auth/company-role-resolver.service";
 import { PrismaService } from "../database/prisma.service";
+import { ProjectVisibilityService } from "../auth/project-visibility.service";
 import { FileService, PrivateFileStorage } from "./file.service";
+import { signedSettlementUploadPrefix } from "./signed-settlement-file";
 import { SpotProcurementAccessService } from "../spot-procurement/spot-procurement-access.service";
 
 const STORAGE_ENV_KEYS = [
   "FILE_STORAGE_DRIVER",
   "FILE_STORAGE_ROOT",
+  "FILE_UPLOAD_MAX_BYTES",
   "COS_SECRET_ID",
   "COS_SECRET_KEY",
+  "COS_SESSION_TOKEN",
   "COS_BUCKET",
   "COS_REGION"
 ] as const;
@@ -44,8 +48,85 @@ function configureCosStorage() {
   process.env.FILE_STORAGE_DRIVER = "cos";
   process.env.COS_SECRET_ID = "secret-id";
   process.env.COS_SECRET_KEY = "secret-key";
+  delete process.env.COS_SESSION_TOKEN;
   process.env.COS_BUCKET = "private-bucket";
   process.env.COS_REGION = "ap-guangzhou";
+}
+
+/** Legacy file fixtures do not have the supplemental payment installation. */
+const adaptedLegacyFileTransactions = new WeakSet<object>();
+
+function legacyFileTransaction<T extends object>(transaction: T): T {
+  if (adaptedLegacyFileTransactions.has(transaction)) return transaction;
+  const proxy = new Proxy(transaction, {
+    get(target, property, receiver) {
+      if (property === "contractArchiveEvidenceFile" && Reflect.get(target, property, target) == null) {
+        return { findFirst: async (query: unknown) => {
+          const input = query && typeof query === "object" ? query as { where?: unknown } : null;
+          const where = input?.where && typeof input.where === "object" ? input.where as { fileId?: unknown } : null;
+          if (!input || Object.keys(input).join(",") !== "where" || !where || Object.keys(where).join(",") !== "fileId" || typeof where.fileId !== "string" || !where.fileId.trim()) throw new Error("Unsupported empty legacy contract archive evidence lookup");
+          return null;
+        } };
+      }
+
+      if (property !== "$queryRaw") return Reflect.get(target, property, receiver);
+      return async (query: unknown, ...args: unknown[]) => {
+        const input = query && typeof query === "object"
+          ? query as {sql?: unknown; values?: unknown}
+          : null;
+        const sql = typeof input?.sql === "string" ? input.sql.replace(/\s+/g," ").trim() : null;
+        if (sql?.includes("contract_economic_review_file_reference_catalog")) return [{ state: "legacy" }];
+        if (sql?.includes("contract_economic_review_file_reference_migration")) return [{ applied: false }];
+        if (sql?.includes("contract_economic_review_legacy_cleanup_key")) {
+          if (args.length || !Array.isArray(input?.values) || input.values.length !== 2 ||
+            input.values.some(value => typeof value !== "string" || !value)) throw new Error("Unsupported legacy cleanup key lookup");
+          return [{ exact: true }];
+        }
+        if (sql?.includes("registered_payment_voucher_catalog")) {
+          if (args.length || !Array.isArray(input?.values) || input.values.length) {
+            throw new Error("Unexpected registered voucher catalog inputs");
+          }
+          return [{ state: "absent" }];
+        }
+        if (sql?.startsWith("/* private_file_offline_revision_binding */")) {
+          if (args.length || !Array.isArray(input?.values) || input.values.length !== 2 ||
+            typeof input.values[0] !== "string" || input.values[0] !== input.values[1] ||
+            sql !== '/* private_file_offline_revision_binding */ SELECT "contractVersionId" FROM public."ContractOfflineRevision" WHERE "fileId" = ? OR "previewPdfFileId" = ? LIMIT 1') {
+            throw new Error("Unsupported offline revision binding projection");
+          }
+          const lookup = Reflect.get(target, "offlineRevisionBinding", target);
+          return typeof lookup === "function" ? lookup(input.values[0]) : [];
+        }
+        if (sql?.startsWith("/* private_file_expense_attachment_binding */")) {
+          if (args.length || !Array.isArray(input?.values) || input.values.length !== 1 ||
+            typeof input.values[0] !== "string" ||
+            sql !== '/* private_file_expense_attachment_binding */ SELECT "expenseClaimId", "attachedByUserId", "removedAt" FROM public."ExpenseClaimAttachment" WHERE "fileId" = ? LIMIT 1') {
+            throw new Error("Unsupported expense attachment binding projection");
+          }
+          const lookup = Reflect.get(target, "expenseAttachmentBinding", target);
+          return typeof lookup === "function" ? lookup(input.values[0]) : [];
+        }
+        if (sql?.startsWith("/* private_file_project_binding */")) {
+          const shape = /SELECT "projectId"(, "businessType")? FROM public\."([A-Za-z]+)" WHERE "([A-Za-z]+)" = \?(?: OR "([A-Za-z]+)" = \?)? LIMIT 1$/u.exec(sql);
+          const joined = /SELECT (reserve|dispute)\."projectId" FROM public\."(ProjectNecessaryExpenseReserveEntry|ProjectFundDisputeEntry)" entry JOIN public\."(?:ProjectNecessaryExpenseReserve|ProjectFundDispute)" \1 ON \1\.id = entry\."(?:reserveId|disputeId)" WHERE entry\."evidenceFileId" = \? LIMIT 1$/u.exec(sql);
+          const table = shape?.[2] ?? joined?.[2];
+          const values = input?.values;
+          if (args.length || !table || !Array.isArray(values) ||
+            values.length !== (shape?.[4] ? 2 : 1) ||
+            typeof values[0] !== "string" || values.some(value => value !== values[0])) {
+            throw new Error("Unsupported project binding projection");
+          }
+          const lookup = Reflect.get(target, "projectFileBinding", target);
+          return typeof lookup === "function" ? lookup(table, values[0]) : [];
+        }
+        const original = Reflect.get(target, property, target);
+        if (typeof original !== "function") throw new Error("Legacy file fixture has no adapter for this SQL query");
+        return Reflect.apply(original,target,[query,...args]);
+      };
+    }
+  });
+  adaptedLegacyFileTransactions.add(proxy);
+  return proxy;
 }
 
 describe("FileService", () => {
@@ -79,6 +160,7 @@ describe("FileService", () => {
   it("recognizes wage evidence only for an explicitly authorized global finance role", async () => {
     const service = new FileService({} as PrismaService, audit as never, storage as never);
     const tx = {
+      contractGeneratedDocument: { findMany: jest.fn().mockResolvedValue([]) },
       wageApprovedSourceVersion: {
         findMany: jest.fn().mockResolvedValue([{ id: "wage-source-1" }])
       },
@@ -104,6 +186,7 @@ describe("FileService", () => {
   it("does not let a project-scoped finance assignment unlock wage evidence", async () => {
     const service = new FileService({} as PrismaService, audit as never, storage as never);
     const tx = {
+      contractGeneratedDocument: { findMany: jest.fn().mockResolvedValue([]) },
       wageApprovedSourceVersion: {
         findMany: jest.fn().mockResolvedValue([{ id: "wage-source-1" }])
       },
@@ -127,6 +210,7 @@ describe("FileService", () => {
     ["technical administrator", "super-admin-user", [{ positionId: "position-super-admin" }]]
   ])("audits the denied wage-evidence download for %s without recording wage content", async (_label, actorUserId, globalAssignments) => {
     const tx = {
+      contractGeneratedDocument: { findMany: jest.fn().mockResolvedValue([]) },
       fileObject: { findUnique: jest.fn().mockResolvedValue({ id: "wage-evidence-1", mimeType: "application/pdf" }) },
       wageApprovedSourceVersion: { findMany: jest.fn().mockResolvedValue([{ id: "wage-source-1" }]) },
       user: { findUnique: jest.fn().mockResolvedValue({ isActive: true }) },
@@ -135,7 +219,7 @@ describe("FileService", () => {
       auditLog: { create: jest.fn().mockResolvedValue({ id: "audit-1" }) }
     };
     const prisma = {
-      $transaction: jest.fn((work: (client: typeof tx) => unknown) => work(tx)),
+      $transaction: jest.fn((work: (client: typeof tx) => unknown) => work(legacyFileTransaction(tx))),
       wageApprovedSourceVersion: { findFirst: jest.fn() }
     };
     const service = new FileService(prisma as never, audit as never, storage as never);
@@ -168,6 +252,7 @@ describe("FileService", () => {
 
   it("audits an unreachable ambiguous wage-evidence binding defensively without sensitive metadata", async () => {
     const tx = {
+      contractGeneratedDocument: { findMany: jest.fn().mockResolvedValue([]) },
       fileObject: { findUnique: jest.fn().mockResolvedValue({
         id: "wage-evidence-ambiguous",
         originalName: "张三-100000工资依据.pdf",
@@ -182,7 +267,7 @@ describe("FileService", () => {
       auditLog: { create: jest.fn().mockResolvedValue({ id: "audit-1" }) }
     };
     const prisma = {
-      $transaction: jest.fn((work: (client: typeof tx) => unknown) => work(tx)),
+      $transaction: jest.fn((work: (client: typeof tx) => unknown) => work(legacyFileTransaction(tx))),
       wageApprovedSourceVersion: { findFirst: jest.fn().mockResolvedValue({ id: "wage-source-1" }) }
     };
     const service = new FileService(
@@ -213,6 +298,59 @@ describe("FileService", () => {
     expect(storage.read).not.toHaveBeenCalled();
   });
 
+  it.each(["generated", "legacy", "parallel", "changed"] as const)(
+    "keeps transfer evidence precedence and scopes flag reads to %s",
+    async scenario => {
+      const authority = { assertCanReadVersionFile: jest.fn().mockResolvedValue(undefined) };
+      const service = new FileService({} as PrismaService, audit as unknown as AuditService,
+        storage as unknown as PrivateFileStorage, undefined, undefined, { get: () => authority } as never);
+      const visibility = jest.spyOn(ProjectVisibilityService.prototype, "visibleProjectIdsInTransaction")
+        .mockResolvedValue(["project-1"]);
+      const transfer = {
+        id: "transfer-1", sourceProjectId: "project-1", destinationProjectId: "project-1",
+        status: "approved", applicantUserId: "applicant", approvalInstanceId: "approval-1"
+      };
+      const lookup = jest.fn()
+        .mockResolvedValueOnce(scenario === "generated" ? null : transfer)
+        .mockResolvedValueOnce(scenario === "changed" ? null : { requiresParallelRepaymentApproval: true });
+      const tx = {
+        $queryRaw: jest.fn(async (query: { sql: string }) =>
+          query.sql.includes('SELECT p."key" FROM "UserPosition"') ?
+            [{ key: scenario === "legacy" ? "finance_director" : "comprehensive_director" }] : []),
+        companyTransfer: { findFirst: lookup },
+        userPosition: { findMany: jest.fn().mockResolvedValue([]) },
+        projectMember: { findMany: jest.fn().mockResolvedValue([]) },
+        position: { findMany: jest.fn().mockResolvedValue([]) },
+        contractGeneratedDocument: { findMany: jest.fn().mockResolvedValue([{
+          status: "success", contractVersionId: "version-1", docxFileId: "word-1", pdfFileId: "pdf-1"
+        }]) }
+      };
+      const checked = (service as unknown as {
+        assertCanDownloadFileObject(transaction: unknown, file: unknown, actor: string): Promise<void>;
+      }).assertCanDownloadFileObject(legacyFileTransaction(tx), {
+        id: "word-1", mimeType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+      }, "actor-1");
+      try {
+        if (scenario === "changed") await expect(checked).rejects.toThrow("无权查看互转申请依据");
+        else await expect(checked).resolves.toBeUndefined();
+        expect(lookup.mock.calls[0][0].select).not.toHaveProperty("requiresParallelRepaymentApproval");
+        if (scenario === "parallel" || scenario === "changed") {
+          expect(lookup).toHaveBeenCalledTimes(2);
+          expect(lookup.mock.calls[1][0]).toEqual({
+            where: { ...transfer, evidenceFileId: "word-1" },
+            select: { requiresParallelRepaymentApproval: true }
+          });
+        } else expect(lookup).toHaveBeenCalledTimes(1);
+        if (scenario === "generated") expect(authority.assertCanReadVersionFile).toHaveBeenCalledWith(
+          expect.anything(), "version-1", "actor-1"
+        );
+        else expect(authority.assertCanReadVersionFile).not.toHaveBeenCalled();
+      } finally {
+        visibility.mockRestore();
+      }
+    }
+  );
+
   it("denies a generated upload that is still owned by an incomplete settlement claim", async () => {
     const service = new FileService(
       {} as PrismaService,
@@ -220,6 +358,7 @@ describe("FileService", () => {
       storage as unknown as PrivateFileStorage
     );
     const tx = {
+      contractGeneratedDocument: { findMany: jest.fn().mockResolvedValue([]) },
       settlementSignedDocumentGenerationClaim: {
         findFirst: jest.fn().mockResolvedValue({ status: "uploaded" })
       },
@@ -228,7 +367,7 @@ describe("FileService", () => {
 
     await expect((service as unknown as {
       assertCanDownloadFileObject(tx: unknown, file: { id: string; uploadedByUserId: string }, actor: string): Promise<void>;
-    }).assertCanDownloadFileObject(tx, { id: "generated-1", uploadedByUserId: "actor-1" }, "actor-1"))
+    }).assertCanDownloadFileObject(legacyFileTransaction(tx), { id: "generated-1", uploadedByUserId: "actor-1" }, "actor-1"))
       .rejects.toThrow("当前账号无权下载该结算签章资料");
     expect(tx.settlementSignedDocument.findFirst).not.toHaveBeenCalled();
   });
@@ -240,6 +379,7 @@ describe("FileService", () => {
       storage as unknown as PrivateFileStorage
     );
     const tx = {
+      contractGeneratedDocument: { findMany: jest.fn().mockResolvedValue([]) },
       settlementSignedDocumentGenerationClaim: { findFirst: jest.fn().mockResolvedValue({ status: "completed" }) },
       settlementSignedDocument: { findFirst: jest.fn().mockResolvedValue({
         status: "active", purpose: "final_internal_signed_copy", settlementId: "settlement-1", settlementDraftId: null
@@ -252,7 +392,7 @@ describe("FileService", () => {
 
     await expect((service as unknown as {
       assertCanDownloadFileObject(tx: unknown, file: { id: string; uploadedByUserId: string }, actor: string): Promise<void>;
-    }).assertCanDownloadFileObject(tx, { id: "generated-1", uploadedByUserId: "other" }, "finance-1"))
+    }).assertCanDownloadFileObject(legacyFileTransaction(tx), { id: "generated-1", uploadedByUserId: "other" }, "finance-1"))
       .resolves.toBeUndefined();
   });
 
@@ -260,6 +400,7 @@ describe("FileService", () => {
     const service = new FileService({} as PrismaService, audit as unknown as AuditService, storage as unknown as PrivateFileStorage);
     const document = { status: "active", purpose, settlementId: null, settlementDraftId: "draft-1" };
     const tx = {
+      contractGeneratedDocument: { findMany: jest.fn().mockResolvedValue([]) },
       settlementSignedDocument: { findFirst: jest.fn().mockResolvedValue(document) },
       settlementDraft: { findUnique: jest.fn().mockResolvedValue({ projectId: "project-1", ownerUserId: "engineer-owner" }) },
       userPosition: { findMany: jest.fn().mockResolvedValue([]) },
@@ -276,6 +417,7 @@ describe("FileService", () => {
   it("registers a generated file and advances its settlement claim in one transaction", async () => {
     const claimUpdate = jest.fn().mockResolvedValue({ count: 1 });
     const tx = {
+      contractGeneratedDocument: { findMany: jest.fn().mockResolvedValue([]) },
       fileObject: { create: jest.fn().mockResolvedValue({
         id: "generated-file-1", bucket: "private-local", objectKey: "object-1",
         originalName: "final.pdf", sizeBytes: 3
@@ -283,7 +425,7 @@ describe("FileService", () => {
       settlementSignedDocumentGenerationClaim: { updateMany: claimUpdate }
     };
     const prisma = {
-      $transaction: jest.fn(async (callback: (value: typeof tx) => unknown) => callback(tx))
+      $transaction: jest.fn(async (callback: (value: typeof tx) => unknown) => callback(legacyFileTransaction(tx)))
     };
     const service = new FileService(
       prisma as unknown as PrismaService,
@@ -326,19 +468,20 @@ describe("FileService", () => {
 
   it("keeps an already-linked generated file when cleanup observes the committed reference", async () => {
     const tx = {
+      contractGeneratedDocument: { findMany: jest.fn().mockResolvedValue([]) },
       $queryRaw: jest.fn()
         .mockResolvedValueOnce([])
         .mockResolvedValueOnce([{ referenced: true }]),
       fileObject: {
         findUnique: jest.fn().mockResolvedValue({
-          id: "file-linked", uploadedByUserId: "actor-1", storageStatus: "active",
+          id: "file-linked", uploadedByUserId: "actor-1", storageStatus: "active", bucket: "private-local",
           objectKey: "uploads/file-linked.pdf"
         }),
         updateMany: jest.fn()
       }
     };
     const prisma = {
-      $transaction: jest.fn(async (callback: (value: typeof tx) => unknown) => callback(tx))
+      $transaction: jest.fn(async (callback: (value: typeof tx) => unknown) => callback(legacyFileTransaction(tx)))
     };
     const service = new FileService(
       prisma as unknown as PrismaService,
@@ -355,6 +498,7 @@ describe("FileService", () => {
 
   it("accepts only the actor's active unlinked file as a new correction attachment", async () => {
     const tx = {
+      contractGeneratedDocument: { findMany: jest.fn().mockResolvedValue([]) },
       $queryRaw: jest.fn()
         .mockResolvedValueOnce([])
         .mockResolvedValueOnce([{ referenced: false }]),
@@ -373,15 +517,36 @@ describe("FileService", () => {
     );
 
     await expect(service.assertCanAttachUnlinkedFile(
-      tx as never,
+      legacyFileTransaction(tx) as never,
       "fresh-file",
       "contract-user"
     )).resolves.toMatchObject({ id: "fresh-file" });
     expect(tx.$queryRaw).toHaveBeenCalledTimes(2);
   });
 
+  it.each([true, false])("keeps the NORMAL original check in the current transaction (installed %s)", async (installed) => {
+    const tx = {
+      $queryRaw: jest.fn()
+        .mockResolvedValueOnce([])
+        .mockResolvedValueOnce([{ state: "installed", ownerSettlementVoucher: true }])
+        .mockResolvedValueOnce([{ installed }])
+        .mockResolvedValueOnce([{ referenced: true }]),
+      fileObject: {
+        findUnique: jest.fn().mockResolvedValue({ id: "signed-original", uploadedByUserId: "contract-user", storageStatus: "active" })
+      }
+    };
+    const service = new FileService({} as PrismaService, audit as unknown as AuditService, storage as unknown as PrivateFileStorage);
+
+    await expect(service.assertCanAttachUnlinkedFile(tx as never, "signed-original", "contract-user", "sealed-version"))
+      .rejects.toThrow("该文件已用于其他业务");
+    const bindingQuery = tx.$queryRaw.mock.calls[3][0];
+    expect(bindingQuery.sql).toContain(installed ? "jg_check_normal_archive_voucher_v1" : "jg_project_owner_settlement_voucher_bound");
+    if (installed) expect(bindingQuery.values).toContain("sealed-version");
+  });
+
   it("rejects a correction attachment already bound to another business", async () => {
     const tx = {
+      contractGeneratedDocument: { findMany: jest.fn().mockResolvedValue([]) },
       $queryRaw: jest.fn()
         .mockResolvedValueOnce([])
         .mockResolvedValueOnce([{ referenced: true }]),
@@ -400,7 +565,7 @@ describe("FileService", () => {
     );
 
     await expect(service.assertCanAttachUnlinkedFile(
-      tx as never,
+      legacyFileTransaction(tx) as never,
       "bound-file",
       "contract-user"
     )).rejects.toThrow("该文件已用于其他业务，请重新上传专用的更正依据附件");
@@ -408,6 +573,7 @@ describe("FileService", () => {
 
   it("locks and accepts an active private historical-takeover file with no binding", async () => {
     const tx = {
+      contractGeneratedDocument: { findMany: jest.fn().mockResolvedValue([]) },
       $queryRaw: jest.fn()
         .mockResolvedValueOnce([])
         .mockResolvedValueOnce([{ referenced: false }]),
@@ -427,7 +593,7 @@ describe("FileService", () => {
 
     await expect(
       service.assertCanUseHistoricalTakeoverFile(
-        tx as never,
+        legacyFileTransaction(tx) as never,
         "takeover-voucher-1",
         "finance-user",
         false
@@ -438,6 +604,7 @@ describe("FileService", () => {
 
   it("allows a locked historical-takeover file already bound to this draft", async () => {
     const tx = {
+      contractGeneratedDocument: { findMany: jest.fn().mockResolvedValue([]) },
       $queryRaw: jest.fn().mockResolvedValueOnce([]),
       fileObject: {
         findUnique: jest.fn().mockResolvedValue({
@@ -455,7 +622,7 @@ describe("FileService", () => {
 
     await expect(
       service.assertCanUseHistoricalTakeoverFile(
-        tx as never,
+        legacyFileTransaction(tx) as never,
         "existing-takeover-voucher",
         "finance-user",
         true
@@ -466,6 +633,7 @@ describe("FileService", () => {
 
   it("rejects a historical-takeover file already bound to another business", async () => {
     const tx = {
+      contractGeneratedDocument: { findMany: jest.fn().mockResolvedValue([]) },
       $queryRaw: jest.fn()
         .mockResolvedValueOnce([])
         .mockResolvedValueOnce([{ referenced: true }]),
@@ -485,7 +653,7 @@ describe("FileService", () => {
 
     await expect(
       service.assertCanUseHistoricalTakeoverFile(
-        tx as never,
+        legacyFileTransaction(tx) as never,
         "cross-bound-file",
         "finance-user",
         false
@@ -495,19 +663,20 @@ describe("FileService", () => {
 
   it("discards and deletes a generated file only after the locked reference check stays empty", async () => {
     const tx = {
+      contractGeneratedDocument: { findMany: jest.fn().mockResolvedValue([]) },
       $queryRaw: jest.fn()
         .mockResolvedValueOnce([])
         .mockResolvedValueOnce([{ referenced: false }]),
       fileObject: {
         findUnique: jest.fn().mockResolvedValue({
-          id: "file-orphan", uploadedByUserId: "actor-1", storageStatus: "active",
+          id: "file-orphan", uploadedByUserId: "actor-1", storageStatus: "active", bucket: "private-local",
           objectKey: "uploads/file-orphan.pdf"
         }),
         updateMany: jest.fn().mockResolvedValue({ count: 1 })
       }
     };
     const prisma = {
-      $transaction: jest.fn(async (callback: (value: typeof tx) => unknown) => callback(tx))
+      $transaction: jest.fn(async (callback: (value: typeof tx) => unknown) => callback(legacyFileTransaction(tx)))
     };
     const service = new FileService(
       prisma as unknown as PrismaService,
@@ -525,6 +694,91 @@ describe("FileService", () => {
       action: "file.generated_orphan.discard", businessId: "file-orphan"
     }));
     expect(storage.delete).toHaveBeenCalledWith("uploads/file-orphan.pdf");
+  });
+
+  it.each(["retained-file", "alias-file"])(
+    "keeps historic Review evidence when cleanup is asked to discard %s",
+    async fileId => {
+      const original = { id: "retained-file", uploadedByUserId: "actor-1", storageStatus: "active", bucket: "private-local", objectKey: "uploads/retained.pdf", purgeReceiptId: null };
+      const alias = { ...original, id: "alias-file" };
+      const tx = {
+        $queryRaw: jest.fn(async (query: { sql: string }) => {
+          if (query.sql.includes("contract_economic_review_file_reference_catalog")) return [{ state: "ready" }];
+          if (query.sql.includes("contract_economic_review_file_reference_completed_206")) return [{ completed: true }];
+          if (query.sql.includes("contract_economic_review_cleanup_retention")) return [{ fileId: original.id, objectKey: original.objectKey }];
+          if (query.sql.includes("contract_economic_review_cleanup_cohort_recheck")) return [{ ids: [original.id] }];
+          if (query.sql.includes("contract_economic_review_cleanup_cohort")) return fileId === original.id ? [original] : [alias, original];
+          if (query.sql.includes("contract_economic_review_cleanup_key")) return [{ locked: true }];
+          if (query.sql.includes("SELECT EXISTS")) return [{ referenced: false }];
+          if (query.sql.includes("FOR UPDATE")) return [{ id: fileId }];
+          throw new Error("Unexpected cleanup query");
+        }),
+        fileObject: {
+          findUnique: jest.fn().mockResolvedValue(fileId === original.id ? original : alias),
+          updateMany: jest.fn().mockResolvedValue({ count: 1 })
+        }
+      };
+      const service = new FileService(
+        { $transaction: (operation: (value: typeof tx) => unknown) => operation(tx) } as unknown as PrismaService,
+        audit as unknown as AuditService,
+        storage as unknown as PrivateFileStorage
+      );
+
+      await service.discardUnlinkedGeneratedFile(fileId, "actor-1");
+
+      expect(tx.fileObject.updateMany).not.toHaveBeenCalled();
+      expect(audit.record).not.toHaveBeenCalled();
+      expect(storage.delete).not.toHaveBeenCalled();
+    }
+  );
+
+  it("keeps a legacy cleanup alias whose object key is also used by a selected direct original", async () => {
+    const file = { id: "legacy-alias", uploadedByUserId: "actor-1", storageStatus: "active", bucket: "private-local", objectKey: "uploads/selected-original.pdf", purgeReceiptId: null };
+    const tx = {
+      $queryRaw: jest.fn(async (query: { sql: string }) => {
+        if (query.sql.includes("contract_economic_review_file_reference_catalog")) return [{ state: "legacy" }];
+        if (query.sql.includes("contract_economic_review_file_reference_migration")) return [{ applied: false }];
+        if (query.sql.includes("contract_economic_review_legacy_cleanup_key")) return [{ exact: false }];
+        if (query.sql.includes("SELECT EXISTS")) return [{ referenced: false }];
+        if (query.sql.includes("FOR UPDATE")) return [{ id: file.id }];
+        throw new Error("Unexpected legacy cleanup query");
+      }),
+      fileObject: {
+        findUnique: jest.fn().mockResolvedValue(file),
+        updateMany: jest.fn().mockResolvedValue({ count: 1 })
+      }
+    };
+    const service = new FileService(
+      { $transaction: (operation: (value: typeof tx) => unknown) => operation(tx) } as unknown as PrismaService,
+      audit as unknown as AuditService,
+      storage as unknown as PrivateFileStorage
+    );
+    await service.discardUnlinkedGeneratedFile(file.id, "actor-1");
+    expect(tx.fileObject.updateMany).not.toHaveBeenCalled();
+    expect(audit.record).not.toHaveBeenCalled();
+    expect(storage.delete).not.toHaveBeenCalled();
+  });
+
+  it("keeps a legacy orphan in a different bucket from the configured storage", async () => {
+    const file = {
+      id: "different-bucket-orphan", uploadedByUserId: "actor-1", storageStatus: "active",
+      bucket: "old-private-bucket", objectKey: "uploads/common.pdf", purgeReceiptId: null
+    };
+    const tx = {
+      $queryRaw: jest.fn().mockResolvedValueOnce([{ id: file.id }]).mockResolvedValueOnce([{ referenced: false }]),
+      fileObject: { findUnique: jest.fn().mockResolvedValue(file), updateMany: jest.fn().mockResolvedValue({ count: 1 }) }
+    };
+    const service = new FileService(
+      { $transaction: (operation: (value: typeof tx) => unknown) => operation(legacyFileTransaction(tx)) } as unknown as PrismaService,
+      audit as unknown as AuditService,
+      storage as unknown as PrivateFileStorage
+    );
+
+    await service.discardUnlinkedGeneratedFile(file.id, "actor-1");
+
+    expect(tx.fileObject.updateMany).not.toHaveBeenCalled();
+    expect(audit.record).not.toHaveBeenCalled();
+    expect(storage.delete).not.toHaveBeenCalled();
   });
 
   it("deduplicates generated-file cleanup and processes it in a stable order", async () => {
@@ -548,19 +802,20 @@ describe("FileService", () => {
 
   it("keeps the discarded state when orphan storage deletion fails", async () => {
     const tx = {
+      contractGeneratedDocument: { findMany: jest.fn().mockResolvedValue([]) },
       $queryRaw: jest.fn()
         .mockResolvedValueOnce([])
         .mockResolvedValueOnce([{ referenced: false }]),
       fileObject: {
         findUnique: jest.fn().mockResolvedValue({
-          id: "file-cleanup-failed", uploadedByUserId: "actor-1", storageStatus: "active",
+          id: "file-cleanup-failed", uploadedByUserId: "actor-1", storageStatus: "active", bucket: "private-local",
           objectKey: "uploads/file-cleanup-failed.pdf"
         }),
         updateMany: jest.fn().mockResolvedValue({ count: 1 })
       }
     };
     const prisma = {
-      $transaction: jest.fn(async (callback: (value: typeof tx) => unknown) => callback(tx))
+      $transaction: jest.fn(async (callback: (value: typeof tx) => unknown) => callback(legacyFileTransaction(tx)))
     };
     const service = new FileService(
       prisma as unknown as PrismaService,
@@ -580,19 +835,20 @@ describe("FileService", () => {
 
   it("does not delete after a concurrent cleanup loses the active-state CAS", async () => {
     const tx = {
+      contractGeneratedDocument: { findMany: jest.fn().mockResolvedValue([]) },
       $queryRaw: jest.fn()
         .mockResolvedValueOnce([])
         .mockResolvedValueOnce([{ referenced: false }]),
       fileObject: {
         findUnique: jest.fn().mockResolvedValue({
-          id: "file-raced", uploadedByUserId: "actor-1", storageStatus: "active",
+          id: "file-raced", uploadedByUserId: "actor-1", storageStatus: "active", bucket: "private-local",
           objectKey: "uploads/file-raced.pdf"
         }),
         updateMany: jest.fn().mockResolvedValue({ count: 0 })
       }
     };
     const prisma = {
-      $transaction: jest.fn(async (callback: (value: typeof tx) => unknown) => callback(tx))
+      $transaction: jest.fn(async (callback: (value: typeof tx) => unknown) => callback(legacyFileTransaction(tx)))
     };
     const service = new FileService(
       prisma as unknown as PrismaService,
@@ -613,6 +869,7 @@ describe("FileService", () => {
       storage as unknown as PrivateFileStorage
     );
     const tx = {
+      contractGeneratedDocument: { findMany: jest.fn().mockResolvedValue([]) },
       contractFormalFile: { findFirst: jest.fn().mockResolvedValue({
         contractVersionId: "version-1",
         status: "active",
@@ -641,7 +898,7 @@ describe("FileService", () => {
 
     await expect((service as unknown as {
       assertCanDownloadFileObject(tx: unknown, file: { id: string }, actor: string): Promise<void>;
-    }).assertCanDownloadFileObject(tx, { id: "formal-file-1" }, "admin-1"))
+    }).assertCanDownloadFileObject(legacyFileTransaction(tx), { id: "formal-file-1" }, "admin-1"))
       .rejects.toThrow("当前账号无权下载该合同签署资料");
   });
 
@@ -652,6 +909,7 @@ describe("FileService", () => {
       storage as unknown as PrivateFileStorage
     );
     const tx = {
+      contractGeneratedDocument: { findMany: jest.fn().mockResolvedValue([]) },
       contractFormalFile: { findFirst: jest.fn().mockResolvedValue(null) },
       contractAuthorization: { findFirst: jest.fn().mockResolvedValue(null) },
       pdfDocument: { findFirst: jest.fn().mockResolvedValue({
@@ -684,7 +942,7 @@ describe("FileService", () => {
 
     await expect((service as unknown as {
       assertCanDownloadFileObject(tx: unknown, file: { id: string }, actor: string): Promise<void>;
-    }).assertCanDownloadFileObject(tx, { id: "approval-form-1" }, "approver-1"))
+    }).assertCanDownloadFileObject(legacyFileTransaction(tx), { id: "approval-form-1" }, "approver-1"))
       .rejects.toThrow("审批单必须通过专用下载入口下载");
     expect(tx.approvalActionLog.findFirst).not.toHaveBeenCalled();
   });
@@ -699,6 +957,7 @@ describe("FileService", () => {
       Promise.resolve(where.action === "remind" ? { id: "remind-1" } : null)
     );
     const tx = {
+      contractGeneratedDocument: { findMany: jest.fn().mockResolvedValue([]) },
       contractFormalFile: { findFirst: jest.fn().mockResolvedValue(null) },
       contractAuthorization: { findFirst: jest.fn().mockResolvedValue(null) },
       pdfDocument: { findFirst: jest.fn().mockResolvedValue({
@@ -731,7 +990,7 @@ describe("FileService", () => {
 
     await expect((service as unknown as {
       assertCanDownloadFileObject(tx: unknown, file: { id: string }, actor: string): Promise<void>;
-    }).assertCanDownloadFileObject(tx, { id: "approval-form-1" }, "reminder-1"))
+    }).assertCanDownloadFileObject(legacyFileTransaction(tx), { id: "approval-form-1" }, "reminder-1"))
       .rejects.toThrow("审批单必须通过专用下载入口下载");
     expect(approvalActionLookup).not.toHaveBeenCalled();
   });
@@ -765,6 +1024,7 @@ describe("FileService", () => {
     "$caseName不能通过通用文件票据下载旧合同审批单",
     async ({ versionStatus, latestApprovalId, latestApprovalStatus }) => {
       const tx = {
+      contractGeneratedDocument: { findMany: jest.fn().mockResolvedValue([]) },
         fileObject: {
           findUnique: jest.fn().mockResolvedValue({
             id: "approval-form-file-1",
@@ -811,7 +1071,7 @@ describe("FileService", () => {
       };
       const prisma = {
         $transaction: jest.fn(async (callback: (transaction: typeof tx) => unknown) =>
-          callback(tx)
+          callback(legacyFileTransaction(tx))
         )
       } as unknown as PrismaService;
       const service = new FileService(
@@ -834,6 +1094,7 @@ describe("FileService", () => {
     "拒绝上传者通过通用文件票据下载 %s 的合同审批单生成中间文件",
     async (claimStatus) => {
       const tx = {
+      contractGeneratedDocument: { findMany: jest.fn().mockResolvedValue([]) },
         fileObject: {
           findUnique: jest.fn().mockResolvedValue({
             id: "approval-form-claim-file-1",
@@ -859,7 +1120,7 @@ describe("FileService", () => {
       };
       const prisma = {
         $transaction: jest.fn(async (callback: (transaction: typeof tx) => unknown) =>
-          callback(tx)
+          callback(legacyFileTransaction(tx))
         )
       } as unknown as PrismaService;
       const service = new FileService(
@@ -891,6 +1152,7 @@ describe("FileService", () => {
         spotAccess as unknown as SpotProcurementAccessService
       );
       const tx = {
+      contractGeneratedDocument: { findMany: jest.fn().mockResolvedValue([]) },
         pdfDocument: {
           findFirst: jest.fn().mockResolvedValue({
             id: "spot-pdf-1",
@@ -911,7 +1173,7 @@ describe("FileService", () => {
           actorUserId: string
         ): Promise<void>;
       }).assertCanDownloadFileObject(
-        tx,
+        legacyFileTransaction(tx),
         { id: "spot-raw-approval-file-1" },
         "spot-applicant-1"
       )).rejects.toThrow("审批单必须通过专用下载入口下载");
@@ -991,6 +1253,7 @@ describe("FileService", () => {
   it("按已发布版式样张资源授权非上传人，不开放无关文件", async () => {
     const file = { id: "layout-preview", uploadedByUserId: "uploader", mimeType: "application/pdf" };
     const tx = {
+      contractGeneratedDocument: { findMany: jest.fn().mockResolvedValue([]) },
       contractLayoutTemplate: { findMany: jest.fn().mockResolvedValue([{ id: "layout" }]) },
       fileObject: { findUnique: jest.fn().mockResolvedValue(file) },
       user: { findUnique: jest.fn().mockResolvedValue({ isActive: true }) },
@@ -1007,10 +1270,10 @@ describe("FileService", () => {
       position: { findMany: jest.fn().mockResolvedValue([]) }
     };
     const service = new FileService({} as PrismaService, audit as never, storage as never);
-    await expect(service.assertCanDownloadFile(tx as never, file.id, "reader"))
+    await expect(service.assertCanDownloadFile(legacyFileTransaction(tx) as never, file.id, "reader"))
       .resolves.toEqual(file);
     tx.contractLayoutTemplateVersion.findMany.mockResolvedValue([]);
-    await expect(service.assertCanDownloadFile(tx as never, file.id, "reader"))
+    await expect(service.assertCanDownloadFile(legacyFileTransaction(tx) as never, file.id, "reader"))
       .rejects.toThrow("当前账号无权下载该资料");
   });
 
@@ -1022,6 +1285,7 @@ describe("FileService", () => {
     );
     const businessLookup = jest.fn().mockResolvedValue(null);
     const tx = {
+      contractGeneratedDocument: { findMany: jest.fn().mockResolvedValue([]) },
       userPosition: {
         findMany: jest.fn().mockResolvedValue([
           { userId: "global-finance", positionId: "position-finance", projectId: null }
@@ -1048,7 +1312,7 @@ describe("FileService", () => {
             actorUserId: string
           ): Promise<void>;
         }
-      ).assertCanDownloadFileObject(tx, { id: "file-other-project" }, "global-finance")
+      ).assertCanDownloadFileObject(legacyFileTransaction(tx), { id: "file-other-project" }, "global-finance")
     ).rejects.toThrow("当前账号无权下载该资料");
     expect(businessLookup).toHaveBeenCalled();
   });
@@ -1060,6 +1324,7 @@ describe("FileService", () => {
       storage as unknown as PrivateFileStorage
     );
     const tx = {
+      contractGeneratedDocument: { findMany: jest.fn().mockResolvedValue([]) },
       userPosition: {
         findMany: jest.fn(({ where }: { where: { projectId: string | null } }) =>
           Promise.resolve(where.projectId === null ? [{ positionId: "position-finance" }] : [])
@@ -1096,7 +1361,7 @@ describe("FileService", () => {
         actorUserId: string
       ): Promise<void>;
     }).assertCanDownloadFileObject(
-      tx,
+      legacyFileTransaction(tx),
       { id: "confirmed-archive", uploadedByUserId: "other-user" },
       "global-finance"
     )).resolves.toBeUndefined();
@@ -1104,6 +1369,7 @@ describe("FileService", () => {
 
   it("非合同审批单生成前仅允许申请人、已处理人或明确的归档读取岗位", async () => {
     const tx = {
+      contractGeneratedDocument: { findMany: jest.fn().mockResolvedValue([]) },
       approvalInstance: {
         findFirst: jest.fn().mockResolvedValue({
           id: "approval-1", status: "approved",
@@ -1127,7 +1393,7 @@ describe("FileService", () => {
       projectMember: { findMany: jest.fn().mockResolvedValue([]) }
     };
     const prisma = {
-      $transaction: jest.fn(async (callback: (client: typeof tx) => unknown) => callback(tx))
+      $transaction: jest.fn(async (callback: (client: typeof tx) => unknown) => callback(legacyFileTransaction(tx)))
     } as unknown as PrismaService;
     const service = new FileService(
       prisma,
@@ -1148,6 +1414,56 @@ describe("FileService", () => {
       "payment-1",
       "unrelated-user"
     )).rejects.toThrow("当前账号无权下载该审批单");
+  });
+
+  it("审批中的非合同流程对申请人、已处理人和管理读取岗位可查看，但不对无关人员开放", async () => {
+    const tx = {
+      contractGeneratedDocument: { findMany: jest.fn().mockResolvedValue([]) },
+      approvalInstance: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: "approval-1", status: "in_progress",
+          applicantUserId: "applicant-1"
+        })
+      },
+      approvalActionLog: { findFirst: jest.fn().mockResolvedValue(null) },
+      paymentRequest: {
+        findUnique: jest.fn().mockResolvedValue({ projectId: "project-other" })
+      },
+      userPosition: {
+        findMany: jest.fn(({ where }: { where: { projectId: string | null } }) =>
+          Promise.resolve(where.projectId === null ? [{ positionId: "position-finance" }] : [])
+        )
+      },
+      position: {
+        findMany: jest.fn().mockResolvedValue([
+          { id: "position-finance", key: "finance_staff" }
+        ])
+      },
+      projectMember: { findMany: jest.fn().mockResolvedValue([]) }
+    };
+    const prisma = {
+      $transaction: jest.fn(async (callback: (client: typeof tx) => unknown) => callback(legacyFileTransaction(tx)))
+    } as unknown as PrismaService;
+    const service = new FileService(
+      prisma,
+      audit as unknown as AuditService,
+      storage as unknown as PrivateFileStorage
+    );
+
+    await expect(service.canViewApprovalFlow("payment_request", "payment-1", "applicant-1"))
+      .resolves.toBe(true);
+    await expect(service.canViewApprovalFlow("payment_request", "payment-1", "global-finance"))
+      .resolves.toBe(true);
+
+    tx.userPosition.findMany.mockResolvedValue([]);
+    tx.position.findMany.mockResolvedValue([]);
+    await expect(service.canViewApprovalFlow("payment_request", "payment-1", "unrelated-user"))
+      .resolves.toBe(false);
+    await expect(service.assertCanDownloadApprovalFormByBusiness(
+      "payment_request",
+      "payment-1",
+      "global-finance"
+    )).rejects.toThrow("当前业务尚未完成审批，暂不能下载审批单");
   });
 
   it("在审批单生成前拒绝未支持的业务类型", async () => {
@@ -1175,6 +1491,7 @@ describe("FileService", () => {
     latestApprovalStatus
   ) => {
     const tx = {
+      contractGeneratedDocument: { findMany: jest.fn().mockResolvedValue([]) },
       contractVersion: {
         findUnique: jest.fn().mockResolvedValue({
           id: "version-1",
@@ -1202,7 +1519,7 @@ describe("FileService", () => {
       position: { findMany: jest.fn() }
     };
     const prisma = {
-      $transaction: jest.fn(async (callback: (client: typeof tx) => unknown) => callback(tx))
+      $transaction: jest.fn(async (callback: (client: typeof tx) => unknown) => callback(legacyFileTransaction(tx)))
     } as unknown as PrismaService;
     const service = new FileService(
       prisma,
@@ -1219,6 +1536,7 @@ describe("FileService", () => {
 
   it("合同新一轮审批通过后按最新实例开放当前审批单", async () => {
     const tx = {
+      contractGeneratedDocument: { findMany: jest.fn().mockResolvedValue([]) },
       contractVersion: {
         findUnique: jest.fn().mockResolvedValue({
           id: "version-1",
@@ -1246,7 +1564,7 @@ describe("FileService", () => {
       position: { findMany: jest.fn() }
     };
     const prisma = {
-      $transaction: jest.fn(async (callback: (client: typeof tx) => unknown) => callback(tx))
+      $transaction: jest.fn(async (callback: (client: typeof tx) => unknown) => callback(legacyFileTransaction(tx)))
     } as unknown as PrismaService;
     const service = new FileService(
       prisma,
@@ -1276,6 +1594,7 @@ describe("FileService", () => {
       access as unknown as SpotProcurementAccessService
     );
     const tx = {
+      contractGeneratedDocument: { findMany: jest.fn().mockResolvedValue([]) },
       userPosition: { findMany: globalLookup },
       position: { findMany: jest.fn() }
     };
@@ -1290,7 +1609,7 @@ describe("FileService", () => {
           ): Promise<void>;
         }
       ).assertCanDownloadFileObject(
-        tx,
+        legacyFileTransaction(tx),
         { id: "spot-pending-pdf", uploadedByUserId: "global-uploader" },
         "global-uploader"
       )
@@ -1310,13 +1629,12 @@ describe("FileService", () => {
       storage as unknown as PrivateFileStorage
     );
     const tx = {
-      expenseClaimAttachment: {
-        findFirst: jest.fn().mockResolvedValue({
-          expenseClaimId: "claim-1",
-          attachedByUserId: "handler-1",
-          removedAt: null
-        })
-      },
+      contractGeneratedDocument: { findMany: jest.fn().mockResolvedValue([]) },
+      expenseAttachmentBinding: jest.fn().mockResolvedValue([{
+        expenseClaimId: "claim-1",
+        attachedByUserId: "handler-1",
+        removedAt: null
+      }]),
       expenseClaim: {
         findUnique: jest.fn().mockResolvedValue({
           projectId: "project-1",
@@ -1336,8 +1654,9 @@ describe("FileService", () => {
             actorUserId: string
           ): Promise<void>;
         }
-      ).assertCanDownloadFileObject(tx, { id: "expense-file-1", uploadedByUserId: "uploader-1" }, "handler-1")
+      ).assertCanDownloadFileObject(legacyFileTransaction(tx), { id: "expense-file-1", uploadedByUserId: "uploader-1" }, "handler-1")
     ).resolves.toBeUndefined();
+    expect(tx.expenseAttachmentBinding).toHaveBeenCalledWith("expense-file-1");
   });
 
   it("fails closed for a nonparticipant requesting a new-domain expense attachment", async () => {
@@ -1347,13 +1666,12 @@ describe("FileService", () => {
       storage as unknown as PrivateFileStorage
     );
     const tx = {
-      expenseClaimAttachment: {
-        findFirst: jest.fn().mockResolvedValue({
-          expenseClaimId: "claim-1",
-          attachedByUserId: "handler-1",
-          removedAt: null
-        })
-      },
+      contractGeneratedDocument: { findMany: jest.fn().mockResolvedValue([]) },
+      expenseAttachmentBinding: jest.fn().mockResolvedValue([{
+        expenseClaimId: "claim-1",
+        attachedByUserId: "handler-1",
+        removedAt: null
+      }]),
       expenseClaim: {
         findUnique: jest.fn().mockResolvedValue({
           projectId: "project-1",
@@ -1376,8 +1694,37 @@ describe("FileService", () => {
             actorUserId: string
           ): Promise<void>;
         }
-      ).assertCanDownloadFileObject(tx, { id: "expense-file-1", uploadedByUserId: "uploader-1" }, "stranger-1")
+      ).assertCanDownloadFileObject(legacyFileTransaction(tx), { id: "expense-file-1", uploadedByUserId: "uploader-1" }, "stranger-1")
     ).rejects.toThrow("当前账号无权下载该费用附件");
+  });
+
+  it.each([
+    ["ContractBankVerificationRequest", "当前账号无权访问银行核验依据"],
+    ["ProjectNecessaryExpenseReserveEntry", "当前账号无权下载该必要费用准备依据"],
+    ["ProjectFundDisputeEntry", "当前账号无权下载该一般争议资金依据"]
+  ])("enforces the project role for %s even when the requester uploaded the evidence", async (table, message) => {
+    const service = new FileService(
+      {} as PrismaService,
+      audit as unknown as AuditService,
+      storage as unknown as PrivateFileStorage
+    );
+    const projectFileBinding = jest.fn(async (source: string) =>
+      source === table ? [{ projectId: "project-1" }] : []
+    );
+    const tx = legacyFileTransaction({
+      contractGeneratedDocument: { findMany: jest.fn().mockResolvedValue([]) },
+      projectFileBinding,
+      userPosition: { findMany: jest.fn().mockResolvedValue([]) },
+      projectMember: { findMany: jest.fn().mockResolvedValue([]) },
+      position: { findMany: jest.fn().mockResolvedValue([]) }
+    });
+
+    await expect(service["assertCanDownloadFileObject"](
+      tx as never,
+      { id: "project-evidence-1", uploadedByUserId: "uploader-1" } as never,
+      "uploader-1"
+    )).rejects.toThrow(message);
+    expect(projectFileBinding).toHaveBeenLastCalledWith(table, "project-evidence-1");
   });
 
   it("allows a receipt-only file after checking that no other business binding exists", async () => {
@@ -1393,6 +1740,7 @@ describe("FileService", () => {
       access as unknown as SpotProcurementAccessService
     );
     const tx = {
+      contractGeneratedDocument: { findMany: jest.fn().mockResolvedValue([]) },
       spotProcurementReceiptPhoto: {
         findFirst: jest.fn().mockResolvedValue({ id: "photo-1" })
       },
@@ -1420,7 +1768,7 @@ describe("FileService", () => {
           ): Promise<void>;
         }
       ).assertCanDownloadFileObject(
-        tx,
+        legacyFileTransaction(tx),
         { id: "receipt-only-file" },
         "receipt-viewer"
       )
@@ -1440,6 +1788,7 @@ describe("FileService", () => {
       access as unknown as SpotProcurementAccessService
     );
     const tx = {
+      contractGeneratedDocument: { findMany: jest.fn().mockResolvedValue([]) },
       spotProcurementReceiptPhoto: {
         findFirst: jest.fn().mockResolvedValue({ id: "photo-1" })
       },
@@ -1469,7 +1818,7 @@ describe("FileService", () => {
           ): Promise<void>;
         }
       ).assertCanDownloadFileObject(
-        tx,
+        legacyFileTransaction(tx),
         { id: "mixed-binding-file" },
         "receipt-viewer"
       )
@@ -1489,6 +1838,7 @@ describe("FileService", () => {
       access as unknown as SpotProcurementAccessService
     );
     const tx = {
+      contractGeneratedDocument: { findMany: jest.fn().mockResolvedValue([]) },
       spotProcurementReceiptPhoto: {
         findFirst: jest.fn().mockResolvedValue(null)
       },
@@ -1516,7 +1866,7 @@ describe("FileService", () => {
           ): Promise<void>;
         }
       ).assertCanDownloadFileObject(
-        tx,
+        legacyFileTransaction(tx),
         { id: "refund-only-voucher" },
         "refund-viewer"
       )
@@ -1534,6 +1884,7 @@ describe("FileService", () => {
       access as unknown as SpotProcurementAccessService
     );
     const tx = {
+      contractGeneratedDocument: { findMany: jest.fn().mockResolvedValue([]) },
       spotProcurementReceiptPhoto: {
         findFirst: jest.fn().mockResolvedValue(null)
       },
@@ -1563,7 +1914,7 @@ describe("FileService", () => {
           ): Promise<void>;
         }
       ).assertCanDownloadFileObject(
-        tx,
+        legacyFileTransaction(tx),
         { id: "mixed-refund-voucher" },
         "refund-viewer"
       )
@@ -1592,6 +1943,7 @@ describe("FileService", () => {
         access as unknown as SpotProcurementAccessService
       );
       const tx = {
+      contractGeneratedDocument: { findMany: jest.fn().mockResolvedValue([]) },
         spotProcurementReceiptPhoto: {
           findFirst: jest.fn().mockResolvedValue(null)
         },
@@ -1633,7 +1985,7 @@ describe("FileService", () => {
             ): Promise<void>;
           }
         ).assertCanDownloadFileObject(
-          tx,
+          legacyFileTransaction(tx),
           { id: "invoice-evidence-file" },
           "invoice-viewer"
         )
@@ -1655,6 +2007,7 @@ describe("FileService", () => {
         access as unknown as SpotProcurementAccessService
       );
       const tx = {
+      contractGeneratedDocument: { findMany: jest.fn().mockResolvedValue([]) },
         spotProcurementReceiptPhoto: {
           findFirst: jest.fn().mockResolvedValue(null)
         },
@@ -1698,7 +2051,7 @@ describe("FileService", () => {
             ): Promise<void>;
           }
         ).assertCanDownloadFileObject(
-          tx,
+          legacyFileTransaction(tx),
           { id: "invoice-evidence-file" },
           "invoice-viewer"
         )
@@ -1718,7 +2071,8 @@ describe("FileService", () => {
       storageStatus: "active",
       contentSha256: null
     };
-    const tx = {
+    const tx = legacyFileTransaction({
+      contractGeneratedDocument: { findMany: jest.fn().mockResolvedValue([]) },
       fileObject: { findUnique: jest.fn().mockResolvedValue(file) },
       invoiceRecord: {
         findMany: jest.fn().mockResolvedValue([{
@@ -1742,9 +2096,9 @@ describe("FileService", () => {
           ? [{ fileId: file.id }]
           : [];
       })
-    };
+    });
     const prisma = {
-      $transaction: jest.fn(async (callback: (client: typeof tx) => unknown) => callback(tx))
+      $transaction: jest.fn(async (callback: (client: typeof tx) => unknown) => callback(legacyFileTransaction(tx)))
     } as unknown as PrismaService;
     const service = new FileService(prisma, audit as never, storage as never);
 
@@ -1799,6 +2153,7 @@ describe("FileService", () => {
             }])
           };
       const tx = {
+      contractGeneratedDocument: { findMany: jest.fn().mockResolvedValue([]) },
         fileObject: { findUnique: jest.fn().mockResolvedValue(file) },
         invoiceRecord: {
           findMany: jest.fn().mockResolvedValue([{
@@ -1826,7 +2181,7 @@ describe("FileService", () => {
         })
       };
       const prisma = {
-        $transaction: jest.fn(async (callback: (client: typeof tx) => unknown) => callback(tx))
+        $transaction: jest.fn(async (callback: (client: typeof tx) => unknown) => callback(legacyFileTransaction(tx)))
       } as unknown as PrismaService;
       const service = new FileService(prisma, audit as never, storage as never);
 
@@ -1851,7 +2206,8 @@ describe("FileService", () => {
       storageStatus: "active",
       contentSha256: null
     };
-    const tx = {
+    const tx = legacyFileTransaction({
+      contractGeneratedDocument: { findMany: jest.fn().mockResolvedValue([]) },
       fileObject: { findUnique: jest.fn().mockResolvedValue(file) },
       invoiceRecord: {
         findMany: jest.fn().mockResolvedValue([{
@@ -1864,9 +2220,9 @@ describe("FileService", () => {
         findUnique: jest.fn().mockResolvedValue({ id: "uploader-1", isActive: true })
       },
       $queryRaw: jest.fn().mockResolvedValue([])
-    };
+    });
     const prisma = {
-      $transaction: jest.fn(async (callback: (client: typeof tx) => unknown) => callback(tx))
+      $transaction: jest.fn(async (callback: (client: typeof tx) => unknown) => callback(legacyFileTransaction(tx)))
     } as unknown as PrismaService;
     const spotAccess = {
       resolveFileDownloadAccess: jest.fn().mockResolvedValue("denied")
@@ -1913,6 +2269,7 @@ describe("FileService", () => {
         contentSha256: null
       };
       const tx = {
+      contractGeneratedDocument: { findMany: jest.fn().mockResolvedValue([]) },
         fileObject: { findUnique: jest.fn().mockResolvedValue(file) },
         invoiceRecord: {
           findMany: jest.fn().mockResolvedValue([{
@@ -1933,7 +2290,7 @@ describe("FileService", () => {
         $queryRaw: jest.fn().mockResolvedValue([])
       };
       const prisma = {
-        $transaction: jest.fn(async (callback: (client: typeof tx) => unknown) => callback(tx))
+        $transaction: jest.fn(async (callback: (client: typeof tx) => unknown) => callback(legacyFileTransaction(tx)))
       } as unknown as PrismaService;
       const spotAccess = { resolveFileDownloadAccess: jest.fn().mockResolvedValue("denied") };
       const service = new FileService(
@@ -1965,7 +2322,8 @@ describe("FileService", () => {
         storageStatus: "active",
         contentSha256: null
       };
-      const tx = {
+      const tx = legacyFileTransaction({
+      contractGeneratedDocument: { findMany: jest.fn().mockResolvedValue([]) },
         fileObject: { findUnique: jest.fn().mockResolvedValue(file) },
         invoiceRecord: {
           findMany: jest.fn().mockResolvedValue([{
@@ -1984,9 +2342,9 @@ describe("FileService", () => {
           findMany: jest.fn().mockResolvedValue([{ id: `position-${roleKey}`, key: roleKey }])
         },
         $queryRaw: jest.fn().mockResolvedValue([])
-      };
+      });
       const prisma = {
-        $transaction: jest.fn(async (callback: (client: typeof tx) => unknown) => callback(tx))
+        $transaction: jest.fn(async (callback: (client: typeof tx) => unknown) => callback(legacyFileTransaction(tx)))
       } as unknown as PrismaService;
       const service = new FileService(prisma, audit as never, storage as never);
 
@@ -2023,7 +2381,8 @@ describe("FileService", () => {
       storageStatus: "active",
       contentSha256: null
     };
-    const tx = {
+    const tx = legacyFileTransaction({
+      contractGeneratedDocument: { findMany: jest.fn().mockResolvedValue([]) },
       fileObject: { findUnique: jest.fn().mockResolvedValue(file) },
       invoiceRecord: {
         findMany: jest.fn().mockResolvedValue([{
@@ -2036,9 +2395,9 @@ describe("FileService", () => {
         findUnique: jest.fn().mockResolvedValue({ id: "inactive-uploader", isActive: false })
       },
       $queryRaw: jest.fn().mockResolvedValue([])
-    };
+    });
     const prisma = {
-      $transaction: jest.fn(async (callback: (client: typeof tx) => unknown) => callback(tx))
+      $transaction: jest.fn(async (callback: (client: typeof tx) => unknown) => callback(legacyFileTransaction(tx)))
     } as unknown as PrismaService;
     const service = new FileService(prisma, audit as never, storage as never);
 
@@ -2064,7 +2423,8 @@ describe("FileService", () => {
       storageStatus: "active",
       contentSha256: null
     };
-    const tx = {
+    const tx = legacyFileTransaction({
+      contractGeneratedDocument: { findMany: jest.fn().mockResolvedValue([]) },
       fileObject: { findUnique: jest.fn().mockResolvedValue(file) },
       invoiceRecord: {
         findMany: jest.fn().mockResolvedValue([{
@@ -2099,9 +2459,9 @@ describe("FileService", () => {
         }])
       },
       $queryRaw: jest.fn().mockResolvedValue([])
-    };
+    });
     const prisma = {
-      $transaction: jest.fn(async (callback: (client: typeof tx) => unknown) => callback(tx)),
+      $transaction: jest.fn(async (callback: (client: typeof tx) => unknown) => callback(legacyFileTransaction(tx))),
       wageApprovedSourceVersion: { findFirst: jest.fn().mockResolvedValue(null) }
     } as unknown as PrismaService;
     const service = new FileService(prisma, audit as never, storage as never);
@@ -2165,7 +2525,8 @@ describe("FileService", () => {
         storageStatus: "active",
         contentSha256: null
       };
-      const tx = {
+      const tx = legacyFileTransaction({
+      contractGeneratedDocument: { findMany: jest.fn().mockResolvedValue([]) },
         fileObject: { findUnique: jest.fn().mockResolvedValue(file) },
         invoiceRecord: {
           findMany: jest.fn().mockResolvedValue([{
@@ -2183,9 +2544,9 @@ describe("FileService", () => {
         },
         approvalDelegation: { findMany: jest.fn().mockResolvedValue([]) },
         $queryRaw: jest.fn().mockResolvedValue([])
-      };
+      });
       const prisma = {
-        $transaction: jest.fn(async (callback: (client: typeof tx) => unknown) => callback(tx))
+        $transaction: jest.fn(async (callback: (client: typeof tx) => unknown) => callback(legacyFileTransaction(tx)))
       } as unknown as PrismaService;
       const service = new FileService(prisma, audit as never, storage as never);
 
@@ -2665,6 +3026,199 @@ describe("FileService", () => {
     }
   });
 
+  it("strictly reads the COS generation and matching bytes from one whole GET", async () => {
+    const previous = snapshotStorageEnv();
+    configureCosStorage();
+    const file = Buffer.from("verified original");
+    const remote = jest.spyOn(globalThis, "fetch").mockResolvedValue(new Response(file.toString(), {
+      headers: { "x-cos-version-id": "object+generation/1=" }
+    }));
+    try {
+      const storage = new PrivateFileStorage();
+      const result = await storage.readVerifiedVersion({
+        bucket: "private-bucket", objectKey: "uploads/签章.pdf", sizeBytes: file.length,
+        contentSha256: createHash("sha256").update(file).digest("hex")
+      });
+      expect(result).toEqual({ buffer: file, objectGeneration: "object+generation/1=" });
+      expect(remote).toHaveBeenCalledTimes(1);
+      expect(remote).toHaveBeenCalledWith(
+        "https://private-bucket.cos.ap-guangzhou.myqcloud.com/uploads/%E7%AD%BE%E7%AB%A0.pdf",
+        expect.objectContaining({ method: "GET", redirect: "error" })
+      );
+    } finally {
+      remote.mockRestore();
+      restoreStorageEnv(previous);
+    }
+  });
+
+  it("uses the temporary COS token only on signed upload and fixed generation reads", async () => {
+    const previous = snapshotStorageEnv();
+    configureCosStorage();
+    process.env.COS_SESSION_TOKEN = "synthetic+temporary/token=";
+    const file = Buffer.from("verified original");
+    const generation = "first+version";
+    const remote = jest.spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(new Response())
+      .mockResolvedValueOnce(new Response(file.toString(), { headers: { "x-cos-version-id": generation } }));
+    try {
+      const storage = new PrivateFileStorage();
+      await storage.write("uploads/signed.pdf", file);
+      await expect(storage.readVerifiedVersion({
+        bucket: "private-bucket", objectKey: "uploads/signed.pdf", sizeBytes: file.length,
+        contentSha256: createHash("sha256").update(file).digest("hex"), expectedGeneration: generation
+      })).resolves.toEqual({ buffer: file, objectGeneration: generation });
+
+      const signedHeaders = expect.objectContaining({
+        Authorization: expect.stringContaining("q-ak=secret-id"),
+        "x-cos-security-token": "synthetic+temporary/token="
+      });
+      expect(remote).toHaveBeenNthCalledWith(1,
+        "https://private-bucket.cos.ap-guangzhou.myqcloud.com/uploads/signed.pdf",
+        expect.objectContaining({ method: "PUT", redirect: "error", headers: signedHeaders })
+      );
+      expect(remote).toHaveBeenNthCalledWith(2,
+        "https://private-bucket.cos.ap-guangzhou.myqcloud.com/uploads/signed.pdf?versionId=first%2Bversion",
+        expect.objectContaining({ method: "GET", redirect: "error", headers: signedHeaders })
+      );
+    } finally {
+      remote.mockRestore();
+      restoreStorageEnv(previous);
+    }
+  });
+
+  it("rejects an invalid temporary COS token or origin before transport", async () => {
+    const previous = snapshotStorageEnv();
+    configureCosStorage();
+    const remote = jest.spyOn(globalThis, "fetch").mockResolvedValue(new Response());
+    try {
+      const storage = new PrivateFileStorage();
+      process.env.COS_SESSION_TOKEN = "synthetic\r\ninvalid";
+      expect(() => storage.assertConfigured()).toThrow("临时凭证格式无效");
+      await expect(storage.write("uploads/signed.pdf", Buffer.from("signed"))).rejects.toThrow("临时凭证格式无效");
+      process.env.COS_SESSION_TOKEN = "synthetic-valid-token";
+      process.env.COS_BUCKET = "bucket@another-host";
+      await expect(storage.write("uploads/signed.pdf", Buffer.from("signed"))).rejects.toThrow("私有文件上传");
+      expect(remote).not.toHaveBeenCalled();
+    } finally {
+      remote.mockRestore();
+      restoreStorageEnv(previous);
+    }
+  });
+
+  describe("strict COS version reads", () => {
+    const file = Buffer.from("verified original");
+    const expected = {
+      bucket: "private-bucket", objectKey: "uploads/签章.pdf", sizeBytes: file.length,
+      contentSha256: createHash("sha256").update(file).digest("hex")
+    };
+    const generation = "A/+==?!";
+    let previous: ReturnType<typeof snapshotStorageEnv>;
+    let remote: jest.SpyInstance;
+
+    beforeEach(() => {
+      previous = snapshotStorageEnv();
+      configureCosStorage();
+      process.env.FILE_UPLOAD_MAX_BYTES = "104857600";
+      remote = jest.spyOn(globalThis, "fetch").mockRejectedValue(new Error("synthetic COS transport failure"));
+    });
+    afterEach(() => {
+      remote.mockRestore();
+      restoreStorageEnv(previous);
+    });
+
+    it("signs and reads the exact generation without treating URL punctuation as a different object", async () => {
+      const clock = jest.spyOn(Date, "now").mockReturnValue(1_700_000_000_000);
+      remote.mockResolvedValue(new Response(file.toString(), {
+        headers: { "x-cos-version-id": generation, "content-length": String(file.length) }
+      }));
+      try {
+        const result = await new PrivateFileStorage().readVerifiedVersion({
+          ...expected, objectKey: "uploads/签章?#%! .pdf", expectedGeneration: generation
+        });
+        expect(result).toEqual({ buffer: file, objectGeneration: generation });
+        expect(remote).toHaveBeenCalledTimes(1);
+        expect(remote).toHaveBeenCalledWith(
+          "https://private-bucket.cos.ap-guangzhou.myqcloud.com/uploads/%E7%AD%BE%E7%AB%A0%3F%23%25%21%20.pdf?versionId=A%2F%2B%3D%3D%3F%21",
+          expect.objectContaining({
+            method: "GET", redirect: "error", signal: expect.any(AbortSignal),
+            headers: expect.objectContaining({
+              "Accept-Encoding": "identity",
+              Authorization: "q-sign-algorithm=sha1&q-ak=secret-id&q-sign-time=1700000000;1700000600" +
+                "&q-key-time=1700000000;1700000600&q-header-list=host&q-url-param-list=versionid" +
+                "&q-signature=b45dbf92e8d2cfc382b9455e9b253c493f4ddb6a"
+            })
+          })
+        );
+      } finally {
+        clock.mockRestore();
+      }
+    });
+
+    it.each([
+      ["missing generation", {}],
+      ["legacy null generation", { "x-cos-version-id": "null" }],
+      ["duplicate generation", { "x-cos-version-id": "old, new" }],
+      ["wrong pinned generation", { "x-cos-version-id": "wrong" }],
+      ["range metadata on a whole response", { "x-cos-version-id": generation, "content-range": "bytes 0-16/17" }],
+      ["declared length mismatch", { "x-cos-version-id": generation, "content-length": "1" }],
+      ["nonidentity transfer encoding", { "x-cos-version-id": generation, "content-encoding": "gzip" }]
+    ])("rejects %s without a fallback read", async (_case, headers) => {
+      remote.mockResolvedValue(new Response(file.toString(), { headers: headers as Record<string, string> }));
+      await expect(new PrivateFileStorage().readVerifiedVersion({ ...expected, expectedGeneration: generation }))
+        .rejects.toThrow("资料文件版本或完整性暂无法核对");
+      expect(remote).toHaveBeenCalledTimes(1);
+    });
+
+    it.each([
+      ["redirect", 302, "temporary redirect"],
+      ["partial body", 206, file.toString()],
+      ["unavailable version", 404, "private provider diagnostics"],
+      ["short body", 200, file.toString().slice(1)],
+      ["oversized body", 200, file.toString() + "!"],
+      ["wrong hash at same size", 200, "x".repeat(file.length)]
+    ] as const)("rejects %s without a fallback read", async (_case, status, body) => {
+      remote.mockResolvedValue(new Response(body, { status, headers: { "x-cos-version-id": generation } }));
+      await expect(new PrivateFileStorage().readVerifiedVersion(expected))
+        .rejects.toThrow("资料文件版本或完整性暂无法核对");
+      expect(remote).toHaveBeenCalledTimes(1);
+    });
+
+    it("rejects a transport failure and a previously redirected response without following either", async () => {
+      const storage = new PrivateFileStorage();
+      await expect(storage.readVerifiedVersion(expected)).rejects.toThrow("资料文件版本或完整性暂无法核对");
+      const response = new Response(file.toString(), { headers: { "x-cos-version-id": generation } });
+      Object.defineProperty(response, "redirected", { value: true });
+      remote.mockResolvedValue(response);
+      await expect(storage.readVerifiedVersion(expected)).rejects.toThrow("资料文件版本或完整性暂无法核对");
+      expect(remote).toHaveBeenCalledTimes(2);
+    });
+
+    it.each([
+      ["wrong bucket", { bucket: "another-bucket" }],
+      ["legacy pinned generation", { expectedGeneration: "null" }],
+      ["generation containing a final newline", { expectedGeneration: "pinned\n" }],
+      ["legacy missing hash", { contentSha256: "" }],
+      ["hash containing a final newline", { contentSha256: expected.contentSha256 + "\n" }],
+      ["invalid size", { sizeBytes: 0 }],
+      ["unsafe key", { objectKey: "uploads/../secret.pdf" }]
+    ])("rejects %s before any transport call", async (_case, patch) => {
+      await expect(new PrivateFileStorage().readVerifiedVersion({ ...expected, ...patch }))
+        .rejects.toThrow("资料文件版本或完整性暂无法核对");
+      expect(remote).not.toHaveBeenCalled();
+    });
+
+    it("does not read local storage or an invalid COS origin as versioned evidence", async () => {
+      process.env.FILE_STORAGE_DRIVER = "local";
+      await expect(new PrivateFileStorage().readVerifiedVersion(expected))
+        .rejects.toThrow("资料文件版本或完整性暂无法核对");
+      process.env.FILE_STORAGE_DRIVER = "cos";
+      process.env.COS_BUCKET = "private-bucket@another-host";
+      await expect(new PrivateFileStorage().readVerifiedVersion({ ...expected, bucket: process.env.COS_BUCKET }))
+        .rejects.toThrow("资料文件版本或完整性暂无法核对");
+      expect(remote).not.toHaveBeenCalled();
+    });
+  });
+
   it("stores and reads private files from COS when enabled", async () => {
     const previous = {
       driver: process.env.FILE_STORAGE_DRIVER,
@@ -2942,6 +3496,7 @@ describe("FileService", () => {
     const buffer = Buffer.from("private-file");
     const contentSha256 = createHash("sha256").update(buffer).digest("hex");
     const tx = {
+      contractGeneratedDocument: { findMany: jest.fn().mockResolvedValue([]) },
       fileObject: {
         create: jest.fn().mockResolvedValue({
           id: "file-1",
@@ -2959,7 +3514,7 @@ describe("FileService", () => {
     };
     const prisma = {
       $transaction: jest.fn(async (callback: (transaction: typeof tx) => unknown) =>
-        callback(tx)
+        callback(legacyFileTransaction(tx))
       )
     } as unknown as PrismaService;
     const service = new FileService(
@@ -3059,6 +3614,7 @@ describe("FileService", () => {
     const buffer = Buffer.from("private-file");
     const contentSha256 = createHash("sha256").update(buffer).digest("hex");
     const tx = {
+      contractGeneratedDocument: { findMany: jest.fn().mockResolvedValue([]) },
       fileObject: {
         create: jest.fn(
           async ({ data }: { data: Record<string, unknown> }) => ({
@@ -3074,7 +3630,7 @@ describe("FileService", () => {
       },
       $transaction: jest.fn(
         async (callback: (transaction: typeof tx) => unknown) =>
-          callback(tx)
+          callback(legacyFileTransaction(tx))
       )
     } as unknown as PrismaService;
     const service = new FileService(
@@ -3303,6 +3859,7 @@ describe("FileService", () => {
     const firstFailure = new Error("transaction connection failed");
     let transactionCall = 0;
     const tx = {
+      contractGeneratedDocument: { findMany: jest.fn().mockResolvedValue([]) },
       fileObject: {
         create: jest.fn(
           async ({ data }: { data: Record<string, unknown> }) => ({
@@ -3326,7 +3883,7 @@ describe("FileService", () => {
           }
           secondEntered.resolve();
           await releaseSecond.promise;
-          return callback(tx);
+          return callback(legacyFileTransaction(tx));
         }
       )
     } as unknown as PrismaService;
@@ -3370,6 +3927,7 @@ describe("FileService", () => {
     const idempotencyKey = "a43073f9-9731-4d71-9498-b9727344dbd4";
     let persisted: Record<string, unknown> | null = null;
     const tx = {
+      contractGeneratedDocument: { findMany: jest.fn().mockResolvedValue([]) },
       fileObject: {
         create: jest.fn(
           async ({ data }: { data: Record<string, unknown> }) => {
@@ -3388,7 +3946,7 @@ describe("FileService", () => {
       },
       $transaction: jest.fn(
         async (callback: (transaction: typeof tx) => unknown) => {
-          await callback(tx);
+          await callback(legacyFileTransaction(tx));
           throw new Error("transaction acknowledgement lost");
         }
       )
@@ -3418,6 +3976,7 @@ describe("FileService", () => {
       "transaction acknowledgement lost before visibility"
     );
     const tx = {
+      contractGeneratedDocument: { findMany: jest.fn().mockResolvedValue([]) },
       fileObject: {
         create: jest.fn(
           async ({ data }: { data: Record<string, unknown> }) => ({
@@ -3436,7 +3995,7 @@ describe("FileService", () => {
       },
       $transaction: jest.fn(
         async (callback: (transaction: typeof tx) => unknown) => {
-          await callback(tx);
+          await callback(legacyFileTransaction(tx));
           throw acknowledgementError;
         }
       )
@@ -3467,6 +4026,7 @@ describe("FileService", () => {
 
   it("审批单生成文件在登记事务中同时 CAS 绑定持久 claim", async () => {
     const tx = {
+      contractGeneratedDocument: { findMany: jest.fn().mockResolvedValue([]) },
       fileObject: { create: jest.fn().mockResolvedValue({
         id: "file-claim-1",
         bucket: "private-local",
@@ -3479,7 +4039,7 @@ describe("FileService", () => {
       approvalFormGenerationClaim: { updateMany: jest.fn().mockResolvedValue({ count: 1 }) }
     };
     const prisma = {
-      $transaction: jest.fn(async (callback: (transaction: typeof tx) => unknown) => callback(tx)),
+      $transaction: jest.fn(async (callback: (transaction: typeof tx) => unknown) => callback(legacyFileTransaction(tx))),
       fileObject: { findUnique: jest.fn().mockResolvedValue(null) }
     } as unknown as PrismaService;
     const service = new FileService(
@@ -3520,6 +4080,7 @@ describe("FileService", () => {
     const acknowledgementError = new Error("transaction acknowledgement lost");
     let persisted: Record<string, unknown> | null = null;
     const tx = {
+      contractGeneratedDocument: { findMany: jest.fn().mockResolvedValue([]) },
       fileObject: {
         create: jest.fn(async ({ data }: { data: Record<string, unknown> }) => {
           persisted = { ...data, createdAt: new Date() };
@@ -3529,7 +4090,7 @@ describe("FileService", () => {
     };
     const prisma = {
       $transaction: jest.fn(async (callback: (value: typeof tx) => unknown) => {
-        await callback(tx);
+        await callback(legacyFileTransaction(tx));
         throw acknowledgementError;
       }),
       fileObject: { findUnique: jest.fn(async () => persisted) }
@@ -3563,6 +4124,7 @@ describe("FileService", () => {
       )
     };
     const tx = {
+      contractGeneratedDocument: { findMany: jest.fn().mockResolvedValue([]) },
       fileObject: {
         create: jest.fn(async ({ data }: { data: Record<string, unknown> }) => {
           persisted = { ...data, createdAt: new Date() };
@@ -3573,7 +4135,7 @@ describe("FileService", () => {
     };
     const prisma = {
       $transaction: jest.fn(async (callback: (value: typeof tx) => unknown) => {
-        await callback(tx);
+        await callback(legacyFileTransaction(tx));
         throw acknowledgementError;
       }),
       fileObject: { findUnique: jest.fn(async () => persisted) },
@@ -3603,6 +4165,7 @@ describe("FileService", () => {
   it("does not delete storage when commit verification itself fails after the transaction callback completed", async () => {
     const transactionError = new Error("transaction acknowledgement lost");
     const tx = {
+      contractGeneratedDocument: { findMany: jest.fn().mockResolvedValue([]) },
       fileObject: {
         create: jest.fn(
           async ({ data }: { data: Record<string, unknown> }) => ({
@@ -3615,7 +4178,7 @@ describe("FileService", () => {
     const prisma = {
       $transaction: jest.fn(
         async (callback: (transaction: typeof tx) => unknown) => {
-          await callback(tx);
+          await callback(legacyFileTransaction(tx));
           throw transactionError;
         }
       ),
@@ -3672,6 +4235,7 @@ describe("FileService", () => {
 
   it("claim CAS 丢失时回滚文件登记并清理已写入 COS，不留孤儿", async () => {
     const tx = {
+      contractGeneratedDocument: { findMany: jest.fn().mockResolvedValue([]) },
       fileObject: { create: jest.fn().mockResolvedValue({
         id: "file-loser",
         bucket: "private-local",
@@ -3684,7 +4248,7 @@ describe("FileService", () => {
       approvalFormGenerationClaim: { updateMany: jest.fn().mockResolvedValue({ count: 0 }) }
     };
     const prisma = {
-      $transaction: jest.fn(async (callback: (transaction: typeof tx) => unknown) => callback(tx)),
+      $transaction: jest.fn(async (callback: (transaction: typeof tx) => unknown) => callback(legacyFileTransaction(tx))),
       fileObject: { findUnique: jest.fn().mockResolvedValue(null) }
     } as unknown as PrismaService;
     const service = new FileService(
@@ -3717,6 +4281,7 @@ describe("FileService", () => {
         code: "P2002"
       });
       const tx = {
+      contractGeneratedDocument: { findMany: jest.fn().mockResolvedValue([]) },
         fileObject: {
           create: jest.fn()
         }
@@ -3738,7 +4303,7 @@ describe("FileService", () => {
       }
       const prisma = {
         $transaction: jest.fn(async (callback: (transaction: typeof tx) => unknown) =>
-          callback(tx)
+          callback(legacyFileTransaction(tx))
         ),
         fileObject: { findUnique: jest.fn().mockResolvedValue(null) }
       } as unknown as PrismaService;
@@ -3984,6 +4549,7 @@ describe("FileService", () => {
 
   it("ignores a forged replacement pointer during upload so linking only happens through the replacement helper", async () => {
     const tx = {
+      contractGeneratedDocument: { findMany: jest.fn().mockResolvedValue([]) },
       fileObject: {
         create: jest.fn().mockResolvedValue({
           id: "file-new",
@@ -4001,7 +4567,7 @@ describe("FileService", () => {
     };
     const prisma = {
       $transaction: jest.fn(async (callback: (transaction: typeof tx) => unknown) =>
-        callback(tx)
+        callback(legacyFileTransaction(tx))
       )
     } as unknown as PrismaService;
     const service = new FileService(
@@ -4588,6 +5154,7 @@ describe("FileService", () => {
 
   it("locks and returns an active file only when no business record binds it", async () => {
     const tx = {
+      contractGeneratedDocument: { findMany: jest.fn().mockResolvedValue([]) },
       $queryRaw: jest
         .fn()
         .mockResolvedValueOnce([
@@ -4613,7 +5180,7 @@ describe("FileService", () => {
 
     await expect(
       service.assertFileHasNoBusinessBinding(
-        tx as never,
+        legacyFileTransaction(tx) as never,
         "unbound-file"
       )
     ).resolves.toEqual({
@@ -4633,6 +5200,7 @@ describe("FileService", () => {
     "rejects a file already bound by %s after taking the file lock",
     async (bindingType) => {
       const tx = {
+      contractGeneratedDocument: { findMany: jest.fn().mockResolvedValue([]) },
         $queryRaw: jest
           .fn()
           .mockResolvedValueOnce([
@@ -4664,7 +5232,7 @@ describe("FileService", () => {
 
       await expect(
         service.assertFileHasNoBusinessBinding(
-          tx as never,
+          legacyFileTransaction(tx) as never,
           "bound-file"
         )
       ).rejects.toThrow(
@@ -4675,6 +5243,7 @@ describe("FileService", () => {
 
   it("locks draft attachment files and allows only the current owner with no other binding", async () => {
     const tx = {
+      contractGeneratedDocument: { findMany: jest.fn().mockResolvedValue([]) },
       $queryRaw: jest
         .fn()
         .mockResolvedValueOnce([{ pg_advisory_xact_lock: null }])
@@ -4702,7 +5271,7 @@ describe("FileService", () => {
 
     await expect(
       service.assertCanBindContractDraftAttachments(
-        tx as never,
+        legacyFileTransaction(tx) as never,
         "contract-version-1",
         ["draft-attachment-1"],
         "owner-1"
@@ -4720,6 +5289,7 @@ describe("FileService", () => {
     "rejects a draft attachment already bound by %s",
     async (bindingType) => {
       const tx = {
+      contractGeneratedDocument: { findMany: jest.fn().mockResolvedValue([]) },
         $queryRaw: jest
           .fn()
           .mockResolvedValueOnce([{ pg_advisory_xact_lock: null }])
@@ -4753,7 +5323,7 @@ describe("FileService", () => {
 
       await expect(
         service.assertCanBindContractDraftAttachments(
-          tx as never,
+          legacyFileTransaction(tx) as never,
           "contract-version-1",
           ["draft-attachment-1"],
           "owner-1"
@@ -4764,6 +5334,7 @@ describe("FileService", () => {
 
   it("rejects a missing file before checking business bindings", async () => {
     const tx = {
+      contractGeneratedDocument: { findMany: jest.fn().mockResolvedValue([]) },
       $queryRaw: jest
         .fn()
         .mockResolvedValueOnce([
@@ -4779,13 +5350,14 @@ describe("FileService", () => {
     );
 
     await expect(
-      service.assertFileHasNoBusinessBinding(tx as never, "missing-file")
+      service.assertFileHasNoBusinessBinding(legacyFileTransaction(tx) as never, "missing-file")
     ).rejects.toThrow("文件不存在或已被移除");
     expect(tx.spotProcurementReceiptPhoto.findFirst).not.toHaveBeenCalled();
   });
 
   it("quarantines an owned active watermark only when no receipt photo binds it", async () => {
     const tx = {
+      contractGeneratedDocument: { findMany: jest.fn().mockResolvedValue([]) },
       $queryRaw: jest
         .fn()
         .mockResolvedValueOnce([
@@ -4798,6 +5370,7 @@ describe("FileService", () => {
             storageStatus: "active"
           }
         ])
+        .mockResolvedValueOnce([{ state: "absent" }])
         .mockResolvedValueOnce([]),
       spotProcurementReceiptPhoto: {
         findFirst: jest.fn().mockResolvedValue(null)
@@ -4837,6 +5410,7 @@ describe("FileService", () => {
 
   it("never quarantines a generated receipt file that another business already bound", async () => {
     const tx = {
+      contractGeneratedDocument: { findMany: jest.fn().mockResolvedValue([]) },
       $queryRaw: jest
         .fn()
         .mockResolvedValueOnce([
@@ -4862,7 +5436,7 @@ describe("FileService", () => {
     const prisma = {
       $transaction: jest.fn(
         (callback: (client: typeof tx) => unknown) =>
-          callback(tx)
+          callback(legacyFileTransaction(tx))
       )
     } as unknown as PrismaService;
     const service = new FileService(
@@ -4883,6 +5457,7 @@ describe("FileService", () => {
 
   it("preserves a generated file when either receipt photo column already binds it", async () => {
     const tx = {
+      contractGeneratedDocument: { findMany: jest.fn().mockResolvedValue([]) },
       $queryRaw: jest
         .fn()
         .mockResolvedValueOnce([
@@ -4904,7 +5479,7 @@ describe("FileService", () => {
       }
     };
     const prisma = {
-      $transaction: jest.fn((callback: (client: typeof tx) => unknown) => callback(tx))
+      $transaction: jest.fn((callback: (client: typeof tx) => unknown) => callback(legacyFileTransaction(tx)))
     } as unknown as PrismaService;
     const service = new FileService(
       prisma,
@@ -4932,6 +5507,7 @@ describe("FileService", () => {
 
   it("never quarantines another user's unbound file", async () => {
     const tx = {
+      contractGeneratedDocument: { findMany: jest.fn().mockResolvedValue([]) },
       $queryRaw: jest
         .fn()
         .mockResolvedValueOnce([
@@ -4948,7 +5524,7 @@ describe("FileService", () => {
       fileObject: { updateMany: jest.fn() }
     };
     const prisma = {
-      $transaction: jest.fn((callback: (client: typeof tx) => unknown) => callback(tx))
+      $transaction: jest.fn((callback: (client: typeof tx) => unknown) => callback(legacyFileTransaction(tx)))
     } as unknown as PrismaService;
     const service = new FileService(
       prisma,
@@ -5079,6 +5655,7 @@ describe("FileService", () => {
       uploadedByUserId: "owner-1"
     };
     const tx = {
+      contractGeneratedDocument: { findMany: jest.fn().mockResolvedValue([]) },
       fileObject: {
         findUnique: jest.fn().mockResolvedValue(file)
       }
@@ -5090,7 +5667,7 @@ describe("FileService", () => {
     );
 
     await expect(
-      service.assertCanDownloadFile(tx as never, "file-1", "owner-1")
+      service.assertCanDownloadFile(legacyFileTransaction(tx) as never, "file-1", "owner-1")
     ).resolves.toBe(file);
     expect(tx.fileObject.findUnique).toHaveBeenCalledWith({ where: { id: "file-1" } });
   });
@@ -5169,6 +5746,7 @@ describe("FileService", () => {
     "accepts the controlled legacy Office file %s",
     async (originalName, mimeType) => {
       const tx = {
+      contractGeneratedDocument: { findMany: jest.fn().mockResolvedValue([]) },
         fileObject: {
           create: jest.fn().mockResolvedValue({
             id: "file-legacy",
@@ -5184,7 +5762,7 @@ describe("FileService", () => {
       const prisma = {
         $transaction: jest.fn(
           async (callback: (transaction: typeof tx) => unknown) =>
-            callback(tx)
+            callback(legacyFileTransaction(tx))
         )
       } as unknown as PrismaService;
       const service = new FileService(
@@ -5205,6 +5783,61 @@ describe("FileService", () => {
     }
   );
 
+  it("rechecks scope at signed attachment ticket consumption and returns the same original bytes", async () => {
+    const keySetting = "SIGNED_SETTLEMENT_ATTACHMENT_WITNESS_KEY";
+    const oldKey = process.env[keySetting];
+    process.env[keySetting] = "a".repeat(64);
+    try {
+      const original = Buffer.from("%PDF-1.4 signed original");
+      const binding = { database: "isolated", role: "attachment_runtime", xid: "88", backend: "5", expires: "1795370000" };
+      const file = { id: "file", bucket: "private-local", objectKey: "uploads/signed-contract-settlement/fixture/original",
+        originalName: "已签原件.pdf", mimeType: "application/pdf", sizeBytes: original.length,
+        contentSha256: createHash("sha256").update(original).digest("hex"), storageStatus: "active" };
+      const scope = { projectId: "project", settlementId: "settlement", fileId: "file" };
+      const tx = { $queryRaw: jest.fn().mockResolvedValueOnce([binding]).mockResolvedValueOnce([file])
+        .mockResolvedValueOnce([binding]).mockResolvedValueOnce([file]).mockResolvedValueOnce([binding]).mockResolvedValueOnce([]) };
+      const prisma = { $transaction: jest.fn(async (callback: (transaction: typeof tx) => unknown) => callback(tx)) };
+      const service = new FileService(prisma as unknown as PrismaService, audit as never, storage as never);
+      storage.read.mockResolvedValue(original);
+      const issued = await service.createSignedSettlementDownloadTicket(scope, { actorUserId: "actor", downloadReason: "核对原件" });
+      expect(issued).not.toHaveProperty("objectKey");
+      const query = new URL(issued.downloadUrl, "http://localhost").searchParams;
+      const input = { actorUserId: "actor", downloadReason: query.get("downloadReason")!, expiresAt: query.get("expiresAt")!, token: query.get("token")! };
+      await expect(service.readSignedSettlementFile({ ...scope, projectId: "other" }, input)).rejects.toThrow("下载链接校验失败");
+      await expect(service.readSignedSettlementFile(scope, { ...input, actorUserId: "other" })).rejects.toThrow("下载链接校验失败");
+      expect((await service.readSignedSettlementFile(scope, input)).buffer).toEqual(original);
+      expect(storage.read).toHaveBeenCalledWith(file.objectKey);
+      expect(audit.record.mock.calls.map(([, f]) => f.action)).toEqual(["file.download.ticket", "file.download"]);
+      await expect(service.readSignedSettlementFile(scope, input)).rejects.toThrow("当前账号无权");
+      expect(storage.read).toHaveBeenCalledTimes(1);
+    } finally {
+      if (oldKey === undefined) delete process.env[keySetting];
+      else process.env[keySetting] = oldKey;
+    }
+  });
+
+  it("returns only signed-settlement upload metadata and audits the storage key written in the transaction", async () => {
+    const uploaded = { id: "file-signed", originalName: "已签原件.pdf", mimeType: "application/pdf" };
+    const tx = { fileObject: { create: jest.fn().mockResolvedValue(uploaded) } };
+    const prisma = { $transaction: jest.fn(async (callback: (transaction: typeof tx) => unknown) => callback(tx)) };
+    const service = new FileService(prisma as unknown as PrismaService, audit as never, storage as never);
+    const buffer = Buffer.from("%PDF-1.4");
+
+    await expect(service.uploadPrivateFile({
+      originalName: uploaded.originalName, mimeType: uploaded.mimeType, sizeBytes: buffer.length,
+      uploadedByUserId: "contract-staff", signedSettlementProjectId: "project-1", buffer
+    })).resolves.toEqual(uploaded);
+
+    expect(tx.fileObject.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({ objectKey: expect.stringMatching(/^uploads\/signed-contract-settlement\//) }),
+      select: { id: true, originalName: true, mimeType: true }
+    });
+    expect(audit.record).toHaveBeenCalledWith(tx, expect.objectContaining({
+      action: "file.upload",
+      metadata: expect.objectContaining({ objectKey: storage.write.mock.calls[0][0], bucket: "private-local", sizeBytes: buffer.length })
+    }));
+  });
+
   it("rejects DOCM and XLSM macro files", async () => {
     const service = new FileService({} as PrismaService, audit as never, storage as never);
 
@@ -5224,6 +5857,7 @@ describe("FileService", () => {
 
   it("does not inspect magic bytes or run virus scanning", async () => {
     const tx = {
+      contractGeneratedDocument: { findMany: jest.fn().mockResolvedValue([]) },
       fileObject: {
         create: jest.fn().mockResolvedValue({
           id: "file-1",
@@ -5238,7 +5872,7 @@ describe("FileService", () => {
     };
     const prisma = {
       $transaction: jest.fn(async (callback: (transaction: typeof tx) => unknown) =>
-        callback(tx)
+        callback(legacyFileTransaction(tx))
       )
     } as unknown as PrismaService;
     const service = new FileService(prisma, audit as never, storage as never);
@@ -5258,6 +5892,7 @@ describe("FileService", () => {
   it("records the configured storage bucket for private uploads", async () => {
     storage.bucketName.mockReturnValue("private-cos-bucket");
     const tx = {
+      contractGeneratedDocument: { findMany: jest.fn().mockResolvedValue([]) },
       fileObject: {
         create: jest.fn().mockResolvedValue({
           id: "file-1",
@@ -5275,7 +5910,7 @@ describe("FileService", () => {
     };
     const prisma = {
       $transaction: jest.fn(async (callback: (transaction: typeof tx) => unknown) =>
-        callback(tx)
+        callback(legacyFileTransaction(tx))
       )
     } as unknown as PrismaService;
     const service = new FileService(
@@ -5299,8 +5934,141 @@ describe("FileService", () => {
     });
   });
 
+  it("does not let the original uploader use a historical Review file ticket after losing project access", async () => {
+    const tx = {
+      contractGeneratedDocument: { findMany: jest.fn().mockResolvedValue([]) },
+      fileObject: { findUnique: jest.fn().mockResolvedValue({
+        id: "file-historical-review", bucket: "private-local", objectKey: "uploads/review.pdf",
+        originalName: "旧原件.pdf", mimeType: "application/pdf", sizeBytes: 12, contentSha256: "a".repeat(64),
+        uploadedByUserId: "original-uploader", storageStatus: "active", purgeReceiptId: null, supersedesFileObjectId: null
+      }) },
+      user: { findUnique: jest.fn().mockResolvedValue({ isActive: true }) },
+      contractArchiveFile: { findFirst: jest.fn() },
+      settlementArchiveFile: { findFirst: jest.fn() },
+      paymentExecution: { findFirst: jest.fn() },
+      auditLog: { create: jest.fn() }
+    };
+    const legacy = legacyFileTransaction(tx);
+    const database = new Proxy(legacy, { get(target, key, receiver) {
+      if (key !== "$queryRaw") return Reflect.get(target, key, receiver);
+      return (query: { sql: string }) => {
+        if (query.sql.includes("contract_economic_review_file_reference_catalog")) return [{ state: "ready" }];
+        if (query.sql.includes("contract_economic_review_file_reference_completed_206")) return [{ completed: true }];
+        if (query.sql.includes("contract_economic_review_ticket_references")) return [{ reviewId: "review-1", projectId: "old-project" }];
+        return Reflect.get(target, key, receiver)(query);
+      };
+    } });
+    const visibility = jest.spyOn(ProjectVisibilityService.prototype, "visibleProjectIdsInTransaction").mockResolvedValue([]);
+    const service = new FileService(
+      { $transaction: (operation: (value: typeof tx) => unknown) => operation(database) } as unknown as PrismaService,
+      audit as unknown as AuditService, storage as unknown as PrivateFileStorage
+    );
+    try {
+      await expect(service.createDownloadTicket("file-historical-review", {
+        actorUserId: "original-uploader", downloadReason: "查看原履约复核"
+      })).rejects.toBeInstanceOf(ForbiddenException);
+      expect(audit.record).not.toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ action: "file.download.ticket" }));
+      expect(storage.read).not.toHaveBeenCalled();
+    } finally {
+      visibility.mockRestore();
+    }
+  });
+
+  it.each(["same-key retained peer", "missing reference in confirmed source", "confirmed source with incomplete display summary", "incomplete retention migration", "ordinary unreferenced file"])(
+    "applies the correct uploader ticket policy for %s",
+    async scenario => {
+      const fileId = scenario === "same-key retained peer" ? "alias-file" : "original-file";
+      const tx = {
+        contractGeneratedDocument: { findMany: jest.fn().mockResolvedValue([]) },
+        fileObject: { findUnique: jest.fn().mockResolvedValue({
+          id: fileId, bucket: "private-local", objectKey: "uploads/frozen-original.pdf",
+          originalName: "旧原件.pdf", mimeType: "application/pdf", sizeBytes: 12, contentSha256: "a".repeat(64),
+          uploadedByUserId: "original-uploader", storageStatus: "active", purgeReceiptId: null, supersedesFileObjectId: null
+        }) },
+        user: { findUnique: jest.fn().mockResolvedValue({ isActive: true }) },
+        contractArchiveFile: { findFirst: jest.fn() },
+        settlementArchiveFile: { findFirst: jest.fn() },
+        paymentExecution: { findFirst: jest.fn() },
+        auditLog: { create: jest.fn() }
+      };
+      const legacy = legacyFileTransaction(tx);
+      const database = new Proxy(legacy, { get(target, key, receiver) {
+        if (key !== "$queryRaw") return Reflect.get(target, key, receiver);
+        return (query: { sql: string }) => {
+          if (query.sql.includes("contract_economic_review_file_reference_catalog")) return [{ state: "ready" }];
+          if (query.sql.includes("contract_economic_review_file_reference_completed_206")) return [{ completed: scenario !== "incomplete retention migration" }];
+          if (query.sql.includes("contract_economic_review_ticket_references")) return [];
+          if (query.sql.includes("contract_economic_review_ticket_orphaned_proof")) {
+            // The confirmed, nested proof still contains this file. In this
+            // persistence fixture, display-only fields on the outer side are
+            // absent, so a SQL predicate on any of them would filter it out.
+            const filtersDisplayOnlyFields = /side\.value->>?'(?:formal|numericProtocolVersion|projectId)'/u.test(query.sql);
+            return [{
+              retainedAlias: scenario === "same-key retained peer",
+              confirmedWithoutReference: scenario === "missing reference in confirmed source" ||
+                (scenario === "confirmed source with incomplete display summary" && !filtersDisplayOnlyFields)
+            }];
+          }
+          return Reflect.get(target, key, receiver)(query);
+        };
+      } });
+      const service = new FileService(
+        { $transaction: (operation: (value: typeof tx) => unknown) => operation(database) } as unknown as PrismaService,
+        audit as unknown as AuditService,
+        storage as unknown as PrivateFileStorage
+      );
+      const ticket = service.createDownloadTicket(fileId, {
+        actorUserId: "original-uploader", downloadReason: "查看原履约复核"
+      });
+      if (scenario === "ordinary unreferenced file") {
+        await expect(ticket).resolves.toMatchObject({ fileId, fileName: "旧原件.pdf" });
+      } else {
+        await expect(ticket).rejects.toBeInstanceOf(scenario === "incomplete retention migration" ? ServiceUnavailableException : ForbiddenException);
+        expect(audit.record).not.toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ action: "file.download.ticket" }));
+      }
+      expect(storage.read).not.toHaveBeenCalled();
+    }
+  );
+
+  it("binds a signed-settlement photo ticket to current project authority and rejects a stale ticket after revocation", async () => {
+    const buffer = Buffer.from("isolated PNG content");
+    const file = {
+      id: "settlement-photo", bucket: "private-local", objectKey: `${signedSettlementUploadPrefix("project")}photo.png`,
+      originalName: "已签单.png", mimeType: "image/png", sizeBytes: buffer.length, uploadedByUserId: "staff",
+      storageStatus: "active", contentSha256: createHash("sha256").update(buffer).digest("hex")
+    };
+    const settlement = { projectId: "project", ownerUserId: "staff", state: "pending_review" };
+    let hasRole = true;
+    const tx = {
+      fileObject: { findUnique: jest.fn().mockResolvedValue(file) },
+      signedContractSettlementAttachment: { findUnique: jest.fn().mockImplementation(async () => ({ sha256: file.contentSha256, settlement })) },
+      user: { findUnique: jest.fn().mockResolvedValue({ isActive: true }) },
+      userPosition: { findMany: jest.fn().mockResolvedValue([]) },
+      position: { findMany: jest.fn().mockResolvedValue([]) },
+      projectMember: { findMany: jest.fn().mockImplementation(async () => hasRole ? [{ projectId: "project", positionKey: "contract_director" }] : []) },
+      projectRosterMember: { groupBy: jest.fn().mockResolvedValue([]) },
+      project: { findMany: jest.fn().mockResolvedValue([{ id: "project" }]) }
+    };
+    const prisma = { $transaction: jest.fn(async (callback: (transaction: typeof tx) => unknown) => callback(legacyFileTransaction(tx))) } as unknown as PrismaService;
+    const service = new FileService(prisma, audit as unknown as AuditService, storage as unknown as PrivateFileStorage);
+    storage.read.mockResolvedValue(buffer);
+    const request = { actorUserId: "director", downloadReason: "主管复核已签结算", accessMode: "preview" as const };
+    const ticket = await service.createDownloadTicket(file.id, request);
+    const token = new URL(ticket.downloadUrl, "https://fixture.invalid").searchParams.get("token")!;
+    const issued = { ...request, token, expiresAt: ticket.expiresAt };
+    const result = await service.readPrivateFile(file.id, issued);
+    expect(result.buffer.equals(buffer)).toBe(true);
+    expect(result.accessMode).toBe("preview");
+    storage.read.mockClear();
+    hasRole = false;
+    await expect(service.readPrivateFile(file.id, issued)).rejects.toBeInstanceOf(ForbiddenException);
+    await expect(service.createDownloadTicket(file.id, { ...request, actorUserId: "staff" })).rejects.toBeInstanceOf(ForbiddenException);
+    expect(storage.read).not.toHaveBeenCalled();
+  });
+
   it("creates a short-lived download ticket for a private file", async () => {
     const tx = {
+      contractGeneratedDocument: { findMany: jest.fn().mockResolvedValue([]) },
       fileObject: {
         findUnique: jest.fn().mockResolvedValue({
           id: "file-1",
@@ -5321,7 +6089,7 @@ describe("FileService", () => {
     };
     const prisma = {
       $transaction: jest.fn(async (callback: (transaction: typeof tx) => unknown) =>
-        callback(tx)
+        callback(legacyFileTransaction(tx))
       )
     } as unknown as PrismaService;
     const service = new FileService(
@@ -5354,8 +6122,9 @@ describe("FileService", () => {
     });
   });
 
-  it("allows the generation requester to download their own generated contract document via a short-lived ticket", async () => {
+  it("allows the uploader to download an unbound temporary document via a short-lived ticket", async () => {
     const tx = {
+      contractGeneratedDocument: { findMany: jest.fn().mockResolvedValue([]) },
       fileObject: {
         findUnique: jest.fn().mockResolvedValue({
           id: "generated-docx",
@@ -5377,7 +6146,7 @@ describe("FileService", () => {
     };
     const prisma = {
       $transaction: jest.fn(async (callback: (transaction: typeof tx) => unknown) =>
-        callback(tx)
+        callback(legacyFileTransaction(tx))
       )
     } as unknown as PrismaService;
     const service = new FileService(
@@ -5407,6 +6176,7 @@ describe("FileService", () => {
 
   it("publishes a download-ticket capability only after the same file ACL check", async () => {
     const tx = {
+      contractGeneratedDocument: { findMany: jest.fn().mockResolvedValue([]) },
       fileObject: {
         findUnique: jest.fn().mockResolvedValue({
           id: "file-1",
@@ -5424,7 +6194,7 @@ describe("FileService", () => {
     };
     const prisma = {
       $transaction: jest.fn(async (callback: (transaction: typeof tx) => unknown) =>
-        callback(tx)
+        callback(legacyFileTransaction(tx))
       )
     } as unknown as PrismaService;
     const service = new FileService(
@@ -5447,6 +6217,7 @@ describe("FileService", () => {
 
   it("authorizes an offline-revision preview by the current contract owner, not the former uploader", async () => {
     const tx = {
+      contractGeneratedDocument: { findMany: jest.fn().mockResolvedValue([]) },
       fileObject: {
         findUnique: jest.fn().mockResolvedValue({
           id: "preview-pdf",
@@ -5462,9 +6233,7 @@ describe("FileService", () => {
       settlementArchiveFile: { findFirst: jest.fn().mockResolvedValue(null) },
       paymentExecution: { findFirst: jest.fn().mockResolvedValue(null) },
       pdfDocument: { findFirst: jest.fn().mockResolvedValue(null) },
-      contractOfflineRevision: {
-        findFirst: jest.fn().mockResolvedValue({ contractVersionId: "version-1" })
-      },
+      offlineRevisionBinding: jest.fn().mockResolvedValue([{ contractVersionId: "version-1" }]),
       contractVersion: {
         findUnique: jest.fn().mockResolvedValue({ contractId: "contract-1" })
       },
@@ -5478,7 +6247,7 @@ describe("FileService", () => {
     };
     const prisma = {
       $transaction: jest.fn(async (callback: (transaction: typeof tx) => unknown) =>
-        callback(tx)
+        callback(legacyFileTransaction(tx))
       )
     } as unknown as PrismaService;
     const service = new FileService(
@@ -5521,16 +6290,14 @@ describe("FileService", () => {
         downloadReason: "复核线下修订原文"
       })
     ).rejects.toThrow("当前账号无权下载该线下修订稿文件");
-    expect(tx.contractOfflineRevision.findFirst).toHaveBeenLastCalledWith({
-      where: {
-        OR: [{ fileId: "offline-docx" }, { previewPdfFileId: "offline-docx" }]
-      },
-      select: { contractVersionId: true }
-    });
+    expect(tx.offlineRevisionBinding.mock.calls).toEqual([
+      ["preview-pdf"], ["preview-pdf"], ["offline-docx"], ["offline-docx"]
+    ]);
   });
 
   it("rejects download ticket creation when actor cannot access the file", async () => {
     const tx = {
+      contractGeneratedDocument: { findMany: jest.fn().mockResolvedValue([]) },
       fileObject: {
         findUnique: jest.fn().mockResolvedValue({
           id: "file-1",
@@ -5549,7 +6316,7 @@ describe("FileService", () => {
     };
     const prisma = {
       $transaction: jest.fn(async (callback: (transaction: typeof tx) => unknown) =>
-        callback(tx)
+        callback(legacyFileTransaction(tx))
       )
     } as unknown as PrismaService;
     const service = new FileService(
@@ -5570,6 +6337,7 @@ describe("FileService", () => {
 
   it("allows project archive roles to create download tickets for takeover evidence", async () => {
     const tx = {
+      contractGeneratedDocument: { findMany: jest.fn().mockResolvedValue([]) },
       fileObject: {
         findUnique: jest.fn().mockResolvedValue({
           id: "file-1",
@@ -5607,7 +6375,7 @@ describe("FileService", () => {
     };
     const prisma = {
       $transaction: jest.fn(async (callback: (transaction: typeof tx) => unknown) =>
-        callback(tx)
+        callback(legacyFileTransaction(tx))
       )
     } as unknown as PrismaService;
     const service = new FileService(
@@ -5640,6 +6408,7 @@ describe("FileService", () => {
 
   it("denies takeover evidence download tickets to users outside the project", async () => {
     const tx = {
+      contractGeneratedDocument: { findMany: jest.fn().mockResolvedValue([]) },
       fileObject: {
         findUnique: jest.fn().mockResolvedValue({
           id: "file-1",
@@ -5673,7 +6442,7 @@ describe("FileService", () => {
     };
     const prisma = {
       $transaction: jest.fn(async (callback: (transaction: typeof tx) => unknown) =>
-        callback(tx)
+        callback(legacyFileTransaction(tx))
       )
     } as unknown as PrismaService;
     const service = new FileService(
@@ -5703,6 +6472,7 @@ describe("FileService", () => {
     "comprehensive_director"
   ])("allows %s to use a short ticket for a project-visible takeover correction attachment", async (positionKey) => {
     const tx = {
+      contractGeneratedDocument: { findMany: jest.fn().mockResolvedValue([]) },
       fileObject: {
         findUnique: jest.fn().mockResolvedValue({
           id: "correction-file-1",
@@ -5715,7 +6485,7 @@ describe("FileService", () => {
         })
       },
       contractTakeoverCorrection: {
-        findFirst: jest.fn().mockResolvedValue({ projectId: "project-1" })
+        groupBy: jest.fn().mockResolvedValue([{ projectId: "project-1" }])
       },
       userPosition: { findMany: jest.fn().mockResolvedValue([]) },
       projectMember: { findMany: jest.fn().mockResolvedValue([{ positionKey }]) },
@@ -5723,7 +6493,7 @@ describe("FileService", () => {
     };
     const prisma = {
       $transaction: jest.fn(async (callback: (transaction: typeof tx) => unknown) =>
-        callback(tx)
+        callback(legacyFileTransaction(tx))
       )
     } as unknown as PrismaService;
     const service = new FileService(
@@ -5737,9 +6507,11 @@ describe("FileService", () => {
       downloadReason: "复核历史主体更正依据"
     });
 
-    expect(tx.contractTakeoverCorrection.findFirst).toHaveBeenCalledWith({
+    expect(tx.contractTakeoverCorrection.groupBy).toHaveBeenCalledWith({
       where: { attachmentFileId: "correction-file-1" },
-      select: { projectId: true }
+      by: ["projectId"],
+      orderBy: { projectId: "asc" },
+      take: 2
     });
     expect(ticket.expiresAt).toBeTruthy();
     expect(ticket.downloadUrl).toContain("correction-file-1");
@@ -5751,6 +6523,7 @@ describe("FileService", () => {
 
   it("denies a takeover correction attachment even to its uploader without an approved project role", async () => {
     const tx = {
+      contractGeneratedDocument: { findMany: jest.fn().mockResolvedValue([]) },
       fileObject: {
         findUnique: jest.fn().mockResolvedValue({
           id: "correction-file-1",
@@ -5763,7 +6536,7 @@ describe("FileService", () => {
         })
       },
       contractTakeoverCorrection: {
-        findFirst: jest.fn().mockResolvedValue({ projectId: "project-1" })
+        groupBy: jest.fn().mockResolvedValue([{ projectId: "project-1" }])
       },
       userPosition: { findMany: jest.fn().mockResolvedValue([]) },
       projectMember: {
@@ -5773,7 +6546,7 @@ describe("FileService", () => {
     };
     const prisma = {
       $transaction: jest.fn(async (callback: (transaction: typeof tx) => unknown) =>
-        callback(tx)
+        callback(legacyFileTransaction(tx))
       )
     } as unknown as PrismaService;
     const service = new FileService(
@@ -5798,6 +6571,7 @@ describe("FileService", () => {
         originContractVersionId: "contract-version-1"
       };
       const tx = {
+      contractGeneratedDocument: { findMany: jest.fn().mockResolvedValue([]) },
         fileObject: {
           findUnique: jest.fn().mockResolvedValue({
             id: "conflicting-file",
@@ -5818,7 +6592,7 @@ describe("FileService", () => {
         pdfDocument: { findFirst: jest.fn().mockResolvedValue(null) },
         contractSealTask: { findFirst: jest.fn() },
         contractTakeoverCorrection: {
-          findFirst: jest.fn().mockResolvedValue({ projectId: "project-1" })
+          groupBy: jest.fn().mockResolvedValue([{ projectId: "project-1" }])
         },
         userPosition: { findMany: jest.fn().mockResolvedValue([]) },
         projectMember: {
@@ -5828,7 +6602,7 @@ describe("FileService", () => {
       };
       const prisma = {
         $transaction: jest.fn(async (callback: (transaction: typeof tx) => unknown) =>
-          callback(tx)
+          callback(legacyFileTransaction(tx))
         )
       } as unknown as PrismaService;
       const service = new FileService(
@@ -5841,13 +6615,46 @@ describe("FileService", () => {
         actorUserId: "contract-director",
         downloadReason: "复核历史主体更正依据"
       })).rejects.toThrow("当前账号无权下载该合同签署资料");
-      expect(tx.contractTakeoverCorrection.findFirst).not.toHaveBeenCalled();
+      expect(tx.contractTakeoverCorrection.groupBy).not.toHaveBeenCalled();
       expect(audit.record).not.toHaveBeenCalled();
     }
   );
 
+  it("denies takeover correction file bindings across two projects before checking actor roles", async () => {
+    const tx = {
+      fileObject: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "correction-file-1",
+          bucket: "private-local",
+          objectKey: "uploads/correction-file-1.pdf",
+          originalName: "主体更正依据.pdf",
+          mimeType: "application/pdf",
+          sizeBytes: 12,
+          uploadedByUserId: "uploader"
+        })
+      },
+      contractTakeoverCorrection: {
+        groupBy: jest.fn().mockResolvedValue([{ projectId: "project-1" }, { projectId: "project-2" }])
+      },
+      projectMember: { findMany: jest.fn() }
+    };
+    const prisma = {
+      $transaction: jest.fn(async (callback: (transaction: typeof tx) => unknown) =>
+        callback(legacyFileTransaction(tx))
+      )
+    } as unknown as PrismaService;
+    const service = new FileService(prisma, audit as unknown as AuditService, storage as unknown as PrivateFileStorage);
+
+    await expect(service.createDownloadTicket("correction-file-1", {
+      actorUserId: "uploader", downloadReason: "复核历史接管依据"
+    })).rejects.toThrow("资料文件存在跨业务绑定冲突");
+    expect(tx.projectMember.findMany).not.toHaveBeenCalled();
+    expect(audit.record).not.toHaveBeenCalled();
+  });
+
   it("allows finance users to create download tickets for linked contract archives", async () => {
     const tx = {
+      contractGeneratedDocument: { findMany: jest.fn().mockResolvedValue([]) },
       fileObject: {
         findUnique: jest.fn().mockResolvedValue({
           id: "file-1",
@@ -5889,7 +6696,7 @@ describe("FileService", () => {
     };
     const prisma = {
       $transaction: jest.fn(async (callback: (transaction: typeof tx) => unknown) =>
-        callback(tx)
+        callback(legacyFileTransaction(tx))
       )
     } as unknown as PrismaService;
     const service = new FileService(
@@ -5916,8 +6723,78 @@ describe("FileService", () => {
     });
   });
 
+  it.each(["generated_approval", "direct_signed"])(
+    "requires a current archive reader role for a %s original even when the caller uploaded it",
+    async archiveSource => {
+      const buffer = Buffer.from("synthetic signed PDF");
+      const file = {
+        id: "signed-file", originalName: "盖章合同.pdf", mimeType: "application/pdf",
+        bucket: "private-local", objectKey: "uploads/signed-file.pdf", sizeBytes: buffer.length,
+        uploadedByUserId: "archive-handler", storageStatus: "active",
+        contentSha256: createHash("sha256").update(buffer).digest("hex")
+      };
+      const evidence = { id: "evidence", fileId: file.id, archiveFileId: "archive", contractVersionId: "version" };
+      const parent = {
+        id: "archive", archiveProtocolVersion: 2, archiveSource, contractVersionId: "version", status: "confirmed",
+        approvalInstanceId: archiveSource === "generated_approval" ? "approval" : null,
+        sealTaskId: archiveSource === "generated_approval" ? "seal" : null
+      };
+      let active = true;
+      let archiveRole = true;
+      const tx = {
+        contractGeneratedDocument: { findMany: jest.fn().mockResolvedValue([]) },
+        fileObject: { findUnique: jest.fn().mockResolvedValue(file) },
+        contractArchiveEvidenceFile: {
+          findFirst: jest.fn().mockResolvedValue(evidence),
+          findMany: jest.fn().mockResolvedValue([evidence])
+        },
+        contractArchiveFile: { findUnique: jest.fn().mockResolvedValue(parent) },
+        contractVersion: {
+          findUnique: jest.fn().mockResolvedValue({ id: "version", contractId: "contract", signingSubjectType: "our_company" })
+        },
+        contract: { findUnique: jest.fn().mockResolvedValue({ id: "contract", projectId: "project" }) },
+        user: { findUnique: jest.fn().mockImplementation(async () => ({ isActive: active })) },
+        userPosition: { findMany: jest.fn().mockResolvedValue([]) },
+        projectMember: {
+          findMany: jest.fn().mockImplementation(async () => archiveRole ? [{ positionKey: "contract_staff" }] : [])
+        }
+      };
+      const prisma = {
+        $transaction: jest.fn(async (callback: (transaction: typeof tx) => unknown) =>
+          callback(legacyFileTransaction(tx))
+        )
+      } as unknown as PrismaService;
+      const service = new FileService(
+        prisma, audit as unknown as AuditService, storage as unknown as PrivateFileStorage
+      );
+      storage.read.mockResolvedValue(buffer);
+      const request = { actorUserId: file.uploadedByUserId, downloadReason: "复核盖章合同" };
+      const ticket = await service.createDownloadTicket(file.id, request);
+      const url = new URL(ticket.downloadUrl, "https://fixture.invalid");
+      const issued = {
+        ...request,
+        expiresAt: ticket.expiresAt,
+        token: url.searchParams.get("token") ?? ""
+      };
+
+      audit.record.mockClear();
+      archiveRole = false;
+      await expect(service.getDownloadTicketCapability(file.id, request.actorUserId)).rejects.toBeInstanceOf(ForbiddenException);
+      await expect(service.createDownloadTicket(file.id, request)).rejects.toBeInstanceOf(ForbiddenException);
+      await expect(service.readPrivateFile(file.id, issued)).rejects.toBeInstanceOf(ForbiddenException);
+
+      archiveRole = true;
+      active = false;
+      await expect(service.createDownloadTicket(file.id, request)).rejects.toBeInstanceOf(ForbiddenException);
+      await expect(service.readPrivateFile(file.id, issued)).rejects.toBeInstanceOf(ForbiddenException);
+      expect(storage.read).not.toHaveBeenCalled();
+      expect(audit.record).not.toHaveBeenCalled();
+    }
+  );
+
   it("rejects download tickets for pending contract archive files", async () => {
     const tx = {
+      contractGeneratedDocument: { findMany: jest.fn().mockResolvedValue([]) },
       fileObject: {
         findUnique: jest.fn().mockResolvedValue({
           id: "file-1",
@@ -5959,7 +6836,7 @@ describe("FileService", () => {
     };
     const prisma = {
       $transaction: jest.fn(async (callback: (transaction: typeof tx) => unknown) =>
-        callback(tx)
+        callback(legacyFileTransaction(tx))
       )
     } as unknown as PrismaService;
     const service = new FileService(
@@ -5976,6 +6853,7 @@ describe("FileService", () => {
 
   it("rejects download tickets for pending settlement archive files", async () => {
     const tx = {
+      contractGeneratedDocument: { findMany: jest.fn().mockResolvedValue([]) },
       fileObject: {
         findUnique: jest.fn().mockResolvedValue({
           id: "file-1",
@@ -6011,7 +6889,7 @@ describe("FileService", () => {
     };
     const prisma = {
       $transaction: jest.fn(async (callback: (transaction: typeof tx) => unknown) =>
-        callback(tx)
+        callback(legacyFileTransaction(tx))
       )
     } as unknown as PrismaService;
     const service = new FileService(
@@ -6028,6 +6906,7 @@ describe("FileService", () => {
 
   it("allows finance users to create download tickets for project receipt vouchers", async () => {
     const tx = {
+      contractGeneratedDocument: { findMany: jest.fn().mockResolvedValue([]) },
       fileObject: {
         findUnique: jest.fn().mockResolvedValue({
           id: "file-1",
@@ -6060,7 +6939,7 @@ describe("FileService", () => {
     };
     const prisma = {
       $transaction: jest.fn(async (callback: (transaction: typeof tx) => unknown) =>
-        callback(tx)
+        callback(legacyFileTransaction(tx))
       )
     } as unknown as PrismaService;
     const service = new FileService(
@@ -6089,6 +6968,7 @@ describe("FileService", () => {
 
   it("allows finance users to create download tickets for project proxy payment vouchers", async () => {
     const tx = {
+      contractGeneratedDocument: { findMany: jest.fn().mockResolvedValue([]) },
       fileObject: {
         findUnique: jest.fn().mockResolvedValue({
           id: "file-1",
@@ -6122,7 +7002,7 @@ describe("FileService", () => {
     };
     const prisma = {
       $transaction: jest.fn(async (callback: (transaction: typeof tx) => unknown) =>
-        callback(tx)
+        callback(legacyFileTransaction(tx))
       )
     } as unknown as PrismaService;
     const service = new FileService(
@@ -6151,6 +7031,7 @@ describe("FileService", () => {
 
   it("allows budget users to create download tickets for upstream settlement vouchers", async () => {
     const tx = {
+      contractGeneratedDocument: { findMany: jest.fn().mockResolvedValue([]) },
       fileObject: {
         findUnique: jest.fn().mockResolvedValue({
           id: "file-1",
@@ -6185,7 +7066,7 @@ describe("FileService", () => {
     };
     const prisma = {
       $transaction: jest.fn(async (callback: (transaction: typeof tx) => unknown) =>
-        callback(tx)
+        callback(legacyFileTransaction(tx))
       )
     } as unknown as PrismaService;
     const service = new FileService(
@@ -6214,6 +7095,7 @@ describe("FileService", () => {
 
   it("rejects finance users from downloading upstream settlement vouchers", async () => {
     const tx = {
+      contractGeneratedDocument: { findMany: jest.fn().mockResolvedValue([]) },
       fileObject: {
         findUnique: jest.fn().mockResolvedValue({
           id: "file-1",
@@ -6245,7 +7127,7 @@ describe("FileService", () => {
     };
     const prisma = {
       $transaction: jest.fn(async (callback: (transaction: typeof tx) => unknown) =>
-        callback(tx)
+        callback(legacyFileTransaction(tx))
       )
     } as unknown as PrismaService;
     const service = new FileService(
@@ -6262,6 +7144,7 @@ describe("FileService", () => {
 
   it("allows project finance users to download upstream fund evidence", async () => {
     const tx = {
+      contractGeneratedDocument: { findMany: jest.fn().mockResolvedValue([]) },
       fileObject: {
         findUnique: jest.fn().mockResolvedValue({
           id: "file-1",
@@ -6291,7 +7174,7 @@ describe("FileService", () => {
     };
     const prisma = {
       $transaction: jest.fn(async (callback: (transaction: typeof tx) => unknown) =>
-        callback(tx)
+        callback(legacyFileTransaction(tx))
       )
     } as unknown as PrismaService;
     const service = new FileService(
@@ -6321,6 +7204,7 @@ describe("FileService", () => {
 
   it("rejects non-finance project roles from downloading upstream fund evidence", async () => {
     const tx = {
+      contractGeneratedDocument: { findMany: jest.fn().mockResolvedValue([]) },
       fileObject: {
         findUnique: jest.fn().mockResolvedValue({
           id: "file-1",
@@ -6349,7 +7233,7 @@ describe("FileService", () => {
     };
     const prisma = {
       $transaction: jest.fn(async (callback: (transaction: typeof tx) => unknown) =>
-        callback(tx)
+        callback(legacyFileTransaction(tx))
       )
     } as unknown as PrismaService;
     const service = new FileService(
@@ -6369,6 +7253,7 @@ describe("FileService", () => {
 
   it("does not grant upstream settlement voucher access through voided records", async () => {
     const tx = {
+      contractGeneratedDocument: { findMany: jest.fn().mockResolvedValue([]) },
       fileObject: {
         findUnique: jest.fn().mockResolvedValue({
           id: "file-1",
@@ -6396,7 +7281,7 @@ describe("FileService", () => {
     };
     const prisma = {
       $transaction: jest.fn(async (callback: (transaction: typeof tx) => unknown) =>
-        callback(tx)
+        callback(legacyFileTransaction(tx))
       )
     } as unknown as PrismaService;
     const service = new FileService(
@@ -6423,6 +7308,7 @@ describe("FileService", () => {
 
   it("allows approval roles to create download tickets for settlement exception quota attachments", async () => {
     const tx = {
+      contractGeneratedDocument: { findMany: jest.fn().mockResolvedValue([]) },
       fileObject: {
         findUnique: jest.fn().mockResolvedValue({
           id: "file-1",
@@ -6458,7 +7344,7 @@ describe("FileService", () => {
     };
     const prisma = {
       $transaction: jest.fn(async (callback: (transaction: typeof tx) => unknown) =>
-        callback(tx)
+        callback(legacyFileTransaction(tx))
       )
     } as unknown as PrismaService;
     const service = new FileService(
@@ -6491,6 +7377,7 @@ describe("FileService", () => {
 
   it("rejects finance users from downloading settlement exception quota attachments", async () => {
     const tx = {
+      contractGeneratedDocument: { findMany: jest.fn().mockResolvedValue([]) },
       fileObject: {
         findUnique: jest.fn().mockResolvedValue({
           id: "file-1",
@@ -6523,7 +7410,7 @@ describe("FileService", () => {
     };
     const prisma = {
       $transaction: jest.fn(async (callback: (transaction: typeof tx) => unknown) =>
-        callback(tx)
+        callback(legacyFileTransaction(tx))
       )
     } as unknown as PrismaService;
     const service = new FileService(
@@ -6540,6 +7427,7 @@ describe("FileService", () => {
 
   it("allows financing approval roles to create download tickets for project financing quota attachments", async () => {
     const tx = {
+      contractGeneratedDocument: { findMany: jest.fn().mockResolvedValue([]) },
       fileObject: {
         findUnique: jest.fn().mockResolvedValue({
           id: "file-1",
@@ -6576,7 +7464,7 @@ describe("FileService", () => {
     };
     const prisma = {
       $transaction: jest.fn(async (callback: (transaction: typeof tx) => unknown) =>
-        callback(tx)
+        callback(legacyFileTransaction(tx))
       )
     } as unknown as PrismaService;
     const service = new FileService(
@@ -6609,6 +7497,7 @@ describe("FileService", () => {
 
   it("rejects finance staff from downloading project financing quota attachments", async () => {
     const tx = {
+      contractGeneratedDocument: { findMany: jest.fn().mockResolvedValue([]) },
       fileObject: {
         findUnique: jest.fn().mockResolvedValue({
           id: "file-1",
@@ -6642,7 +7531,7 @@ describe("FileService", () => {
     };
     const prisma = {
       $transaction: jest.fn(async (callback: (transaction: typeof tx) => unknown) =>
-        callback(tx)
+        callback(legacyFileTransaction(tx))
       )
     } as unknown as PrismaService;
     const service = new FileService(
@@ -6659,6 +7548,7 @@ describe("FileService", () => {
 
   it("allows project expense approvers to create download tickets for request attachments", async () => {
     const tx = {
+      contractGeneratedDocument: { findMany: jest.fn().mockResolvedValue([]) },
       fileObject: {
         findUnique: jest.fn().mockResolvedValue({
           id: "file-1",
@@ -6692,7 +7582,7 @@ describe("FileService", () => {
     };
     const prisma = {
       $transaction: jest.fn(async (callback: (transaction: typeof tx) => unknown) =>
-        callback(tx)
+        callback(legacyFileTransaction(tx))
       )
     } as unknown as PrismaService;
     const service = new FileService(
@@ -6725,6 +7615,7 @@ describe("FileService", () => {
 
   it("allows finance users to create download tickets for project expense execution vouchers", async () => {
     const tx = {
+      contractGeneratedDocument: { findMany: jest.fn().mockResolvedValue([]) },
       fileObject: {
         findUnique: jest.fn().mockResolvedValue({
           id: "file-1",
@@ -6755,7 +7646,7 @@ describe("FileService", () => {
     };
     const prisma = {
       $transaction: jest.fn(async (callback: (transaction: typeof tx) => unknown) =>
-        callback(tx)
+        callback(legacyFileTransaction(tx))
       )
     } as unknown as PrismaService;
     const service = new FileService(
@@ -6788,6 +7679,7 @@ describe("FileService", () => {
 
   it("allows archive-readable contract roles to download active project owner contract files", async () => {
     const tx = {
+      contractGeneratedDocument: { findMany: jest.fn().mockResolvedValue([]) },
       fileObject: {
         findUnique: jest.fn().mockResolvedValue({
           id: "file-1",
@@ -6835,7 +7727,7 @@ describe("FileService", () => {
     };
     const prisma = {
       $transaction: jest.fn(async (callback: (transaction: typeof tx) => unknown) =>
-        callback(tx)
+        callback(legacyFileTransaction(tx))
       )
     } as unknown as PrismaService;
     const service = new FileService(
@@ -6869,6 +7761,7 @@ describe("FileService", () => {
 
   it("does not grant project owner contract file access through voided records", async () => {
     const tx = {
+      contractGeneratedDocument: { findMany: jest.fn().mockResolvedValue([]) },
       fileObject: {
         findUnique: jest.fn().mockResolvedValue({
           id: "file-1",
@@ -6900,7 +7793,7 @@ describe("FileService", () => {
     };
     const prisma = {
       $transaction: jest.fn(async (callback: (transaction: typeof tx) => unknown) =>
-        callback(tx)
+        callback(legacyFileTransaction(tx))
       )
     } as unknown as PrismaService;
     const service = new FileService(
@@ -6925,6 +7818,7 @@ describe("FileService", () => {
 
   it("rejects uploader download when the project owner contract file belongs to a voided record", async () => {
     const tx = {
+      contractGeneratedDocument: { findMany: jest.fn().mockResolvedValue([]) },
       fileObject: {
         findUnique: jest.fn().mockResolvedValue({
           id: "file-1",
@@ -6945,7 +7839,7 @@ describe("FileService", () => {
     };
     const prisma = {
       $transaction: jest.fn(async (callback: (transaction: typeof tx) => unknown) =>
-        callback(tx)
+        callback(legacyFileTransaction(tx))
       )
     } as unknown as PrismaService;
     const service = new FileService(
@@ -6970,6 +7864,7 @@ describe("FileService", () => {
 
   it("blocks raw-file bypass: allows the applicant to download an approval-form PDF", async () => {
     const tx = {
+      contractGeneratedDocument: { findMany: jest.fn().mockResolvedValue([]) },
       fileObject: {
         findUnique: jest.fn().mockResolvedValue({
           id: "file-1",
@@ -7004,7 +7899,7 @@ describe("FileService", () => {
     };
     const prisma = {
       $transaction: jest.fn(async (callback: (transaction: typeof tx) => unknown) =>
-        callback(tx)
+        callback(legacyFileTransaction(tx))
       )
     } as unknown as PrismaService;
     const service = new FileService(
@@ -7021,6 +7916,7 @@ describe("FileService", () => {
 
   it("blocks raw-file bypass: allows finance staff to download a project expense approval-form PDF by project role", async () => {
     const tx = {
+      contractGeneratedDocument: { findMany: jest.fn().mockResolvedValue([]) },
       fileObject: {
         findUnique: jest.fn().mockResolvedValue({
           id: "file-1",
@@ -7063,7 +7959,7 @@ describe("FileService", () => {
     };
     const prisma = {
       $transaction: jest.fn(async (callback: (transaction: typeof tx) => unknown) =>
-        callback(tx)
+        callback(legacyFileTransaction(tx))
       )
     } as unknown as PrismaService;
     const service = new FileService(
@@ -7079,8 +7975,49 @@ describe("FileService", () => {
     expect(tx.projectExpenseRequest.findUnique).not.toHaveBeenCalled();
   });
 
+  it("requires current contract project access even for the original archive uploader", async () => {
+    const tx = {
+      contractGeneratedDocument: { findMany: jest.fn().mockResolvedValue([]) },
+      fileObject: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "file-1",
+          originalName: "合同归档.pdf",
+          mimeType: "application/pdf",
+          sizeBytes: 12,
+          uploadedByUserId: "uploader"
+        })
+      },
+      archiveRecord: {
+        findFirst: jest.fn().mockResolvedValue({
+          businessType: "contract_version", businessId: "version-1"
+        })
+      },
+      contractVersion: { findUnique: jest.fn().mockResolvedValue({ contractId: "contract-1" }) },
+      contract: { findUnique: jest.fn().mockResolvedValue({ projectId: "project-1" }) },
+      userPosition: { findMany: jest.fn().mockResolvedValue([]) },
+      projectMember: { findMany: jest.fn().mockResolvedValue([]) }
+    };
+    const prisma = {
+      $transaction: async (callback: (transaction: typeof tx) => unknown) =>
+        callback(legacyFileTransaction(tx))
+    } as unknown as PrismaService;
+    const service = new FileService(prisma, audit as never, storage as never);
+
+    await expect(service.createDownloadTicket("file-1", { actorUserId: "uploader" }))
+      .rejects.toBeInstanceOf(ForbiddenException);
+    expect(audit.record).not.toHaveBeenCalled();
+
+    tx.projectMember.findMany.mockResolvedValue([{ positionKey: "contract_staff" }]);
+    await expect(service.createDownloadTicket("file-1", { actorUserId: "uploader" }))
+      .resolves.toMatchObject({ fileId: "file-1" });
+    expect(audit.record).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({
+      actorUserId: "uploader", action: "file.download.ticket", businessId: "file-1"
+    }));
+  });
+
   it("allows finance staff to download a project expense archived PDF by project role", async () => {
     const tx = {
+      contractGeneratedDocument: { findMany: jest.fn().mockResolvedValue([]) },
       fileObject: {
         findUnique: jest.fn().mockResolvedValue({
           id: "file-1",
@@ -7113,7 +8050,7 @@ describe("FileService", () => {
     };
     const prisma = {
       $transaction: jest.fn(async (callback: (transaction: typeof tx) => unknown) =>
-        callback(tx)
+        callback(legacyFileTransaction(tx))
       )
     } as unknown as PrismaService;
     const service = new FileService(
@@ -7136,6 +8073,7 @@ describe("FileService", () => {
 
   it("blocks raw-file bypass: allows the applicant to download the latest in-progress settlement approval PDF", async () => {
     const tx = {
+      contractGeneratedDocument: { findMany: jest.fn().mockResolvedValue([]) },
       fileObject: {
         findUnique: jest.fn().mockResolvedValue({
           id: "file-1",
@@ -7170,7 +8108,7 @@ describe("FileService", () => {
     };
     const prisma = {
       $transaction: jest.fn(async (callback: (transaction: typeof tx) => unknown) =>
-        callback(tx)
+        callback(legacyFileTransaction(tx))
       )
     } as unknown as PrismaService;
     const service = new FileService(
@@ -7187,6 +8125,7 @@ describe("FileService", () => {
 
   it("blocks raw-file bypass: denies latest settlement approval PDF download to roles outside the frozen approval route", async () => {
     const tx = {
+      contractGeneratedDocument: { findMany: jest.fn().mockResolvedValue([]) },
       fileObject: {
         findUnique: jest.fn().mockResolvedValue({
           id: "file-1",
@@ -7233,7 +8172,7 @@ describe("FileService", () => {
     };
     const prisma = {
       $transaction: jest.fn(async (callback: (transaction: typeof tx) => unknown) =>
-        callback(tx)
+        callback(legacyFileTransaction(tx))
       )
     } as unknown as PrismaService;
     const service = new FileService(
@@ -7249,6 +8188,7 @@ describe("FileService", () => {
 
   it("blocks raw-file bypass: allows latest settlement approval PDF download to roles in the frozen approval route", async () => {
     const tx = {
+      contractGeneratedDocument: { findMany: jest.fn().mockResolvedValue([]) },
       fileObject: {
         findUnique: jest.fn().mockResolvedValue({
           id: "file-1",
@@ -7296,7 +8236,7 @@ describe("FileService", () => {
     };
     const prisma = {
       $transaction: jest.fn(async (callback: (transaction: typeof tx) => unknown) =>
-        callback(tx)
+        callback(legacyFileTransaction(tx))
       )
     } as unknown as PrismaService;
     const service = new FileService(
@@ -7313,6 +8253,7 @@ describe("FileService", () => {
 
   it("blocks raw-file bypass: does not treat non-signature approval logs as latest settlement approval PDF signatures", async () => {
     const tx = {
+      contractGeneratedDocument: { findMany: jest.fn().mockResolvedValue([]) },
       fileObject: {
         findUnique: jest.fn().mockResolvedValue({
           id: "file-1",
@@ -7360,7 +8301,7 @@ describe("FileService", () => {
     };
     const prisma = {
       $transaction: jest.fn(async (callback: (transaction: typeof tx) => unknown) =>
-        callback(tx)
+        callback(legacyFileTransaction(tx))
       )
     } as unknown as PrismaService;
     const service = new FileService(
@@ -7377,6 +8318,7 @@ describe("FileService", () => {
 
   it("blocks raw-file bypass: denies an unrelated user from downloading an approval-form PDF", async () => {
     const tx = {
+      contractGeneratedDocument: { findMany: jest.fn().mockResolvedValue([]) },
       fileObject: {
         findUnique: jest.fn().mockResolvedValue({
           id: "file-1",
@@ -7416,7 +8358,7 @@ describe("FileService", () => {
     };
     const prisma = {
       $transaction: jest.fn(async (callback: (transaction: typeof tx) => unknown) =>
-        callback(tx)
+        callback(legacyFileTransaction(tx))
       )
     } as unknown as PrismaService;
     const service = new FileService(
@@ -7450,29 +8392,174 @@ describe("FileService", () => {
     expect(audit.record).not.toHaveBeenCalled();
   });
 
-  it("rejects missing download reasons before creating a ticket", async () => {
+  it("uses the default audit reason when the download reason is blank", async () => {
+    const file = {
+      id: "file-1",
+      bucket: "private",
+      objectKey: "private/file-1.pdf",
+      originalName: "合同.pdf",
+      mimeType: "application/pdf",
+      sizeBytes: 12,
+      contentSha256: "a".repeat(64),
+      storageStatus: "active",
+      uploadedByUserId: "uploader-1"
+    };
+    const tx = {
+      fileObject: { findUnique: jest.fn().mockResolvedValue(file) },
+      user: { findUnique: jest.fn().mockResolvedValue({ isActive: true }) },
+      contractArchiveEvidenceFile: { findFirst: jest.fn().mockResolvedValue(null) }
+    };
     const prisma = {
-      $transaction: jest.fn()
+      $transaction: jest.fn(async (run: (client: typeof tx) => Promise<unknown>) => run(tx))
     };
     const service = new FileService(
       prisma as unknown as PrismaService,
       audit as unknown as AuditService,
       storage as unknown as PrivateFileStorage
     );
+    jest.spyOn(service as unknown as { assertCanDownloadFileObject: () => Promise<undefined> },
+      "assertCanDownloadFileObject").mockResolvedValue(undefined);
+
+    const ticket = await service.createDownloadTicket("file-1", {
+      actorUserId: "finance-1",
+      downloadReason: "   "
+    });
+
+    expect(ticket.downloadUrl).toContain(
+      `downloadReason=${encodeURIComponent("单据可见权限内下载")}`
+    );
+    expect(audit.record).toHaveBeenCalledWith(
+      tx,
+      expect.objectContaining({
+        metadata: expect.objectContaining({ downloadReason: "单据可见权限内下载" })
+      })
+    );
+  });
+
+  it("authorizes every file in a package before reading and records one package audit", async () => {
+    const files = [
+      {
+        id: "file-1",
+        bucket: "private",
+        objectKey: "private/file-1.pdf",
+        originalName: "合同.pdf",
+        mimeType: "application/pdf",
+        sizeBytes: 13,
+        contentSha256: "a".repeat(64),
+        storageStatus: "active",
+        uploadedByUserId: "uploader-1"
+      },
+      {
+        id: "file-2",
+        bucket: "private",
+        objectKey: "private/file-2.pdf",
+        originalName: "凭证.pdf",
+        mimeType: "application/pdf",
+        sizeBytes: 13,
+        contentSha256: "b".repeat(64),
+        storageStatus: "active",
+        uploadedByUserId: "uploader-1"
+      }
+    ];
+    const tx = {
+      fileObject: { findMany: jest.fn().mockResolvedValue(files) },
+      contractArchiveEvidenceFile: { findFirst: jest.fn().mockResolvedValue(null) }
+    };
+    const prisma = {
+      $transaction: jest.fn(async (run: (client: typeof tx) => Promise<unknown>) => run(tx))
+    };
+    const service = new FileService(
+      prisma as unknown as PrismaService,
+      audit as unknown as AuditService,
+      storage as unknown as PrivateFileStorage
+    );
+    const assertDownload = jest
+      .spyOn(service as unknown as {
+        assertCanDownloadFileObject: (...args: unknown[]) => Promise<undefined>;
+      }, "assertCanDownloadFileObject")
+      .mockResolvedValue(undefined);
+    jest.spyOn(service as unknown as {
+      readVerifiedFileBuffer: (file: { id: string }) => Promise<Buffer>;
+    }, "readVerifiedFileBuffer").mockImplementation(async (file) =>
+      Buffer.from(`buffer-${file.id}`)
+    );
+
+    const result = await service.createDownloadPackage(["file-1", "file-2"], "actor-1");
+
+    expect(assertDownload).toHaveBeenCalledTimes(2);
+    expect(result.fileCount).toBe(2);
+    expect(result.totalBytes).toBe(26);
+    expect(result.buffer.subarray(0, 2).toString()).toBe("PK");
+    expect(result.fileName).toMatch(/^资料库打包-\d{8}-\d{4}\.zip$/u);
+    expect(audit.record).toHaveBeenCalledWith(
+      tx,
+      expect.objectContaining({
+        actorUserId: "actor-1",
+        action: "file.package.download",
+        businessType: "file_package",
+        metadata: expect.objectContaining({
+          fileCount: 2,
+          totalBytes: 26,
+          fileIds: ["file-1", "file-2"]
+        })
+      })
+    );
+  });
+
+  it("fails a package without audit when any selected file is not authorized", async () => {
+    const files = [
+      { id: "file-1", originalName: "合同.pdf", sizeBytes: 5 },
+      { id: "file-2", originalName: "凭证.pdf", sizeBytes: 6 }
+    ];
+    const tx = {
+      fileObject: { findMany: jest.fn().mockResolvedValue(files) },
+      contractArchiveEvidenceFile: { findFirst: jest.fn().mockResolvedValue(null) }
+    };
+    const prisma = {
+      $transaction: jest.fn(async (run: (client: typeof tx) => Promise<unknown>) => run(tx))
+    };
+    const service = new FileService(
+      prisma as unknown as PrismaService,
+      audit as unknown as AuditService,
+      storage as unknown as PrivateFileStorage
+    );
+    jest.spyOn(service as unknown as {
+      assertCanDownloadFileObject: (tx: unknown, file: { id: string }) => Promise<undefined>;
+    }, "assertCanDownloadFileObject")
+      .mockImplementation(async (_tx, file) => {
+        if (file.id === "file-2") throw new ForbiddenException("当前账号无权下载该归档原件");
+        return undefined;
+      });
+    const read = jest.spyOn(service as unknown as {
+      readVerifiedFileBuffer: () => Promise<Buffer>;
+    }, "readVerifiedFileBuffer");
 
     await expect(
-      service.createDownloadTicket("file-1", {
-        actorUserId: "finance-1",
-        downloadReason: "   "
-      })
-    ).rejects.toThrow("请填写下载原因，便于留痕审计");
-    expect(prisma.$transaction).not.toHaveBeenCalled();
+      service.createDownloadPackage(["file-1", "file-2"], "actor-1")
+    ).rejects.toBeInstanceOf(ForbiddenException);
+    expect(read).not.toHaveBeenCalled();
     expect(audit.record).not.toHaveBeenCalled();
+  });
+
+  it("rejects an oversized package before any per-file read", async () => {
+    const service = new FileService(
+      { $transaction: jest.fn() } as unknown as PrismaService,
+      audit as unknown as AuditService,
+      storage as unknown as PrivateFileStorage
+    );
+
+    await expect(
+      service.createDownloadPackage(
+        Array.from({ length: 51 }, (_, index) => `file-${index}`),
+        "actor-1"
+      )
+    ).rejects.toThrow("单次最多打包 50 份资料，请减少选择后重试");
   });
 
   it("reads a private file through a short-lived ticket and records download audit", async () => {
     const buffer = Buffer.from("private-file");
     const tx = {
+      contractGeneratedDocument: { findMany: jest.fn().mockResolvedValue([]) },
       fileObject: {
         findUnique: jest.fn().mockResolvedValue({
           id: "file-1",
@@ -7492,7 +8579,7 @@ describe("FileService", () => {
     };
     const prisma = {
       $transaction: jest.fn(async (callback: (transaction: typeof tx) => unknown) =>
-        callback(tx)
+        callback(legacyFileTransaction(tx))
       )
     } as unknown as PrismaService;
     const service = new FileService(
@@ -7583,6 +8670,7 @@ describe("FileService", () => {
   it("records a successful wage-evidence download without filename, amount, or personnel content", async () => {
     const buffer = Buffer.from("wage-evidence");
     const txBase = {
+      contractTakeoverCorrection: { groupBy: jest.fn().mockResolvedValue([]) },
       fileObject: { findUnique: jest.fn().mockResolvedValue({
         id: "wage-evidence-1", bucket: "private-local", objectKey: "uploads/wage-evidence-1.pdf",
         originalName: "张三-100000工资.pdf", mimeType: "application/pdf", sizeBytes: 13,
@@ -7604,7 +8692,7 @@ describe("FileService", () => {
       }
     });
     const prisma = {
-      $transaction: jest.fn(async (work: (client: typeof tx) => unknown) => work(tx)),
+      $transaction: jest.fn(async (work: (client: typeof tx) => unknown) => work(legacyFileTransaction(tx))),
       wageApprovedSourceVersion: { findFirst: jest.fn().mockResolvedValue({ id: "source-1" }) }
     };
     const service = new FileService(prisma as never, audit as never, storage as never);
@@ -7639,6 +8727,7 @@ describe("FileService", () => {
     const buffer = Buffer.from("wage-evidence");
     let actorActive = true;
     const txBase = {
+      contractTakeoverCorrection: { groupBy: jest.fn().mockResolvedValue([]) },
       fileObject: { findUnique: jest.fn().mockResolvedValue({
         id: "wage-evidence-1", bucket: "private-local", objectKey: "uploads/wage-evidence-1.pdf",
         originalName: "工资依据.pdf", mimeType: "application/pdf", sizeBytes: buffer.length,
@@ -7660,7 +8749,7 @@ describe("FileService", () => {
       }
     });
     const prisma = {
-      $transaction: jest.fn(async (work: (client: typeof tx) => unknown) => work(tx)),
+      $transaction: jest.fn(async (work: (client: typeof tx) => unknown) => work(legacyFileTransaction(tx))),
       wageApprovedSourceVersion: { findFirst: jest.fn().mockResolvedValue({ id: "source-1" }) }
     };
     const roles = new CompanyRoleResolverService(prisma as never);
@@ -7727,6 +8816,7 @@ describe("FileService", () => {
       contentSha256: createHash("sha256").update(buffer).digest("hex")
     };
     const tx = {
+      contractGeneratedDocument: { findMany: jest.fn().mockResolvedValue([]) },
       fileObject: { findUnique: jest.fn().mockResolvedValue(file) },
       contractFormalFile: { findFirst: jest.fn().mockResolvedValue({
         contractVersionId: "version-1",
@@ -7750,7 +8840,7 @@ describe("FileService", () => {
       position: { findMany: jest.fn().mockResolvedValue([]) }
     };
     const prisma = {
-      $transaction: jest.fn(async (callback: (transaction: typeof tx) => unknown) => callback(tx))
+      $transaction: jest.fn(async (callback: (transaction: typeof tx) => unknown) => callback(legacyFileTransaction(tx)))
     } as unknown as PrismaService;
     const service = new FileService(
       prisma,
@@ -7794,6 +8884,7 @@ describe("FileService", () => {
     const expectedHash = "0".repeat(64);
     const actualHash = createHash("sha256").update("tampered-file").digest("hex");
     const tx = {
+      contractGeneratedDocument: { findMany: jest.fn().mockResolvedValue([]) },
       fileObject: {
         findUnique: jest.fn().mockResolvedValue({
           id: "file-1",
@@ -7813,7 +8904,7 @@ describe("FileService", () => {
     };
     const prisma = {
       $transaction: jest.fn(async (callback: (transaction: typeof tx) => unknown) =>
-        callback(tx)
+        callback(legacyFileTransaction(tx))
       )
     } as unknown as PrismaService;
     const service = new FileService(
@@ -7861,6 +8952,7 @@ describe("FileService", () => {
     ["non-hex", "g".repeat(64)]
   ])("rejects a non-null malformed stored content hash: %s", async (_caseName, contentSha256) => {
     const tx = {
+      contractGeneratedDocument: { findMany: jest.fn().mockResolvedValue([]) },
       fileObject: {
         findUnique: jest.fn().mockResolvedValue({
           id: "file-malformed",
@@ -7880,7 +8972,7 @@ describe("FileService", () => {
     };
     const prisma = {
       $transaction: jest.fn(async (callback: (transaction: typeof tx) => unknown) =>
-        callback(tx)
+        callback(legacyFileTransaction(tx))
       )
     } as unknown as PrismaService;
     const service = new FileService(
@@ -7921,6 +9013,7 @@ describe("FileService", () => {
 
   it("keeps historical files without a content hash readable", async () => {
     const tx = {
+      contractGeneratedDocument: { findMany: jest.fn().mockResolvedValue([]) },
       fileObject: {
         findUnique: jest.fn().mockResolvedValue({
           id: "file-legacy",
@@ -7940,7 +9033,7 @@ describe("FileService", () => {
     };
     const prisma = {
       $transaction: jest.fn(async (callback: (transaction: typeof tx) => unknown) =>
-        callback(tx)
+        callback(legacyFileTransaction(tx))
       )
     } as unknown as PrismaService;
     const service = new FileService(
@@ -7967,6 +9060,7 @@ describe("FileService", () => {
 
   it("rejects an inactive ticket file before storage read or download success audit", async () => {
     const tx = {
+      contractGeneratedDocument: { findMany: jest.fn().mockResolvedValue([]) },
       fileObject: {
         findUnique: jest.fn().mockResolvedValue({
           id: "file-inactive-ticket",
@@ -7986,7 +9080,7 @@ describe("FileService", () => {
     };
     const prisma = {
       $transaction: jest.fn(async (callback: (transaction: typeof tx) => unknown) =>
-        callback(tx)
+        callback(legacyFileTransaction(tx))
       )
     } as unknown as PrismaService;
     const service = new FileService(
@@ -8016,6 +9110,7 @@ describe("FileService", () => {
 
   it("rejects tampered download ticket fields before reading or auditing a ticket", async () => {
     const tx = {
+      contractGeneratedDocument: { findMany: jest.fn().mockResolvedValue([]) },
       fileObject: {
         findUnique: jest.fn().mockResolvedValue({
           id: "file-1",
@@ -8032,7 +9127,7 @@ describe("FileService", () => {
       paymentExecution: { findFirst: jest.fn() }
     };
     const transaction = jest.fn(async (callback: (transaction: typeof tx) => unknown) =>
-      callback(tx)
+      callback(legacyFileTransaction(tx))
     );
     const prisma = {
       $transaction: transaction
@@ -8110,6 +9205,7 @@ describe("FileService", () => {
 
   it("returns a business message when private storage cannot read a ticket file", async () => {
     const tx = {
+      contractGeneratedDocument: { findMany: jest.fn().mockResolvedValue([]) },
       fileObject: {
         findUnique: jest.fn().mockResolvedValue({
           id: "file-1",
@@ -8129,7 +9225,7 @@ describe("FileService", () => {
     };
     const prisma = {
       $transaction: jest.fn(async (callback: (transaction: typeof tx) => unknown) =>
-        callback(tx)
+        callback(legacyFileTransaction(tx))
       )
     } as unknown as PrismaService;
     const service = new FileService(

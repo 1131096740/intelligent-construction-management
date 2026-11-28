@@ -229,6 +229,11 @@ async function main() {
   const input = parseArgs(process.argv.slice(2));
   const prisma = new PrismaClient();
   try {
+    if (input.apply) {
+      const { reviewReferenceCatalog } = require("../dist/file/contract-review-file-retention");
+      const state = await prisma.$transaction(tx => reviewReferenceCatalog(tx));
+      if (state !== "legacy") throw new Error("当前清理流程无法确认履约复核原件保留，已停止物理清理");
+    }
     const readManifest = await prisma.$transaction((tx) => buildManifest(tx, input.versionIds));
     assertNoBlockers(readManifest.blockers);
     const targetFingerprint = fingerprint(readManifest.targets);
@@ -245,6 +250,8 @@ async function main() {
     }
     const storage = await createStorage();
     const receipt = await prisma.$transaction(async (tx) => {
+      const { reviewReferenceCatalog } = require("../dist/file/contract-review-file-retention");
+      if (await reviewReferenceCatalog(tx) !== "legacy") throw new Error("当前清理流程无法确认履约复核原件保留，已停止物理清理");
       const manifest = await buildManifest(tx, input.versionIds, true);
       assertNoBlockers(manifest.blockers);
       const lockedFingerprint = fingerprint(manifest.targets);

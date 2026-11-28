@@ -646,19 +646,38 @@ describe("PaymentController authorization wiring", () => {
     const projectVisibility = { visibleProjectIds: jest.fn().mockResolvedValue(["project-1"]) };
     const controller = new PaymentController(paymentRead as never, {} as never, projectVisibility as never);
 
-    await controller.list({ id: "user-1" } as never, "50");
-    expect(paymentRead.listRecent).toHaveBeenCalledWith("50", ["project-1"]);
+    await controller.list({ id: "user-1" } as never, { limit: "50" });
+    expect(paymentRead.listRecent).toHaveBeenCalledWith("50", ["project-1"], {actorUserId:"user-1"});
     expect(paymentRead.listLedger).not.toHaveBeenCalled();
 
-    await controller.list(
-      { id: "user-1" } as never,
-      undefined,
-      "returned_for_revision",
-      "2",
-      "20"
-    );
+    await controller.list({ id: "user-1" } as never, {
+      view: "returned_for_revision",
+      page: "2",
+      pageSize: "20"
+    });
     expect(paymentRead.listLedger).toHaveBeenCalledWith(
       { view: "returned_for_revision", page: "2", pageSize: "20" },
+      ["project-1"],
+      "user-1"
+    );
+
+    await controller.list({ id: "user-1" } as never, {
+      view: "formal_ledger",
+      projectId: "project-1",
+      dateFrom: "2026-11-01",
+      dateTo: "2026-11-30",
+      keyword: "幕墙",
+      sort: "updatedAt:asc"
+    });
+    expect(paymentRead.listLedger).toHaveBeenLastCalledWith(
+      {
+        view: "formal_ledger",
+        projectId: "project-1",
+        dateFrom: "2026-11-01",
+        dateTo: "2026-11-30",
+        keyword: "幕墙",
+        sort: "updatedAt:asc"
+      },
       ["project-1"],
       "user-1"
     );

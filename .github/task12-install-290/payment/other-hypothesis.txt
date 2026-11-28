@@ -1,0 +1,1 @@
+Hypothesis: original remaining 13 negative fixtures fail for their exact expected markers in the exact target migration. Observe each marker in the permitted origins, precise row and checksum, unchanged historical ledger and catalog, four original columns absent, and clone teardown. Stop on first discrepancy.

@@ -1,6 +1,21 @@
+import type { ApprovalDutySmsIntent } from "../approval/approval-duty-sms-intent";
+import {runPreparedSpotRequestV2HttpCases} from "./spot-request-v2.http.pg.prepared";
+import { ApprovalSmsService } from "../approval/approval-sms.service";
+import { SpotProcurementApprovalNotificationService } from "./spot-procurement-approval-notification.service";
+import { SpotProcurementPilotService } from "./spot-procurement-pilot.service";
+import { SpotProcurementReceiptService } from "./spot-procurement-receipt.service";
+import { SpotProcurementSettlementService } from "./spot-procurement-settlement.service";
+import { runPreparedParallelPgHttpCases, runPreparedParallelNotificationClaimPgCase, type PreparedParallelPgHttp } from "../database/spot-procurement-parallel.http.pg.prepared";
 import { verifyApprovedPdf } from "../database/approval-pdf-acceptance.test-support";
+import { FileService } from "../file/file.service";
+import { BUSINESS_ENTRY_DEFINITION_REGISTRY } from "../business-entry-definition/business-entry-definition.scene-registry";
 import "reflect-metadata";
-import type { INestApplication } from "@nestjs/common";
+import { Catch, ConflictException, type ArgumentsHost, type INestApplication } from "@nestjs/common";
+import { HttpAdapterHost } from "@nestjs/core";
+import { Prisma } from "@prisma/client";
+import { projectTask16RegistrationError } from "../database/task16-registration-error-diagnostic";
+import { ProjectOperatingConstraintFilter } from "../project/project-operating-constraint.filter";
+import { AuditService } from "../audit/audit.service";
 import { Test } from "@nestjs/testing";
 import { hash } from "bcryptjs";
 import { randomUUID } from "node:crypto";
@@ -15,12 +30,13 @@ import { createApiValidationPipe } from "../validation/api-validation";
 const sharp = sharpModule as unknown as typeof import("sharp").default;
 
 const enabled = process.env.RUN_POL115_SPOT_ENTRY_PG16 === "1";
+const registeredFixture = process.env.RUN_TASK410_SPOT_REGISTERED_PG16 === "1";
 type Session = {
   user: unknown;
   tokens: { accessToken: string; refreshToken: string; expiresIn: number };
 };
 type Detail = {
-  procurement: { id: string; status: string; statusLabel: string };
+  procurement: { id: string; code: string; status: string; statusLabel: string };
   currentVersion: Version;
   versions: Version[];
   lines: Array<{ id: string; sortOrder: number; materialName: string; specification: string | null; unit: string; quantity: string; note: string | null }>;
@@ -59,6 +75,20 @@ describe("#115 零星采购申请生命周期真实 HTTP 与 PostgreSQL 16", () 
   let baseUrl = "";
   let applicant: Session;
   let director: Session;
+  let secondDirector: Session;
+  let directorPhone = "";
+  const smsGateway = {
+    enabled: false,
+    calls: [] as Array<{phone: string; businessCode: string; dutyName: string}>,
+    available() { return this.enabled; },
+    async sendDutyIntent(phone: string,intent: ApprovalDutySmsIntent) {
+      return this.send(phone,intent.businessLabel,intent.dutyName,intent.businessCode);
+    },
+    async send(phone: string, _label: string, dutyName: string, businessCode: string) {
+      this.calls.push({phone, businessCode, dutyName});
+      return {status: "accepted" as const, message: "受控网关已接收", receipt: `controlled-${this.calls.length}`};
+    }
+  };
   let manager: Session;
   let refundFinance: Session;
   const sessions = new Map<string, Session>();
@@ -66,22 +96,71 @@ describe("#115 零星采购申请生命周期真实 HTTP 与 PostgreSQL 16", () 
   let payerCompanyEntityId = "";
   const projectIds = { api: randomUUID(), desktop: randomUUID(), mobile: randomUUID() };
   const previousPilot = process.env.SPOT_PROCUREMENT_PILOT_PROJECT_IDS;
+  const paymentDraftReads = new Map<string, string | null>();
+
+  @Catch()
+  class PaymentDraftReadDiagnosticFilter extends ProjectOperatingConstraintFilter {
+    override catch(exception: unknown, host: ArgumentsHost) {
+      const request = host.switchToHttp().getRequest<{
+        method: string;
+        route?: { path?: string };
+        params?: { paymentId?: string };
+      }>();
+      const id = request.params?.paymentId;
+      if (request.method === "GET" && request.route?.path === "/spot-procurement-payments/:paymentId" &&
+        id && paymentDraftReads.has(id)) {
+        const diagnostic = projectTask16RegistrationError(exception);
+        const unknownState = exception instanceof Prisma.PrismaClientUnknownRequestError
+          ? exception.message.match(/\bcode: "([0-9A-Z]{5})", message:/u)?.[1]
+          : undefined;
+        const knownError = exception instanceof Prisma.PrismaClientKnownRequestError ? exception : undefined;
+        const knownCode = knownError?.code;
+        const model = knownError?.meta?.modelName;
+        const column = knownCode === "P2022" ? knownError?.meta?.column : undefined;
+        paymentDraftReads.set(id, JSON.stringify({
+          ...diagnostic,
+          serverPrismaCode: typeof knownCode === "string" && /^P[0-9]{4}$/u.test(knownCode)
+            ? knownCode : diagnostic.serverPrismaCode,
+          serverSqlState: diagnostic.serverSqlState ?? unknownState,
+          ...(typeof model === "string" && /^(?:SpotProcurement[A-Za-z]+|RegisteredOperationalPayment)$/u.test(model) && { model }),
+          ...(typeof column === "string" && /^public\.[A-Z][A-Za-z]{1,62}\.[a-z][A-Za-z0-9]{1,62}$/u.test(column) && { column })
+        }));
+      }
+      super.catch(exception, host);
+    }
+  }
 
   beforeAll(async () => {
     if (!enabled) return;
     const url = new URL(process.env.DATABASE_URL ?? "");
-    if (process.env.NODE_ENV === "production" || url.hostname !== "127.0.0.1" || url.pathname !== "/jiangkong_pol115_spot_entry_test") {
+    const expectedDatabase = registeredFixture ? "/jiangkong_payment_execution_concurrency" : "/jiangkong_pol115_spot_entry_test";
+    if (process.env.NODE_ENV !== "test" || url.hostname !== "127.0.0.1" || url.pathname !== expectedDatabase ||
+      (registeredFixture && !/^[0-9a-f-]{36}$/u.test(process.env.TASK410_ISOLATED_RUN_ID ?? ""))) {
       throw new Error("零采入口测试只允许本机专用 PostgreSQL 数据库");
     }
     process.env.SPOT_PROCUREMENT_PILOT_PROJECT_IDS = Object.values(projectIds).join(",");
-    const module = await Test.createTestingModule({ imports: [AppModule] }).compile();
+    // This opt-in group always replaces the transport: real PG/HTTP is permitted only by its runner,
+    // while no test can contact a live SMS provider regardless of environment credentials.
+    const module = await Test.createTestingModule({ imports: [AppModule] })
+      .overrideProvider(ApprovalSmsService).useValue(smsGateway).compile();
     app = module.createNestApplication({ logger: false });
     app.getHttpAdapter().getInstance().set("json replacer", apiJsonReplacer);
     app.useGlobalPipes(createApiValidationPipe());
+    if (process.env.JG_POL115_334_SCOPE === "spot") {
+      app.useGlobalFilters(new PaymentDraftReadDiagnosticFilter(app.get(HttpAdapterHost)));
+    }
     await app.listen(0, "127.0.0.1");
     baseUrl = await app.getUrl();
 
     const prisma = app.get(PrismaService);
+    if (registeredFixture) {
+      const [identity] = await prisma.$queryRaw<Array<{runId: string; registeredFunding: boolean}>>`
+        SELECT current_setting('jg.task398_run_id', true) AS "runId",
+          to_regclass('public."RegisteredPaymentFunding"') IS NOT NULL AS "registeredFunding"`;
+      if (identity?.runId !== process.env.TASK410_ISOLATED_RUN_ID?.replaceAll("-", "") || !identity.registeredFunding) {
+        throw new Error("零采登记账户实付测试需要独占的已准备运行画像");
+      }
+    }
     const suffix = randomUUID();
     const password = randomUUID();
     accountPassword = password;
@@ -105,16 +184,23 @@ describe("#115 零星采购申请生命周期真实 HTTP 与 PostgreSQL 16", () 
     }
     for (const { role, user } of users) {
       const position = await prisma.position.upsert({ where: { key: role }, create: { key: role, name: role }, update: {} });
-      await prisma.userPosition.createMany({ data: Object.values(projectIds).map((projectId) => ({ userId: user.id, positionId: position.id, projectId })) });
+      const assignmentProjects = role === "material_director" ? [null] : Object.values(projectIds);
+      await prisma.userPosition.createMany({ data: assignmentProjects.map((projectId) => ({ userId: user.id, positionId: position.id, projectId })) });
       if (role === "comprehensive_director") await prisma.userPosition.create({ data: { userId: user.id, positionId: position.id, projectId: null } });
       const response = await fetch(`${baseUrl}/auth/login`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ phone: user.phone, password }) });
       expect(response.status).toBe(201);
       const session = await response.json() as Session;
       sessions.set(role, session);
       if (role === "material_staff") applicant = session;
-      if (role === "material_director") director = session;
+      if (role === "material_director") { director = session; directorPhone = user.phone!; }
       if (role === "project_manager") manager = session;
     }
+    const secondDirectorUser = await prisma.user.create({data: {name: "并联物资主管乙", phone: `pol115-spot-director-second-${suffix}`, passwordHash: await hash(password, 4), mustChangePassword: false}});
+    const materialPosition = await prisma.position.findUniqueOrThrow({where: {key: "material_director"}});
+    await prisma.userPosition.create({data: {userId: secondDirectorUser.id, positionId: materialPosition.id, projectId: null}});
+    const secondLogin = await fetch(`${baseUrl}/auth/login`, {method: "POST", headers: {"content-type": "application/json"}, body: JSON.stringify({phone: secondDirectorUser.phone, password})});
+    expect(secondLogin.status).toBe(201);
+    secondDirector = await secondLogin.json() as Session;
     const refundFinanceUser = await prisma.user.create({ data: { name: "零采退款财务员", phone: `pol115-spot-refund-finance-${suffix}`, passwordHash: await hash(password, 4), mustChangePassword: false } });
     const financePosition = await prisma.position.findUniqueOrThrow({ where: { key: "finance_staff" } });
     await prisma.userPosition.createMany({ data: Object.values(projectIds).map((projectId) => ({ userId: refundFinanceUser.id, positionId: financePosition.id, projectId })) });
@@ -135,7 +221,7 @@ describe("#115 零星采购申请生命周期真实 HTTP 与 PostgreSQL 16", () 
     const profileAfter = await json(`/projects/${projectIds.api}/operating-profile`, sessions.get("comprehensive_director")!);
     expect(profileAfter.status).toBe(200);
     expect(profileAfter.body).toMatchObject({ constructionEnterprise: { businessPartyVersionId: constructionEnterpriseVersion.id, name: constructionEnterprise.name } });
-    for (const session of [director, manager, sessions.get("comprehensive_director")!, sessions.get("finance_director")!, sessions.get("chairman")!]) {
+    for (const session of [director, secondDirector, manager, sessions.get("comprehensive_director")!, sessions.get("finance_director")!, sessions.get("chairman")!]) {
       const body = new FormData();
       body.append("file", new Blob([Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAAC0lEQVR4nGNgAAIAAAUAAen63NgAAAAASUVORK5CYII=", "base64")], { type: "image/png" }), "合成签名.png");
       expect((await fetch(`${baseUrl}/me/signature/canvas`, { method: "POST", headers: { authorization: `Bearer ${session.tokens.accessToken}` }, body })).status).toBe(201);
@@ -160,9 +246,23 @@ describe("#115 零星采购申请生命周期真实 HTTP 与 PostgreSQL 16", () 
 
   function expectHttpStatus<T extends { status: number; body: unknown }>(label: string, response: T, expected: number) {
     if (response.status !== expected) {
-      throw new Error(`${label}失败: ${response.status} ${safeResponseBody(response.body)}`);
+      throw new Error(`${label}失败: ${response.status} ${safeResponseBody(response.body)}\nSPOT_HTTP_STATUS ${expected} ${response.status}`);
     }
     return response;
+  }
+
+  async function readPaymentDraft(paymentId: string, label: string) {
+    paymentDraftReads.set(paymentId, null);
+    try {
+      const response = await json(`/spot-procurement-payments/${paymentId}`, applicant);
+      const diagnostic = paymentDraftReads.get(paymentId);
+      if (response.status !== 200 && diagnostic) {
+        throw new Error(`${label}失败: ${response.status}\nSPOT_HTTP_STATUS 200 ${response.status}\nSPOT_PAYMENT_DRAFT_ERROR ${diagnostic}`);
+      }
+      return response;
+    } finally {
+      paymentDraftReads.delete(paymentId);
+    }
   }
 
   function safeResponseBody(value: unknown): string {
@@ -179,28 +279,34 @@ describe("#115 零星采购申请生命周期真实 HTTP 与 PostgreSQL 16", () 
     return JSON.stringify(redact(value));
   }
 
-  async function createDraft(projectId: string, label: string) {
-    const definitions = expectHttpStatus(
-      `零采定义-${label}`,
-      await json(`/spot-procurements/projects/${projectId}/application-definitions`, applicant),
-      200
-    ).body as unknown as { application: { version: number }; line: { version: number } };
-    const upload = new FormData();
-    upload.append("file", new Blob([Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Y9Zl1sAAAAASUVORK5CYII=", "base64")], { type: "image/png" }), `合成报价-${label}.png`);
-    upload.append("idempotencyKey", randomUUID());
-    const uploaded = await fetch(`${baseUrl}/spot-procurements/projects/${projectId}/draft-file-uploads`, { method: "POST", headers: { authorization: `Bearer ${applicant.tokens.accessToken}` }, body: upload });
-    const uploadText = await uploaded.text();
-    if (uploaded.status !== 201) throw new Error(`零采附件上传失败：${uploaded.status} ${uploadText}`);
-    const file = JSON.parse(uploadText) as { id: string };
-    const created = await json("/spot-procurements", applicant, "POST", {
-      projectId, applicationDepartment: "工程部", applicationName: "现场申请人", requestedArrivalAt: "2026-10-01",
-      entryDefinitionVersions: { application: definitions.application.version, line: definitions.line.version },
-      reason: `旧版采购原因-${label}`, lines: [{ materialName: "水泥", specification: "P.O 42.5", unit: "袋", quantity: "10", note: "合成验收" }],
-      attachments: [{ fileId: file.id, category: "merchant_quote" }]
+  async function seedHistoricalDraft(projectId: string, label: string) {
+    // Public creation now always opens a protocol 2 request. Insert only the
+    // historical draft facts; submission, approval and downstream actions stay public.
+    const applicantId = (applicant.user as { id: string }).id;
+    const file = await uploadFile(
+      `/spot-procurements/projects/${projectId}/draft-file-uploads`, applicant, `合成报价-${label}.png`
+    );
+    expect(file).toMatchObject({ status: 201, id: expect.any(String) });
+    return app.get(PrismaService).$transaction(async (tx) => {
+      const procurement = await tx.spotProcurement.create({ data: {
+        projectId, code: `HISTORICAL-SPOT-${randomUUID()}`, applicantUserId: applicantId, handlerUserId: applicantId, status: "draft"
+      } });
+      const version = await tx.spotProcurementVersion.create({ data: {
+        procurementId: procurement.id, versionNo: 1, requestProtocolVersion: 1, status: "draft",
+        reason: `旧版采购原因-${label}`, requestedArrivalAt: new Date("2026-10-01T00:00:00.000Z"),
+        applicationDepartmentSnapshot: "工程部", applicationNameSnapshot: "现场申请人",
+        purchaserNameSnapshot: "零采申请人", purchaserDepartmentNameSnapshot: "工程部",
+        handlerUserId: applicantId, createdByUserId: applicantId
+      } });
+      await tx.spotProcurementLine.create({ data: {
+        versionId: version.id, sortOrder: 1, materialName: "水泥", specification: "P.O 42.5", unit: "袋", quantity: "10", note: "合成验收"
+      } });
+      await tx.spotProcurementAttachment.create({ data: {
+        versionId: version.id, fileId: file.id, category: "merchant_quote", uploadedByUserId: applicantId
+      } });
+      await tx.spotProcurement.update({ where: { id: procurement.id }, data: { currentVersionId: version.id } });
+      return procurement.id;
     });
-    expectHttpStatus(`零采草稿创建-${label}`, created, 201);
-    expect(created.body!.procurementId).toEqual(expect.any(String));
-    return created.body!.procurementId;
   }
 
   function immutableDraftFacts(detail: Detail) {
@@ -249,8 +355,8 @@ describe("#115 零星采购申请生命周期真实 HTTP 与 PostgreSQL 16", () 
     return { payments: detail.payments, paymentSummary: detail.paymentSummary, receipt: detail.receipt, discrepancy: detail.discrepancy };
   }
 
-  async function prepareAwaitingRefund(projectId: string, label: string) {
-    const id = await createDraft(projectId, `refund-${label}`);
+  async function prepareApprovedPayment(projectId: string, label: string) {
+    const id = await seedHistoricalDraft(projectId, `refund-${label}`);
     expectHttpStatus(`${label}申请提交`, await json(`/spot-procurements/${id}/submission`, applicant, "POST", {}), 201);
     for (const reviewer of [director, manager]) {
       const view = expectHttpStatus(`${label}申请审批坐标`, await json(`/spot-procurements/${id}`, reviewer), 200).body as Detail;
@@ -258,7 +364,7 @@ describe("#115 零星采购申请生命周期真实 HTTP 与 PostgreSQL 16", () 
     }
     const approved = expectHttpStatus(`${label}申请结果`, await json(`/spot-procurements/${id}`, applicant), 200).body as Detail;
     const paymentId = approved.payments[0]!.id;
-    const paymentDraft = expectHttpStatus(`${label}付款草稿`, await json(`/spot-procurement-payments/${paymentId}`, applicant), 200).body as unknown as { procurementMaterials: Array<{ id: string }> };
+    const paymentDraft = expectHttpStatus(`${label}付款草稿`, await readPaymentDraft(paymentId, `${label}付款草稿`), 200).body as unknown as { procurementMaterials: Array<{ id: string }> };
     expectHttpStatus(`${label}付款补全`, await json(`/spot-procurement-payments/${paymentId}/draft`, applicant, "PATCH", {
       paymentType: "company_direct", merchantName: "合成商户", payeeName: "合成商户",
       paymentLines: [{ procurementLineId: paymentDraft.procurementMaterials[0]!.id, paymentQuantity: "10", unitPrice: "100", expectedInvoiceCondition: "no_invoice" }],
@@ -276,32 +382,270 @@ describe("#115 零星采购申请生命周期真实 HTTP 与 PostgreSQL 16", () 
     const channelId = paymentView.paymentChannels.find((channel) => channel.channelType === "bank_transfer")!.id;
     const voucher = await uploadFile(`/spot-procurement-payments/${paymentId}/execution-voucher-file-uploads`, executor, `${label}实付凭证.png`, randomUUID());
     if (voucher.status !== 201) throw new Error(`${label}实付凭证失败: ${safeResponseBody(voucher)}`);
+    return { id, approved, paymentId, channelId, voucherId: voucher.id };
+  }
+
+  async function prepareHistoricalDiscrepancy(projectId: string, approved: Detail, label: string) {
+    const prisma = app.get(PrismaService);
+    const procurementId = approved.procurement.id;
+    const handlerId = (applicant.user as { id: string }).id;
+    const reviewerId = (director.user as { id: string }).id;
+    const coordinates = {
+      procurementId, procurementVersionId: approved.currentVersion.id,
+      handlerUserId: handlerId, createdByUserId: handlerId
+    };
+    // Reconstruct historical input in the disposable database. The authorized
+    // domain review generates the signature and approval rather than seeding them.
+    await prisma.$transaction(async (tx) => {
+      const receipt = await tx.spotProcurementReceipt.create({ data: { projectId, ...coordinates } });
+      await tx.spotProcurementReceiptRevision.create({ data: { receiptId: receipt.id, revisionNo: 1, ...coordinates } });
+    });
+    const image = await sharp({ create: { width: 320, height: 240, channels: 3, background: "#4f8a5b" } }).png().toBuffer();
+    const photo = await app.get(FileService).uploadPrivateFile({
+      originalName: `${label}历史收货.png`, mimeType: "image/png", sizeBytes: image.length,
+      uploadedByUserId: handlerId, buffer: image
+    });
+    const receipts = app.get(SpotProcurementReceiptService);
+    await receipts.attachPhoto(procurementId, handlerId, {
+      originalFileId: photo.id, source: "camera", category: "material_scene", note: "合成少货"
+    });
+    await receipts.updateDraft(procurementId, handlerId, {
+      note: "少货两袋", lines: [{
+        procurementLineId: approved.lines[0]!.id, qualifiedQuantity: "8", unqualifiedQuantity: "0",
+        freeGiftQuantity: "0", replenishmentPending: false, discrepancyNote: "少货2袋"
+      }]
+    });
+    await receipts.submit(procurementId, handlerId);
+    const review = await receipts.review(procurementId, reviewerId, { decision: "approved", comment: "确认少货" });
+    const choice = { resolutionType: "full_refund", note: "商户退还少货差额" } as const;
+    await app.get(SpotProcurementSettlementService).createOrConfirmDiscrepancy(procurementId, handlerId, { operation: "initiate", ...choice });
+    expectHttpStatus(`${label}历史差异物资确认`, await json(`/spot-procurements/${procurementId}/discrepancy`, director, "POST", { operation: "confirm", ...choice }), 201);
+    return review.reviewId;
+  }
+
+  async function prepareAwaitingRefund(projectId: string, label: string) {
+    const { id, approved, paymentId, channelId, voucherId } = await prepareApprovedPayment(projectId, label);
+    const executor = sessions.get("finance_staff")!;
     const quotaFile = await uploadGenericFile(executor, `${label}垫资依据.png`);
     const quota = expectHttpStatus(`${label}垫资申请`, await json(`/projects/${projectId}/financing-quotas`, executor, "POST", { idempotencyKey: randomUUID(), amountCents: "100000", reason: `${label}测试垫资`, attachmentFileId: quotaFile.id }), 201).body as unknown as { quotaId: string };
     for (const role of ["finance_director", "chairman"] as const) {
       const capability = expectHttpStatus(`${label}垫资坐标`, await json(`/projects/${projectId}/financing-quotas/${quota.quotaId}/review-capability`, sessions.get(role)!), 200).body as unknown as { lifecycleToken: string };
       expectHttpStatus(`${label}垫资审批`, await json(`/projects/${projectId}/financing-quotas/${quota.quotaId}/approval`, sessions.get(role)!, "POST", { actionId: randomUUID(), expectedLifecycleToken: capability.lifecycleToken, decision: "approve", confirmationPassword: accountPassword }), 201);
     }
-    expectHttpStatus(`${label}实付`, await json(`/spot-procurement-payments/${paymentId}/executions`, executor, "POST", { amountCents: "100000", paidAt: "2026-09-17", paymentMethod: "bank_transfer", voucherFileId: voucher.id, paymentChannelId: channelId, idempotencyKey: randomUUID(), confirmationPassword: accountPassword }), 201);
-    const image = await sharp({ create: { width: 320, height: 240, channels: 3, background: "#4f8a5b" } }).png().toBuffer();
-    const photo = await uploadFile(`/spot-procurements/${id}/receipt-photo-file-uploads`, applicant, `${label}收货.png`, randomUUID(), image);
-    expectHttpStatus(`${label}照片绑定`, await json(`/spot-procurements/${id}/receipt/photos`, applicant, "POST", { originalFileId: photo.id, source: "camera", category: "material_scene" }), 201);
-    expectHttpStatus(`${label}收货草稿`, await json(`/spot-procurements/${id}/receipt/draft`, applicant, "PATCH", { lines: [{ procurementLineId: approved.lines[0]!.id, qualifiedQuantity: "8", unqualifiedQuantity: "0", freeGiftQuantity: "0", replenishmentPending: false, discrepancyNote: "少货2袋" }] }), 200);
-    expectHttpStatus(`${label}收货提交`, await json(`/spot-procurements/${id}/receipt/submission`, applicant, "POST", {}), 201);
-    expectHttpStatus(`${label}收货审核`, await json(`/spot-procurements/${id}/receipt/review`, director, "POST", { decision: "approved", comment: "确认少货" }), 201);
-    expectHttpStatus(`${label}差异发起`, await json(`/spot-procurements/${id}/discrepancy`, applicant, "POST", { operation: "initiate", resolutionType: "full_refund", note: "商户退还少货差额" }), 201);
-    expectHttpStatus(`${label}差异确认`, await json(`/spot-procurements/${id}/discrepancy`, director, "POST", { operation: "confirm", resolutionType: "full_refund", note: "商户退还少货差额" }), 201);
+    expectHttpStatus(`${label}实付`, await json(`/spot-procurement-payments/${paymentId}/executions`, executor, "POST", { amountCents: "100000", paidAt: "2026-09-17", paymentMethod: "bank_transfer", voucherFileId: voucherId, paymentChannelId: channelId, idempotencyKey: randomUUID(), confirmationPassword: accountPassword }), 201);
+    await prepareHistoricalDiscrepancy(projectId, approved, label);
     return { procurementId: id, paymentId };
   }
+
+  (enabled ? it : it.skip)("冻结首次审批主体及其签批轮次", async () => {
+    const { paymentId } = await prepareApprovedPayment(projectIds.api, "首批原债");
+    const prisma = app.get(PrismaService);
+    const approved = await prisma.spotProcurementPayment.findUniqueOrThrow({where: {id: paymentId}});
+    expect(approved).toMatchObject({originalDebtorCompanyId: payerCompanyEntityId, originalDebtorCompanyName: "零采合成付款主体"});
+    await expect(prisma.approvalInstance.findUniqueOrThrow({where: {id: approved.originalDebtorApprovalId!}}))
+      .resolves.toMatchObject({businessId: paymentId, status: "approved"});
+    const actual = await prisma.companyEntity.create({data: {
+      name: "零采合成实际付款公司", unifiedSocialCreditCode: `POL410${randomUUID().replaceAll("-", "").slice(0, 12)}`, dataStatus: "complete"
+    }});
+    await expect(prisma.spotProcurementPayment.update({
+      where: {id: paymentId}, data: {originalDebtorCompanyId: actual.id}
+    })).rejects.toThrow("spot_original_debtor_immutable");
+  });
+
+  (enabled && registeredFixture ? it : it.skip)("登记账户零采异公司实付并按原键只扣一次", async () => {
+    const projectId = projectIds.api;
+    const { paymentId, channelId, voucherId } = await prepareApprovedPayment(projectId, "登记实付");
+    const prisma = app.get(PrismaService);
+    const executor = sessions.get("finance_staff")!;
+    const actual = await prisma.companyEntity.create({data: {
+      name: "零采合成实际付款公司", unifiedSocialCreditCode: `POL410${randomUUID().replaceAll("-", "").slice(0, 12)}`, dataStatus: "complete"
+    }});
+    const actor = (executor.user as {id: string}).id;
+    const position = await prisma.position.findUniqueOrThrow({where: {key: "finance_staff"}});
+    await prisma.userPosition.create({data: {userId: actor, positionId: position.id, projectId: null}});
+    const scopeKey = `company:${actual.id}`;
+    const opening = expectHttpStatus("登记真实付款公司合成期初", await json("/fund-accounts/openings", executor, "POST", {
+      scopeKey, balanceYuan: "1100", asOfDate: "2026-09-16", evidenceReference: "合成期初",
+      reconciliationNote: "期初核对", reason: "隔离资金", idempotencyKey: randomUUID(),
+      sources: [{ amountYuan: "1100", sourceStatus: "known", sourceName: "合成项目资金", projectStatus: "project", projectId }],
+    }), 201).body as unknown as {id: string; sources: Array<{id: string}>};
+    const payload = {
+      amountCents: "100000", paidAt: "2026-09-17", paymentMethod: "bank_transfer", voucherFileId: voucherId,
+      paymentChannelId: channelId, idempotencyKey: randomUUID(), confirmationPassword: accountPassword,
+      registeredFunding: {scopeKey, expectedRegistrationId: opening.id, sourceAllocations: [{sourceBatchId: opening.sources[0]!.id, amountCents: "100000"}]},
+    };
+    const url = `/spot-procurement-payments/${paymentId}/executions`;
+    expectHttpStatus("异公司从登记账户实付", await json(url, executor, "POST", payload), 201);
+    expectHttpStatus("原键重试", await json(url, executor, "POST", payload), 201);
+    const executions = await prisma.spotProcurementPaymentExecution.findMany({where: {paymentId}, include: {registeredOperationalPayment: true}});
+    expect(executions).toHaveLength(1);
+    const original = executions[0]!.registeredOperationalPayment!;
+    expect(original).toMatchObject({
+      actualPayerCompanyId: actual.id, originalDebtorCompanyId: payerCompanyEntityId, amountCents: 100000n,
+    });
+
+    const target = await prepareApprovedPayment(projectId, "核销正确目标");
+    const snapshot = await prisma.fundAccountBalanceRegistration.findUniqueOrThrow({
+      where: {id: original.registrationId}, include: {sources: true},
+    });
+    expectHttpStatus("登记第二笔零采原债", await json(`/spot-procurement-payments/${target.paymentId}/executions`, executor, "POST", {
+      ...payload, amountCents: "5000", paymentChannelId: target.channelId, voucherFileId: target.voucherId, idempotencyKey: randomUUID(),
+      registeredFunding: {
+        scopeKey, expectedRegistrationId: snapshot.id,
+        sourceAllocations: [{sourceBatchId: snapshot.sources[0]!.id, amountCents: "5000"}],
+      },
+    }), 201);
+    const targetExecution = await prisma.spotProcurementPaymentExecution.findFirstOrThrow({
+      where: {paymentId: target.paymentId}, include: {registeredOperationalPayment: true},
+    });
+    const originalSource = `operational:${original.id}`;
+    const targetOriginalSource = `operational:${targetExecution.registeredOperationalPayment!.id}`;
+
+    const keeper = sessions.get("comprehensive_director")!;
+    const reviewer = sessions.get("finance_director")!;
+    const lead = sessions.get("chairman")!;
+    for (const [session, role] of [[reviewer, "finance_director"], [lead, "general_manager"]] as const) {
+      const position = await prisma.position.upsert({where: {key: role}, create: {key: role, name: role}, update: {}});
+      await prisma.userPosition.create({data: {userId: (session.user as {id: string}).id, positionId: position.id, projectId: null}});
+    }
+    for (const company of [await prisma.companyEntity.findUniqueOrThrow({where: {id: payerCompanyEntityId}}), actual]) {
+      const actorUserId = (keeper.user as {id: string}).id;
+      const version = await prisma.companyEntityVersion.create({data: {
+        companyEntityId: company.id, versionNo: 1, name: company.name, unifiedSocialCreditCode: company.unifiedSocialCreditCode!,
+        registeredAddress: "合成地址", isActive: true, action: "create", actorUserId, actorRoleKey: "comprehensive_director",
+      }});
+      await prisma.projectParticipatingCompany.create({data: {
+        projectId, companyEntityId: company.id, companyEntityVersionId: version.id, companyNameSnapshot: company.name,
+        companyCreditCodeSnapshot: company.unifiedSocialCreditCode!, effectiveFrom: new Date("2026-09-01"),
+        changeReason: "隔离合成公司范围", addedByUserId: actorUserId,
+      }});
+    }
+    const post = async <T>(label: string, path: string, session: Session, body: unknown, status = 201) =>
+      expectHttpStatus(label, await json(path, session, "POST", body), status).body as unknown as T;
+
+    const evidence = (session: Session) => prisma.fileObject.create({data: {
+      originalName: "隔离合成依据.pdf", mimeType: "application/pdf", sizeBytes: 100, bucket: "private-local",
+      objectKey: `task410-spot/${randomUUID()}`, storageStatus: "active", uploadedByUserId: (session.user as {id: string}).id,
+      contentSha256: "a".repeat(64),
+    }});
+    await prisma.projectReceipt.create({data: {
+      projectId, receivedAt: new Date("2026-09-16"), amountCents: 10000n, payerName: "合成归还前项目资金",
+      sourceType: "other", voucherFileId: (await evidence(executor)).id, recordedByUserId: actor,
+    }});
+    const sourceAccount = "122233334444", destinationAccount = "222233334444";
+    const amountCents = "2000";
+    async function verified(companyEntityId: string, accountNumber: string, direction: "outflow" | "inflow") {
+      const date = "2026-09-18";
+      const request = await post<{id: string}>("登记合成银行流水", "/contract-bank-verifications", executor, {
+        projectId, companyEntityId, accountNumber, direction, bankReference: randomUUID(), amountCents, occurredAt: date,
+        evidenceFileId: (await evidence(executor)).id, reason: "同银行流水原债更正",
+        idempotencyKey: randomUUID(), confirmationPassword: accountPassword,
+      });
+      await post("确认合成银行流水", `/contract-bank-verifications/${request.id}/decision`, reviewer, {
+        decision: "confirm", accountNumber, holderEvidenceFileId: (await evidence(reviewer)).id,
+        confirmationPassword: accountPassword,
+      });
+      return (await prisma.contractBankVerificationRequest.findUniqueOrThrow({where: {id: request.id}})).observationId!;
+    }
+
+    const transfer = await post<{id: string}>("从零采原债申请归还", "/company-transfers", keeper, {
+      kind: "repayment", originalOperationalPaymentId: original.id,
+      sourceCompanyId: payerCompanyEntityId, destinationCompanyId: actual.id, sourceProjectId: projectId,
+      destinationProjectId: projectId, sourceAccount, destinationAccount, amountCents, reason: "合成零采归还",
+      evidenceFileId: (await evidence(keeper)).id,
+      idempotencyKey: randomUUID(), confirmationPassword: accountPassword,
+    });
+    for (const [nodeIndex, approver] of [keeper, manager, reviewer, lead].entries()) {
+      await post("签批归还职责", `/company-transfers/${transfer.id}/decision`, approver, {
+        action: "approve", nodeIndex, confirmationPassword: accountPassword, ...(nodeIndex === 0 ? {selfReviewReason: "合成自审"} : {}),
+      });
+    }
+    const eventPath = `/company-transfers/${transfer.id}/events`;
+    const outgoingObservationId = await verified(payerCompanyEntityId, sourceAccount, "outflow");
+    const outgoing = await post<{id: string}>("登记实际归还出款", eventPath, keeper, {
+      kind: "outgoing", observationId: outgoingObservationId, idempotencyKey: randomUUID(), confirmationPassword: accountPassword,
+    });
+    const incomingObservationId = await verified(actual.id, destinationAccount, "inflow");
+    await post("确认实际归还到账", eventPath, reviewer, {
+      kind: "incoming", outgoingEventId: outgoing.id, observationId: incomingObservationId,
+      idempotencyKey: randomUUID(), confirmationPassword: accountPassword,
+    });
+
+    async function debt(source: string) {
+      const response = expectHttpStatus("核对原债余额", await json(
+        `/company-transfers?projectId=${projectId}&originalSource=${source}`, executor,
+      ), 200).body as unknown as {legacyOptions: Array<{remainingCents: string; availableCents: string}>};
+      return response.legacyOptions[0];
+    }
+    const readBankAndCash = () => prisma.$transaction(async tx => ({
+      observations: await tx.verifiedBankTransactionObservation.findMany({
+        where: {id: {in: [outgoingObservationId, incomingObservationId]}}, orderBy: {id: "asc"},
+      }),
+      claims: await tx.companyTransferBankClaim.findMany({
+        where: {observationId: {in: [outgoingObservationId, incomingObservationId]}}, orderBy: {observationId: "asc"},
+      }),
+      events: await tx.companyTransferEvent.findMany({where: {transferId: transfer.id}, orderBy: {id: "asc"}}),
+      registrations: await tx.fundAccountBalanceRegistration.findMany({where: {accountId: original.accountId}, orderBy: {version: "asc"}}),
+      operatingFacts: await tx.operatingFact.findMany({where: {projectId}, orderBy: {id: "asc"}}),
+      operatingImpacts: await tx.operatingImpactEntry.findMany({where: {projectId}, orderBy: {id: "asc"}}),
+    }));
+    const correctionPath = `${eventPath}/${outgoing.id}/original-debt-corrections`;
+    const pending = await post<{id: string; status: string}>("申请更正归还原债", correctionPath, executor, {
+      targetOriginalSource, reason: "同一银行流水核销到正确零采原债", idempotencyKey: randomUUID(),
+    });
+    expect(pending.status).toEqual("pending");
+    const before = await readBankAndCash();
+    expect(before.observations).toHaveLength(2);
+    expect(before.claims).toHaveLength(2);
+    expect(before.events).toHaveLength(2);
+    const originalRemaining = {remainingCents: "98000", availableCents: "98000"};
+    const targetRemaining = {remainingCents: "5000", availableCents: "5000"};
+    expect(await debt(originalSource)).toMatchObject(originalRemaining);
+    expect(await debt(targetOriginalSource)).toMatchObject(targetRemaining);
+
+    const confirmPath = `${correctionPath}/${pending.id}/confirm`;
+    const confirm = {idempotencyKey: randomUUID(), confirmationPassword: accountPassword};
+    const audit = app.get(AuditService);
+    const failedAudit = jest.spyOn(audit, "record").mockImplementationOnce((_tx, event) => {
+      expect(event.action).toEqual("company_transfer.original_debt_correction.confirm");
+      throw new ConflictException("合成事务中断");
+    });
+    try {
+      await post("更正确认事务中断", confirmPath, reviewer, confirm, 409);
+      expect(failedAudit).toHaveBeenCalledTimes(1);
+    } finally {
+      failedAudit.mockRestore();
+    }
+    await expect(prisma.companyTransferOriginalDebtCorrection.findUniqueOrThrow({where: {id: pending.id}}))
+      .resolves.toMatchObject({status: "pending", confirmKey: null, confirmedAt: null});
+    const correctionAudit = () => prisma.auditLog.findMany({
+      where: {businessId: transfer.id, action: {startsWith: "company_transfer.original_debt_correction."}}, orderBy: {action: "asc"},
+    });
+    expect((await correctionAudit()).map(row => row.action)).toEqual(["company_transfer.original_debt_correction.request"]);
+    expect(await readBankAndCash()).toEqual(before);
+    expect(await debt(originalSource)).toMatchObject(originalRemaining);
+    expect(await debt(targetOriginalSource)).toMatchObject(targetRemaining);
+
+    const confirmed = await post<{status: string}>("财务主管确认原债更正", confirmPath, reviewer, confirm);
+    expect(confirmed.status).toEqual("confirmed");
+    expect(await post("更正确认原键重试", confirmPath, reviewer, confirm)).toEqual(confirmed);
+    expect(await readBankAndCash()).toEqual(before);
+    expect(await debt(originalSource)).toMatchObject({remainingCents: "100000", availableCents: "100000"});
+    expect(await debt(targetOriginalSource)).toMatchObject({remainingCents: "3000", availableCents: "3000"});
+    expect(await correctionAudit()).toMatchObject([
+      {action: "company_transfer.original_debt_correction.confirm", metadata: {sourceEventId: outgoing.id, originalSource, targetOriginalSource}},
+      {action: "company_transfer.original_debt_correction.request", metadata: {sourceEventId: outgoing.id, originalSource, targetOriginalSource}},
+    ]);
+  });
 
   (enabled ? it : it.skip)("公开链保留旧版本并冻结两级审批坐标", async () => {
     expect((await json(
       `/spot-procurements/projects/${projectIds.api}/application-definitions`,
       sessions.get("finance_staff")!
     )).status).toBe(403);
-    const id = await createDraft(projectIds.api, "api");
+    const id = await seedHistoricalDraft(projectIds.api, "api");
     const initial = (await json(`/spot-procurements/${id}`, applicant)).body!;
-    expect(initial).toMatchObject({ currentVersion: { versionNo: 1, status: "draft", reason: "旧版采购原因-api" }, attachments: [{ fileName: "合成报价-api.png" }] });
+    expect(initial).toMatchObject({ currentVersion: { versionNo: 1, requestProtocolVersion: 1, status: "draft", reason: "旧版采购原因-api" }, attachments: [{ fileName: "合成报价-api.png" }] });
     const initialFacts = immutableDraftFacts(initial);
     expect((await json(`/spot-procurements/${id}/submission`, applicant, "POST", {})).status).toBe(201);
     const firstDirectorView = (await json(`/spot-procurements/${id}`, director)).body!;
@@ -318,17 +662,17 @@ describe("#115 零星采购申请生命周期真实 HTTP 与 PostgreSQL 16", () 
     expect(rejectionInvariant((await json(`/spot-procurements/${id}`, applicant)).body!)).toEqual(rejectionInvariant(beforeWrongManager));
     expect((await json(`/spot-procurements/${id}/approval`, director, "POST", { decision: "return_to_applicant", comment: "请补充现场用途", ...firstCoordinates })).status).toBe(201);
     const returned = await json(`/spot-procurements/${id}`, applicant);
-    expect(returned.body).toMatchObject({ procurement: { status: "draft" }, currentVersion: { versionNo: 2, status: "draft" }, versions: [{ versionNo: 2 }, { versionNo: 1, reason: "旧版采购原因-api" }] });
+    expect(returned.body).toMatchObject({ procurement: { status: "draft" }, currentVersion: { versionNo: 2, requestProtocolVersion: 1, status: "draft" }, versions: [{ versionNo: 2 }, { versionNo: 1, reason: "旧版采购原因-api" }] });
     expect(immutableDraftFacts(returned.body!)).toEqual(initialFacts);
     const frozenV1AfterReturn = returned.body!.versions.find((version) => version.versionNo === 1)!;
     expect(returned.body!.entrySnapshots).toEqual(frozenV1);
 
-    const definitions = (await json(
-      `/spot-procurements/projects/${projectIds.api}/application-definitions`,
-      applicant
-    )).body as unknown as { application: { version: number }; line: { version: number } };
+    const entryDefinitionVersions = {
+      application: BUSINESS_ENTRY_DEFINITION_REGISTRY.getSceneDefinition("spot_procurement.application").version,
+      line: BUSINESS_ENTRY_DEFINITION_REGISTRY.getSceneDefinition("spot_procurement.application_line").version
+    };
     const baseRevision = {
-      entryDefinitionVersions: { application: definitions.application.version, line: definitions.line.version },
+      entryDefinitionVersions,
       applicationDepartment: "工程部", applicationName: "现场申请人", requestedArrivalAt: "2026-10-02", reason: "新版补充后采购原因",
       attachments: returned.body!.attachments.map((attachment) => ({ fileId: attachment.fileId, category: "merchant_quote" }))
     };
@@ -362,7 +706,7 @@ describe("#115 零星采购申请生命周期真实 HTTP 与 PostgreSQL 16", () 
     expect(firstUpload).toMatchObject({ status: 201, body: { id: expect.any(String) } });
     expect(replayUpload).toEqual(firstUpload);
     expect((await json(`/spot-procurements/${id}/draft`, applicant, "PATCH", {
-      entryDefinitionVersions: { application: definitions.application.version, line: definitions.line.version },
+      entryDefinitionVersions,
       applicationDepartment: "工程部", applicationName: "现场申请人", requestedArrivalAt: "2026-10-02", reason: "新版补充后采购原因",
       lines: [
         { materialName: "水泥", specification: "P.O 42.5", unit: "袋", quantity: "0.01", note: "已补充" },
@@ -394,7 +738,7 @@ describe("#115 零星采购申请生命周期真实 HTTP 与 PostgreSQL 16", () 
     expect(rejectionInvariant((await json(`/spot-procurements/${id}`, applicant)).body!)).toEqual(rejectionInvariant(beforeStaleCoordinates));
     expect((await json(`/spot-procurements/${id}/approval`, director, "POST", { decision: "approve", comment: "物资范围已核对", ...secondCoordinates })).status).toBe(201);
     const managerPreflight = await json(`/spot-procurements/${id}`, manager);
-    expect(managerPreflight.body).toMatchObject({ approval: { currentNodeName: expect.stringContaining("项目经理") }, reviewApprovalContext: { expectedNodeIndex: 1 } });
+    expect(managerPreflight.body).toMatchObject({ approval: { currentNodeName: "并联审批", currentRoleKeys: ["project_manager"] }, reviewApprovalContext: { expectedNodeIndex: 1 } });
     const managerCoordinates = managerPreflight.body!.reviewApprovalContext!;
     const beforeWrongDirector = (await json(`/spot-procurements/${id}`, applicant)).body!;
     expect((await json(`/spot-procurements/${id}/approval`, director, "POST", { decision: "approve", comment: "错误越级", ...managerCoordinates })).status).toBe(403);
@@ -417,8 +761,8 @@ describe("#115 零星采购申请生命周期真实 HTTP 与 PostgreSQL 16", () 
     ]);
   }, 60_000);
 
-  (enabled ? it : it.skip)("公开链从实付与少货收货到财务登记退款", async () => {
-    const id = await createDraft(projectIds.api, "refund");
+  (enabled ? it : it.skip)("公开链登记实付和历史少货退款，拒绝新收货写入", async () => {
+    const id = await seedHistoricalDraft(projectIds.api, "refund");
     expectHttpStatus("采购提交", await json(`/spot-procurements/${id}/submission`, applicant, "POST", {}), 201);
     expectHttpStatus("物资审批", await reviewCurrent(id, director, "approve", "物资确认"), 201);
     expectHttpStatus("项目审批", await reviewCurrent(id, manager, "approve", "项目确认"), 201);
@@ -429,7 +773,7 @@ describe("#115 零星采购申请生命周期真实 HTTP 与 PostgreSQL 16", () 
       businessType: "spot_procurement_version", businessId: applicationInstance.businessId,
       roles: ["material_director", "project_manager"], label: "零星材料采购" });
     const paymentId = approved.payments[0]!.id;
-    const paymentDraft = await json(`/spot-procurement-payments/${paymentId}`, applicant);
+    const paymentDraft = await readPaymentDraft(paymentId, "退款链付款草稿");
     expect(paymentDraft.status).toBe(200);
     const paymentFacts = paymentDraft.body as unknown as { procurementMaterials: Array<{ id: string; approvedQuantity: string }> };
     expectHttpStatus("付款草稿补全", await json(`/spot-procurement-payments/${paymentId}/draft`, applicant, "PATCH", {
@@ -485,21 +829,20 @@ describe("#115 零星采购申请生命周期真实 HTTP 与 PostgreSQL 16", () 
       paymentChannelId, idempotencyKey: randomUUID(), confirmationPassword: accountPassword
     }), 201);
 
-    const receiptImage = await sharp({ create: { width: 320, height: 240, channels: 3, background: "#4f8a5b" } }).png().toBuffer();
-    const receiptPhoto = await uploadFile(`/spot-procurements/${id}/receipt-photo-file-uploads`, applicant, "收货现场.png", randomUUID(), receiptImage);
-    if (receiptPhoto.status !== 201) throw new Error(`收货照片上传失败: ${safeResponseBody(receiptPhoto)}`);
-    expectHttpStatus("收货照片绑定", await json(`/spot-procurements/${id}/receipt/photos`, applicant, "POST", { originalFileId: receiptPhoto.id, source: "camera", category: "material_scene", note: "合成少货" }), 201);
-    expectHttpStatus("少货草稿", await json(`/spot-procurements/${id}/receipt/draft`, applicant, "PATCH", {
-      note: "少货两袋", lines: [{ procurementLineId: approved.lines[0]!.id, qualifiedQuantity: "8", unqualifiedQuantity: "0", freeGiftQuantity: "0", replenishmentPending: false, discrepancyNote: "少货2袋" }]
-    }), 200);
-    expectHttpStatus("收货提交", await json(`/spot-procurements/${id}/receipt/submission`, applicant, "POST", {}), 201);
-    expectHttpStatus("少货审核", await json(`/spot-procurements/${id}/receipt/review`, director, "POST", { decision: "approved", comment: "确认少货" }), 201);
-    const receipt = await prisma.spotProcurementReceipt.findUniqueOrThrow({ where: { procurementId: id } });
-    const receiptReview = await prisma.spotProcurementReceiptReview.findFirstOrThrow({ where: { receiptId: receipt.id, decision: "approved" }, orderBy: { createdAt: "desc" } });
+    const retired = { status: 410, code: "OLD_WRITE_ENTRY_RETIRED" };
+    expect(await uploadFile(`/spot-procurements/${id}/receipt-photo-file-uploads`, applicant, "退役收货现场.png")).toMatchObject(retired);
+    expect(await json(`/spot-procurements/${id}/receipt/submission`, applicant, "POST", {})).toMatchObject({
+      status: retired.status, body: { code: retired.code }
+    });
+    expect(await json(`/spot-procurements/${id}/discrepancy`, applicant, "POST", {
+      operation: "initiate", resolutionType: "full_refund", note: "退役差异发起"
+    })).toMatchObject({ status: retired.status, body: { code: retired.code } });
+    expect(await prisma.spotProcurementReceipt.count({ where: { procurementId: id } })).toBe(0);
+    expect(await prisma.spotProcurementDiscrepancy.count({ where: { procurementId: id } })).toBe(0);
+
+    const historicalReviewId = await prepareHistoricalDiscrepancy(projectIds.api, approved, "公开链");
     await verifyApprovedPdf({ db: prisma, baseUrl, token: director.tokens.accessToken, password: accountPassword,
-      businessType: "spot_procurement_receipt", businessId: receiptReview.id, roles: ["material_director"], label: "零星材料到货审核" });
-    expectHttpStatus("差异发起", await json(`/spot-procurements/${id}/discrepancy`, applicant, "POST", { operation: "initiate", resolutionType: "full_refund", note: "商户退还少货差额" }), 201);
-    expectHttpStatus("差异物资确认", await json(`/spot-procurements/${id}/discrepancy`, director, "POST", { operation: "confirm", resolutionType: "full_refund", note: "商户退还少货差额" }), 201);
+      businessType: "spot_procurement_receipt", businessId: historicalReviewId, roles: ["material_director"], label: "零星材料到货审核" });
     expect((await json(`/spot-procurements/${id}/receipt`, refundFinance)).status).toBe(403);
     const refundVoucher = await uploadFile(`/spot-procurements/${id}/refund-voucher-file-uploads`, refundFinance, "退款凭证.png");
     if (refundVoucher.status !== 201) throw new Error(`退款凭证上传失败: ${safeResponseBody(refundVoucher)}`);
@@ -546,6 +889,139 @@ describe("#115 零星采购申请生命周期真实 HTTP 与 PostgreSQL 16", () 
     return { status: response.status, ...(text ? JSON.parse(text) as { id: string } : { id: "" }) };
   }
 
+  function preparedParallelHttp(): PreparedParallelPgHttp {
+    const actor = {applicant, materialsA: director, materialsB: secondDirector, manager};
+    return {
+      async createSubmittedApplication(label) {
+        const id = await seedHistoricalDraft(projectIds.api, label);
+        expectHttpStatus(`${label}提交`, await json(`/spot-procurements/${id}/submission`, applicant, "POST", {}), 201);
+        return id;
+      },
+      async detail(id, session) {
+        const reply = await json(`/spot-procurements/${id}`, actor[session]);
+        if (!reply.body) throw new Error("并联公开详情没有响应正文");
+        return {status: reply.status, body: reply.body};
+      },
+      review: (id, session, input) => json(`/spot-procurements/${id}/approval`, actor[session], "POST", input)
+    };
+  }
+
+  (enabled ? it : it.skip)("并联PG竞争：两职责同时同意仅创建唯一业务后继", async () => {
+    await runPreparedParallelPgHttpCases(preparedParallelHttp(), "distinct-duties");
+  }, 60_000);
+
+  (enabled ? it : it.skip)("并联PG竞争：同职责两人抢办仅一个动作生效", async () => {
+    await runPreparedParallelPgHttpCases(preparedParallelHttp(), "same-duty");
+  }, 60_000);
+
+  (enabled ? it : it.skip)("并联PG竞争：最后同意与驳回竞争只有唯一终态", async () => {
+    await runPreparedParallelPgHttpCases(preparedParallelHttp(), "last-decision");
+  }, 60_000);
+
+  // Task05 PREPARED / NOT RUN. These cases remain under the existing explicit PG16 opt-in.
+  async function createManagerMandate(id: string) {
+    const detail = expectHttpStatus("指定职责详情", await json(`/spot-procurements/${id}`, manager), 200).body!;
+    const coordinates = detail.reviewApprovalContext!;
+    const targetUserId = (refundFinance.user as { id: string }).id;
+    const mandate = expectHttpStatus("创建精确临时委托", await json("/approval-delegations", manager, "POST", {
+      toUserId: targetUserId, startsAt: new Date(Date.now() - 1000).toISOString(), endsAt: new Date(Date.now() + 60000).toISOString(),
+      actionKey: "spot_procurement.approve", resourceType: "spot_procurement_approval_duty", resourceId: `${coordinates.expectedApprovalInstanceId}:1`
+    }), 201);
+    return { coordinates, mandateId: (mandate.body as unknown as { id: string }).id };
+  }
+
+  (enabled ? it : it.skip)("人员PG竞争：原岗位和精确受托人同时办理仅生效一次", async () => {
+    const id = await preparedParallelHttp().createSubmittedApplication("personnel-delegate-race");
+    const { coordinates } = await createManagerMandate(id);
+    // Controlled fixture signature through the public private-file boundary.
+    const signature = new FormData();
+    signature.append("file", new Blob([Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAAC0lEQVR4nGNgAAIAAAUAAen63NgAAAAASUVORK5CYII=", "base64")], {type: "image/png"}), "合成受托签名.png");
+    expect((await fetch(`${baseUrl}/me/signature/canvas`, {method: "POST", headers: {authorization: `Bearer ${refundFinance.tokens.accessToken}`}, body: signature})).status).toBe(201);
+    const results = await Promise.all([manager, refundFinance].map(session => json(`/spot-procurements/${id}/approval`, session, "POST", {...coordinates, decision: "approve"})));
+    expect(results.filter(result => result.status === 201)).toHaveLength(1);
+    expect(results.filter(result => [403,409].includes(result.status))).toHaveLength(1);
+    const after = expectHttpStatus("竞争后回读", await json(`/spot-procurements/${id}`, applicant), 200).body!;
+    expect(after.approvalTimeline.filter(log => log.action === "approve")).toHaveLength(1);
+    expect(after.payments).toHaveLength(0);
+    expect([403,409]).toContain((await json(`/spot-procurements/${id}/approval`, refundFinance, "POST", {...coordinates, decision: "approve"})).status);
+    for (const actor of [manager, refundFinance]) {
+      const work = expectHttpStatus("竞办结束后待办回读", await json("/me/work-items", actor), 200).body as unknown as {queues:{pending:Array<{businessId:string}>}};
+      expect(work.queues.pending.filter(item=>item.businessId===coordinates.expectedVersionId)).toHaveLength(0);
+    }
+    const stable = expectHttpStatus("拒绝重复后状态回读", await json(`/spot-procurements/${id}`, applicant), 200).body!;
+    expect(stable.approvalTimeline.filter(log=>log.action==="approve")).toHaveLength(1);
+  }, 60_000);
+
+  (enabled ? it : it.skip)("人员PG撤销：旧受托链接即时失权且不影响原岗位", async () => {
+    const id = await preparedParallelHttp().createSubmittedApplication("personnel-delegate-revoke");
+    const { coordinates, mandateId } = await createManagerMandate(id);
+    expectHttpStatus("撤销精确委托", await json(`/approval-delegations/${mandateId}`, manager, "DELETE"), 200);
+    expect((await json(`/spot-procurements/${id}/approval`, refundFinance, "POST", {...coordinates, decision: "return_to_applicant", comment: "过期链接不得写入"})).status).toBe(403);
+    expectHttpStatus("原岗位仍可办理", await reviewCurrent(id, manager, "return_to_applicant", "原岗位继续办理"), 201);
+  }, 60_000);
+
+  (enabled ? it : it.skip)("人员PG到期：半开期限结束后受托读取和办理均拒绝", async () => {
+    const id = await preparedParallelHttp().createSubmittedApplication("personnel-delegate-expiry");
+    const { coordinates, mandateId } = await createManagerMandate(id);
+    await app.get(PrismaService).approvalDelegation.update({where: {id: mandateId}, data: {startsAt: new Date(Date.now()-2000), endsAt: new Date(Date.now()-1000)}});
+    expect((await json(`/spot-procurements/${id}`, refundFinance)).status).toBe(403);
+    expect((await json(`/spot-procurements/${id}/approval`, refundFinance, "POST", {...coordinates, decision: "return_to_applicant", comment: "已到期"})).status).toBe(403);
+  }, 60_000);
+
+  (enabled ? it : it.skip)("人员PG自审：同一创建人兼两职责每次均验证本人密码并分别签批", async () => {
+    const db = app.get(PrismaService);
+    const userId = (applicant.user as {id: string}).id;
+    const positions = await db.position.findMany({where: {key: {in: ["material_director", "project_manager"]}}});
+    const assignmentIds: string[] = [];
+    try {
+      for (const position of positions) assignmentIds.push((await db.userPosition.create({
+        data: {userId, positionId: position.id, projectId: position.key === "material_director" ? null : projectIds.api}
+      })).id);
+      const signature = new FormData();
+      signature.append("file", new Blob([Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAAC0lEQVR4nGNgAAIAAAUAAen63NgAAAAASUVORK5CYII=", "base64")], {type:"image/png"}), "合成本人签名.png");
+      expect((await fetch(`${baseUrl}/me/signature/canvas`, {method:"POST",headers:{authorization:`Bearer ${applicant.tokens.accessToken}`},body:signature})).status).toBe(201);
+      const id = await preparedParallelHttp().createSubmittedApplication("personnel-self-two-duties");
+      for (const index of [0, 1]) {
+        const detail = expectHttpStatus("本人职责回读", await json(`/spot-procurements/${id}`, applicant), 200).body!;
+        const coordinates = {...detail.reviewApprovalContext!, expectedNodeIndex: index};
+        expect((await json(`/spot-procurements/${id}/approval`, applicant, "POST", {...coordinates, decision:"approve"})).status).toBe(400);
+        expectHttpStatus("本人逐职责确认", await json(`/spot-procurements/${id}/approval`, applicant, "POST", {...coordinates, decision:"approve",selfReviewReason:`本人核对第${index+1}项职责`,confirmationPassword:accountPassword}), 201);
+      }
+      const after = expectHttpStatus("逐职责通过回读", await json(`/spot-procurements/${id}`, applicant), 200).body!;
+      expect(after.approvalTimeline.filter(log=>log.action==="approve")).toHaveLength(2);
+      expect(after.payments).toHaveLength(1);
+    } finally { await db.userPosition.deleteMany({where:{id:{in:assignmentIds}}}); }
+  }, 60_000);
+
+  (enabled ? it : it.skip)("并联PG通知：两个消费者只领取并发送同一职责一次", async () => {
+    const http = preparedParallelHttp();
+    const id = await http.createSubmittedApplication("parallel-notification-claim");
+    const detail = expectHttpStatus("通知轮详情", await json(`/spot-procurements/${id}`, manager), 200).body!;
+    const approvalId = detail.reviewApprovalContext!.expectedApprovalInstanceId;
+    const dutyName = "物资部主管审批";
+    const businessCode = detail.procurement.code;
+    const first = app.get(SpotProcurementApprovalNotificationService);
+    const second = new SpotProcurementApprovalNotificationService(app.get(PrismaService), smsGateway as never, app.get(SpotProcurementPilotService));
+    smsGateway.enabled = true;
+    try {
+      await runPreparedParallelNotificationClaimPgCase({
+        firstConsumer: () => first.dispatchQueued(), secondConsumer: () => second.dispatchQueued(), dutyName, recipientName: "零采物资主管",
+        gatewayRequestCount: () => smsGateway.calls.filter(call => call.businessCode === businessCode && call.dutyName === dutyName && call.phone === directorPhone).length,
+        async publicProgress() {
+          const response = await fetch(`${baseUrl}/approval-progress/${approvalId}`, {headers: {authorization: `Bearer ${applicant.tokens.accessToken}`}});
+          expect(response.status).toBe(200);
+          return response.json() as Promise<{history: Array<{action: string; comment: string | null}>}>;
+        }
+      });
+    } finally { smsGateway.enabled = false; }
+  }, 60_000);
+
+  (enabled ? it : it.skip)("PUR01新2：未知申请、保存CAS、并联通过只建采购待办及退回旧请求失效（仅准备）", async () => {
+    await runPreparedSpotRequestV2HttpCases({projectId: projectIds.api,
+      request: async (actor, path, method, body) => json(path, {applicant, director, manager}[actor], method, body)
+    });
+  }, 60_000);
+
   (enabled && process.env.RUN_POL115_BROWSER === "1" ? it : it.skip)("桌面和手机走真实零采申请页面", async () => {
     const refundCoordinates = {
       desktop: await prepareAwaitingRefund(projectIds.desktop, "desktop"),
@@ -566,5 +1042,7 @@ describe("#115 零星采购申请生命周期真实 HTTP 与 PostgreSQL 16", () 
         child.on("exit", (code) => code === 0 ? done() : reject(new Error("零采真实浏览器验证失败")));
       });
     }
-  }, 180_000);
+    // Allow the four original journeys and all 20 independent cold starts
+    // to finish without tearing down Nest during the second browser run.
+  }, 240_000);
 });

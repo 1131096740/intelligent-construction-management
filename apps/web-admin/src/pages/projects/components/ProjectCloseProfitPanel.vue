@@ -4,8 +4,9 @@
       <div>
         <h2>项目收口与盈亏</h2>
         <p>七阶段逐项确认；金额、公司分配和历史版本均以同一经营快照为准。</p>
+        <p>工程完工后仍可继续办理结算、付款和查询历史，不等同停用项目或资金结清。</p>
       </div>
-      <span v-if="workbench" class="snapshot-time">
+      <span v-if="workbench?.projection" class="snapshot-time">
         数据读取于 {{ formatDateTime(workbench.projection.readAt) }}
       </span>
     </div>
@@ -13,14 +14,20 @@
     <t-alert v-if="error" theme="error" title="项目收口数据读取失败" :message="error" />
     <div v-else-if="loading" class="loading-state">正在加载项目收口与盈亏</div>
     <template v-else-if="workbench">
-      <div class="profit-summary">
+      <t-alert
+        v-if="workbench.writeBlockedReason"
+        theme="warning"
+        title="当前收口操作已暂停"
+        :message="workbench.writeBlockedReason"
+      />
+      <div v-if="workbench.projection" class="profit-summary">
         <article v-for="item in profitSummary" :key="item.label">
           <span>{{ item.label }}</span>
           <strong>{{ item.value }}</strong>
         </article>
       </div>
 
-      <details class="projection-drilldown">
+      <details v-if="workbench.projection" class="projection-drilldown">
         <summary>查看统一经营投影事实</summary>
         <p>以下金额与本页确认共用同一投影指纹和截止时间，不另行计算。</p>
         <dl>
@@ -32,7 +39,7 @@
       </details>
 
       <t-alert
-        v-if="!workbench.projection.view.integrity.moneyComplete"
+        v-if="workbench.projection && !workbench.projection.view.integrity.moneyComplete"
         theme="warning"
         title="经营金额仍不完整"
         :message="workbench.projection.view.integrity.notices.join('；') || '请先补齐经营事实后再确认最终盈亏。'"
@@ -123,7 +130,7 @@
             <h3>暂分利润</h3>
             <p>最终盈亏确认前的提前收回单独登记，不自动等于公司的最终份额。</p>
           </div>
-          <strong>当前可分配：{{ formatCents(workbench.projection.view.distribution.currentDistributableProfitCents) }}</strong>
+          <strong v-if="workbench.projection">当前可分配：{{ formatCents(workbench.projection.view.distribution.currentDistributableProfitCents) }}</strong>
         </div>
         <div v-if="canCreateTemporaryDistribution" class="temporary-distribution-editor">
           <BusinessEntryForm
@@ -319,7 +326,7 @@ watch(
 );
 
 const profitSummary = computed(() => {
-  const projection = props.workbench?.projection.view;
+  const projection = props.workbench?.projection?.view;
   return [
     { label: "当前经营盈亏", value: formatCents(projection?.profitAndLoss.currentOperatingProfitCents) },
     { label: "预计待清算费用", value: formatCents(projection?.profitAndLoss.estimatedClearingExpenseCents) },
@@ -542,7 +549,7 @@ async function persistTemporaryProfitWithCapability(
   const operationAllowed = capability.availableActions.includes("create_temporary_distribution");
   if (!operationAllowed) throw new Error("当前用户不能登记暂分利润");
   const result = await postTemporaryProfitDistribution(props.projectId, {
-    expectedProjectionFingerprint: props.workbench!.projection.fingerprint,
+    expectedProjectionFingerprint: props.workbench!.projection!.fingerprint,
     idempotencyKey: crypto.randomUUID(),
     basis: { summary, evidenceFileIds: [] },
     projectParticipatingCompanyId,
@@ -621,7 +628,7 @@ async function confirmProjectProfitDistributionWithCapability() {
 
 function commandBody(summary: string) {
   return {
-    expectedProjectionFingerprint: props.workbench!.projection.fingerprint,
+    expectedProjectionFingerprint: props.workbench!.projection!.fingerprint,
     idempotencyKey: crypto.randomUUID(),
     basis: { summary, evidenceFileIds: [] as string[] }
   };
@@ -629,7 +636,7 @@ function commandBody(summary: string) {
 
 function confirmationBody(submissionId: string) {
   return {
-    expectedProjectionFingerprint: props.workbench!.projection.fingerprint,
+    expectedProjectionFingerprint: props.workbench!.projection!.fingerprint,
     idempotencyKey: crypto.randomUUID(),
     submissionId
   };

@@ -1,0 +1,22 @@
+--- spec
++++ spec
+@@ -1,5 +1,6 @@
+ import { assertTask410Owner290, task410TestDatabase } from "./task410-owned-test-database";
+ import { buildRegisteredPgFixturePlan } from "./registered-payment-postgres.fixture";
++import { verifySignedSettlementRoundedPayment } from "./task410-signed-settlement-payment.test-support";
+ import { seedSharedPaymentPredecessors } from "./task16-shared-standard-fixture";
+ import { ProjectVisibilityService } from "../auth/project-visibility.service";
+ import { companyTransferWorkItems } from "../company-transfer/company-transfer-workitems";
+@@ -596,8 +597,10 @@
+         await reader?.$disconnect();
+       }
+     }
+-    if (canonical === "none") expect(journal).toEqual([]);
+-    else {
++    if (canonical === "none") {
++      expect(journal).toEqual([]);
++      await verifySignedSettlementRoundedPayment(db, password, loginActor, call);
++    } else {
+       const direction = canonical === "source" ? "increase" : "decrease";
+       expect(journal).toEqual([expect.objectContaining({
+         entryKind: "correction", direction: "neutral", amountCents: 200n,

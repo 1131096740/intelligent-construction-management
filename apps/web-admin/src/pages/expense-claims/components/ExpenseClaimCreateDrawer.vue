@@ -1,16 +1,22 @@
 <script setup lang="ts">
 import { computed, reactive, ref, watch } from "vue";
+import { normalizeBusinessAmount, sumBusinessAmounts } from "@jiangkong/shared-domain";
 import { useAuthStore } from "../../../auth/auth.store";
 import { formatUnknownApiError } from "../../../api/error-message";
 import { localBusinessForm } from "../../../lib/local-business-form";
 import {
   createExpenseClaim,
   fetchExpenseClaimCreateOptions,
+  fetchExpenseClaimExpenseCategories,
+  fetchExpenseClaimSelectablePurchaseBatches,
   type CreatedExpenseClaim,
   type CreateExpenseClaimPayload,
-  type ExpenseClaimCreateOptions
+  type ExpenseClaimCreateOptions,
+  type ExpenseCategoryOption,
+  type SelectablePurchaseBatch
 } from "../../../api/expense-claim.api";
 import { centsTextToYuanText, yuanTextToCentsText } from "../../../lib/money";
+import { parseExpenseAmountYuan, validateExpenseQuantity } from "../expense-claim-money";
 import ExpenseClaimLineEditor, { type ExpenseClaimLineDraft } from "./ExpenseClaimLineEditor.vue";
 import ExpenseClaimApplicationFields from "./ExpenseClaimApplicationFields.vue";
 import ExpenseClaimPayeeFields from "./ExpenseClaimPayeeFields.vue";
@@ -30,8 +36,10 @@ const error = ref("");
 const step = ref(0);
 const form = reactive({
   claimType: "reimbursement" as ClaimType,
+  actualPurchaseBatchId: "",
   incidentalExpenseCategory: "" as IncidentalExpenseCategory | "",
   companyEntityId: "",
+  costBearingCompany: "organization",
   projectId: "",
   applicantMode: "self" as ApplicantMode,
   applicantUserId: "",
@@ -45,11 +53,10 @@ const form = reactive({
   payeeAccountName: "",
   payeeBankName: "",
   payeeBankAccount: "",
-  loanExpectedClearanceOn: "",
   lines: [emptyLine()] as ExpenseClaimLineDraft[]
 });
 
-const stepLabels = ["业务与身份", "费用明细", "收款与借款", "复核保存"];
+const stepLabels = ["业务与身份", "费用明细", "收款信息", "复核保存"];
 const auth = useAuthStore();
 const recoveryMessage = ref("");
 const submissionUncertain = ref(false);
@@ -74,16 +81,37 @@ const applicationFields = computed({
     form.requestedAmountYuan = value.requestedAmountYuan;
   }
 });
+const canSelectBearingCompany = computed(() => Boolean(form.projectId && !form.actualPurchaseBatchId && form.claimType !== "loan"));
+const bearingCompanyOptions = computed(() => [
+  { label: "沿用使用单位", value: "organization" },
+  { label: "待归属", value: "pending" },
+  ...(options.value?.bearingCompanyOptions ?? []).filter(option => option.projectId === form.projectId)
+    .map(option => ({ label: option.companyNameSnapshot, value: option.companyEntityId }))
+]);
+watch(() => form.projectId, () => { form.costBearingCompany = "organization"; });
 const companyOptions = computed(() => options.value?.companyEntities.map((item) => ({ label: item.name, value: item.id })) ?? []);
 const incidentalExpenseCategoryOptions = computed(() => options.value?.entryDefinition.fields.find((field) => field.key === "incidentalExpenseCategory")?.options ?? []);
+
+// 本票：公司可复用费用类别（默认 10 类 + 本公司已用），供填单人快速新增行。
+const expenseCategoryOptions = ref<ExpenseCategoryOption[]>(options.value?.expenseCategories ?? []);
+const categoryLoadGeneration = ref(0);
+// 本票：原采购单垫付报销由填单人手工选择已有批次，不做自动匹配。
+const selectableBatches = ref<SelectablePurchaseBatch[]>([]);
+const selectableBatchLoading = ref(false);
+const selectableBatchMessage = ref("");
+let batchLoadGeneration = 0;
+const purchaseBatchOptions = computed(() => selectableBatches.value.map((batch) => ({
+  label: `${batch.supplierName} · ${batch.procurementCode ?? "原采购"} · 剩余可付 ${centsTextToYuanText(batch.availableAmountCents)} 元`,
+  value: batch.batchId
+})));
+const selectedPurchaseBatch = computed(() => selectableBatches.value.find((batch) => batch.batchId === form.actualPurchaseBatchId) ?? null);
 const payeeFields = computed({
-  get: () => ({ payeeName: form.payeeName, payeeAccountName: form.payeeAccountName, payeeBankName: form.payeeBankName, payeeBankAccount: form.payeeBankAccount, loanExpectedClearanceOn: form.loanExpectedClearanceOn }),
+  get: () => ({ payeeName: form.payeeName, payeeAccountName: form.payeeAccountName, payeeBankName: form.payeeBankName, payeeBankAccount: form.payeeBankAccount }),
   set: (value) => {
     form.payeeName = value.payeeName;
     form.payeeAccountName = value.payeeAccountName;
     form.payeeBankName = value.payeeBankName;
     form.payeeBankAccount = value.payeeBankAccount;
-    form.loanExpectedClearanceOn = value.loanExpectedClearanceOn;
   }
 });
 const isSelfApplicant = computed(() => form.applicantMode === "self"
@@ -94,25 +122,28 @@ const availableProjects = computed(() => options.value?.projects.filter((project
 const projectOptions = computed(() => [...(form.claimType === "reimbursement" ? [{ label: "非项目报销", value: "" }] : []), ...availableProjects.value.map((item) => ({ label: `${item.code} · ${item.name}`, value: item.id }))]);
 const applicantOptions = computed(() => options.value?.applicantUsers.map((item) => ({ label: item.name, value: item.id })) ?? []);
 const witnessOptions = computed(() => options.value?.factWitnessUsers.map((item) => ({ label: item.name, value: item.id })) ?? []);
-const isProject = computed(() => Boolean(form.projectId));
-const needsWitness = computed(() => form.claimType === "reimbursement" && !isProject.value);
+const showFactWitness = computed(() => form.claimType === "reimbursement" && !form.projectId);
+const requiresFactWitness = computed(() => showFactWitness.value && Boolean(form.actualPurchaseBatchId));
 const payeeNameError = computed(() => incidentalPayeeError() && error.value === incidentalPayeeError() ? error.value : "");
-const lineTotalCents = computed(() => {
+const reimbursementDefinition = computed(() => options.value?.reimbursementEntryDefinition ?? options.value?.entryDefinition);
+const lineTotalYuan = computed(() => {
   try {
-    return form.lines.reduce((total, line) => total + BigInt(yuanTextToCentsText(line.amountYuan.trim() || "0")), 0n).toString();
+    return sumBusinessAmounts(form.lines.map((line) => normalizeBusinessAmount(line.amountYuan.trim())));
   } catch { return null; }
 });
 
 function emptyLine(): ExpenseClaimLineDraft {
-  return { expenseCategory: "", occurredOn: new Date().toISOString().slice(0, 10), purpose: "", receiptCount: "0", amountYuan: "", evidenceType: "invoice", noEvidenceReason: "", remark: "" };
+  return { expenseCategory: "", occurredOn: new Date().toISOString().slice(0, 10), purpose: "", quantity: "", receiptCount: "0", amountYuan: "", evidenceType: "invoice", noEvidenceReason: "", remark: "" };
 }
 
 function resetForm() {
   step.value = 0;
   error.value = "";
   form.claimType = "reimbursement";
+  form.actualPurchaseBatchId = "";
   form.incidentalExpenseCategory = "";
   form.companyEntityId = options.value?.companyEntities[0]?.id ?? "";
+  form.costBearingCompany = "organization";
   form.projectId = "";
   form.applicantMode = "self";
   form.applicantUserId = options.value?.selfApplicantUserId ?? "";
@@ -126,7 +157,6 @@ function resetForm() {
   form.payeeAccountName = "";
   form.payeeBankName = "";
   form.payeeBankAccount = "";
-  form.loanExpectedClearanceOn = "";
   form.lines = [emptyLine()];
 }
 
@@ -142,13 +172,17 @@ async function loadOptions() {
     const loaded = await fetchExpenseClaimCreateOptions();
     if (generation !== optionsLoadGeneration || !props.modelValue || auth.user?.id !== owner) return;
     options.value = loaded;
+    expenseCategoryOptions.value = loaded.expenseCategories ?? [];
     resetForm();
+    recoveryMessage.value = "";
     submissionUncertain.value = false;
     if (owner) {
       recovery = localBusinessForm(localStorage, owner, "expense-create");
       try {
         const saved = recovery.restore();
-        if (saved) {
+        if (saved?.form.claimType === "loan") {
+          recoveryMessage.value = "员工借款申请已停止办理，旧借款暂存未载入。";
+        } else if (saved) {
           Object.assign(form, saved.form); step.value = saved.step; submissionUncertain.value = saved.submissionUncertain;
           recoveryMessage.value = "已恢复本机填写，请核对项目、人员与金额后继续。";
         }
@@ -161,7 +195,73 @@ async function loadOptions() {
 }
 
 watch(() => props.modelValue, (isVisible) => { if (isVisible) void loadOptions(); else optionsLoadGeneration += 1; });
-watch(() => form.claimType, (claimType) => { if (claimType !== "reimbursement" && !form.projectId && availableProjects.value.length === 1) form.projectId = availableProjects.value[0].id; });
+watch(() => form.claimType, (claimType) => {
+  if (claimType !== "reimbursement") form.actualPurchaseBatchId = "";
+  if (claimType !== "reimbursement" && !form.projectId && availableProjects.value.length === 1) form.projectId = availableProjects.value[0].id;
+  void loadSelectableBatches();
+});
+watch(() => form.companyEntityId, () => {
+  void loadExpenseCategories();
+  form.actualPurchaseBatchId = "";
+  void loadSelectableBatches();
+});
+watch(() => form.projectId, () => {
+  form.actualPurchaseBatchId = "";
+  void loadSelectableBatches();
+});
+watch(() => form.actualPurchaseBatchId, (batchId) => {
+  const batch = selectableBatches.value.find((item) => item.batchId === batchId);
+  if (!batch) return;
+  form.claimType = "reimbursement";
+  form.applicantMode = "self";
+  form.applicantUserId = options.value?.selfApplicantUserId ?? "";
+  form.factWitnessUserId = "";
+  const category = batch.categoryLabel;
+  if (category) form.lines = form.lines.map((line) => ({ ...line, expenseCategory: category }));
+  error.value = "";
+});
+
+async function loadExpenseCategories() {
+  const companyId = form.companyEntityId;
+  const generation = ++categoryLoadGeneration.value;
+  if (!companyId) { expenseCategoryOptions.value = options.value?.expenseCategories ?? []; return; }
+  try {
+    const loaded = await fetchExpenseClaimExpenseCategories(companyId);
+    if (generation === categoryLoadGeneration.value) expenseCategoryOptions.value = loaded.categories;
+  } catch {
+    if (generation === categoryLoadGeneration.value) expenseCategoryOptions.value = options.value?.expenseCategories ?? [];
+  }
+}
+
+async function loadSelectableBatches() {
+  const generation = ++batchLoadGeneration;
+  selectableBatchMessage.value = "";
+  if (!form.companyEntityId || form.claimType !== "reimbursement") {
+    selectableBatches.value = [];
+    return;
+  }
+  selectableBatchLoading.value = true;
+  try {
+    const loaded = await fetchExpenseClaimSelectablePurchaseBatches({
+      companyEntityId: form.companyEntityId,
+      ...(form.projectId ? { projectId: form.projectId } : {})
+    });
+    if (generation !== batchLoadGeneration) return;
+    selectableBatches.value = loaded.batches;
+    if (!loaded.batches.length) selectableBatchMessage.value = "当前单位与项目下没有仍可占用的实际采购批次，可直接按无采购报销填写。";
+  } catch {
+    if (generation === batchLoadGeneration) {
+      selectableBatches.value = [];
+      selectableBatchMessage.value = "暂无法读取可垫付报销的实际采购批次，可稍后重试或直接按无采购报销填写。";
+    }
+  } finally {
+    if (generation === batchLoadGeneration) selectableBatchLoading.value = false;
+  }
+}
+
+function addLineWithCategory(name: string) {
+  form.lines = [...form.lines, { ...emptyLine(), expenseCategory: name }];
+}
 watch(() => form.applicantMode, (mode) => {
   if (mode === "self") form.applicantUserId = options.value?.selfApplicantUserId ?? "";
 });
@@ -174,78 +274,88 @@ function incidentalPayeeError(): string {
   return form.claimType === "incidental_expense" && !form.payeeName.trim() ? "零星费用收款对象必填" : "";
 }
 
-function validateCurrentStep(): string {
-  if (step.value === 0) {
+function validateStep(currentStep: number): string {
+  if (currentStep === 0) {
     if (!form.companyEntityId) return "请选择使用单位";
-    if (form.claimType === "loan" && !form.projectId) return "借款申请必须选择项目";
     if (form.claimType === "incidental_expense" && !form.projectId) return "零星费用申请必须选择项目";
     if (form.claimType === "incidental_expense" && !form.incidentalExpenseCategory) return "请选择零星费用分类";
-    if (needsWitness.value && !form.factWitnessUserId) return "非项目报销必须选择事实证明人";
+    if (requiresFactWitness.value && !form.factWitnessUserId) return "非项目报销必须选择事实证明人";
     if (form.applicantMode === "no_account" && (!form.applicantName.trim() || !form.applicantPhone.trim())) return "请填写无账号人员的姓名和电话";
     if (form.applicantMode !== "no_account" && !form.applicantUserId) return "请选择报销人或借款人";
   }
-  if (step.value === 1 && form.claimType === "reimbursement") {
+  if (currentStep === 1 && form.claimType === "reimbursement") {
     if (!form.reason.trim()) return "请填写事由";
     if (!form.requestedAmountYuan.trim()) return "请填写申请金额";
     try {
-      const requested = BigInt(yuanTextToCentsText(form.requestedAmountYuan.trim()));
-      if (requested <= 0n) return "申请金额必须大于 0";
-      if (lineTotalCents.value === null || BigInt(lineTotalCents.value) !== requested) return "费用明细合计必须等于申请金额";
-      for (const line of form.lines) {
+      const requested = parseExpenseAmountYuan(form.requestedAmountYuan, "申请金额");
+      for (const [index, line] of form.lines.entries()) {
         if (!line.expenseCategory.trim() || !line.occurredOn || !line.purpose.trim()) return "请补全每一行费用类别、发生日期和用途";
         if (!/^\d+$/.test(line.receiptCount) || Number(line.receiptCount) > 10000) return "单据张数必须是 0 到 10000 的整数";
-        if (BigInt(yuanTextToCentsText(line.amountYuan.trim())) <= 0n) return "每行费用金额必须大于 0";
+        validateExpenseQuantity(line.quantity, `第 ${index + 1} 行`);
+        parseExpenseAmountYuan(line.amountYuan, `第 ${index + 1} 行费用金额`);
         if (line.evidenceType === "none" && !line.noEvidenceReason.trim()) return "无凭证费用必须填写原因";
       }
-    } catch { return "金额必须是非负数字，最多保留两位小数"; }
+      if (lineTotalYuan.value !== requested) return "费用明细合计必须等于申请金额";
+    } catch (error) { return (error as Error).message; }
   }
-  if (step.value === 2) {
+  if (currentStep === 2) {
     if (incidentalPayeeError()) return incidentalPayeeError();
     if (!form.reason.trim()) return "请填写事由";
-    try { if (BigInt(yuanTextToCentsText(form.requestedAmountYuan.trim())) <= 0n) return "申请金额必须大于 0"; } catch { return "金额必须是非负数字，最多保留两位小数"; }
-    if (form.claimType === "loan" && !form.loanExpectedClearanceOn) return "请填写预计清账日期";
+    if (form.claimType !== "reimbursement") {
+      try { if (BigInt(yuanTextToCentsText(form.requestedAmountYuan.trim())) <= 0n) return "申请金额必须大于 0"; } catch { return "金额必须是非负数字，最多保留两位小数"; }
+    }
   }
   return "";
 }
 
-function next() { error.value = validateCurrentStep(); if (!error.value) step.value += 1; }
+function next() { error.value = validateStep(step.value); if (!error.value) step.value += 1; }
 function previous() { error.value = ""; step.value -= 1; }
 
 function payload(): CreateExpenseClaimPayload {
-  const base: CreateExpenseClaimPayload = {
+  const base: Omit<CreateExpenseClaimPayload, "requestedAmountCents" | "requestedAmountYuan" | "lines"> = {
     claimType: form.claimType,
+    actualPurchaseBatchId: form.claimType === "reimbursement" && form.actualPurchaseBatchId ? form.actualPurchaseBatchId : undefined,
     incidentalExpenseCategory: form.claimType === "incidental_expense" && form.incidentalExpenseCategory ? form.incidentalExpenseCategory : undefined,
     companyEntityId: form.companyEntityId,
+    ...(canSelectBearingCompany.value && form.costBearingCompany !== "organization"
+      ? { costBearingCompanyEntityId: form.costBearingCompany === "pending" ? null : form.costBearingCompany } : {}),
     projectId: form.projectId || undefined,
-    factWitnessUserId: needsWitness.value ? form.factWitnessUserId : undefined,
+    factWitnessUserId: showFactWitness.value ? form.factWitnessUserId || undefined : undefined,
     applicantUserId: form.applicantMode === "no_account" ? undefined : form.applicantMode === "self" ? options.value?.selfApplicantUserId : form.applicantUserId,
     applicantName: form.applicantMode === "no_account" ? form.applicantName.trim() : undefined,
     applicantPhone: form.applicantMode === "no_account" ? form.applicantPhone.trim() : undefined,
     reason: form.reason.trim(),
-    requestedAmountCents: yuanTextToCentsText(form.requestedAmountYuan.trim()),
     paymentMethod: form.paymentMethod || undefined,
     payeeName: form.payeeName.trim() || undefined,
     payeeAccountName: form.payeeAccountName.trim() || undefined,
     payeeBankName: form.payeeBankName.trim() || undefined,
-    payeeBankAccount: form.payeeBankAccount.trim() || undefined,
-    loanExpectedClearanceOn: form.claimType === "loan" ? form.loanExpectedClearanceOn : undefined
+    payeeBankAccount: form.payeeBankAccount.trim() || undefined
   };
-  if (form.claimType === "reimbursement") {
-    base.lines = form.lines.map((line) => ({
-      expenseCategory: line.expenseCategory.trim(), occurredOn: line.occurredOn, purpose: line.purpose.trim(),
-      receiptCount: Number(line.receiptCount), amountCents: yuanTextToCentsText(line.amountYuan.trim()), evidenceType: line.evidenceType,
-      noEvidenceReason: line.evidenceType === "none" ? line.noEvidenceReason.trim() : undefined, remark: line.remark.trim() || undefined
-    }));
+  if (form.claimType !== "reimbursement") {
+    return { ...base, requestedAmountCents: yuanTextToCentsText(form.requestedAmountYuan.trim()) };
   }
-  return base;
+  return {
+    ...base,
+    requestedAmountYuan: parseExpenseAmountYuan(form.requestedAmountYuan, "申请金额"),
+    lines: form.lines.map((line, index) => ({
+      expenseCategory: line.expenseCategory.trim(), occurredOn: line.occurredOn, purpose: line.purpose.trim(),
+      quantity: line.quantity.trim() || undefined,
+      receiptCount: Number(line.receiptCount),
+      amountYuan: parseExpenseAmountYuan(line.amountYuan, `第 ${index + 1} 行费用金额`),
+      evidenceType: line.evidenceType,
+      noEvidenceReason: line.evidenceType === "none" ? line.noEvidenceReason.trim() : undefined,
+      remark: line.remark.trim() || undefined
+    }))
+  };
 }
 
 async function save() {
   if (submissionUncertain.value) { error.value = "上次保存的结果尚未确认，请先关闭本窗口，到“我的草稿”核对，避免重复创建。"; return; }
-  // Recovered local forms may open directly at review; enforce the original API requirement here too.
-  if (incidentalPayeeError()) { step.value = 2; error.value = incidentalPayeeError(); return; }
-  error.value = validateCurrentStep();
-  if (error.value || saving.value) return;
+  if (saving.value) return;
+  // A recovered form can reopen at review, so validate the editable amount step too.
+  const amountStep = form.claimType === "reimbursement" ? 1 : 2;
+  error.value = validateStep(amountStep);
+  if (error.value) { step.value = amountStep; return; }
   saving.value = true;
   creationRequestStarted = false;
   try {
@@ -302,7 +412,7 @@ function finishRecovery() {
   >
     <template #header>
       <div class="expense-claim-create__title">
-        <span>新建费用报销 / 借款 / 零星费用</span><small>首次成功保存后分配正式日流水编号；历史项目支出不在此迁移或改写。</small>
+        <span>新建费用申请</span><small>首次成功保存后分配正式日流水编号；历史项目支出不在此迁移或改写。</small>
       </div>
     </template>
     <div
@@ -360,12 +470,30 @@ function finishRecovery() {
                 <t-radio-group v-model="form.claimType">
                   <t-radio value="reimbursement">
                     费用报销
-                  </t-radio><t-radio value="loan">
-                    借款申请
                   </t-radio><t-radio value="incidental_expense">
                     零星费用
                   </t-radio>
                 </t-radio-group>
+              </t-form-item>
+              <t-form-item
+                v-if="form.claimType === 'reimbursement'"
+                label="从原采购单垫付报销（可选）"
+              >
+                <t-select
+                  v-model="form.actualPurchaseBatchId"
+                  :options="purchaseBatchOptions"
+                  :loading="selectableBatchLoading"
+                  clearable
+                  placeholder="不选＝无采购直接报销；由本人手工选择已有实际采购批次"
+                />
+                <p class="expense-claim-create__hint">
+                  {{ selectableBatchMessage || '系统不自动识别或匹配采购；选中后沿用原采购类别，只能报销本人垫付部分，成本仍由采购批次确认一次。' }}
+                </p>
+                <t-alert
+                  v-if="selectedPurchaseBatch"
+                  theme="info"
+                  :message="`原采购 ${selectedPurchaseBatch.procurementCode ?? '待核对'} · ${selectedPurchaseBatch.supplierName}；剩余可付 ${centsTextToYuanText(selectedPurchaseBatch.availableAmountCents)} 元；批次成本${selectedPurchaseBatch.costConfirmed ? '已确认' : '待首批付款/报销确认'}`"
+                />
               </t-form-item>
               <t-form-item
                 v-if="form.claimType === 'incidental_expense'"
@@ -394,16 +522,20 @@ function finishRecovery() {
                   v-model="form.projectId"
                   :options="projectOptions"
                   :disabled="form.claimType !== 'reimbursement' && !availableProjects.length"
-                  :placeholder="form.claimType !== 'reimbursement' && !availableProjects.length ? '暂无可申请的所属项目' : '报销项目可选；借款及零星费用必选'"
+                  :placeholder="form.claimType !== 'reimbursement' && !availableProjects.length ? '暂无可申请的所属项目' : '报销项目可选；零星费用必选'"
                 />
               </t-form-item>
+              <t-form-item v-if="canSelectBearingCompany" label="成本承担公司">
+                <t-select v-model="form.costBearingCompany" :options="bearingCompanyOptions" />
+              </t-form-item>
               <t-form-item
-                v-if="needsWitness"
-                label="事实证明人"
-                required-mark
+                v-if="showFactWitness"
+                :label="requiresFactWitness ? '事实证明人' : '事实证明人（选填）'"
+                :required-mark="requiresFactWitness"
               >
                 <t-select
                   v-model="form.factWitnessUserId"
+                  :clearable="!requiresFactWitness"
                   :options="witnessOptions"
                   placeholder="选择系统内事实证明人"
                 />
@@ -460,17 +592,36 @@ function finishRecovery() {
           >
             <ExpenseClaimApplicationFields
               v-model="applicationFields"
-              :definition="options.entryDefinition"
+              :definition="form.claimType === 'reimbursement' ? (reimbursementDefinition ?? options.entryDefinition) : options.entryDefinition"
+            />
+            <div
+              v-if="form.claimType === 'reimbursement'"
+              class="expense-claim-create__categories"
+            >
+              <span>公司常用费用类别（点击新增一行；也可在表格内直接输入新类别）：</span>
+              <t-tag
+                v-for="category in expenseCategoryOptions"
+                :key="category.name"
+                variant="light"
+                @click="addLineWithCategory(category.name)"
+              >
+                {{ category.name }}{{ category.usageCount ? `（${category.usageCount}）` : "" }}
+              </t-tag>
+            </div>
+            <t-alert
+              v-if="selectedPurchaseBatch"
+              theme="info"
+              :message="`关联原采购报销沿用原类别「${selectedPurchaseBatch.categoryLabel ?? '待核对'}」；数量可留空，有值时最多 4 位小数。`"
             />
             <ExpenseClaimLineEditor
               v-if="form.claimType === 'reimbursement'"
               v-model="form.lines"
-              :definition="options.entryDefinition"
+              :definition="reimbursementDefinition ?? options.entryDefinition"
             />
             <t-alert
               v-else
               theme="info"
-              :message="form.claimType === 'loan' ? '借款不填写费用明细；实际放款、凭证和台账将在审批后的资金环节登记。' : '零星费用不填写报销明细；按已选零星费用分类提交审批。'"
+              message="零星费用不填写报销明细，按所选分类提交审批。"
             />
           </section>
           <section
@@ -487,7 +638,6 @@ function finishRecovery() {
               <ExpenseClaimPayeeFields
                 v-model="payeeFields"
                 :definition="options.entryDefinition"
-                :is-loan="form.claimType === 'loan'"
                 :is-incidental="form.claimType === 'incidental_expense'"
                 :payee-name-error="payeeNameError"
               />
@@ -502,13 +652,18 @@ function finishRecovery() {
               bordered
             >
               <t-descriptions-item label="业务类型">
-                {{ form.claimType === 'loan' ? '借款申请' : form.claimType === 'incidental_expense' ? '零星费用' : '费用报销' }}
+                {{ form.claimType === 'incidental_expense' ? '零星费用' : '费用报销' }}
               </t-descriptions-item><t-descriptions-item label="事由">
                 {{ form.reason || '未填写' }}
               </t-descriptions-item><t-descriptions-item label="申请金额">
-                ¥{{ form.requestedAmountYuan || '0.00' }}
+                {{ form.requestedAmountYuan ? `¥${form.requestedAmountYuan}` : "金额待填写" }}
               </t-descriptions-item><t-descriptions-item label="费用明细">
-                {{ form.claimType === 'reimbursement' ? `${form.lines.length} 行；合计 ${lineTotalCents === null ? '金额待核对' : `${centsTextToYuanText(lineTotalCents)} 元`}` : '不适用' }}
+                {{ form.claimType === 'reimbursement' ? `${form.lines.length} 行；合计 ${lineTotalYuan === null ? '金额待核对' : `${lineTotalYuan} 元`}` : '不适用' }}
+              </t-descriptions-item><t-descriptions-item
+                v-if="selectedPurchaseBatch"
+                label="原采购批次"
+              >
+                {{ selectedPurchaseBatch.procurementCode ?? '待核对' }} · {{ selectedPurchaseBatch.supplierName }} · 剩余可付 {{ centsTextToYuanText(selectedPurchaseBatch.availableAmountCents) }} 元
               </t-descriptions-item><t-descriptions-item
                 v-if="form.claimType === 'incidental_expense'"
                 label="零星费用分类"
@@ -558,6 +713,9 @@ function finishRecovery() {
 </template>
 
 <style scoped>
+.expense-claim-create__hint { margin: var(--jg-space-xs) 0 0; color: var(--jg-color-text-tertiary); font-size: var(--jg-font-size-meta); }
+.expense-claim-create__categories { display: flex; flex-wrap: wrap; gap: var(--jg-space-xs); align-items: center; color: var(--jg-color-text-secondary); font-size: var(--jg-font-size-meta); }
+
 .expense-claim-create { display: grid; gap: var(--jg-space-lg); padding-bottom: var(--jg-space-xl); }
 .expense-claim-create__title { display: grid; gap: var(--jg-space-xs); }
 .expense-claim-create__title span { color: var(--jg-color-text-primary); font-size: var(--jg-font-size-section-title); font-weight: var(--jg-font-weight-semibold); }

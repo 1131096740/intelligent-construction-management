@@ -1,0 +1,21 @@
+--- a/services/api/src/database/payment-execution-concurrency.spec.ts
++++ b/services/api/src/database/payment-execution-concurrency.spec.ts
+@@ -1,4 +1,5 @@
+ import { isOwned280ContractDatabase } from "./task12-owned-280.test-support";
++import { assertOwnedContractFinanceLedger } from "./contract-finance-owned.test-support";
+ import { assertTask07BankClaimNegatives, prepareTask07FormalPayment } from "./task07-formal-payment.test-support";
+ import { CompanyEntityService } from "../company-entity/company-entity.service";
+ import { CompanyEntityAccess } from "../company-entity/company-entity-access";
+@@ -196,6 +197,12 @@
+ async function assertFullyMigrated(client: PrismaClientType) {
+   const target = new URL(process.env.DATABASE_URL!);
+   if (isOwned280ContractDatabase(target)) {
++    if (process.env.JG_CONTRACT_FINANCE_LEDGER === "329") {
++      if (!await assertOwnedContractFinanceLedger(client, "payment")) {
++        throw new Error("PAYMENT_CONCURRENCY_OWNED_320_IDENTITY");
++      }
++      return;
++    }
+     const [result] = await client.$queryRaw<Array<{ accepted: boolean }>>`
+       SELECT current_database() = ${target.pathname.slice(1)}
+         AND current_user = 'jg_task01_owner' AND session_user = current_user

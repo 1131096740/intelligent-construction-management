@@ -1,3 +1,4 @@
+import { assertNotDirectPendingVersion } from "./contract-direct-pending-policy";
 import { BadRequestException, Injectable, Optional } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
 import { AuditService } from "../audit/audit.service";
@@ -10,6 +11,7 @@ const EDITABLE_STATUSES = new Set(["draft"]);
 const SIDES = ["first_party", "counterparty"] as const;
 type AuthorizationSide = (typeof SIDES)[number];
 type GovernedVersion = {
+  draftData?: Prisma.JsonValue;
   id: string;
   contractId: string;
   status: string;
@@ -471,6 +473,7 @@ export class ContractAuthorizationService {
     if (contract.ownerUserId !== actorUserId) {
       throw new BadRequestException("只有合同经办人可以维护授权资料");
     }
+    assertNotDirectPendingVersion(version);
     if (!EDITABLE_STATUSES.has(version.status)) {
       throw new BadRequestException("当前合同不在可编辑状态，不能维护授权资料");
     }

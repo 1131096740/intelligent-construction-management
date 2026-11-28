@@ -1,0 +1,88 @@
+--- a/fixture.ts
++++ b/fixture.ts
+@@ -12,0 +13 @@
++import { assertOrderedIssue333Database } from "../../test-support/ordered-issue333-fixture";
+@@ -129 +130,3 @@
+-    prisma = new PrismaClient({ datasources: { db: { url: databaseUrl } } });
++    prisma = new PrismaClient({
++      datasources: { db: { url: assertOrderedIssue333Database(databaseUrl) } }
++    });
+@@ -138 +140,0 @@
+-        operatingLedgerEffectiveDate: ledgerEffective,
+@@ -139,0 +142,18 @@
++      }
++    });
++    const effectiveFrom = new Date("2026-01-01T00:00:00.000Z");
++    const party = await prisma.businessParty.create({
++      data: {
++        id: "affiliate-party",
++        name: "施工企业甲",
++        normalizedName: "施工企业甲",
++        createdByUserId: id.user
++      }
++    });
++    await prisma.businessPartyVersion.create({
++      data: {
++        id: "affiliate-version",
++        businessPartyId: party.id,
++        versionNo: 1,
++        snapshot: { name: party.name },
++        createdByUserId: id.user
+@@ -149 +169 @@
+-        effectiveFrom: new Date("2026-01-01T00:00:00.000Z"),
++        effectiveFrom,
+@@ -152,0 +173,41 @@
++    });
++
++    for (const [companyId, companyName] of [
++      ["company-a", "甲公司"],
++      ["company-b", "乙公司"],
++      ["company-c", "丙公司"]
++    ]) {
++      await prisma.companyEntity.create({
++        data: { id: companyId, name: companyName, dataStatus: "complete" }
++      });
++      const companyVersion = await prisma.companyEntityVersion.create({
++        data: {
++          id: `${companyId}-v1`,
++          companyEntityId: companyId,
++          versionNo: 1,
++          name: companyName,
++          isActive: true,
++          action: "create",
++          actorUserId: id.user
++        }
++      });
++      await prisma.companyEntity.update({
++        where: { id: companyId },
++        data: { currentVersionNo: companyVersion.versionNo }
++      });
++      await prisma.projectParticipatingCompany.create({
++        data: {
++          id: `issue418-${companyId}`,
++          projectId: id.project,
++          companyEntityId: companyId,
++          companyEntityVersionId: companyVersion.id,
++          companyNameSnapshot: companyName,
++          effectiveFrom,
++          changeReason: "验收初始化",
++          addedByUserId: id.user
++        }
++      });
++    }
++    await prisma.project.update({
++      where: { id: id.project },
++      data: { operatingLedgerEffectiveDate: ledgerEffective }
+@@ -326,12 +386,0 @@
+-    });
+-    await prisma.projectParticipatingCompany.create({
+-      data: {
+-        id: "issue418-company-c",
+-        projectId: id.project,
+-        companyEntityId: "company-c",
+-        companyEntityVersionId: "company-c-v1",
+-        companyNameSnapshot: "丙公司",
+-        effectiveFrom: new Date("2026-01-01T00:00:00.000Z"),
+-        changeReason: "验收初始化",
+-        addedByUserId: id.user
+-      }

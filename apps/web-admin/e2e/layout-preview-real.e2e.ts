@@ -15,23 +15,15 @@ test("四类版式真实预览、下载及 V1 历史只读回读", async ({ page
     const v2 = page.locator("tbody tr").filter({ hasText: "V2" });
     await expect(v2).toBeVisible();
     for (const mode of ["preview", "download"] as const) {
-      await v2.getByRole("button", { name: mode === "preview" ? "预览样张" : "下载样张", exact: true }).click();
-      const dialog = page.locator(".t-dialog").filter({ hasText: mode === "preview" ? "预览版式样张" : "下载版式样张" });
-      await expect(dialog).toBeVisible();
-      await expect(dialog).toHaveCSS("opacity", "1");
-      await expect(dialog).toHaveCSS("transform", "none");
-      await dialog.locator('input[type="password"]').fill(process.env.LAYOUT_PREVIEW_PASSWORD!);
-      await dialog.getByPlaceholder("请填写原因，便于留痕审计").fill("隔离浏览器样张验收");
       const [response, download] = await Promise.all([
         page.waitForResponse(response => response.request().method() === "GET" &&
           /\/api\/files\/[^/]+\/download$/.test(new URL(response.url()).pathname)),
         mode === "download" ? page.waitForEvent("download") : Promise.resolve(null),
-        dialog.getByRole("button", { name: mode === "preview" ? "确认预览" : "确认下载", exact: true }).click(),
+        v2.getByRole("button", { name: mode === "preview" ? "预览样张" : "下载样张", exact: true }).click(),
       ]);
       expect(response.status()).toBe(200);
       expect(new URL(response.url()).searchParams.get("accessMode")).toBe(mode);
       expect(response.headers()["content-disposition"]).toMatch(mode === "preview" ? /^inline/ : /^attachment/);
-      await expect(dialog).toBeHidden();
       if (mode === "preview") {
         const preview = page.locator(".t-dialog").filter({ hasText: "版式样张预览" });
         const canvas = preview.getByRole("img", { name: "版式样张第 1 页", exact: true });

@@ -1,3 +1,5 @@
+import { RetryDutyNotificationDto } from "../approval/retry-duty-notification.dto";
+import { PaymentApprovalNotificationService } from "./payment-approval-notification.service";
 import { UploadPrivateFileDto } from "../file/dto/upload-private-file.dto";
 import { ApprovalProgressService } from "../approval/approval-progress.service";
 import {
@@ -10,6 +12,9 @@ import {
   Param,
   Post,
   Query,
+  Res,
+  ServiceUnavailableException,
+  StreamableFile,
   UploadedFile,
   UseInterceptors
 } from "@nestjs/common";
@@ -19,13 +24,14 @@ import { RequirePositions } from "../auth/decorators/require-positions.decorator
 import { RequireProjectRole } from "../auth/decorators/require-project-role.decorator";
 import type { AuthenticatedUser } from "../auth/auth.types";
 import { LEDGER_READ_POSITION_KEYS } from "../auth/ledger-read-positions";
+import { ledgerExportHeaders } from "../core-flow/business-ledger-export";
 import { FileService } from "../file/file.service";
 import {
   FileInterceptor,
   type MemoryUploadedFile,
   normalizeUploadedOriginalName
 } from "../file/uploaded-file";
-import { AssignPaymentApprovalDto } from "./dto/assign-payment-approval.dto";
+import { AssignPaymentApprovalDto, DelegatePaymentApprovalDto } from "./dto/assign-payment-approval.dto";
 import { AbandonPaymentRequestDto } from "./dto/abandon-payment-request.dto";
 import { CreatePaymentRequestDto } from "./dto/create-payment-request.dto";
 import { GeneratePaymentPdfArchiveDto } from "./dto/generate-payment-pdf-archive.dto";
@@ -33,6 +39,9 @@ import { RecordFinanceRecordDto } from "./dto/record-finance-record.dto";
 import { RecordPaymentPdfArchiveDto } from "./dto/record-payment-pdf-archive.dto";
 import { RecordPaymentExecutionDto } from "./dto/record-payment-execution.dto";
 import { ReviewPaymentApprovalDto } from "./dto/review-payment-approval.dto";
+import { RevisePaymentRequestDto } from "./dto/revise-payment-request.dto";
+import { WithdrawPaymentRemainderDto } from "./dto/withdraw-payment-remainder.dto";
+import { WithdrawPaymentApprovalDto } from "./dto/withdraw-payment-approval.dto";
 import { PaymentReadService } from "./payment-read.service";
 import { PaymentRequestService } from "./payment-request.service";
 import { PAYMENT_REQUEST_ENTRY_DEFINITION } from "./payment-request-business-entry-definition";
@@ -44,7 +53,8 @@ export class PaymentController {
     private readonly payments: PaymentRequestService,
     private readonly projectVisibility: ProjectVisibilityService,
     @Optional() private readonly files?: FileService,
-    @Optional() private readonly approvalProgress?: ApprovalProgressService
+    @Optional() private readonly approvalProgress?: ApprovalProgressService,
+    @Optional() private readonly approvalNotifications?: PaymentApprovalNotificationService
   ) {}
 
   @Post()
@@ -73,16 +83,59 @@ export class PaymentController {
   @RequirePositions(...LEDGER_READ_POSITION_KEYS)
   async list(
     @CurrentUser() user: AuthenticatedUser,
-    @Query("limit") limit?: string,
-    @Query("view") view?: "formal_ledger" | "my_drafts" | "returned_for_revision" | "ended",
-    @Query("page") page?: string,
-    @Query("pageSize") pageSize?: string
+    @Query() query: Record<string, string | string[] | undefined> = {}
   ) {
     const visibleProjectIds = await this.projectVisibility.visibleProjectIds(user.id);
-    if (view !== undefined || page !== undefined || pageSize !== undefined) {
-      return this.paymentRead.listLedger({ view, page, pageSize }, visibleProjectIds, user.id);
+    const hasLedgerQuery = [
+      "view",
+      "page",
+      "pageSize",
+      "projectId",
+      "dateFrom",
+      "dateTo",
+      "status",
+      "keyword",
+      "sort",
+      "columns"
+    ].some((key) => query[key] !== undefined);
+    if (hasLedgerQuery) {
+      return this.paymentRead.listLedger(query, visibleProjectIds, user.id);
     }
-    return this.paymentRead.listRecent(limit, visibleProjectIds);
+    const limit = typeof query.limit === "string" ? query.limit : undefined;
+    return this.paymentRead.listRecent(limit, visibleProjectIds, { actorUserId: user.id });
+  }
+
+  /**
+   * 付款台账导出：与列表共用读模型和逐行可见性过滤；
+   * 导出的行是「全部筛选后的可见记录」，不是当前页。
+   */
+  @Get("ledger-export")
+  @RequirePositions(...LEDGER_READ_POSITION_KEYS)
+  async exportLedger(
+    @CurrentUser() user: AuthenticatedUser,
+    @Res({ passthrough: true })
+    response: { set: (headers: Record<string, string>) => void },
+    @Query() query: Record<string, string | string[] | undefined> = {}
+  ) {
+    const result = await this.paymentRead.exportLedger(
+      await this.projectVisibility.visibleProjectIds(user.id),
+      user.id,
+      query
+    );
+    response.set(ledgerExportHeaders(result));
+    return new StreamableFile(result.buffer);
+  }
+
+  @Get(":paymentId/approval/duty-sms")
+  approvalDutySms(@Param("paymentId") id: string, @CurrentUser() user: AuthenticatedUser) {
+    if (!this.approvalNotifications) throw new ServiceUnavailableException("付款审批短信状态暂不可用");
+    return this.approvalNotifications.status(id, user.id);
+  }
+
+  @Post(":paymentId/approval/duty-sms/retry")
+  retryApprovalDutySms(@Param("paymentId") id: string, @CurrentUser() user: AuthenticatedUser, @Body() body: RetryDutyNotificationDto) {
+    if (!this.approvalNotifications) throw new ServiceUnavailableException("付款审批短信状态暂不可用");
+    return this.approvalNotifications.retry(id, user.id, body.attemptId);
   }
 
   @Post(":paymentId/approval")
@@ -93,6 +146,26 @@ export class PaymentController {
     @Body() body: ReviewPaymentApprovalDto
   ) {
     return this.payments.reviewApproval(paymentId, user.id, body);
+  }
+
+  @Post(":paymentId/revision-submission")
+  @RequireProjectRole("payment.create")
+  reviseAndSubmit(
+    @Param("paymentId") paymentId: string,
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() body: RevisePaymentRequestDto
+  ) {
+    return this.payments.reviseAndSubmit(paymentId, user.id, body);
+  }
+
+  @Post(":paymentRequestId/remainder-withdrawal")
+  @RequireProjectRole("payment.create")
+  withdrawRemainder(
+    @Param("paymentRequestId") paymentRequestId: string,
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() body: WithdrawPaymentRemainderDto
+  ) {
+    return this.payments.withdrawRemainder(paymentRequestId, user.id, body);
   }
 
   @Post(":paymentId/approval-transfer")
@@ -110,7 +183,7 @@ export class PaymentController {
   delegateApproval(
     @Param("paymentId") paymentId: string,
     @CurrentUser() user: AuthenticatedUser,
-    @Body() body: AssignPaymentApprovalDto
+    @Body() body: DelegatePaymentApprovalDto
   ) {
     return this.payments.delegateApproval(paymentId, user.id, body);
   }
@@ -118,9 +191,10 @@ export class PaymentController {
   @Post(":paymentId/approval-withdrawal")
   withdrawApproval(
     @Param("paymentId") paymentId: string,
-    @CurrentUser() user: AuthenticatedUser
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() body?: WithdrawPaymentApprovalDto
   ) {
-    return this.payments.withdrawApproval(paymentId, user.id);
+    return this.payments.withdrawApproval(paymentId, user.id, body?.expectedApprovalInstanceId);
   }
 
   @Post(":paymentId/abandonment")
@@ -269,7 +343,8 @@ export class PaymentController {
     );
     return {
       paymentId: detail.id,
-      availableActions: detail.availableActionKeys
+      availableActions: detail.availableActionKeys,
+      ...(detail.delegationApprovalContext ? { delegationApprovalContext: detail.delegationApprovalContext } : {})
     };
   }
 

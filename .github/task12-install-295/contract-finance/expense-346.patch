@@ -1,0 +1,245 @@
+--- a/installer.cjs
++++ b/installer.cjs
+@@ -959,7 +959,10 @@
+       const a28 = forward320.historicalTakeover ? require('./historical-takeover-333-profile.cjs') : null;
+       const signed = forward320.historicalSettlement ? require('./historical-settlement-334-profile.cjs') : null;
+       if (a28) batches.push(tails.slice(37,38));
+-      if (signed) batches.push(tails.slice(38));
++      const expenseWitness = forward320.expenseWitness;
++      let priorExpenseCatalog;
++      if (signed) batches.push(expenseWitness ? tails.slice(38,39) : tails.slice(38));
++      if (expenseWitness) batches.push(...tails.slice(39).map(row=>[row]));
+       for (const batch of batches) {
+         for (const row of batch) {
+           const index = tails.indexOf(row);
+@@ -1028,8 +1031,28 @@
+           signed.assertCatalog(catalog,receipt.historicalSettlementPredecessor.routineCatalog);
+           receipt.historicalSettlement334Catalog=catalog;
+         }
++        if (expenseWitness) {
++          const count=qualifiedLedger.length;
++          if (count>=334) expenseWitness.assertPrefix(count,hash(JSON.stringify(qualifiedLedger)));
++          if ([334,341,342,343,344,345,expenseWitness.count].includes(count)) {
++            const observed=await jsonSql(expenseWitness.catalogSql);
++            expenseWitness.assertCatalog(count,observed,priorExpenseCatalog);
++            priorExpenseCatalog=observed;
++            receipt.expenseWitnessCatalog ??= {};
++            receipt.expenseWitnessCatalog[count]=observed;
++          }
++          if (count>=344) {
++            const cash=await jsonSql(expenseWitness.cashSql);
++            expenseWitness.assertCash(cash);
++            if (count===344) receipt.expenseWitnessVoucher344=cash;
++            else need(equal(cash,receipt.expenseWitnessVoucher344),'EXPENSE_WITNESS_344_VOUCHER_PRESERVED');
++          }
++        }
+       }
+-      receipt.forward320={count:qualifiedLedger.length,ledgerSha256:hash(JSON.stringify(qualifiedLedger)),sameIdentity:true,sourceTree,tails};
++      receipt.forward320=expenseWitness
++        ? {count:334,ledgerSha256:signed.ledgerSha256,sameIdentity:true,sourceTree,tails:tails.slice(0,39)}
++        : {count:qualifiedLedger.length,ledgerSha256:hash(JSON.stringify(qualifiedLedger)),sameIdentity:true,sourceTree,tails};
++      if (expenseWitness) receipt.expenseWitnessForward={count:qualifiedLedger.length,ledgerSha256:hash(JSON.stringify(qualifiedLedger)),sameIdentity:true,sourceTree,tails:tails.slice(39)};
+       if (retained) receipt.forward320.recoveryLedger={count:current.ledger.length,sha256:hash(JSON.stringify(current.ledger))};
+       receipt.forward320.fileGuards=await jsonSql(`SELECT coalesce(jsonb_agg(jsonb_build_object(
+         'name',t.tgname,'enabled',t.tgenabled='O','function',p.proname,'definer',p.prosecdef,'sha256',encode(sha256(convert_to(p.prosrc,'UTF8')),'hex')
+@@ -1130,12 +1153,18 @@
+       if (forward320?.historicalTakeover) {
+         const a28=require('./historical-takeover-333-profile.cjs');
+         const signed=forward320.historicalSettlement ? require('./historical-settlement-334-profile.cjs') : null;
+-        need(hash(JSON.stringify(qualifiedLedger))===(signed?.ledgerSha256 ?? a28.ledgerSha256),'A28_LEDGER_AFTER_CONSUMER');
++        need(hash(JSON.stringify(qualifiedLedger))===(forward320.expenseWitness?.ledgerSha256 ?? signed?.ledgerSha256 ?? a28.ledgerSha256),'A28_LEDGER_AFTER_CONSUMER');
+         need(equal(await jsonSql(a28.catalogSql),receipt.historicalTakeover333Catalog),'A28_333_CATALOG_AFTER_CONSUMER');
+         receipt.historicalTakeoverCatalogAfterBusiness=true;
+         if (signed) {
+           need(equal(await jsonSql(signed.catalogSql),receipt.historicalSettlement334Catalog),'A28_334_CATALOG_AFTER_CONSUMER');
+           receipt.historicalSettlementCatalogAfterBusiness=true;
++        }
++        if (forward320.expenseWitness) {
++          const profile=forward320.expenseWitness;
++          need(equal(await jsonSql(profile.catalogSql),receipt.expenseWitnessCatalog[profile.count]),'EXPENSE_WITNESS_CATALOG_AFTER_CONSUMER');
++          need(equal(await jsonSql(profile.cashSql),receipt.expenseWitnessVoucher344),'EXPENSE_WITNESS_344_VOUCHER_AFTER_CONSUMER');
++          receipt.expenseWitnessCatalogAfterBusiness=true;
+         }
+       }
+       if(cleanupLegacy){
+@@ -1545,7 +1574,9 @@
+   const paymentRemainder=target>=331;
+   const upwardArchive=target>=332;
+   const historicalTakeover=target>=333;
+-  const historicalSettlement=target===334;
++  const historicalSettlement=target>=334;
++  const expenseWitness=target===346 ? require('./expense-witness-346-profile.cjs')
++    : null;
+   need(typeof sourceTree==='string' && /^[0-9a-f]{40}$/u.test(sourceTree) &&
+     typeof migrations==='string' && path.isAbsolute(migrations) &&
+     Array.isArray(tails) && tails.length===target-295,'FORWARD_320_SOURCE');
+@@ -1584,7 +1615,7 @@
+     need(hash(bytes)===row.sha256,'FORWARD_320_TAIL_DIGEST');
+     return bytes;
+   });
+-  return {sourceTree,tails:rows,sql,textDirect,paymentRemainder,upwardArchive,historicalTakeover,historicalSettlement};
++  return {sourceTree,tails:rows,sql,textDirect,paymentRemainder,upwardArchive,historicalTakeover,historicalSettlement,expenseWitness};
+ }
+
+ module.exports.withCombined320ContractPayment = (receipt,consume,material) => {
+@@ -1686,6 +1717,28 @@
+   withCombinedOrdinaryLoan(receipt,consume,exactMultiWitness295,false,readForward320(material,330),'cleanup');
+ module.exports.withCombined330MultiWitnessForProfile=(receipt,consume,material)=>
+   withCombinedOrdinaryLoan(receipt,consume,exactMultiWitness295,false,readForward320(material,330),'profile');
++const installExpense346 = async (receipt,consume,material) => {
++  const source=require('./contract-finance-source.json');
++  const profile=require('./expense-witness-346-profile.cjs');
++  const historical=require('./historical-settlement-334-profile.cjs');
++  profile.assertSource(source,require('./multi-witness.cjs').final);
++  profile.assertRuntimeBaseline(require('./workspace/services/api/prisma/migration-baseline.cjs'));
++  await withCombinedOrdinaryLoan(receipt,async context=>{
++    need(context.candidateTree===source.sourceTree,'EXPENSE_346_CONTEXT');
++    const historyCount=source.predecessor334.migrationCount-source.predecessor.migrationCount;
++    historical.assertFinanceInstallation(receipt,{...source,tails:source.tails.slice(0,historyCount)});
++    need(equal(receipt.expenseWitnessForward,{
++      count:profile.count,ledgerSha256:profile.ledgerSha256,sameIdentity:true,sourceTree:source.sourceTree,
++      tails:source.tails.slice(historyCount).map(({name,sha256})=>({name,sha256}))
++    }),'EXPENSE_346_SUCCESSOR');
++    await consume(context);
++  },exactMultiWitness295,false,readForward320(material,profile.count));
++  need(receipt.combinedAfterBusiness?.count===profile.count&&
++    receipt.combinedAfterBusiness?.ledgerSha256===profile.ledgerSha256&&
++    receipt.combinedAfterBusiness?.sameIdentity===true&&receipt.combinedAfterBusiness?.exactB7===true&&
++    receipt.historicalTakeoverCatalogAfterBusiness===true&&receipt.historicalSettlementCatalogAfterBusiness===true&&
++    receipt.expenseWitnessCatalogAfterBusiness===true&&receipt.multiWitnessCatalogAfterBusiness===true,'EXPENSE_346_POST_BUSINESS');
++};
+ module.exports.withExpense295 = (receipt,lane,material) => {
+   need(['execution','finance','receipt'].includes(lane) && receipt.lane===lane,'EXPENSE_295_LANE');
+   const mode=receipt.purpose;
+@@ -1699,6 +1752,7 @@
+     'payment-remainder-331':module.exports.withCombined331PaymentRemainder,
+     'upward-archive-332':module.exports.withCombined332UpwardArchive,
+     'historical-settlement-334':module.exports.withCombined334HistoricalSettlement,
++    'expense-witness-346':installExpense346,
+   })[material.mode] : module.exports.withCombined295MultiWitness;
+   need(typeof install==='function','EXPENSE_295_INSTALL_MODE');
+   need(!material || mode!=='ORIGINAL_EXPENSE_HISTORICAL_NEGATIVES_295_SOURCE','EXPENSE_320_NEGATIVE_MUST_RETAIN_HISTORY');
+@@ -1711,7 +1765,7 @@
+       need(receipt.expenseRecovery?.PrismaResolve===true&&receipt.expenseRecovery?.expectedFailure===true,
+         'EXPENSE_RECOVERY_COMPLETION');
+       assertOutsideWitness(289,JSON.parse((await context.sql(outsideWitnessSql(289,Boolean(material),
+-        material?.mode==='upward-archive-332'||material?.mode==='historical-settlement-334'))).stdout.trim()));
++        ['upward-archive-332','historical-settlement-334','expense-witness-346'].includes(material?.mode)))).stdout.trim()));
+       return;
+     }
+     need(mode==='ORIGINAL_EXPENSE_295_RETAINED_VALID_ONLY','EXPENSE_NEGATIVE_UNEXPECTED_CONTINUATION');
+@@ -1723,7 +1777,7 @@
+       need(context.database===receipt.retainedFinanceValid.identity.database,'FINANCE_RETAINED_VALID_CONTEXT');
+       const material=require('./task12-expense-finance-retained-valid.json');
+       await verifyRetainedFinanceValid(material,context.sql);
+-      receipt.retainedFinanceValid['after'+(receipt.forward320?.count??295)]=material.expected;
++      receipt.retainedFinanceValid['after'+(receipt.expenseWitnessForward?.count??receipt.forward320?.count??295)]=material.expected;
+     }else{
+       const legacyKey=await context.sql(`SELECT COALESCE("receiptConfirmationIdempotencyKey", '<NULL>')
+         FROM "ProjectExpenseRequest" WHERE "id"='receipt_valid_request'`);
+--- a/app/entry.cjs
++++ b/app/entry.cjs
+@@ -3,7 +3,7 @@
+ const lane=process.argv[2];
+ assert.ok(process.argv.length===3 && Object.hasOwn(require('./profiles.json'),lane));
+ const source=require('./contract-finance-source.json');
+-const count=source.mode==='historical-settlement-334'?334:source.mode==='upward-archive-332'?332:source.mode==='payment-remainder-331'?331:source.mode==='text-direct-330'?330:source.mode==='current-320'?329:295;
++const count=source.mode==='expense-witness-346'?346:source.mode==='historical-settlement-334'?334:source.mode==='upward-archive-332'?332:source.mode==='payment-remainder-331'?331:source.mode==='text-direct-330'?330:source.mode==='current-320'?329:295;
+ const forward=count>295;
+ const material=forward?{mode:source.mode,sourceTree:source.sourceTree,
+   migrations:'/qualification/workspace/services/api/prisma/migrations',tails:source.tails}:undefined;
+@@ -13,11 +13,12 @@
+   assert.equal(receipt.combinedAfterBusiness?.count,count);
+   assert.equal(receipt.combinedAfterBusiness?.ledgerSha256,source.ledgerSha256);
+   if(forward){
+-    assert.equal(receipt.forward320?.count,count);
+-    assert.equal(receipt.forward320?.sameIdentity,true);
++    const applied=receipt.expenseWitnessForward??receipt.forward320;
++    assert.equal(applied?.count,count);
++    assert.equal(applied?.sameIdentity,true);
+     assert.equal(receipt.forward320?.sameBaseB7,true);
+-    assert.equal(receipt.forward320?.sourceTree,source.sourceTree);
+-    assert.equal(receipt.forward320?.ledgerSha256,source.ledgerSha256);
++    assert.equal(applied?.sourceTree,source.sourceTree);
++    assert.equal(applied?.ledgerSha256,source.ledgerSha256);
+   }
+   assert.equal(receipt.business,'CALLBACK_COMPLETED');
+   assert.equal(receipt.expenseApp?.passed,1);
+--- a/valid/entry.cjs
++++ b/valid/entry.cjs
+@@ -3,7 +3,7 @@
+ const lane=process.argv[2];
+ assert.ok(process.argv.length===3 && ['execution','finance','receipt'].includes(lane));
+ const source=require('./contract-finance-source.json');
+-const count=source.mode==='historical-settlement-334'?334:source.mode==='upward-archive-332'?332:source.mode==='payment-remainder-331'?331:source.mode==='text-direct-330'?330:source.mode==='current-320'?329:295;
++const count=source.mode==='expense-witness-346'?346:source.mode==='historical-settlement-334'?334:source.mode==='upward-archive-332'?332:source.mode==='payment-remainder-331'?331:source.mode==='text-direct-330'?330:source.mode==='current-320'?329:295;
+ const forward=count>295;
+ const material=forward?{mode:source.mode,sourceTree:source.sourceTree,
+   migrations:'/qualification/workspace/services/api/prisma/migrations',tails:source.tails}:undefined;
+@@ -13,11 +13,12 @@
+   assert.equal(receipt.combinedAfterBusiness?.count,count);
+   assert.equal(receipt.combinedAfterBusiness?.ledgerSha256,source.ledgerSha256);
+   if(forward){
+-    assert.equal(receipt.forward320?.count,count);
+-    assert.equal(receipt.forward320?.sameIdentity,true);
++    const applied=receipt.expenseWitnessForward??receipt.forward320;
++    assert.equal(applied?.count,count);
++    assert.equal(applied?.sameIdentity,true);
+     assert.equal(receipt.forward320?.sameBaseB7,true);
+-    assert.equal(receipt.forward320?.sourceTree,source.sourceTree);
+-    assert.equal(receipt.forward320?.ledgerSha256,source.ledgerSha256);
++    assert.equal(applied?.sourceTree,source.sourceTree);
++    assert.equal(applied?.ledgerSha256,source.ledgerSha256);
+   }
+   assert.equal(receipt.business,'CALLBACK_COMPLETED');
+   if(lane==='execution') assert.equal(receipt.retainedExpenseExecution.legacyKeyCount,2);
+--- a/recovery/entry.cjs
++++ b/recovery/entry.cjs
+@@ -3,7 +3,7 @@
+ const lane=process.argv[2];
+ assert.ok(process.argv.length===3 && ['execution','finance'].includes(lane));
+ const source=require('./contract-finance-source.json');
+-const count=source.mode==='historical-settlement-334'?334:source.mode==='upward-archive-332'?332:source.mode==='payment-remainder-331'?331:source.mode==='text-direct-330'?330:source.mode==='current-320'?329:295;
++const count=source.mode==='expense-witness-346'?346:source.mode==='historical-settlement-334'?334:source.mode==='upward-archive-332'?332:source.mode==='payment-remainder-331'?331:source.mode==='text-direct-330'?330:source.mode==='current-320'?329:295;
+ const forward=count>295;
+ const material=forward?{mode:source.mode,sourceTree:source.sourceTree,
+   migrations:'/qualification/workspace/services/api/prisma/migrations',tails:source.tails}:undefined;
+@@ -17,11 +17,12 @@
+   assert.equal(receipt.combinedAfterBusiness?.count,count);
+   assert.equal(receipt.combinedAfterBusiness?.ledgerSha256,source.ledgerSha256);
+   if(forward){
+-    assert.equal(receipt.forward320?.count,count);
+-    assert.equal(receipt.forward320?.sameIdentity,true);
++    const applied=receipt.expenseWitnessForward??receipt.forward320;
++    assert.equal(applied?.count,count);
++    assert.equal(applied?.sameIdentity,true);
+     assert.equal(receipt.forward320?.sameBaseB7,true);
+-    assert.equal(receipt.forward320?.sourceTree,source.sourceTree);
+-    assert.equal(receipt.forward320?.ledgerSha256,source.ledgerSha256);
++    assert.equal(applied?.sourceTree,source.sourceTree);
++    assert.equal(applied?.ledgerSha256,source.ledgerSha256);
+     assert.equal(receipt.forward320?.recoveryLedger?.count,count+1);
+     assert.match(receipt.forward320?.recoveryLedger?.sha256,/^[0-9a-f]{64}$/u);
+   }
+--- a/app/expense-app.cjs
++++ b/app/expense-app.cjs
+@@ -37,7 +37,7 @@
+   assert.equal(state.ownerOid,10);
+   assert.equal(state.tls,true);
+   assert.equal(state.database,context.database);
+-  const forward=receipt.forward320;
++  const forward=receipt.expenseWitnessForward??receipt.forward320;
+   assert.equal(state.ledger.length,forward?.count??295);
+   assert.equal(digest(JSON.stringify(state.ledger.slice(0,295))),expectedLedgerSha256);
+   if(forward) {
+--- a/app/receipt/project-expense-receipt-concurrency.spec.ts
++++ b/app/receipt/project-expense-receipt-concurrency.spec.ts
+@@ -160,7 +160,7 @@
+     `;
+     return row;
+   }));
+-  const expectedCount = [329, 330, 331, 332, 334].find(
++  const expectedCount = [329, 330, 331, 332, 334, 346].find(
+     count => String(count) === process.env.JG_CONTRACT_FINANCE_LEDGER) ?? 295;
+   assert(EXPECTED_MIGRATION_COUNT === expectedCount && identity.every(row => row?.ok === true) &&
+     new Set(identity.map(row => row?.oid)).size === 1 && new Set(identity.map(row => row?.pid)).size === clients.length,

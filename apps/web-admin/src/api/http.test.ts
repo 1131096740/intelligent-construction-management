@@ -98,6 +98,26 @@ describe("createApiFetch", () => {
     expect(onUnauthorized).toHaveBeenCalledTimes(1);
   });
 
+  it.each([["GET", 401], ["POST", 401], ["POST", 403]] as const)(
+    "leaves the active session alone when a superseded %s returns %s", async (method, status) => {
+      let current = true;
+      let finish: (response: Response) => void = () => {};
+      const fetchImpl = vi.fn(() => new Promise<Response>(resolve => { finish = resolve; }));
+      const refresh = vi.fn(async () => true);
+      const onUnauthorized = vi.fn();
+      const onPasswordChangeRequired = vi.fn();
+      const apiFetch = createApiFetch(bridge({ refresh, onUnauthorized, onPasswordChangeRequired }), fetchImpl);
+      const pending = apiFetch("/contracts", { method, retryUnauthorized: method === "GET", responseIsCurrent: () => current });
+      current = false;
+      finish(new Response(status === 403 ? "Password change required" : "Unauthorized", { status }));
+      expect((await pending).status).toBe(status);
+      expect(fetchImpl).toHaveBeenCalledTimes(1);
+      expect(refresh).not.toHaveBeenCalled();
+      expect(onUnauthorized).not.toHaveBeenCalled();
+      expect(onPasswordChangeRequired).not.toHaveBeenCalled();
+    }
+  );
+
   it("reports a one-shot failed response without replaying it", async () => {
     const fetchImpl = vi.fn(async () => jsonResponse(503));
     const onRequestFailure = vi.fn();

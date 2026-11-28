@@ -1,3 +1,4 @@
+import { assertNotDirectPendingVersion, DirectPendingSourceUnavailableError } from "../contract/contract-direct-pending-policy";
 import {
   ConflictException,
   ForbiddenException,
@@ -13,6 +14,7 @@ import {
   acquireFileBusinessBindingTransactionLock
 } from "../file/file-business-binding";
 import { buildContractFileBindingManifest } from "../file/file-binding-manifest";
+import { reviewReferenceCatalog } from "../file/contract-review-file-retention";
 import {
   CleanupScopeError,
   FileCleanupSeamService,
@@ -43,6 +45,7 @@ interface LockedPristineDraft {
   baseVersionId: string | null;
   supersedesVersionId: string | null;
   copiedFromContractVersionId: string | null;
+  draftData: Prisma.JsonValue;
 }
 
 interface DeletionReceipt {
@@ -124,6 +127,7 @@ export class PristineDraftDeletionService {
       await this.purge(contractVersionId);
       return this.deletedResponse(contractVersionId, false);
     } catch (error) {
+      if (error instanceof DirectPendingSourceUnavailableError) throw error;
       await this.markRetryable(contractVersionId, retryableFailureCode(error));
       return {
         contractVersionId,
@@ -154,7 +158,7 @@ export class PristineDraftDeletionService {
           v."id", v."contractId", c."projectId", c."name", c."code", c."ownerUserId",
           v."changeType", v."status", v."draftRevision", v."firstSubmittedAt",
           v."effectiveAt", v."baseVersionId", v."supersedesVersionId",
-          v."copiedFromContractVersionId"
+          v."copiedFromContractVersionId", v."draftData"
         FROM "ContractVersion" v
         JOIN "Contract" c ON c."id" = v."contractId"
         WHERE v."id" = ${contractVersionId}
@@ -185,6 +189,8 @@ export class PristineDraftDeletionService {
       if (!canOperate) {
         throw new ForbiddenException("只有当前合同经办人或合同部主管可以删除纯净草稿");
       }
+
+      assertNotDirectPendingVersion(locked);
 
       if (locked.status === "deleting") {
         const receipt = await tx.contractPristineDraftDeletionReceipt.findUnique({
@@ -366,7 +372,7 @@ export class PristineDraftDeletionService {
           v."id", v."contractId", c."projectId", c."name", c."code", c."ownerUserId",
           v."changeType", v."status", v."draftRevision", v."firstSubmittedAt",
           v."effectiveAt", v."baseVersionId", v."supersedesVersionId",
-          v."copiedFromContractVersionId"
+          v."copiedFromContractVersionId", v."draftData"
         FROM "ContractVersion" v
         JOIN "Contract" c ON c."id" = v."contractId"
         WHERE v."id" = ${contractVersionId}
@@ -380,6 +386,7 @@ export class PristineDraftDeletionService {
         if (receipt?.status === "completed") return;
         throw new ConflictException("草稿删除状态已变化，请刷新后重试");
       }
+      assertNotDirectPendingVersion(locked);
       if (locked.status !== "deleting") {
         throw new ConflictException("合同草稿不处于待删除状态");
       }
@@ -400,6 +407,10 @@ export class PristineDraftDeletionService {
       );
       const objectKeys = [...new Set(exclusiveRows.map((row) => row.objectKey))];
       if (objectKeys.length > 0) {
+        // This legacy worker deletes storage before its serializable snapshot commits.
+        if (await reviewReferenceCatalog(tx) !== "legacy") {
+          throw new CleanupScopeError("当前清理流程无法确认履约复核原件保留，已停止删除文件");
+        }
         await this.fileCleanup.deleteExactObjects(objectKeys, this.storage);
       }
 

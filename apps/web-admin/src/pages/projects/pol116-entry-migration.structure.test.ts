@@ -15,10 +15,10 @@ describe("POL-19D unified user entry migration", () => {
     expect(takeover).not.toContain("粘贴 JSON 数组");
   });
 
-  it("keeps sensitive wage preparation behind server capabilities and aggregate previews", () => {
+  it("keeps historical wage browsing limited to aggregate previews", () => {
     const wage = read("../wage/WageStatementWorkbenchPage.vue");
-    expect(wage).toContain("fetchWageStatementCapabilities");
-    expect(wage).toContain("capability.canPrepare");
+    expect(wage).toContain("fetchWageStatementSummary");
+    expect(wage).toContain("fetchWageStatementImportPreview");
     expect(wage).toContain("positionCategoryCount");
     expect(wage).not.toContain("employeeName");
   });

@@ -78,7 +78,8 @@ export function contractTakeoverPerformanceStatus(
 
 export function takeoverDepartmentAccess(
   roleKeys: string[],
-  activated: boolean
+  activated: boolean,
+  noGrade = false
 ): TakeoverDepartmentAccess {
   if (activated) {
     return {
@@ -96,7 +97,9 @@ export function takeoverDepartmentAccess(
     canEditFinance:
       roleKeys.includes("finance_staff") ||
       roleKeys.includes("finance_director"),
-    canConfirmFinance: roleKeys.includes("finance_director")
+    canConfirmFinance:
+      roleKeys.includes("finance_director") ||
+      (noGrade && roleKeys.includes("finance_staff"))
   };
 }
 
@@ -140,6 +143,13 @@ export interface ContractTakeoverTableRow {
   importRowNo: string;
   counterparty: string;
   amount: string;
+  relationshipLabel: string;
+  historicalFactStatusLabel: string;
+  historicalPaidTotalCents: string;
+  historicalOverpaidCents: string;
+  historicalOverpaymentLabel: string;
+  historicalReceiptsCents: string;
+  historicalOverReceivedCents: string;
   takeoverLevel: ContractTakeoverLevel;
   takeoverLevelLabel: string;
   suggestedTakeoverLevelLabel: string;
@@ -314,9 +324,10 @@ export interface TakeoverCorrectionRow {
 }
 
 export const takeoverLevelOptions: Array<ContractTakeoverOption<ContractTakeoverLevel>> = [
-  { value: "A", label: "A级：申报资料完整，可申请直接接管" },
-  { value: "B", label: "B级：申报资料基本完整，需补少量说明" },
-  { value: "C", label: "C级：申报资料缺口明显，接管后重点跟踪" }
+  { value: "NONE", label: "无等级：按合同、财务和复核分工接管" },
+  { value: "A", label: "A级（历史兼容）：申报资料完整" },
+  { value: "B", label: "B级（历史兼容）：申报资料基本完整" },
+  { value: "C", label: "C级（历史兼容）：资料缺口明显" }
 ];
 
 export const lifecycleStatusOptions: Array<ContractTakeoverOption<ContractLifecycleStatus>> = [
@@ -414,7 +425,13 @@ export const contractTakeoverColumns: PrimaryTableCol<ContractTakeoverTableRow>[
 ];
 
 export function takeoverLevelLabel(value: ContractTakeoverLevel | string): string {
-  return takeoverLevelOptions.find((option) => option.value === value)?.label.slice(0, 2) ?? "等级未读取";
+  const labels: Record<string, string> = {
+    NONE: "无等级",
+    A: "A级",
+    B: "B级",
+    C: "C级"
+  };
+  return labels[value] ?? "等级未读取";
 }
 
 export function invoiceTypeLabel(value: ContractInvoiceType | string | null): string {
@@ -538,6 +555,7 @@ export function lifecycleStatusLabel(value: ContractLifecycleStatus | string): s
 export function takeoverStatusLabel(status: ContractTakeoverStatus | string): string {
   const labels: Record<ContractTakeoverStatus, string> = {
     draft: "草稿",
+    pending_finance: "待财务填写",
     pending_review: "待复核",
     confirmed: "已接管",
     needs_supplement: "待补充",
@@ -550,6 +568,7 @@ export function takeoverStatusLabel(status: ContractTakeoverStatus | string): st
 export function takeoverStatusTone(status: ContractTakeoverStatus): ContractTakeoverTone {
   const tones: Record<ContractTakeoverStatus, ContractTakeoverTone> = {
     draft: "default",
+    pending_finance: "primary",
     pending_review: "warning",
     confirmed: "success",
     needs_supplement: "primary",
@@ -565,14 +584,23 @@ export function takeoverResponsibleUserText(takeover: ContractTakeoverReadModel)
   return "未填写";
 }
 
-export function canSubmitTakeoverReview(takeover: Pick<ContractTakeoverReadModel, "takeoverStatus">) {
-  return takeover.takeoverStatus === "draft" || takeover.takeoverStatus === "needs_supplement";
+export function canSubmitTakeoverReview(
+  takeover: Pick<ContractTakeoverReadModel, "takeoverStatus" | "takeoverLevel" | "contractSide">
+) {
+  return (takeover.takeoverStatus === "draft" || takeover.takeoverStatus === "needs_supplement") &&
+    (takeover.takeoverLevel !== "NONE" || Boolean(takeover.contractSide));
 }
 
 export function canReturnTakeoverForSupplement(
   takeover: Pick<ContractTakeoverReadModel, "takeoverStatus">
 ) {
   return takeover.takeoverStatus === "pending_review";
+}
+
+export function canReturnTakeoverForFinanceSupplement(
+  takeover: Pick<ContractTakeoverReadModel, "takeoverStatus">
+) {
+  return takeover.takeoverStatus === "pending_finance";
 }
 
 export function takeoverResponsibleUserOptions(
@@ -659,7 +687,7 @@ export function canEditTakeover(takeover: Pick<ContractTakeoverReadModel, "takeo
 }
 
 export function takeoverActionDisabledReason(
-  takeover: Pick<ContractTakeoverReadModel, "takeoverStatus">,
+  takeover: Pick<ContractTakeoverReadModel, "takeoverStatus" | "takeoverLevel" | "contractSide">,
   action: TakeoverAction
 ): string {
   if (action === "edit") {
@@ -670,6 +698,10 @@ export function takeoverActionDisabledReason(
   }
   if (action === "submit_review") {
     if (canSubmitTakeoverReview(takeover)) return "";
+    if ((takeover.takeoverStatus === "draft" || takeover.takeoverStatus === "needs_supplement")
+        && takeover.takeoverLevel === "NONE" && !takeover.contractSide) {
+      return "请先核实并保存历史累计结算，再提交财务核对";
+    }
     if (takeover.takeoverStatus === "pending_review") return "已在复核中，无需重复提交";
     if (takeover.takeoverStatus === "confirmed") return "已完成主管确认，无需再提交复核";
     if (takeover.takeoverStatus === "voided") return "接管记录已作废，不能提交复核";
@@ -805,7 +837,7 @@ export function takeoverLevelAdjustmentDisabledReason(
   suggestion: TakeoverLevelSuggestion,
   adjustmentReason: string
 ): string {
-  if (selectedLevel === suggestion.level || adjustmentReason.trim()) return "";
+  if (selectedLevel === "NONE" || selectedLevel === suggestion.level || adjustmentReason.trim()) return "";
   if (takeoverLevelRiskRank(selectedLevel) < takeoverLevelRiskRank(suggestion.level)) {
     return "确认等级低于系统建议，请说明资料已核验、风险由谁确认，以及是否仍需限制付款";
   }
@@ -818,6 +850,9 @@ export function takeoverLevelSelectionHint(
 ): string {
   const selected = takeoverLevelLabel(selectedLevel);
   const suggested = takeoverLevelLabel(suggestion.level);
+  if (selectedLevel === "NONE") {
+    return "无等级接管不要求选择 A/B/C；请登记合同、财务和复核负责人，后续按新分工继续办理。";
+  }
   if (selectedLevel === suggestion.level) {
     return `当前确认${selected}，与系统建议一致；复核时仍需核对资料清单、缺口说明和付款阻断提示。`;
   }
@@ -830,13 +865,14 @@ export function takeoverLevelSelectionHint(
 }
 
 function takeoverLevelRiskRank(level: ContractTakeoverLevel): number {
-  return { A: 1, B: 2, C: 3 }[level];
+  return { NONE: 0, A: 1, B: 2, C: 3 }[level];
 }
 
 export function takeoverSuggestionApplyDisabledReason(
   selectedLevel: ContractTakeoverLevel,
   suggestion: TakeoverLevelSuggestion
 ): string {
+  if (selectedLevel === "NONE") return "无等级接管不使用系统 A/B/C 建议";
   if (selectedLevel !== suggestion.level) return "";
   return "当前确认等级已采用系统建议";
 }
@@ -856,6 +892,10 @@ export function takeoverLevelReviewText(takeover: ContractTakeoverReadModel): st
   const suggestedLevel = takeoverLevelLabel(savedSuggestedLevel);
   const selectedLevel = takeoverLevelLabel(takeover.takeoverLevel);
 
+  if (takeover.takeoverLevel === "NONE") {
+    return "无等级接管不按 A/B/C 分级；登记合同、财务和复核负责人后按新分工继续办理，历史事实不变。";
+  }
+
   if (takeover.takeoverLevel === savedSuggestedLevel) {
     if (savedSuggestedLevel !== suggestion.level) {
       return `确认接管等级与系统建议一致：${selectedLevel}。系统建议按接管时保存的资料快照展示，后续资料补录不会改写已保存建议。`;
@@ -874,6 +914,7 @@ export function takeoverWorkbenchSteps(
   const activeIndexByStatus: Record<ContractTakeoverStatus, number> = {
     draft: 2,
     needs_supplement: 2,
+    pending_finance: 3,
     pending_review: 3,
     confirmed: 4,
     voided: 2
@@ -949,8 +990,8 @@ export function buildTakeoverConfirmationSummary(
   return {
     items: [
       { label: "接管截止日", value: formatTakeoverDate(takeover.takeoverCutoffDate) },
-      { label: "系统建议等级", value: takeoverSuggestedLevelLabel(takeover) },
-      { label: "确认接管等级", value: takeoverLevelLabel(takeover.takeoverLevel) },
+      { label: "合同关系", value: takeover.relationshipLabel },
+      { label: "历史事实状态", value: takeover.historicalFactStatusLabel },
       { label: "发票类型", value: invoiceTypeLabel(takeover.invoiceType) },
       { label: "计税模式", value: taxModeLabel(takeover.taxMode) },
       {
@@ -960,6 +1001,20 @@ export function buildTakeoverConfirmationSummary(
       { label: "历史计价项目", value: `${takeover.pricingItems.length} 项` },
       { label: "历史累计结算", value: centsToYuanText(takeover.historicalSettledCents) },
       { label: "历史累计已付", value: centsToYuanText(takeover.historicalPaidCents) },
+      ...(takeover.relationship === "upward"
+        ? [{
+            label: "对上历史实收/超收",
+            value: `${centsToYuanText(takeover.historicalReceiptsCents)} / ${centsToYuanText(
+              takeover.historicalOverReceivedCents
+            )}${takeover.historicalOverReceivedPendingVerification ? "（保留事实，待核对，不自动退款）" : ""}`
+          }]
+        : []),
+      {
+        label: "历史已付/结算/超付",
+        value: `${centsToYuanText(takeover.historicalPaidTotalCents)} / ${centsToYuanText(
+          takeover.historicalSettledCents
+        )} / ${centsToYuanText(takeover.historicalOverpaidCents)}（${takeover.historicalOverpaymentLabel}）`
+      },
       { label: "历史在途/待付", value: centsToYuanText(historicalPendingCents) },
       {
         label: "历史预付款已付/已扣回",
@@ -1058,9 +1113,10 @@ export function takeoverPostConfirmationVerificationView(
 
 function takeoverLevelRiskText(level: ContractTakeoverLevel): string {
   const texts: Record<ContractTakeoverLevel, string> = {
-    A: "A级资料较完整，确认后可作为后续结算付款依据，仍需保留原始资料备查。",
-    B: "B级仍有少量资料或说明需要跟踪，确认后付款容量会受历史金额约束，缺口事项要继续补齐。",
-    C: "C级资料缺口明显，确认后只能作为受限期初事实，后续付款前应重点核验缺资料和争议说明。"
+    NONE: "无等级接管不改变历史事实；完成分工登记后，由合同、财务和复核负责人接续办理。",
+    A: "A级为历史兼容等级，确认后可作为后续结算付款依据，仍需保留原始资料备查。",
+    B: "B级为历史兼容等级，仍有少量资料或说明需要跟踪，缺口事项要继续补齐。",
+    C: "C级为历史兼容等级，资料缺口明显，后续付款前应重点核验缺资料和争议说明。"
   };
 
   return texts[level] ?? "请按接管等级复核资料完整性和后续付款风险。";
@@ -1118,6 +1174,13 @@ export function toContractTakeoverTableRow(
     importRowNo: takeover.importRowNo ? `第 ${takeover.importRowNo} 行` : "未记录",
     counterparty: takeover.counterparty,
     amount: centsToYuanText(takeover.amountCents),
+    relationshipLabel: takeover.relationshipLabel,
+    historicalFactStatusLabel: takeover.historicalFactStatusLabel,
+    historicalPaidTotalCents: centsToYuanText(takeover.historicalPaidTotalCents),
+    historicalOverpaidCents: centsToYuanText(takeover.historicalOverpaidCents),
+    historicalOverpaymentLabel: takeover.historicalOverpaymentLabel,
+    historicalReceiptsCents: centsToYuanText(takeover.historicalReceiptsCents),
+    historicalOverReceivedCents: centsToYuanText(takeover.historicalOverReceivedCents),
     takeoverLevel: takeover.takeoverLevel,
     takeoverLevelLabel: takeoverLevelLabel(takeover.takeoverLevel),
     suggestedTakeoverLevelLabel: takeoverSuggestedLevelLabel(takeover),

@@ -1,3 +1,9 @@
+import { unicodePathOverride } from "./builtin-template-parts.test-support";
+import * as layoutMappingApi from "../contract-template/layout-field-mapping";
+jest.mock("./mechanical-contact-layout",()=>({
+  ...jest.requireActual("./mechanical-contact-layout"),
+  applyMechanicalContactLayout:jest.fn((_source:Buffer,docx:Buffer)=>docx)
+}));
 jest.mock("./layout-preview-docx", () => ({
   renderLayoutPreviewDocx: (...args: unknown[]) => jest.requireMock("./contract-docx-renderer").renderContractDocx(...args)
 }));
@@ -11,6 +17,7 @@ jest.mock("./docx-attachment-appender", () => ({
   appendDocxImageAttachments: jest.fn(() => Buffer.from("docx-with-image-attachments"))
 }));
 jest.mock("./pdf-normalizer", () => ({
+  ...jest.requireActual("./pdf-normalizer"),
   normalizeContractPdf: jest.fn(async () => ({
     buffer: Buffer.from("%PDF-normalized"),
     pageCount: 2,
@@ -19,6 +26,7 @@ jest.mock("./pdf-normalizer", () => ({
   }))
 }));
 jest.mock("./contract-docx-extractor", () => ({
+  ...jest.requireActual("./contract-docx-extractor"),
   extractContractDocx: jest.fn((buffer: Buffer) => ({
     blocks: [{ kind: "paragraph", path: "p:000001", text: buffer.toString() }],
     normalizedSha256: buffer.toString()
@@ -46,13 +54,29 @@ jest.mock("./contract-document-comparison", () => ({
   }))
 }));
 
+import PizZip from "pizzip";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
+import { PDFDocument } from "pdf-lib";
+function previewWordSource() {
+  const zip = new PizZip();
+  zip.file("word/document.xml", '<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body><w:p><w:r><w:t>template</w:t></w:r></w:p></w:body></w:document>');
+  return zip.generate({ type: "nodebuffer" });
+}
+
 import { PrismaService } from "../database/prisma.service";
 import { extractContractDocx } from "./contract-docx-extractor";
 import { renderContractDocx } from "./contract-docx-renderer";
 import { appendDocxImageAttachments } from "./docx-attachment-appender";
 import { ContractDocumentProcessor } from "./contract-document.processor";
+import { armCon18WorkerDiagnostic, takeCon18WorkerDiagnostic, closeCon18WorkerDiagnostic } from "./task12-con18-worker-diagnostic";
+import { applyMechanicalContactLayout } from "./mechanical-contact-layout";
 import { convertDocxToPdf } from "./libreoffice-converter";
-import { normalizeContractPdf } from "./pdf-normalizer";
+import { normalizeContractPdf, UPLOAD_ORDERED_ATTACHMENTS_VERSION } from "./pdf-normalizer";
+import * as bodyModule from "./contract-body-document";
+import * as bodyConverter from "./contract-body-pdf-converter";
+import { createHash } from "node:crypto";
+import { LABOR_NAME_GLYPH_ERROR } from "./labor-font-coverage";
 
 const mockedRender = renderContractDocx as jest.MockedFunction<typeof renderContractDocx>;
 const mockedAppendDocxAttachments = appendDocxImageAttachments as jest.MockedFunction<
@@ -74,13 +98,17 @@ describe("ContractDocumentProcessor", () => {
   };
   const audit = { record: jest.fn() };
 
-  beforeEach(() => {
+  let convertedPdf: Buffer;
+  beforeEach(async () => {
     jest.clearAllMocks();
+    const validPdf = await PDFDocument.create();
+    validPdf.addPage([595.28, 841.89]);
+    convertedPdf = Buffer.from(await validPdf.save());
     mockedRender.mockReturnValue(Buffer.from("rendered-docx"));
     mockedAppendDocxAttachments.mockReturnValue(
       Buffer.from("docx-with-image-attachments")
     );
-    mockedConvert.mockResolvedValue(Buffer.from("%PDF-converted"));
+    mockedConvert.mockResolvedValue(convertedPdf);
     mockedNormalize.mockResolvedValue({
       buffer: Buffer.from("%PDF-normalized"),
       pageCount: 2,
@@ -211,6 +239,45 @@ describe("ContractDocumentProcessor", () => {
     };
   }
 
+  it("allows a real processor to be stepped only after manual scheduling is opted in", async () => {
+    jest.useFakeTimers();
+    const prisma = makePrisma();
+    const processor = ContractDocumentProcessor.forManualScheduling(prisma as unknown as PrismaService, {} as never, {} as never);
+    const automatic = new ContractDocumentProcessor(prisma as unknown as PrismaService, {} as never, {} as never);
+    const manualStep = jest.spyOn(processor, "processNext").mockResolvedValue(false);
+    const automaticStep = jest.spyOn(automatic, "processNext").mockResolvedValue(false);
+    try {
+      processor.onApplicationBootstrap();
+      automatic.onApplicationBootstrap();
+      await jest.advanceTimersByTimeAsync(2000);
+      expect(automaticStep).toHaveBeenCalledTimes(2);
+      expect(manualStep).not.toHaveBeenCalled();
+      await processor.processNext();
+      expect(manualStep).toHaveBeenCalledTimes(1);
+    } finally {
+      await processor.onApplicationShutdown();
+      await automatic.onApplicationShutdown();
+      jest.useRealTimers();
+    }
+  });
+
+  it("publishes the qualified preview pointer inside the existing worker transaction", async () => {
+    const prisma = makePrisma();
+    prisma.contractGeneratedDocument.findFirst.mockResolvedValue(queuedDocument());
+    const original = prisma.tx.$queryRaw.getMockImplementation()!;
+    prisma.tx.$queryRaw.mockImplementation(async (query: { strings?: string[] }) => {
+      if (query.strings?.join(" ").includes("jg_publish_contract_preview_pointer_v1")) return [{ published: true }];
+      return original(query);
+    });
+    const files = generatedDocumentFiles();
+    const processor = ContractDocumentProcessor.forManualScheduling(prisma as unknown as PrismaService, files as never, audit as never, "ATOMIC_POINTER_V1");
+    await processor.processNext();
+
+    expect(prisma.tx.$queryRaw.mock.calls.some(([query]) => query.strings?.join(" ").includes("jg_publish_contract_preview_pointer_v1"))).toBe(true);
+    expect(prisma.tx.contractVersion.updateMany).not.toHaveBeenCalled();
+    expect(audit.record).toHaveBeenCalledWith(prisma.tx, expect.objectContaining({ action: "contract.document.success" }));
+  });
+
   function generatedDocumentFiles() {
     return {
       getFileBuffer: jest.fn().mockResolvedValue({
@@ -225,6 +292,276 @@ describe("ContractDocumentProcessor", () => {
       discardUnlinkedGeneratedFiles: jest.fn().mockResolvedValue(undefined)
     };
   }
+
+  it.each(["material-purchase-real-v1.docx","equipment-rental-real-v1.docx"].flatMap(filename=>["built-in-signature-supplement-v1","built-in-signature-supplement-company-v2","built-in-signature-supplement-company-v3","built-in-legacy-body-signature-v1"].map(version=>[filename,version])))("uses the frozen supplement version for %s (%s)",async(filename,version)=>{
+    const source=readFileSync(join(__dirname,"../../assets/templates",filename));
+    const sourceSha256=createHash("sha256").update(source).digest("hex"),prisma=makePrisma(),job=queuedDocument();
+    const names={"party.owner.name":"虚构甲方","party.counterparty.name":"虚构乙方"};
+    prisma.contractGeneratedDocument.findFirst.mockResolvedValue({...job,inputSnapshot:{...job.inputSnapshot,renderInput:{values:names},bodyDocument:{protocolVersion:1,layoutTemplateVersionId:"layout",sourceSha256,pdfEngine:"docx4j-17.3.5",runtimeLockSha256:"a".repeat(64),partyDetailsVersion:version}}});
+    const files=generatedDocumentFiles();files.getFileBuffer.mockResolvedValue({file:{id:"layout-file"},buffer:source});
+    const lock=jest.spyOn(bodyConverter,"assertContractBodyPdfRuntimeLock").mockResolvedValue(undefined);
+    const body=jest.spyOn(bodyModule,"renderContractBody").mockReturnValue({docx:source,sourceSha256,blocks:[],flow:[],paragraphGroups:[]} as unknown as ReturnType<typeof bodyModule.renderContractBody>);
+    const convert=jest.spyOn(bodyConverter,"convertContractBodyDocxToPdf").mockResolvedValue({pdf:convertedPdf,provenance:{}} as unknown as Awaited<ReturnType<typeof bodyConverter.convertContractBodyDocxToPdf>>);
+    try {
+      await new ContractDocumentProcessor(prisma as unknown as PrismaService,files as never,audit as never).processNext();
+      expect(body).toHaveBeenCalledWith(expect.anything(),expect.anything(),expect.anything(),expect.anything(),expect.anything(),undefined,expect.objectContaining({partyDetailsVersion:version}));
+      expect(convert).toHaveBeenCalled();
+    } finally {lock.mockRestore();body.mockRestore();convert.mockRestore();}
+  });
+
+  it("accepts only guarded company-bank-binding snapshot versions",()=>{
+    const base=queuedDocument().inputSnapshot;
+    const parse=(value:unknown)=>(new ContractDocumentProcessor({} as never,{} as never,{} as never) as unknown as {documentSnapshot:(input:unknown)=>unknown}).documentSnapshot(value);
+    const marker="built-in-company-bank-binding-v1:";
+    const inner="built-in-legacy-signature-bank-v1";
+    expect(()=>parse({...base,partyDetailsVersion:`built-in-automatic-party-guard-v1:${marker}${inner}`})).not.toThrow();
+    expect(()=>parse({...base,partyDetailsVersion:`${marker}${inner}`})).toThrow("合同文档输入快照格式不正确");
+    expect(()=>parse({...base,partyDetailsVersion:`built-in-automatic-party-guard-v1:${marker}unknown`})).toThrow("合同文档输入快照格式不正确");
+    expect(()=>parse({...base,partyDetailsVersion:inner})).not.toThrow();
+  });
+
+  it("preserves historic labor versions and rejects abandoned image-placement snapshots",()=>{
+    const source=readFileSync(join(__dirname,"../../assets/templates/labor-subcontract-real-v1.docx")),sourceSha256=createHash("sha256").update(source).digest("hex"),base=queuedDocument().inputSnapshot;
+    const parse=(value:unknown)=>(new ContractDocumentProcessor({} as never,{} as never,{} as never) as unknown as {documentSnapshot:(input:unknown)=>unknown}).documentSnapshot(value);
+    const body={protocolVersion:1,layoutTemplateVersionId:"layout",sourceSha256,pdfEngine:"docx4j-17.3.5",runtimeLockSha256:"a".repeat(64)};
+    for(const [tag,asBody] of [["built-in-labor-signature-review-v3",true],["built-in-labor-signature-legacy-v3",false]] as const){const snapshot={...base,...(asBody?{bodyDocument:{...body,partyDetailsVersion:tag}}:{partyDetailsVersion:tag})};expect(()=>parse(snapshot)).not.toThrow();expect(()=>parse({...snapshot,imagePlacementVersion:"built-in-image-before-signature-v1"})).toThrow("合同文档输入快照格式不正确");}
+  });
+
+  it.each([["material-purchase-real-v1.docx","built-in-signature-supplement-company-v3"],["equipment-rental-real-v1.docx","built-in-signature-supplement-company-v3"],["generic-contract-v1.docx","built-in-generic-signature-review-v3"],["labor-subcontract-real-v1.docx","built-in-labor-signature-review-v3"]])("appends attachments in the baseline path for %s",async(filename,version)=>{
+    const source=readFileSync(join(__dirname,"../../assets/templates",filename));
+    const sourceSha256=createHash("sha256").update(source).digest("hex"),prisma=makePrisma(),job=queuedDocument();
+    const names={"party.owner.name":"虚构甲方","party.counterparty.name":"虚构乙方"};
+    prisma.contractGeneratedDocument.findFirst.mockResolvedValue({...job,inputSnapshot:{...job.inputSnapshot,renderInput:{values:names},bodyDocument:{protocolVersion:1,layoutTemplateVersionId:"layout",sourceSha256,pdfEngine:"docx4j-17.3.5",runtimeLockSha256:"a".repeat(64),partyDetailsVersion:version}}});
+    const files=generatedDocumentFiles();files.getFileBuffer.mockResolvedValue({file:{id:"layout-file"},buffer:source});
+    const lock=jest.spyOn(bodyConverter,"assertContractBodyPdfRuntimeLock").mockResolvedValue(undefined);
+    const body=jest.spyOn(bodyModule,"renderContractBody").mockReturnValue({docx:source,sourceSha256,blocks:[],flow:[],paragraphGroups:[]} as unknown as ReturnType<typeof bodyModule.renderContractBody>);
+    const convert=jest.spyOn(bodyConverter,"convertContractBodyDocxToPdf").mockResolvedValue({pdf:convertedPdf,provenance:{}} as unknown as Awaited<ReturnType<typeof bodyConverter.convertContractBodyDocxToPdf>>);
+    try{await new ContractDocumentProcessor(prisma as unknown as PrismaService,files as never,audit as never).processNext();expect(body).toHaveBeenCalledWith(expect.anything(),expect.anything(),expect.anything(),expect.anything(),expect.anything(),undefined,expect.not.objectContaining({preserveAttachmentAnchor:true}));expect(mockedAppendDocxAttachments).toHaveBeenCalledWith(expect.any(Buffer),expect.any(Array));expect(convert).toHaveBeenCalled();}
+    finally {lock.mockRestore();body.mockRestore();convert.mockRestore();}
+  });
+
+  it.each(["material-purchase-real-v1.docx","equipment-rental-real-v1.docx"].flatMap(filename=>[true,false].map(current=>[filename,current]))) ("routes only the frozen mapped supplement version for %s (%s)",async(filename,current)=>{
+    const source=readFileSync(join(__dirname,"../../assets/templates",filename as string)),sourceSha256=createHash("sha256").update(source).digest("hex"),prisma=makePrisma(),job=queuedDocument();
+    const names={"party.owner.name":"虚构甲方","party.counterparty.name":"虚构乙方"};
+    const inputSnapshot = {
+      ...job.inputSnapshot,
+      ...(current ? { mappedSignatureVersion: "built-in-mapped-signature-supplement-v1" } : {}),
+      renderInput: { values: names },
+      bodyDocument: {
+        protocolVersion: 1,
+        layoutTemplateVersionId: "layout",
+        sourceSha256,
+        pdfEngine: "docx4j-17.3.5",
+        runtimeLockSha256: "a".repeat(64),
+        partyDetailsVersion: current
+          ? "built-in-mapped-material-signature-v1"
+          : "built-in-signature-supplement-company-v3"
+      }
+    };
+    prisma.contractGeneratedDocument.findFirst.mockResolvedValue({ ...job, inputSnapshot });
+    const files=generatedDocumentFiles();files.getFileBuffer.mockResolvedValue({file:{id:"layout-file"},buffer:source});
+    const lock=jest.spyOn(bodyConverter,"assertContractBodyPdfRuntimeLock").mockResolvedValue(undefined);
+    const body=jest.spyOn(bodyModule,"renderContractBody").mockReturnValue({docx:source,sourceSha256,blocks:[],flow:[],paragraphGroups:[]} as unknown as ReturnType<typeof bodyModule.renderContractBody>);
+    const convert=jest.spyOn(bodyConverter,"convertContractBodyDocxToPdf").mockResolvedValue({pdf:convertedPdf,provenance:{}} as unknown as Awaited<ReturnType<typeof bodyConverter.convertContractBodyDocxToPdf>>);
+    try {
+      await new ContractDocumentProcessor(prisma as unknown as PrismaService, files as never, audit as never).processNext();
+      expect(body).toHaveBeenCalledWith(expect.anything(), expect.anything(), expect.anything(), expect.anything(), expect.anything(), undefined, expect.objectContaining({ mappedSignatureSupplement: current }));
+      expect(convert).toHaveBeenCalled();
+      expect(prisma.tx.contractGeneratedDocument.updateMany).toHaveBeenCalledWith(expect.objectContaining({
+        data: expect.objectContaining({
+          status: "success",
+          inputSnapshot: { ...inputSnapshot, inspection: expect.any(Object) }
+        })
+      }));
+    } finally {
+      lock.mockRestore();
+      body.mockRestore();
+      convert.mockRestore();
+    }
+  });
+
+  it.each([true,false])("routes generic mapped content without an image placement version (%s)",async current=>{
+    const source=readFileSync(join(__dirname,"../../assets/templates/generic-contract-v1.docx")),sourceSha256=createHash("sha256").update(source).digest("hex"),prisma=makePrisma(),job=queuedDocument();
+    const names={"party.owner.name":"虚构甲方","party.counterparty.name":"虚构乙方"};
+    prisma.contractGeneratedDocument.findFirst.mockResolvedValue({...job,inputSnapshot:{...job.inputSnapshot,...(current?{mappedSignatureVersion:"built-in-mapped-signature-supplement-v1"}:{}),renderInput:{values:names},bodyDocument:{protocolVersion:1,layoutTemplateVersionId:"layout",sourceSha256,pdfEngine:"docx4j-17.3.5",runtimeLockSha256:"a".repeat(64),partyDetailsVersion:current?"built-in-mapped-generic-body-v1":"built-in-generic-signature-review-v3"}}});
+    const files=generatedDocumentFiles();files.getFileBuffer.mockResolvedValue({file:{id:"layout-file"},buffer:source});
+    const lock=jest.spyOn(bodyConverter,"assertContractBodyPdfRuntimeLock").mockResolvedValue(undefined);const body=jest.spyOn(bodyModule,"renderContractBody").mockReturnValue({docx:source,sourceSha256,blocks:[],flow:[],paragraphGroups:[]} as unknown as ReturnType<typeof bodyModule.renderContractBody>);
+    const convert=jest.spyOn(bodyConverter,"convertContractBodyDocxToPdf").mockResolvedValue({pdf:convertedPdf,provenance:{}} as unknown as Awaited<ReturnType<typeof bodyConverter.convertContractBodyDocxToPdf>>);
+    try{await new ContractDocumentProcessor(prisma as unknown as PrismaService,files as never,audit as never).processNext();expect(body).toHaveBeenCalledWith(expect.anything(),expect.anything(),expect.anything(),expect.anything(),expect.anything(),undefined,expect.objectContaining({genericMappedSupplement:current}));expect(mockedAppendDocxAttachments).toHaveBeenCalledWith(expect.any(Buffer),expect.any(Array));expect(convert).toHaveBeenCalled();}
+    finally{lock.mockRestore();body.mockRestore();convert.mockRestore();}
+  });
+
+  it.each([{mappedSignatureVersion:"unknown",partyDetailsVersion:"built-in-signature-supplement-company-v3"},{mappedSignatureVersion:"built-in-mapped-signature-supplement-v1",partyDetailsVersion:"built-in-party-placement-v1"}])("rejects incompatible mapped signature version: $mappedSignatureVersion",async input=>{
+    const source=readFileSync(join(__dirname,"../../assets/templates/material-purchase-real-v1.docx")),sourceSha256=createHash("sha256").update(source).digest("hex"),prisma=makePrisma(),job=queuedDocument();
+    prisma.contractGeneratedDocument.findFirst.mockResolvedValue({...job,inputSnapshot:{...job.inputSnapshot,mappedSignatureVersion:input.mappedSignatureVersion,renderInput:{values:{"party.owner.name":"虚构甲方","party.counterparty.name":"虚构乙方"}},bodyDocument:{protocolVersion:1,layoutTemplateVersionId:"layout",sourceSha256,pdfEngine:"docx4j-17.3.5",runtimeLockSha256:"a".repeat(64),partyDetailsVersion:input.partyDetailsVersion}}});
+    const files=generatedDocumentFiles();files.getFileBuffer.mockResolvedValue({file:{id:"layout-file"},buffer:source});
+    const body=jest.spyOn(bodyModule,"renderContractBody");try{await new ContractDocumentProcessor(prisma as unknown as PrismaService,files as never,audit as never).processNext();expect(body).not.toHaveBeenCalled();expect(prisma.tx.contractGeneratedDocument.updateMany).toHaveBeenCalledWith(expect.objectContaining({data:expect.objectContaining({status:"failed",errorMessage:"合同文档输入快照格式不正确"})}));}finally{body.mockRestore();}
+  });
+
+  it.each(["built-in-labor-party-glyph-v1","built-in-labor-party-glyph-banks-v2","built-in-labor-signature-review-v3","built-in-labor-party-v1"])("keeps docx4j font checking bound to the frozen labor version %s",async(version)=>{
+    const source=readFileSync(join(__dirname,"../../assets/templates/labor-subcontract-real-v1.docx"));
+    const sourceSha256=createHash("sha256").update(source).digest("hex"),prisma=makePrisma(),job=queuedDocument();
+    const names={"party.owner.name":"虚构甲方","party.counterparty.name":"虚构乙方","party.owner.openingBank":"虚构银行","party.counterparty.bankAccount":"虚构账号"};
+    prisma.contractGeneratedDocument.findFirst.mockResolvedValue({...job,inputSnapshot:{...job.inputSnapshot,renderInput:{values:names},bodyDocument:{protocolVersion:1,layoutTemplateVersionId:"layout",sourceSha256,pdfEngine:"docx4j-17.3.5",runtimeLockSha256:"a".repeat(64),partyDetailsVersion:version}}});
+    const files=generatedDocumentFiles();files.getFileBuffer.mockResolvedValue({file:{id:"layout-file"},buffer:source});
+    const lock=jest.spyOn(bodyConverter,"assertContractBodyPdfRuntimeLock").mockResolvedValue(undefined);
+    const body=jest.spyOn(bodyModule,"renderContractBody").mockReturnValue({docx:source,sourceSha256,blocks:[],flow:[],paragraphGroups:[]} as unknown as ReturnType<typeof bodyModule.renderContractBody>);
+    const convert=jest.spyOn(bodyConverter,"convertContractBodyDocxToPdf").mockResolvedValue({pdf:convertedPdf,provenance:{}} as unknown as Awaited<ReturnType<typeof bodyConverter.convertContractBodyDocxToPdf>>);
+    try {
+      await new ContractDocumentProcessor(prisma as unknown as PrismaService,files as never,audit as never).processNext();
+      expect(convert).toHaveBeenCalledWith(expect.any(Buffer),"a".repeat(64),version.includes("glyph")||version==="built-in-labor-signature-review-v3"?expect.objectContaining({laborPartyNames:["虚构甲方","虚构乙方"]}):expect.not.objectContaining({laborPartyNames:expect.anything()}));
+      if(version==="built-in-labor-party-glyph-banks-v2"||version==="built-in-labor-signature-review-v3") expect(convert).toHaveBeenCalledWith(expect.any(Buffer),"a".repeat(64),expect.objectContaining({laborBankValues:["虚构银行","虚构账号"]}));
+      else expect(convert).toHaveBeenCalledWith(expect.any(Buffer),"a".repeat(64),expect.not.objectContaining({laborBankValues:expect.anything()}));
+      expect(mockedConvert).not.toHaveBeenCalled();
+    } finally {lock.mockRestore();body.mockRestore();convert.mockRestore();}
+  });
+
+  it.each([["material-purchase-real-v1.docx","built-in-legacy-signature-bank-v1"],["equipment-rental-real-v1.docx","built-in-legacy-signature-bank-v1"],["equipment-rental-real-v1.docx","built-in-legacy-mechanical-source-bound-v1"]])("renders legacy bank snapshot %s with version %s",async(filename,version)=>{
+    const source=readFileSync(join(__dirname,"../../assets/templates",filename)),prisma=makePrisma(),job=queuedDocument();
+    const values={"contract.name":"虚构合同","contract.temporaryCode":"TEST","document.watermark":"草稿","party.owner.name":"虚构甲公司","party.counterparty.name":"虚构乙公司","party.owner.openingBank":"虚构甲开户行","party.owner.bankAccount":"A001","party.counterparty.openingBank":"虚构乙开户行","party.counterparty.bankAccount":"B001"};
+    prisma.contractGeneratedDocument.findFirst.mockResolvedValue({...job,inputSnapshot:{...job.inputSnapshot,renderInput:{values},partyDetailsVersion:version}});
+    const files=generatedDocumentFiles();files.getFileBuffer.mockResolvedValue({file:{id:"layout-file"},buffer:source});
+    const actual=jest.requireActual<typeof import("./contract-docx-renderer")>("./contract-docx-renderer");
+    mockedRender.mockImplementation(actual.renderContractDocx);
+    mockedAppendDocxAttachments.mockImplementation(docx=>docx);
+    await new ContractDocumentProcessor(prisma as unknown as PrismaService,files as never,audit as never).processNext();
+    expect(mockedConvert).toHaveBeenCalledTimes(1);
+    const output=mockedConvert.mock.calls[0][0],xml=new PizZip(output).file("word/document.xml")!.asText();
+    for(const value of ["虚构甲开户行","A001","虚构乙开户行","B001"])expect(xml).toContain(value);
+  });
+  it("keeps the labor LibreOffice path independent of the docx4j glyph check",async()=>{
+    const source=readFileSync(join(__dirname,"../../assets/templates/labor-subcontract-real-v1.docx")),prisma=makePrisma(),job=queuedDocument();
+    const values={"contract.name":"虚构合同","contract.temporaryCode":"TEST","document.watermark":"草稿","party.owner.name":"虚构甲方","party.counterparty.name":"虚构乙方"};
+    prisma.contractGeneratedDocument.findFirst.mockResolvedValue({...job,inputSnapshot:{...job.inputSnapshot,renderInput:{values},partyDetailsVersion:"built-in-labor-party-v1"}});
+    const files=generatedDocumentFiles();files.getFileBuffer.mockResolvedValue({file:{id:"layout-file"},buffer:source});
+    mockedRender.mockReturnValue(source);
+    const lock=jest.spyOn(bodyConverter,"assertContractBodyPdfRuntimeLock"),convert=jest.spyOn(bodyConverter,"convertContractBodyDocxToPdf");
+    try {
+      await new ContractDocumentProcessor(prisma as unknown as PrismaService,files as never,audit as never).processNext();
+      expect(mockedConvert).toHaveBeenCalledTimes(1);
+      expect(lock).not.toHaveBeenCalled();expect(convert).not.toHaveBeenCalled();
+    } finally {lock.mockRestore();convert.mockRestore();}
+  });
+
+  it.each([undefined,"libreoffice"])("rejects a glyph-version snapshot without the pinned docx4j engine (%s)",async(pdfEngine)=>{
+    const source=readFileSync(join(__dirname,"../../assets/templates/labor-subcontract-real-v1.docx")),prisma=makePrisma(),job=queuedDocument();
+    const sourceSha256=createHash("sha256").update(source).digest("hex");
+    const values={"party.owner.name":"虚构甲方","party.counterparty.name":"虚构乙方"};
+    prisma.contractGeneratedDocument.findFirst.mockResolvedValue({...job,inputSnapshot:{...job.inputSnapshot,renderInput:{values},bodyDocument:{protocolVersion:1,layoutTemplateVersionId:"layout",sourceSha256,partyDetailsVersion:"built-in-labor-party-glyph-v1",...(pdfEngine?{pdfEngine}:{})}}});
+    const files=generatedDocumentFiles(),convert=jest.spyOn(bodyConverter,"convertContractBodyDocxToPdf");
+    try {
+      await new ContractDocumentProcessor(prisma as unknown as PrismaService,files as never,audit as never).processNext();
+      expect(files.getFileBuffer).not.toHaveBeenCalled();expect(files.uploadPrivateFile).not.toHaveBeenCalled();
+      expect(mockedConvert).not.toHaveBeenCalled();expect(convert).not.toHaveBeenCalled();
+      expect(prisma.tx.contractGeneratedDocument.updateMany).toHaveBeenCalledWith(expect.objectContaining({data:expect.objectContaining({status:"failed",errorMessage:"合同文档输入快照格式不正确"})}));
+    } finally {convert.mockRestore();}
+  });
+
+  it("keeps an older labor body snapshot without a PDF engine on the existing LibreOffice path",async()=>{
+    const source=readFileSync(join(__dirname,"../../assets/templates/labor-subcontract-real-v1.docx")),prisma=makePrisma(),job=queuedDocument();
+    const sourceSha256=createHash("sha256").update(source).digest("hex");
+    prisma.contractGeneratedDocument.findFirst.mockResolvedValue({...job,inputSnapshot:{...job.inputSnapshot,bodyDocument:{protocolVersion:1,layoutTemplateVersionId:"layout",sourceSha256,partyDetailsVersion:"built-in-labor-party-v1"}}});
+    const files=generatedDocumentFiles();files.getFileBuffer.mockResolvedValue({file:{id:"layout-file"},buffer:source});
+    const body=jest.spyOn(bodyModule,"renderContractBody").mockReturnValue({docx:source,sourceSha256,blocks:[],flow:[],paragraphGroups:[]} as unknown as ReturnType<typeof bodyModule.renderContractBody>);
+    const convert=jest.spyOn(bodyConverter,"convertContractBodyDocxToPdf");
+    try {
+      await new ContractDocumentProcessor(prisma as unknown as PrismaService,files as never,audit as never).processNext();
+      expect(mockedConvert).toHaveBeenCalledTimes(1);expect(convert).not.toHaveBeenCalled();
+    } finally {body.mockRestore();convert.mockRestore();}
+  });
+
+  it("records the safe glyph failure before uploading either output",async()=>{
+    const source=readFileSync(join(__dirname,"../../assets/templates/labor-subcontract-real-v1.docx"));
+    const sourceSha256=createHash("sha256").update(source).digest("hex"),prisma=makePrisma(),job=queuedDocument();
+    const names={"party.owner.name":"虚构𠮷公司","party.counterparty.name":"虚构乙方"};
+    prisma.contractGeneratedDocument.findFirst.mockResolvedValue({...job,inputSnapshot:{...job.inputSnapshot,renderInput:{values:names},bodyDocument:{protocolVersion:1,layoutTemplateVersionId:"layout",sourceSha256,pdfEngine:"docx4j-17.3.5",runtimeLockSha256:"a".repeat(64),partyDetailsVersion:"built-in-labor-party-glyph-v1"}}});
+    const files=generatedDocumentFiles();files.getFileBuffer.mockResolvedValue({file:{id:"layout-file"},buffer:source});
+    const lock=jest.spyOn(bodyConverter,"assertContractBodyPdfRuntimeLock").mockResolvedValue(undefined);
+    const body=jest.spyOn(bodyModule,"renderContractBody").mockReturnValue({docx:source,sourceSha256,blocks:[],flow:[],paragraphGroups:[]} as unknown as ReturnType<typeof bodyModule.renderContractBody>);
+    const convert=jest.spyOn(bodyConverter,"convertContractBodyDocxToPdf").mockRejectedValue(new Error(LABOR_NAME_GLYPH_ERROR));
+    try {
+      await new ContractDocumentProcessor(prisma as unknown as PrismaService,files as never,audit as never).processNext();
+      expect(files.uploadPrivateFile).not.toHaveBeenCalled();
+      expect(prisma.tx.contractGeneratedDocument.updateMany).toHaveBeenCalledWith(expect.objectContaining({data:expect.objectContaining({status:"failed",errorMessage:LABOR_NAME_GLYPH_ERROR})}));
+      expect(JSON.stringify(audit.record.mock.calls)).not.toContain("虚构𠮷公司");
+    } finally {lock.mockRestore();body.mockRestore();convert.mockRestore();}
+  });
+
+  it.each([undefined,"built-in-generic-font-v1"] as const)("binds generic font-table completion to the frozen version %s",async(version)=>{
+    const source=readFileSync(join(__dirname,"../../assets/templates/generic-contract-v1.docx"));
+    const prisma=makePrisma(),job=queuedDocument();
+    prisma.contractGeneratedDocument.findFirst.mockResolvedValue({...job,inputSnapshot:{...job.inputSnapshot,...(version?{genericFontTableVersion:version}:{})}});
+    const files=generatedDocumentFiles();files.getFileBuffer.mockResolvedValue({file:{id:"layout-file"},buffer:source});
+    mockedRender.mockReturnValue(source);mockedAppendDocxAttachments.mockReturnValue(source);
+    const processor=new ContractDocumentProcessor(prisma as unknown as PrismaService,files as never,audit as never);
+    await processor.processNext();
+    expect(mockedConvert).toHaveBeenCalledTimes(1);
+    const zip=new PizZip(mockedConvert.mock.calls[0][0]);
+    const type=zip.file("[Content_Types].xml")!.asText();
+    expect(type.includes('PartName="/word/fontTable.xml"')).toBe(Boolean(version));
+  });
+  it.each([
+    ["material-purchase-real-v1.docx","built-in-mapped-material-signature-v1","built-in-signature-supplement-company-v3",true],
+    ["equipment-rental-real-v1.docx","built-in-mapped-material-signature-v1","built-in-signature-supplement-company-v3",true],
+    ["labor-subcontract-real-v1.docx","built-in-labor-signature-review-v3","built-in-labor-signature-review-v3",false],
+    ["generic-contract-v1.docx","built-in-mapped-generic-body-v1","built-in-generic-signature-review-v3",true]
+  ])("routes a verified repacked body snapshot for %s",async(filename,gate,canonical,mapped)=>{
+    const original=readFileSync(join(__dirname,"../../assets/templates",filename)),zip=new PizZip(original);zip.comment="synthetic repack";const source=zip.generate({type:"nodebuffer"}),sourceSha256=createHash("sha256").update(source).digest("hex");
+    const prisma=makePrisma(),job=queuedDocument();prisma.contractGeneratedDocument.findFirst.mockResolvedValue({...job,inputSnapshot:{...job.inputSnapshot,...(mapped?{mappedSignatureVersion:"built-in-mapped-signature-supplement-v1"}:{}),...(filename.startsWith("generic")?{genericFontTableVersion:"built-in-equivalent-generic-font-v1"}:{}),renderInput:{values:{"party.owner.name":"虚构甲方","party.counterparty.name":"虚构乙方"}},bodyDocument:{protocolVersion:1,layoutTemplateVersionId:"layout",sourceSha256,pdfEngine:"docx4j-17.3.5",runtimeLockSha256:"a".repeat(64),partyDetailsVersion:`built-in-equivalent-v1:${gate}`}}});
+    const files=generatedDocumentFiles();files.getFileBuffer.mockResolvedValue({file:{id:"layout-file"},buffer:source});mockedAppendDocxAttachments.mockReturnValue(source);
+    const lock=jest.spyOn(bodyConverter,"assertContractBodyPdfRuntimeLock").mockResolvedValue(undefined),body=jest.spyOn(bodyModule,"renderContractBody").mockReturnValue({docx:source,sourceSha256,blocks:[],flow:[],paragraphGroups:[]} as unknown as ReturnType<typeof bodyModule.renderContractBody>),convert=jest.spyOn(bodyConverter,"convertContractBodyDocxToPdf").mockResolvedValue({pdf:convertedPdf,provenance:{}} as unknown as Awaited<ReturnType<typeof bodyConverter.convertContractBodyDocxToPdf>>);
+    try{await new ContractDocumentProcessor(prisma as unknown as PrismaService,files as never,audit as never).processNext();expect(body).toHaveBeenCalledWith(source,expect.anything(),expect.anything(),expect.anything(),expect.anything(),undefined,expect.objectContaining({partyDetailsVersion:canonical}));expect(convert).toHaveBeenCalledTimes(1);if(filename.startsWith("generic"))expect(new PizZip(convert.mock.calls[0][0]).file("[Content_Types].xml")!.asText()).toContain('PartName="/word/fontTable.xml"');}finally{lock.mockRestore();body.mockRestore();convert.mockRestore();}
+  });
+  it("rejects an unsafe automatic body mapping before rendering a guarded snapshot",async()=>{
+    const source=readFileSync(join(__dirname,"../../assets/templates/material-purchase-real-v1.docx")),positions=layoutMappingApi.readLayoutSourcePositions(source),prisma=makePrisma(),job=queuedDocument();
+    const bindings=positions.positions.flatMap(p=>[["{合同名称}","contract.name"],["{甲方名称}","party.owner.name"],["{乙方名称}","party.counterparty.name"],["{草稿编号}","contract.temporaryCode"],["{文档水印}","document.watermark"]].flatMap(([token,fieldKey])=>{const start=p.text.indexOf(token);return start<0?[]:[{positionId:p.positionId,start,end:start+token.length,fieldKey}];}));
+    const target=positions.positions.find(p=>p.part==="word/document.xml"&&p.paragraphIndex===51)!;bindings.push({positionId:target.positionId,start:0,end:3,fieldKey:"party.owner.name"});
+    const layoutSourceMapping=layoutMappingApi.prepareLayoutSourceMapping(source,"layout-file",1,bindings).mapping;
+    prisma.contractGeneratedDocument.findFirst.mockResolvedValue({...job,inputSnapshot:{...job.inputSnapshot,layoutSourceMapping,mappedSignatureVersion:"built-in-mapped-signature-supplement-v1",renderInput:{values:{"party.owner.name":"虚构甲方","party.counterparty.name":"虚构乙方"}},bodyDocument:{protocolVersion:1,layoutTemplateVersionId:"layout",sourceSha256:positions.sourceSha256,pdfEngine:"docx4j-17.3.5",runtimeLockSha256:"a".repeat(64),partyDetailsVersion:"built-in-automatic-party-guard-v1:built-in-mapped-material-signature-v1"}}});
+    const files=generatedDocumentFiles();files.getFileBuffer.mockResolvedValue({file:{id:"layout-file"},buffer:source});const lock=jest.spyOn(bodyConverter,"assertContractBodyPdfRuntimeLock").mockResolvedValue(undefined),body=jest.spyOn(bodyModule,"renderContractBody");
+    try{await new ContractDocumentProcessor(prisma as unknown as PrismaService,files as never,audit as never).processNext();expect(body).not.toHaveBeenCalled();expect(prisma.tx.contractGeneratedDocument.updateMany).toHaveBeenCalledWith(expect.objectContaining({data:expect.objectContaining({status:"failed"})}));}finally{lock.mockRestore();body.mockRestore();}
+  });
+
+  it.each(["extra", "unicode"])("rejects a %s forged equivalent snapshot before rendering",async kind=>{
+    const original=readFileSync(join(__dirname,"../../assets/templates/material-purchase-real-v1.docx")),zip=new PizZip(original);zip.file("forged-part","x");const source=kind==="unicode"?unicodePathOverride(original,"synthetic-styles.xml","word/styles.xml"):zip.generate({type:"nodebuffer"}),sourceSha256=createHash("sha256").update(source).digest("hex"),prisma=makePrisma(),job=queuedDocument();
+    prisma.contractGeneratedDocument.findFirst.mockResolvedValue({...job,inputSnapshot:{...job.inputSnapshot,mappedSignatureVersion:"built-in-mapped-signature-supplement-v1",renderInput:{values:{"party.owner.name":"虚构甲方","party.counterparty.name":"虚构乙方"}},bodyDocument:{protocolVersion:1,layoutTemplateVersionId:"layout",sourceSha256,pdfEngine:"docx4j-17.3.5",runtimeLockSha256:"a".repeat(64),partyDetailsVersion:"built-in-equivalent-v1:built-in-mapped-material-signature-v1"}}});
+    const files=generatedDocumentFiles();files.getFileBuffer.mockResolvedValue({file:{id:"layout-file"},buffer:source});const lock=jest.spyOn(bodyConverter,"assertContractBodyPdfRuntimeLock").mockResolvedValue(undefined),body=jest.spyOn(bodyModule,"renderContractBody");
+    try{await new ContractDocumentProcessor(prisma as unknown as PrismaService,files as never,audit as never).processNext();expect(body).not.toHaveBeenCalled();expect(prisma.tx.contractGeneratedDocument.updateMany).toHaveBeenCalledWith(expect.objectContaining({data:expect.objectContaining({status:"failed"})}));}finally{lock.mockRestore();body.mockRestore();}
+  });
+
+  it.each([
+    ["material-purchase-real-v1.docx","built-in-legacy-signature-bank-v1",false],
+    ["material-purchase-real-v1.docx","built-in-legacy-signature-bank-v1",true],
+    ["equipment-rental-real-v1.docx","built-in-legacy-signature-bank-v1",false],
+    ["equipment-rental-real-v1.docx","built-in-legacy-mechanical-source-bound-v1",true],
+    ["labor-subcontract-real-v1.docx","built-in-labor-signature-legacy-v3",true]
+  ])("processes a verified repacked legacy snapshot for %s",async(filename,gate,guarded)=>{
+    const original=readFileSync(join(__dirname,"../../assets/templates",filename)),zip=new PizZip(original);zip.comment="synthetic repack";const source=zip.generate({type:"nodebuffer"}),prisma=makePrisma(),job=queuedDocument();
+    const positions=layoutMappingApi.readLayoutSourcePositions(source);
+    const bindings=positions.positions.flatMap(p=>[["{合同名称}","contract.name"],["{甲方名称}","party.owner.name"],["{乙方名称}","party.counterparty.name"],["{草稿编号}","contract.temporaryCode"],["{文档水印}","document.watermark"]].flatMap(([token,fieldKey])=>{const start=p.text.indexOf(token);return start<0?[]:[{positionId:p.positionId,start,end:start+token.length,fieldKey}];}));
+    const prepared=layoutMappingApi.prepareLayoutSourceMapping(source,"layout-file",2,bindings).mapping,layoutSourceMapping={...prepared,confirmation:{sourceFileId:prepared.sourceFileId,sourceSha256:prepared.sourceSha256,draftRevision:prepared.draftRevision,mappingFingerprint:prepared.fingerprint,previewJobId:"confirmed",previewPdfFileId:"confirmed-pdf"}};
+    prisma.contractGeneratedDocument.findFirst.mockResolvedValue({...job,inputSnapshot:{...job.inputSnapshot,layoutSourceMapping,partyDetailsVersion:`${guarded?"built-in-automatic-party-guard-v1:":""}built-in-equivalent-v1:${gate}`,renderInput:{values:{"contract.name":"虚构合同","contract.temporaryCode":"TMP","document.watermark":"草稿","party.owner.name":"虚构甲方","party.counterparty.name":"虚构乙方"}}}});
+    const files=generatedDocumentFiles();files.getFileBuffer.mockResolvedValue({file:{id:"layout-file"},buffer:source});mockedRender.mockImplementation((...args)=>jest.requireActual<typeof import("./contract-docx-renderer")>("./contract-docx-renderer").renderContractDocx(...args));mockedAppendDocxAttachments.mockImplementation((docx:Buffer)=>docx);
+    await new ContractDocumentProcessor(prisma as unknown as PrismaService,files as never,audit as never).processNext();expect(mockedConvert).toHaveBeenCalledTimes(1);expect(files.uploadPrivateFile).toHaveBeenCalled();
+  });
+
+  it("normalizes the real generic font declaration for a verified equivalent source",async()=>{
+    const original=readFileSync(join(__dirname,"../../assets/templates/generic-contract-v1.docx")),zip=new PizZip(original);zip.comment="synthetic repack";const source=zip.generate({type:"nodebuffer"});
+    const prisma=makePrisma(),job=queuedDocument();prisma.contractGeneratedDocument.findFirst.mockResolvedValue({...job,inputSnapshot:{...job.inputSnapshot,partyDetailsVersion:"built-in-equivalent-v1:built-in-mapped-generic-legacy-v1",mappedSignatureVersion:"built-in-mapped-signature-supplement-v1",genericFontTableVersion:"built-in-equivalent-generic-font-v1",renderInput:{values:{"party.owner.name":"虚构甲方","party.counterparty.name":"虚构乙方"}}}});
+    const files=generatedDocumentFiles();files.getFileBuffer.mockResolvedValue({file:{id:"layout-file"},buffer:source});mockedRender.mockReturnValue(source);mockedAppendDocxAttachments.mockReturnValue(source);
+    await new ContractDocumentProcessor(prisma as unknown as PrismaService,files as never,audit as never).processNext();
+    expect(mockedConvert).toHaveBeenCalledTimes(1);const output=new PizZip(mockedConvert.mock.calls[0][0]);expect(output.file("[Content_Types].xml")!.asText()).toContain('PartName="/word/fontTable.xml"');
+  });
+
+  it("does not render a generic-font version with a different source",async()=>{
+    const prisma=makePrisma(),job=queuedDocument();
+    prisma.contractGeneratedDocument.findFirst.mockResolvedValue({...job,inputSnapshot:{...job.inputSnapshot,genericFontTableVersion:"built-in-generic-font-v1"}});
+    const files=generatedDocumentFiles(),processor=new ContractDocumentProcessor(prisma as unknown as PrismaService,files as never,audit as never);
+    await processor.processNext();
+    expect(mockedConvert).not.toHaveBeenCalled();
+    expect(files.uploadPrivateFile).not.toHaveBeenCalled();
+    expect(prisma.tx.contractGeneratedDocument.updateMany).toHaveBeenCalledWith(expect.objectContaining({data:expect.objectContaining({status:"failed"})}));
+  });
 
   it("claims one queued job atomically and marks it processing", async () => {
     const prisma = makePrisma();
@@ -485,7 +822,12 @@ describe("ContractDocumentProcessor", () => {
     );
   });
 
-  it("renders DOCX, converts PDF, normalizes attachments, uploads both files, and marks success", async () => {
+  it.each([
+    [undefined, undefined],
+    ["mechanical-contact-layout-v1", undefined],
+    ["mechanical-contact-layout-v2", undefined],
+    [undefined, UPLOAD_ORDERED_ATTACHMENTS_VERSION]
+  ] as const)("renders and uploads with contact layout %s and attachment order %s", async (contactLayoutVersion, attachmentOrderVersion) => {
     const prisma = makePrisma();
     prisma.tx.$queryRaw.mockResolvedValue([
       {
@@ -503,6 +845,8 @@ describe("ContractDocumentProcessor", () => {
       inputSnapshot: {
         ...documentContentCoordinates,
         templateFileId: "layout-file",
+        ...(contactLayoutVersion ? {mechanicalContactLayoutVersion:contactLayoutVersion} : {}),
+        ...(attachmentOrderVersion ? { attachmentOrderVersion } : {}),
         outputBaseName: "草稿-001-对外磋商稿-修订8",
         renderInput: { values: { "contract.name": "合同" } },
         attachmentFiles: [
@@ -557,26 +901,22 @@ describe("ContractDocumentProcessor", () => {
       [],
       { allowBlankWatermark: false }
     );
-    expect(mockedAppendDocxAttachments).toHaveBeenCalledWith(Buffer.from("rendered-docx"), [
-      {
-        name: "清单.pdf",
-        buffer: Buffer.from("%PDF-attachment"),
-        type: "pdf"
-      },
-      {
-        name: "营业执照.png",
-        buffer: Buffer.from("png-attachment"),
-        type: "png"
-      }
-    ]);
-    expect(mockedConvert).toHaveBeenCalledWith(Buffer.from("docx-with-image-attachments"));
-    expect(mockedNormalize).toHaveBeenCalledWith(Buffer.from("%PDF-converted"), [
-      {
-        name: "清单.pdf",
-        buffer: Buffer.from("%PDF-attachment"),
-        type: "pdf"
-      }
-    ]);
+    if(contactLayoutVersion) expect(applyMechanicalContactLayout).toHaveBeenCalledWith(Buffer.from("template"),Buffer.from("rendered-docx"),contactLayoutVersion);
+    else expect(applyMechanicalContactLayout).not.toHaveBeenCalled();
+    const orderedAttachments = [
+      { name: "清单.pdf", buffer: Buffer.from("%PDF-attachment"), type: "pdf" },
+      { name: "营业执照.png", buffer: Buffer.from("png-attachment"), type: "png" }
+    ];
+    const bodyDocx = Buffer.from("rendered-docx");
+    if (attachmentOrderVersion) {
+      expect(mockedAppendDocxAttachments).toHaveBeenCalledWith(bodyDocx, orderedAttachments, { preserveUploadOrder: true });
+      expect(mockedConvert).toHaveBeenCalledWith(bodyDocx);
+      expect(mockedNormalize).toHaveBeenCalledWith(convertedPdf, orderedAttachments, { preserveUploadOrder: true });
+    } else {
+      expect(mockedAppendDocxAttachments).toHaveBeenCalledWith(bodyDocx, orderedAttachments);
+      expect(mockedConvert).toHaveBeenCalledWith(Buffer.from("docx-with-image-attachments"));
+      expect(mockedNormalize).toHaveBeenCalledWith(convertedPdf, orderedAttachments.slice(0, 1));
+    }
     expect(files.uploadPrivateFile).toHaveBeenNthCalledWith(
       1,
       expect.objectContaining({
@@ -893,7 +1233,7 @@ describe("ContractDocumentProcessor", () => {
     );
   });
 
-  it("discards a newly uploaded DOCX and keeps the previous preview when PDF conversion fails", async () => {
+  it("uploads neither generated format and keeps the previous preview when PDF conversion fails", async () => {
     const prisma = makePrisma();
     prisma.contractGeneratedDocument.findFirst.mockResolvedValue(
       queuedDocument({ purpose: "draft", sourceRevision: 3 })
@@ -925,11 +1265,11 @@ describe("ContractDocumentProcessor", () => {
 
     await processor.processNext();
 
-    expect(files.uploadPrivateFile).toHaveBeenCalledTimes(1);
-    expect(files.discardUnlinkedGeneratedFiles).toHaveBeenCalledWith(
-      ["docx-file"],
-      "owner-1"
-    );
+    expect(files.uploadPrivateFile).toHaveBeenCalledTimes(0);
+    expect(files.discardUnlinkedGeneratedFiles).toHaveBeenCalledWith([], "owner-1");
+    expect(audit.record).toHaveBeenCalledWith(prisma.tx, expect.objectContaining({
+      action: "contract.document.failure", metadata: expect.objectContaining({ orphanFileIds: [] })
+    }));
     expect(prisma.tx.contractVersion.updateMany).not.toHaveBeenCalled();
     expect(prisma.tx.contractGeneratedDocument.updateMany).not.toHaveBeenCalledWith(
       expect.objectContaining({
@@ -1073,6 +1413,9 @@ describe("ContractDocumentProcessor", () => {
   });
 
   it("renders a queued layout preview before a queued contract document and attaches its PDF", async () => {
+    const converted = await PDFDocument.create();
+    converted.addPage([595.28, 841.89]);
+    mockedConvert.mockResolvedValueOnce(Buffer.from(await converted.save()));
     const prisma = makePrisma();
     prisma.contractLayoutPreviewJob.findFirst.mockResolvedValue({
       id: "preview-1",
@@ -1098,7 +1441,7 @@ describe("ContractDocumentProcessor", () => {
     const files = {
       getFileBuffer: jest.fn().mockResolvedValue({
         file: { id: "layout-file" },
-        buffer: Buffer.from("template")
+        buffer: previewWordSource()
       }),
       uploadPrivateFile: jest.fn().mockResolvedValue({ id: "preview-pdf" })
     };
@@ -1112,7 +1455,7 @@ describe("ContractDocumentProcessor", () => {
 
     expect(prisma.contractGeneratedDocument.findFirst).not.toHaveBeenCalled();
     expect(mockedRender).toHaveBeenCalledWith(
-      Buffer.from("template"),
+      previewWordSource(),
       expect.objectContaining({
         values: expect.objectContaining({
           "contract.name": "预览合同",
@@ -1174,6 +1517,9 @@ describe("ContractDocumentProcessor", () => {
   });
 
   it("does not attach an uploaded preview when the draft changes during rendering", async () => {
+    const converted = await PDFDocument.create();
+    converted.addPage([595.28, 841.89]);
+    mockedConvert.mockResolvedValueOnce(Buffer.from(await converted.save()));
     const prisma = makePrisma();
     prisma.contractLayoutPreviewJob.findFirst.mockResolvedValue({
       id: "preview-1",
@@ -1198,7 +1544,7 @@ describe("ContractDocumentProcessor", () => {
       draftRevision: 3
     });
     const files = {
-      getFileBuffer: jest.fn().mockResolvedValue({ buffer: Buffer.from("template") }),
+      getFileBuffer: jest.fn().mockResolvedValue({ buffer: previewWordSource() }),
       uploadPrivateFile: jest.fn().mockResolvedValue({ id: "orphan-preview-pdf" })
     };
     const processor = new ContractDocumentProcessor(
@@ -1293,6 +1639,35 @@ describe("ContractDocumentProcessor", () => {
         metadata: expect.objectContaining({ orphanFileIds: ["orphan-docx"] })
       })
     );
+  });
+
+  it("observes the exact failed worker stage without changing persisted failure", async () => {
+    const prisma=makePrisma(),generationId="10000000-0000-4000-8000-000000000002",versionId="10000000-0000-4000-8000-000000000001";
+    prisma.contractGeneratedDocument.findFirst.mockResolvedValue({id:generationId,contractVersionId:versionId,status:"queued",purpose:"draft",sourceRevision:2,inputSnapshot:{...documentContentCoordinates,templateFileId:"layout-file",outputBaseName:"虚构",renderInput:{values:{}},requiredKeys:[],attachmentFiles:[]},createdByUserId:"owner-1",createdAt:new Date()});
+    const files={getFileBuffer:jest.fn().mockRejectedValue(new Error("PRIVATE_TEMPLATE")),discardUnlinkedGeneratedFiles:jest.fn().mockResolvedValue(undefined)};
+    const processor=new ContractDocumentProcessor(prisma as unknown as PrismaService,files as never,audit as never), token=armCon18WorkerDiagnostic(processor);
+    try {await processor.processNext();const result=takeCon18WorkerDiagnostic(processor,token,{generationId,versionId,sourceRevision:2,...documentContentCoordinates});expect(result).toEqual({status:"OBSERVED",stage:"TEMPLATE",errorKind:"ERROR"});expect(JSON.stringify(result)).not.toMatch(/PRIVATE|10000000/u);expect(prisma.tx.contractGeneratedDocument.updateMany.mock.calls[0][0].data.status).toBe("failed");}
+    finally {closeCon18WorkerDiagnostic(processor,token);}
+  });
+
+  it("reports the rejected predecessor lookup inside a scoped publication failure", async () => {
+    const prisma = makePrisma();
+    const generationId = "10000000-0000-4000-8000-000000000002";
+    const versionId = "10000000-0000-4000-8000-000000000001";
+    prisma.contractGeneratedDocument.findFirst.mockResolvedValue(queuedDocument({ id: generationId, contractVersionId: versionId }));
+    prisma.tx.contractGeneratedDocument.findFirst.mockRejectedValueOnce(new Error("PRIVATE_PUBLISH"));
+    const files = generatedDocumentFiles();
+    const processor = new ContractDocumentProcessor(prisma as unknown as PrismaService, files as never, audit as never);
+    const token = armCon18WorkerDiagnostic(processor);
+    try {
+      await processor.processNext();
+      const detail = takeCon18WorkerDiagnostic(processor, token, { generationId, versionId, sourceRevision: 3, ...documentContentCoordinates });
+      expect(detail).toMatchObject({ status: "OBSERVED", stage: "PUBLISH", errorKind: "ERROR", publishPhase: "PREDECESSOR_READ", publishElapsedMs: expect.any(Number) });
+      expect(JSON.stringify(detail)).not.toMatch(/PRIVATE|10000000/u);
+      expect(prisma.tx.contractGeneratedDocument.updateMany).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ status: "failed" }) }));
+    } finally {
+      closeCon18WorkerDiagnostic(processor, token);
+    }
   });
 
   it("requeues expired processing leases before claiming work", async () => {

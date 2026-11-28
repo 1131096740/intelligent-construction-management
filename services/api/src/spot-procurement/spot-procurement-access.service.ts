@@ -1,5 +1,8 @@
+import { currentSpotMaterialRoleKeys } from "./spot-procurement-material-role-scope";
+import {scopedSpotDutyNodeIndexes} from "../approval/spot-approval-duty-access";
+import {isParallelApprovalRound} from "../approval/parallel-approval-protocol";
 import { ForbiddenException, Injectable } from "@nestjs/common";
-import { type Prisma } from "@prisma/client";
+import { Prisma } from "@prisma/client";
 import {
   resolveEffectiveRoleKeys,
   type RoleKey
@@ -138,7 +141,9 @@ export class SpotProcurementAccessService {
         id: true,
         projectId: true,
         applicantUserId: true,
-        handlerUserId: true
+        handlerUserId: true,
+        currentVersionId: true,
+        status: true
       }
     });
     if (!procurements.length) return new Set();
@@ -146,7 +151,7 @@ export class SpotProcurementAccessService {
     const existingIds = procurements.map((procurement) => procurement.id);
     const versions = await client.spotProcurementVersion.findMany({
       where: { procurementId: { in: existingIds } },
-      select: { id: true, procurementId: true, handlerUserId: true }
+      select: { id: true, procurementId: true, handlerUserId: true, requestProtocolVersion: true }
     });
     const approvals = versions.length
       ? await client.approvalInstance.findMany({
@@ -220,7 +225,11 @@ export class SpotProcurementAccessService {
       actorUserId,
       procurements.map((procurement) => procurement.projectId)
     );
+    for (const [projectId, roles] of effectiveRolesByProjectId) effectiveRolesByProjectId.set(projectId, await currentSpotMaterialRoleKeys(client, actorUserId, roles));
     for (const procurement of procurements) {
+      const current = versions.find(version => version.id === procurement.currentVersionId);
+      if (procurement.status === "approved_in_progress" && current?.requestProtocolVersion === 2 &&
+        (effectiveRolesByProjectId.get(procurement.projectId) ?? []).some(role => role === "material_staff" || role === "material_director")) allowedIds.add(procurement.id);
       const requiredRoles = requiredRolesByProcurementId.get(procurement.id);
       if (
         requiredRoles?.size &&
@@ -232,6 +241,12 @@ export class SpotProcurementAccessService {
       }
     }
 
+    for (const approval of approvals) {
+      const procurementId = procurementIdByVersionId.get(approval.businessId);
+      const application = procurements.find(row => row.id === procurementId);
+      if (!application || allowedIds.has(application.id) || application.currentVersionId !== approval.businessId || application.status !== "approval_pending") continue;
+      if ((await scopedSpotDutyNodeIndexes(client as never, approval, application.projectId, actorUserId)).length) allowedIds.add(application.id);
+    }
     return allowedIds;
   }
 
@@ -776,10 +791,10 @@ export class SpotProcurementAccessService {
       invoiceExceptionBindings
     ] =
       await Promise.all([
-        client.spotProcurementAttachment.findMany({
-          where: { fileId },
-          select: { versionId: true }
-        }),
+        // Keep file-binding reads within their filter and result columns. Prisma model reads also project primary keys.
+        client.$queryRaw<Array<{ versionId: string }>>(Prisma.sql`
+          SELECT "versionId" FROM public."SpotProcurementAttachment" WHERE "fileId" = ${fileId}
+        `),
         client.spotProcurementPayment.findMany({
           where: {
             OR: [
@@ -794,18 +809,14 @@ export class SpotProcurementAccessService {
             handlerUserId: true
           }
         }),
-        client.spotProcurementPaymentExecution.findMany({
-          where: { voucherFileId: fileId },
-          select: { paymentId: true, executedByUserId: true, voidedAt: true }
-        }),
-        client.spotProcurementPaymentInvoice.findMany({
-          where: { fileId },
-          select: {
-            paymentId: true,
-            uploadedByUserId: true,
-            invalidatedByUserId: true
-          }
-        }),
+        client.$queryRaw<Array<{ paymentId: string; executedByUserId: string; voidedAt: Date | null }>>(Prisma.sql`
+          SELECT "paymentId", "executedByUserId", "voidedAt"
+          FROM public."SpotProcurementPaymentExecution" WHERE "voucherFileId" = ${fileId}
+        `),
+        client.$queryRaw<Array<{ paymentId: string; uploadedByUserId: string; invalidatedByUserId: string | null }>>(Prisma.sql`
+          SELECT "paymentId", "uploadedByUserId", "invalidatedByUserId"
+          FROM public."SpotProcurementPaymentInvoice" WHERE "fileId" = ${fileId}
+        `),
         client.spotProcurementRefund.findMany({
           where: { voucherFileId: fileId },
           select: {
@@ -880,10 +891,9 @@ export class SpotProcurementAccessService {
         })
       ]);
     const executionVoucherBindings =
-      await client.spotProcurementPaymentExecutionVoucher.findMany({
-        where: { fileId },
-        select: { paymentExecutionId: true }
-      });
+      await client.$queryRaw<Array<{ paymentExecutionId: string }>>(Prisma.sql`
+        SELECT "paymentExecutionId" FROM public."SpotProcurementPaymentExecutionVoucher" WHERE "fileId" = ${fileId}
+      `);
     const executionVoucherIds = executionVoucherBindings.map(
       (binding) => binding.paymentExecutionId
     );
@@ -902,10 +912,9 @@ export class SpotProcurementAccessService {
       };
     };
     const archiveFileBindings = archiveFileModel.spotProcurementPaymentArchiveFile
-      ? await archiveFileModel.spotProcurementPaymentArchiveFile.findMany({
-          where: { fileId },
-          select: { archiveId: true }
-        })
+      ? await client.$queryRaw<Array<{ archiveId: string }>>(Prisma.sql`
+          SELECT "archiveId" FROM public."SpotProcurementPaymentArchiveFile" WHERE "fileId" = ${fileId}
+        `)
       : [];
     const archivePaymentBindings =
       archiveFileBindings.length && archiveFileModel.spotProcurementPaymentArchive
@@ -1345,7 +1354,9 @@ export class SpotProcurementAccessService {
             id: true,
             projectId: true,
             applicantUserId: true,
-            handlerUserId: true
+            handlerUserId: true,
+            currentVersionId: true,
+            status: true
           }
         })
       : [];
@@ -1391,7 +1402,9 @@ export class SpotProcurementAccessService {
           approval.businessType === businessType &&
           approval.businessId === businessId
       );
-      if (latest?.status !== "approved") return "denied";
+      if (latest?.status !== "approved" && !(businessType === SPOT_PROCUREMENT_BUSINESS_TYPES.application &&
+        latest?.status === "approval_pending" && isParallelApprovalRound(latest.frozenNodes) &&
+        procurements.some(row => row.currentVersionId === businessId && row.status === "approval_pending"))) return "denied";
     }
 
     if (
@@ -1405,6 +1418,13 @@ export class SpotProcurementAccessService {
       payments.some((payment) => payment.handlerUserId === actorUserId)
     ) {
       return "allowed";
+    }
+
+    if (!paymentIds.size) for (const approval of approvals) {
+      const version = versions.find(row => row.id === approval.businessId);
+      const application = procurements.find(row => row.id === version?.procurementId);
+      if (application?.currentVersionId === approval.businessId && application.status === "approval_pending" &&
+        (await scopedSpotDutyNodeIndexes(client as never, approval, application.projectId, actorUserId)).length) return "allowed";
     }
 
     const [allExecutions, balanceReservations, balanceEntries] = paymentIds.size

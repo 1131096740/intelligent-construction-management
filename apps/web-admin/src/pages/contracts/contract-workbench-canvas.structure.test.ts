@@ -98,7 +98,7 @@ describe("contract workbench document canvas structure", () => {
     expect(pricingSource).not.toContain(':value="manualAmountYuanText"');
     expect(pricingSource).toContain('@change="onManualAmountChange"');
     expect(pricingSource).toContain('value: "fixed_total"');
-    expect(pricingSource).toContain('value: "bill_sum"');
+    expect(pricingSource).toContain('return policy === "fixed_total_without_bill" ? "manual" : "bill_sum"');
     expect(pricingSource).not.toContain('value: "fixed_price"');
     expect(pricingSource).not.toContain('value: "cost_plus"');
   });
@@ -184,7 +184,8 @@ describe("contract workbench document canvas structure", () => {
   it("previews Excel into the same aggregate while document mutations still flush first", () => {
     expect(pageSource).not.toContain(":ordinary-draft-dirty");
     expect(billEditorSource).toContain("previewContractDraftBillExcelImport");
-    expect(billEditorSource).toContain("确认后由右上角统一保存合同草稿");
+    expect(billEditorSource).toContain('@click="controller.confirmImportReplace"');
+    expect(billEditorSource).toContain("尚未提交业务");
     expect(billEditorSource).not.toContain("applyBillExcelImport");
     expect(pageSource).toMatch(/ContractDocumentsSection[\s\S]*:prepare-mutation="prepareGovernanceMutation"/u);
     expect(documentsSource).toContain("await props.prepareMutation()");

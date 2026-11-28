@@ -1,4 +1,5 @@
 import { expect, test, type Page, type Route } from "@playwright/test";
+import type { DutySmsStatus } from "../src/api/duty-sms.api";
 import type { ApprovalProgress } from "../src/api/approval-progress.api";
 import { expectNoDocumentHorizontalOverflow } from "./helpers/responsive-assertions";
 
@@ -24,6 +25,7 @@ async function setup(page: Page, onRemind: (route: Route, body: ReminderRequest,
   configure?: (state: FixtureState) => void;
   list?: (route: Route, url: URL, state: FixtureState) => Promise<void>;
   openPanel?: boolean;
+  dutySms?: (route: Route, url: URL) => Promise<void>;
 } = {}) {
   const person = { id: "first", name: "综合部主管" };
   const state: FixtureState = {
@@ -36,7 +38,7 @@ async function setup(page: Page, onRemind: (route: Route, body: ReminderRequest,
         { name: "项目经理", mode: "或签", status: "未开始", participants: [{ id: "later", name: "项目经理" }], pending: [], legacyRoster: false },
         { name: "财务主管", mode: "会签", status: "未开始", participants: [{ id: "finance", name: "财务主管" }], pending: [], legacyRoster: false }
       ],
-      pendingRecipients: [person], reminderToken: "a".repeat(64), canRemind: true, reminderUnavailableReason: null, nextRemindAt: null, history: [], reminders: []
+      pendingRecipients: [person], reminderToken: "a".repeat(64), canRemind: true, reminderUnavailableReason: null, nextRemindAt: null, history: [], reminders: [], viewerOnly: false, canHandle: true
     }
   };
   options.configure?.(state);
@@ -56,12 +58,23 @@ async function setup(page: Page, onRemind: (route: Route, body: ReminderRequest,
     }
     if (url.pathname === "/api/approval-progress") return options.list ? options.list(route, url, state) : route.fulfill({ json: { items: [state.flow], nextCursor: null } });
     if (pathname === `/api/approval-progress/${state.flow.id}`) return route.fulfill({ json: state.flow });
+    const noticePaths = [
+      `/api/expense-claims/${state.flow.businessId}/approval-duty-sms`,
+      `/api/approval-progress/${state.flow.id}/duty-sms`
+    ];
+    if (noticePaths.some(path => pathname === path || pathname === `${path}/retry`)) {
+      if (options.dutySms) return options.dutySms(route, url);
+      if (route.request().method() === "GET") return route.fulfill({ json: { notice: null } });
+    }
     if (url.pathname === "/api/me/work-items") return route.fulfill({ json: { generatedAt: "2026-10-27T01:00:00Z", visibleProjectCount: 1, queues: { pending: [], blocked: [], started: [], drafts: [] }, queueMeta: {}, approvalCenter: { pendingApproval: [], startedByMe: [], handledByMe: [], delegatedToMe: [], overdueReminder: [] } } });
+    if (pathname === `/api/approval-forms/${state.flow.businessType}/${state.flow.businessId}/capability`) {
+      return route.fulfill({ json: { available: false } });
+    }
     if (url.pathname === "/api/projects") return route.fulfill({ json: [{ id: "project", code: "LOCAL", name: "虚构项目" }] });
     state.unexpected.push(url.pathname);
     return route.fulfill({ status: 404, json: { message: "未配置的本地测试请求" } });
   });
-  await page.goto("/审批中心");
+  await page.goto("/审批中心?view=participated");
   await expect(page.getByRole("heading", { name: "审批中心", exact: true })).toBeVisible();
   if (options.openPanel !== false) await page.getByRole("button", { name: "查看完整进度与短信催办" }).click();
   return state;
@@ -241,7 +254,7 @@ test("离开相关流程页后中止未完成的分页请求", async ({ page }) 
     await page.getByText("待我审批 0", { exact: true }).click();
     release();
     await aborted;
-    await expect(page.getByText("当前没有需要你处理的审批节点。", { exact: true })).toBeVisible();
+    await expect(page.getByText("当前没有需要你处理的审批。", { exact: true })).toBeVisible();
     expect(cursors).toEqual([null, "waiting-page"]);
   } finally { release(); }
 });
@@ -286,4 +299,98 @@ test("能力预检处于冷却但找不到原请求时仍保留旧键和接收�
   expect(state.requests[1]).toEqual(state.requests[0]);
   expect(state.dispatchedRequests).toHaveLength(1);
   expect(state.errors).toEqual([]);
+});
+
+
+test("并联待办短信按本人、职责和轮次分别显示，退回后只读取当前轮更正短信", async ({ page }) => {
+  const holder = { id: "later", name: "项目经理" };
+  const unknown: DutySmsStatus = { attemptId: "d".repeat(64), status: "unknown", canRetry: false };
+  const failed: DutySmsStatus = { attemptId: "c".repeat(64), status: "failed", canRetry: true };
+  const delivered: DutySmsStatus = { attemptId: "e".repeat(64), status: "accepted", canRetry: false };
+  const checked: Array<{ round: string | null; duty: string | null; method: string }> = [];
+  let retries = 0;
+  const state = await setup(page, route => route.abort(), {
+    configure({ flow }) {
+      flow.parallelCompletion = { completed: 0, total: 3 };
+      flow.pendingRecipients = [holder, flow.nodes[2].participants[0]];
+      flow.nodes = flow.nodes.map((node, index) => ({
+        ...node, pending: index === 2 ? node.participants : [holder], status: "处理中"
+      }));
+    },
+    async dutySms(route, url) {
+      const method = route.request().method();
+      const round = url.searchParams.get("approvalInstanceId");
+      const duty = url.searchParams.get("approvalDutyIndex");
+      checked.push({ round, duty, method });
+      if (method === "POST") {
+        expect(round).toBe("flow-1");
+        expect(duty).toBe("0");
+        expect(url.pathname).toMatch(/approval-duty-sms\/retry$/u);
+        expect(route.request().postDataJSON()).toEqual({ attemptId: failed.attemptId });
+        retries++;
+        return route.fulfill({ json: delivered });
+      }
+      if (round === "flow-2" && duty === null) return route.fulfill({ json: { notice: failed } });
+      expect(round).toBe("flow-1");
+      expect(duty === "0" || duty === "1").toBe(true);
+      return route.fulfill({ json: { notice: duty === "0" ? failed : unknown } });
+    }
+  });
+
+  const finance = page.getByRole("region", { name: "综合部主管待办短信", exact: true });
+  const manager = page.getByRole("region", { name: "项目经理待办短信", exact: true });
+  await expect(finance.getByText("发送失败", { exact: true })).toBeVisible();
+  await expect(manager.getByText("发送结果待确认", { exact: true })).toBeVisible();
+  await expect(manager.getByRole("button", { name: "重新发送" })).toHaveCount(0);
+  await expect(page.getByRole("region", { name: "财务主管待办短信", exact: true })).toHaveCount(0);
+  await finance.getByRole("button", { name: "重新发送" }).click();
+  await expect(finance.getByText("供应商已受理，送达待确认", { exact: true })).toBeVisible();
+  expect(retries).toBe(1);
+
+  state.flow = {
+    ...state.flow, id: "flow-2", status: "returned", applicant: holder, canHandle: false,
+    currentNodeName: "流程已结束", pendingRecipients: [], canRemind: false,
+    nodes: state.flow.nodes.map(node => ({ ...node, status: "已结束", pending: [] }))
+  };
+  await page.getByRole("button", { name: "刷新相关流程" }).click();
+  await page.getByRole("button", { name: "查看完整进度与短信催办" }).click();
+  const correction = page.getByRole("region", { name: "退回修改短信", exact: true });
+  await expect(correction.getByText("发送失败", { exact: true })).toBeVisible();
+  await expect(finance).toHaveCount(0);
+  await expect(manager).toHaveCount(0);
+  expect(checked.filter(row => row.method === "GET")).toEqual(expect.arrayContaining([
+    { round: "flow-1", duty: "0", method: "GET" },
+    { round: "flow-1", duty: "1", method: "GET" },
+    { round: "flow-2", duty: null, method: "GET" }
+  ]));
+  expect(state.errors).toEqual([]);
+  expect(state.unexpected).toEqual([]);
+  await expectNoDocumentHorizontalOverflow(page);
+});
+
+test("资金执行待办短信从审批轮次读取，查看人没有本人通知时不显示", async ({ page }) => {
+  const holder = { id: "later", name: "项目经理" };
+  let reads = 0;
+  const state = await setup(page, route => route.abort(), {
+    configure({ flow }) {
+      flow.businessType = "fund_execution_case";
+      flow.nodes[0].pending = [holder];
+      flow.pendingRecipients = [holder];
+    },
+    async dutySms(route, url) {
+      expect(url.pathname).toBe("/api/approval-progress/flow-1/duty-sms");
+      expect(url.search).toBe("");
+      expect(route.request().method()).toBe("GET");
+      reads++;
+      return route.fulfill({ json: { notice: null } });
+    }
+  });
+  await expect.poll(() => reads).toBe(1);
+  await expect(page.getByRole("region", { name: "综合部主管待办短信", exact: true })).toHaveCount(0);
+  state.flow = { ...state.flow, viewerOnly: true };
+  await page.getByRole("button", { name: "刷新进度" }).click();
+  await expect(page.getByText("你当前只有查看权", { exact: false })).toBeVisible();
+  expect(reads).toBe(1);
+  expect(state.errors).toEqual([]);
+  expect(state.unexpected).toEqual([]);
 });

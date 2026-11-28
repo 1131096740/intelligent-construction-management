@@ -1,38 +1,21 @@
 import {
-  GLOBAL_PROJECT_VISIBILITY_ROLE_KEYS,
-  type RoleKey
+  CONTRACT_LEDGER_READ_ROLE_KEYS,
+  PROJECT_OVERVIEW_READ_ROLE_KEYS
 } from "@jiangkong/shared-domain";
 
 /**
  * Read-only access to the contract, settlement and payment ledgers.
  *
- * Global business positions see every active project through the existing
- * project-visibility service. The project-scoped positions below keep or gain
- * ledger access without turning them into global users.
- *
- * Spec 9 extends the ledger gate to the remaining project full-view positions
- * and lets `employee` enter the summary-only path. Row-level visibility is
- * still enforced by the read service against the lifecycle + role groups;
- * passing the gate here does not grant full rows.
+ * The role set is defined once in `@jiangkong/shared-domain` so the Web
+ * navigation matrix (#423) and this backend Guard read the same truth.
+ * `employee` enters the summary-only path; row-level visibility is still
+ * enforced by the read service against the lifecycle + role groups.
  */
-export const LEDGER_READ_POSITION_KEYS = [
-  ...GLOBAL_PROJECT_VISIBILITY_ROLE_KEYS,
-  "project_manager",
-  "budget_staff",
-  "material_staff",
-  "engineering_department_member",
-  "engineering_director",
-  "engineering_foreman",
-  "engineering_tech",
-  "employee"
-] as const satisfies readonly RoleKey[];
+export const LEDGER_READ_POSITION_KEYS = CONTRACT_LEDGER_READ_ROLE_KEYS;
 
 /**
  * The project overview is a management read model. It is available to every
- * existing management positions and to the project manager in the current project.
+ * existing management position and to the project manager in the current project.
  * Company-wide contract handling does not grant financial-overview duties.
  */
-export const PROJECT_OVERVIEW_READ_POSITION_KEYS = [
-  ...GLOBAL_PROJECT_VISIBILITY_ROLE_KEYS.filter((role) => role !== "contract_staff"),
-  "project_manager"
-] as const satisfies readonly RoleKey[];
+export const PROJECT_OVERVIEW_READ_POSITION_KEYS = PROJECT_OVERVIEW_READ_ROLE_KEYS;

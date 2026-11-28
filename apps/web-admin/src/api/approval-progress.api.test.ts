@@ -15,8 +15,8 @@ describe("统一审批进度接口", () => {
     vi.stubGlobal("fetch", send);
     await fetchRelatedApprovals({ cursor: "last", businessType: "expense_claim" });
     expect(send.mock.calls[0][0]).toBe("/api/approval-progress?cursor=last&businessType=expense_claim");
-    await remindApprovalBySms("flow", "same-request", reminderToken);
-    expect(JSON.parse(String((send.mock.calls[1] as unknown as [string, RequestInit])[1].body))).toEqual({ requestId: "same-request", reminderToken });
+    await remindApprovalBySms("flow", "same-request", reminderToken, ["reviewer"]);
+    expect(JSON.parse(String((send.mock.calls[1] as unknown as [string, RequestInit])[1].body))).toEqual({ requestId: "same-request", reminderToken, recipientIds: ["reviewer"] });
   });
   it("列表请求保留取消信号，离开页面后可中止分页扫描", async () => {
     const controller = new AbortController();

@@ -1,10 +1,13 @@
 import "reflect-metadata";
 
 import { ForbiddenException } from "@nestjs/common";
+import { Test } from "@nestjs/testing";
 
 import { IS_PUBLIC_KEY } from "../auth/decorators/public.decorator";
 import { REQUIRED_POSITIONS_KEY } from "../auth/decorators/require-positions.decorator";
-import { ProjectFundingAvailabilityService } from "../project-funding/project-funding-availability.service";
+import { createApiValidationPipe } from "../validation/api-validation";
+import { fundExecutionCommandFingerprint } from "./fund-execution-command-receipt";
+import { FundExecutionService } from "./fund-execution.service";
 import { FundExecutionController } from "./fund-execution.controller";
 import { FundExecutionSelectionOptionsService } from "./fund-execution-selection-options.service";
 import { FundExecutionSelectionRefService } from "./fund-execution-selection-ref.service";
@@ -44,6 +47,75 @@ describe("FundExecutionController authorization wiring", () => {
       expect(
         Reflect.getMetadata(REQUIRED_POSITIONS_KEY, handler(method))
       ).toEqual(["finance_staff", "finance_director"]);
+    }
+  });
+
+  it("refuses fresh wages via HTTP and only replays the exact authorized historical command", async () => {
+    const originalKey = "10000000-0000-4000-8000-000000000011";
+    const changedKey = "10000000-0000-4000-8000-000000000012";
+    const input = { reason: "本地历史工资出款", observationSelectionRef: "previous-bank-selection" };
+    const actorUserId = "finance";
+    const snapshot = { caseId: "historic-case", status: "draft", revision: 1 };
+    const tx = {
+      $executeRaw: jest.fn().mockResolvedValue(1),
+      $queryRaw: jest.fn().mockResolvedValue([{ id: actorUserId }]),
+      fundExecutionCommandReceipt: {
+        findUnique: jest.fn(async ({ where }: { where: { idempotencyKey: string } }) =>
+          where.idempotencyKey === originalKey ? {
+            action: "create_case", createdByUserId: actorUserId, responseSnapshot: snapshot,
+            payloadFingerprint: fundExecutionCommandFingerprint("create_case", { actorUserId, ...input })
+          } : null),
+        create: jest.fn()
+      },
+      fundExecution: { create: jest.fn() },
+      bankTransactionClaim: { create: jest.fn() },
+      fundExecutionCase: { create: jest.fn() }
+    };
+    const options = {
+      matchObservationInTransaction: jest.fn().mockResolvedValue({ observation: { direction: "outflow" } })
+    };
+    const prisma = { $transaction: async (run: (client: typeof tx) => unknown) => run(tx) };
+    const audit = { record: jest.fn() };
+    const service = new FundExecutionService(prisma as never, audit as never, options as never, {} as never);
+    const module = await Test.createTestingModule({
+      controllers: [FundExecutionController],
+      providers: [
+        { provide: FundExecutionService, useValue: service },
+        { provide: FundExecutionSelectionOptionsService, useValue: options }
+      ]
+    }).compile();
+    const app = module.createNestApplication({ logger: false });
+    app.useGlobalPipes(createApiValidationPipe());
+    app.use((request: { user?: { id: string } }, _response: unknown, next: () => void) => {
+      request.user = { id: actorUserId };
+      next();
+    });
+    const previousSecret = process.env.OPERATING_LEDGER_DB_WRITE_SECRET;
+    process.env.OPERATING_LEDGER_DB_WRITE_SECRET = "synthetic-v7-authorization";
+    try {
+      await app.listen(0, "127.0.0.1");
+      const url = `${await app.getUrl()}/fund-executions/cases`;
+      const post = (idempotencyKey: string, reason = input.reason) => fetch(url, {
+        method: "POST", headers: { "content-type": "application/json" },
+        body: JSON.stringify({ ...input, reason, idempotencyKey })
+      });
+      const replay = await post(originalKey);
+      expect(replay.status).toBe(201);
+      await expect(replay.json()).resolves.toEqual(snapshot);
+      expect((await post(originalKey, "不同原因")).status).toBe(409);
+      expect((await post(changedKey)).status).toBe(410);
+      tx.$queryRaw.mockResolvedValue([]);
+      expect((await post(originalKey)).status).toBe(403);
+      expect(options.matchObservationInTransaction).toHaveBeenCalledTimes(1);
+      expect(tx.fundExecution.create).not.toHaveBeenCalled();
+      expect(tx.bankTransactionClaim.create).not.toHaveBeenCalled();
+      expect(tx.fundExecutionCase.create).not.toHaveBeenCalled();
+      expect(tx.fundExecutionCommandReceipt.create).not.toHaveBeenCalled();
+      expect(audit.record).not.toHaveBeenCalled();
+    } finally {
+      if (previousSecret === undefined) delete process.env.OPERATING_LEDGER_DB_WRITE_SECRET;
+      else process.env.OPERATING_LEDGER_DB_WRITE_SECRET = previousSecret;
+      await app.close();
     }
   });
 
@@ -132,8 +204,7 @@ describe("FundExecutionController authorization wiring", () => {
         signers: [issueObservation, issueReversal, issueAxis],
         service: new FundExecutionSelectionOptionsService(
           prisma as never,
-          refs,
-          new ProjectFundingAvailabilityService()
+          refs
         )
       };
     }
@@ -162,6 +233,14 @@ describe("FundExecutionController authorization wiring", () => {
     expect(
       active.prisma.bankTransactionClaim.findMany.mock.invocationCallOrder[0]
     ).toBeLessThan(active.issueObservation.mock.invocationCallOrder[0]!);
+
+    const outgoing = { ...observation, id: "outgoing", reference: "OUT-OBS", direction: "outflow" };
+    active.prisma.verifiedBankTransactionObservation.findMany.mockImplementation(async ({ where }) =>
+      [observation, outgoing].filter((entry) => !where.direction || entry.direction === where.direction));
+    const incoming = await active.service.listObservationCandidates("active-global-user", new Date(), "fund_execution_case");
+    const reversal = await active.service.listObservationCandidates("active-global-user", new Date(), "fund_execution_reversal");
+    expect(incoming.map(({ summary }) => summary.slice(0, 2))).toEqual(["入账"]);
+    expect(reversal.map(({ summary }) => summary.slice(0, 2))).toEqual(["入账", "出账"]);
 
     for (const denied of [
       { label: "project-only", active: true, global: false },

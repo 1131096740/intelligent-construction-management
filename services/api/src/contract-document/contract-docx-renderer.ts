@@ -1,3 +1,4 @@
+import { normalizeBusinessAmount } from "@jiangkong/shared-domain";
 import Docxtemplater from "docxtemplater";
 import PizZip from "pizzip";
 import {
@@ -104,6 +105,25 @@ export function formatChineseUppercaseMoney(value: bigint): string {
     result += `${CHINESE_DIGITS[fen]}分`;
   }
   return jiao === 0 && fen === 0 ? `${result}整` : result;
+}
+
+/** Business values retain four places; payment rounding is a separate protocol. */
+export function formatChineseUppercaseBusinessAmount(value: string | null): string {
+  const normalized = normalizeBusinessAmount(value);
+  if (normalized === null) return "待确定";
+  const [whole, fraction] = normalized.split(".") as [string, string];
+  const yuan = BigInt(whole);
+  let result = `人民币${formatChineseYuan(yuan)}元`;
+  const fractionUnits = ["角", "分", "厘", "毫"];
+  let previous = -1;
+  for (let index = 0; index < 4; index += 1) {
+    const digit = Number(fraction[index]);
+    if (digit === 0) continue;
+    if ((previous < 0 && index > 0 && yuan > 0n) || (previous >= 0 && index > previous + 1)) result += CHINESE_DIGITS[0];
+    result += `${CHINESE_DIGITS[digit]}${fractionUnits[index]}`;
+    previous = index;
+  }
+  return previous < 0 ? `${result}整` : result;
 }
 
 function assertRequiredValues(

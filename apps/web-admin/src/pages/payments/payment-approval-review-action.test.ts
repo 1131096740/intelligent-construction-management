@@ -1,3 +1,4 @@
+import { createPinia, setActivePinia } from "pinia";
 import { effectScope, reactive } from "vue";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import PaymentDetailPage from "./PaymentDetailPage.vue";
@@ -7,8 +8,10 @@ const reviewRuntime = vi.hoisted(() => ({
   executeReview: vi.fn(),
   prepareReview: vi.fn(),
   fetchDetail: vi.fn(),
+  fetchCapability: vi.fn(),
   postReview: vi.fn(),
   directReview: vi.fn(),
+  reviseRequest: vi.fn(),
   route: { params: { paymentId: "payment-a" } }
 }));
 
@@ -42,6 +45,8 @@ vi.mock("../../api/core-flow-read.api", async (importOriginal) => {
     executePaymentApprovalReviewAction: reviewRuntime.executeReview,
     preparePaymentApprovalReviewAction: reviewRuntime.prepareReview,
     fetchPaymentDetail: reviewRuntime.fetchDetail,
+    fetchPaymentActionCapability: reviewRuntime.fetchCapability,
+    reviseAndSubmitPaymentRequest: reviewRuntime.reviseRequest,
     reviewPaymentApproval: reviewRuntime.directReview
   };
 });
@@ -49,7 +54,7 @@ vi.mock("../../api/core-flow-read.api", async (importOriginal) => {
 reviewRuntime.route = reactive(reviewRuntime.route);
 
 type MutableValue<T> = { value: T };
-type ReviewDecision = "approve" | "reject";
+type ReviewDecision = "approve" | "reject" | "return_to_applicant";
 type ReviewContext = {
   ownerScope: string;
   routeGeneration: number;
@@ -94,6 +99,10 @@ type PaymentPageBindings = {
     reason: string;
     password: string;
   }) => Promise<unknown>;
+  confirmPaymentApprovalReturn: (values: {
+    reason: string;
+    password: string;
+  }) => Promise<unknown>;
   clearPaymentDetailTransientState: () => void;
   paymentActionForm: {
     approvedAmountYuan: string;
@@ -102,7 +111,11 @@ type PaymentPageBindings = {
   };
   paymentApprovalCapability: MutableValue<unknown>;
   paymentDetail: MutableValue<unknown>;
+  paymentOverviewMetaView: MutableValue<Array<{ label: string; value: string }>>;
+  paymentBaseInfoUniqueView: MutableValue<Array<{ label: string; value: string }>>;
   reloadPaymentDetail: () => Promise<boolean>;
+  submitPaymentRevision: () => Promise<void>;
+  paymentRevisionForm: { amountYuan: string; paymentMatter: string; amountCalculationExplanation: string };
   requestApproval: (decision: ReviewDecision) => void;
   sensitiveAction: {
     visible: boolean;
@@ -117,9 +130,11 @@ describe("payment approve/reject page ownership", () => {
     reviewRuntime.beforeUnmountCallbacks.splice(0);
     reviewRuntime.executeReview.mockReset();
     reviewRuntime.prepareReview.mockReset();
+    reviewRuntime.fetchCapability.mockReset();
     reviewRuntime.fetchDetail.mockReset();
     reviewRuntime.postReview.mockReset();
     reviewRuntime.directReview.mockReset();
+    reviewRuntime.reviseRequest.mockReset();
     reviewRuntime.fetchDetail.mockResolvedValue(paymentDetail());
     reviewRuntime.postReview.mockResolvedValue({ id: "ok" });
     reviewRuntime.prepareReview.mockImplementation((input: PrepareInput) => {
@@ -151,6 +166,26 @@ describe("payment approve/reject page ownership", () => {
         input.finish(context);
       }
     });
+  });
+
+  it("shows both payment agreements without restricting the current approver", () => {
+    const { bindings, scope } = setupPage();
+    const agreementStatus = { label: "付款约定", value: "约定已更新，请核对提交时和最新约定" };
+    const agreements = [
+      { label: "提交时付款约定", value: "按合同结算支付 85%" },
+      { label: "最新付款约定", value: "按合同结算支付 90%" }
+    ];
+    const detail = { ...paymentDetail(), meta: [agreementStatus], baseInfo: agreements };
+    bindings.paymentDetail.value = detail;
+    bindings.paymentApprovalCapability.value = detail;
+    try {
+      expect(bindings.paymentOverviewMetaView.value).toContainEqual(agreementStatus);
+      expect(bindings.paymentBaseInfoUniqueView.value).toEqual(agreements);
+      bindings.requestApproval("approve");
+      expect(bindings.sensitiveAction.kind).toBe("approvalApprove");
+    } finally {
+      scope.stop();
+    }
   });
 
   it("opens only from the raw authoritative capability and complete four-coordinate context", () => {
@@ -263,6 +298,55 @@ describe("payment approve/reject page ownership", () => {
     }
   });
 
+  it("only offers return from the current server capability and keeps the requested revision reason", async () => {
+    const { bindings, scope } = setupReviewPage();
+    try {
+      bindings.paymentActionForm.approvalComment = " 请核对金额 ";
+      bindings.requestApproval("return_to_applicant");
+      expect(bindings.sensitiveAction.visible).toBe(false);
+
+      bindings.paymentApprovalCapability.value = paymentDetail({ canReturnForRevision: true });
+      bindings.requestApproval("return_to_applicant");
+      await bindings.confirmPaymentApprovalReturn({ reason: "", password: "" });
+      expect(reviewRuntime.postReview).toHaveBeenCalledWith("payment-a", expect.objectContaining({
+        decision: "return_to_applicant", comment: "请核对金额"
+      }));
+    } finally {
+      scope.stop();
+    }
+  });
+
+  it("submits a corrected amount with the version of the original draft", async () => {
+    const { bindings, scope } = setupPage();
+    try {
+      const revision = {
+        ...paymentDetail(),
+        revisionSubmissionContext: {
+          expectedUpdatedAt: "2026-07-31T00:00:00.000Z", requestedAmountCents: "1000",
+          paymentMatter: "进度款", amountCalculationExplanation: null
+        },
+        availableActions: [{ key: "revise_and_submit", enabled: true }]
+      };
+      reviewRuntime.fetchDetail.mockResolvedValueOnce(revision);
+      await bindings.reloadPaymentDetail();
+      expect(bindings.paymentRevisionForm.amountYuan).toBe("10.00");
+      bindings.paymentRevisionForm.amountYuan = "8.00";
+      reviewRuntime.fetchCapability.mockResolvedValueOnce({ paymentId: "payment-a", availableActions: [] });
+      await bindings.submitPaymentRevision();
+      expect(reviewRuntime.reviseRequest).not.toHaveBeenCalled();
+      expect(bindings.paymentRevisionForm.amountYuan).toBe("8.00");
+      reviewRuntime.fetchCapability.mockResolvedValueOnce({ paymentId: "payment-a", availableActions: ["revise_and_submit"] });
+      await bindings.submitPaymentRevision();
+      expect(reviewRuntime.reviseRequest).toHaveBeenCalledWith("payment-a", expect.objectContaining({
+        expectedUpdatedAt: revision.revisionSubmissionContext.expectedUpdatedAt,
+        requestedAmountCents: "800",
+        paymentMatter: "进度款"
+      }));
+    } finally {
+      scope.stop();
+    }
+  });
+
   it("invalidates route A work before POST without refreshing or closing route B", async () => {
     const pending = deferred<PreparedReview>();
     reviewRuntime.prepareReview.mockReturnValueOnce(pending.promise);
@@ -353,6 +437,7 @@ function setupReviewPage(
 }
 
 function setupPage() {
+  setActivePinia(createPinia());
   const scope = effectScope();
   const bindings = scope.run(() =>
     (
@@ -378,6 +463,7 @@ function paymentDetail(
     reviewApprovalContext?: null;
     actionEnabled?: boolean;
     requiresSelfReviewConfirmation?: boolean;
+    canReturnForRevision?: true;
   } = {}
 ) {
   const paymentId = overrides.paymentId ?? "payment-a";
@@ -397,7 +483,8 @@ function paymentDetail(
             expectedNodeIndex: overrides.expectedNodeIndex ?? 1,
             expectedApprovalUpdatedAt:
               overrides.expectedApprovalUpdatedAt ??
-              "2026-07-31T00:05:00.000Z"
+              "2026-07-31T00:05:00.000Z",
+            ...(overrides.canReturnForRevision ? { canReturnForRevision: true } : {})
           },
     availableActions: [
       {

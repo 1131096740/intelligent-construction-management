@@ -96,7 +96,7 @@ export class ProjectVisibilityService {
         tx.userPosition.findMany({ where: { userId, projectId: null } }),
         tx.userPosition.findMany({ where: { userId, projectId: { in: projectIds } } }),
         tx.projectMember.findMany({ where: { userId, projectId: { in: projectIds } } }),
-        tx.projectRosterMember.findMany({ where: { userId, projectId: { in: projectIds } } }),
+        tx.projectRosterMember.groupBy({ by: ["projectId"], where: { userId, projectId: { in: projectIds } } }),
         tx.project.findMany({
           where: { id: { in: projectIds }, isActive: true },
           select: { id: true }
@@ -140,7 +140,7 @@ export class ProjectVisibilityService {
         client.userPosition.findMany({ where: { userId, projectId: null } }),
         client.userPosition.findMany({ where: { userId, projectId: { not: null } } }),
         client.projectMember.findMany({ where: { userId } }),
-        client.projectRosterMember.findMany({ where: { userId } }),
+        client.projectRosterMember.groupBy({ by: ["projectId"], where: { userId } }),
         this.activeProjectIdsWithClient(client)
       ]);
     const positionIds = Array.from(

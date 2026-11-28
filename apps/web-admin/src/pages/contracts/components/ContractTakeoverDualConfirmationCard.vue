@@ -56,12 +56,21 @@
             确认财务侧
           </t-button>
           <t-button
-            v-if="canConfirmFinance && financeConfirmedRevision === financeRevision && !activated"
+            v-if="canWithdrawFinance && financeConfirmedRevision === financeRevision && !activated"
             size="small"
             variant="outline"
             @click="$emit('withdraw', 'finance')"
           >
             撤回财务侧确认
+          </t-button>
+          <t-button
+            v-if="canReturnFinance && !activated"
+            size="small"
+            theme="danger"
+            variant="outline"
+            @click="$emit('return-finance')"
+          >
+            财务驳回制单人
           </t-button>
         </div>
       </section>
@@ -84,11 +93,14 @@ defineProps<{
   financeBasisStale: boolean;
   canConfirmContract: boolean;
   canConfirmFinance: boolean;
+  canWithdrawFinance: boolean;
+  canReturnFinance: boolean;
 }>();
 
 defineEmits<{
   confirm: [side: "contract" | "finance"];
   withdraw: [side: "contract" | "finance"];
+  "return-finance": [];
 }>();
 </script>
 

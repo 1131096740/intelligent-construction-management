@@ -1,0 +1,4 @@
+--- vite.config.ts
++++ vite.config.ts
+@@ -5,0 +6 @@
++  cacheDir: process.env.TASK398_OWNED_VITE_CACHE,

@@ -1,0 +1,62 @@
+--- expense-app.cjs
++++ expense-app.cjs
+@@ -3,7 +3,7 @@
+ const {join}=require('node:path');
+ const {readFileSync}=require('node:fs');
+ const {createHash}=require('node:crypto');
+-const {expectedLedger}=require('./successor.cjs');
++const {final:expectedLedgerSha256}=require('./multi-witness.cjs');
+ const profiles=require('./profiles.json');
+ const workspace='/qualification/workspace';
+ const api=join(workspace,'services/api');
+@@ -22,7 +22,7 @@
+   assert.equal(endpoint.searchParams.get('sslaccept'),'strict');
+   assert.equal(endpoint.searchParams.get('sslcert'),join(context.workDir,'ca.crt'));
+   const spec=join('src/database',config.spec);
+-  assert.equal(digest(readFileSync(join(api,spec))),config.sha256,'EXPENSE_290_TEST_SOURCE');
++  assert.equal(digest(readFileSync(join(api,spec))),config.sha256,'EXPENSE_295_TEST_SOURCE');
+   const state=JSON.parse((await context.sql(`SELECT jsonb_build_object(
+     'role', current_user, 'sameSession', current_user=session_user,
+     'ownerOid', (SELECT datdba::integer FROM pg_database WHERE datname=current_database()),
+@@ -37,21 +37,26 @@
+   assert.equal(state.ownerOid,10);
+   assert.equal(state.tls,true);
+   assert.equal(state.database,context.database);
+-  assert.equal(state.ledger.length,290);
+-  assert.deepEqual(state.ledger,expectedLedger(state.ledger.slice(0,-1)));
++  const forward=receipt.forward320;
++  assert.equal(state.ledger.length,forward?.count??295);
++  assert.equal(digest(JSON.stringify(state.ledger.slice(0,295))),expectedLedgerSha256);
++  if(forward) {
++    assert.equal(context.candidateTree,forward.sourceTree);
++    assert.equal(digest(JSON.stringify(state.ledger)),forward.ledgerSha256);
++  }
+   const extra={COREPACK_HOME:'/opt/corepack',COREPACK_DEFAULT_TO_LATEST:'0',COREPACK_ENABLE_NETWORK:'0',
+     NODE_ENV:'test',CI:'true',DATABASE_URL:context.ownerUrl,[config.runIdKey]:context.runId.replaceAll('-',''),
+-    [config.runFlag]:'1'};
++    [config.runFlag]:'1',...(forward?{JG_CONTRACT_FINANCE_LEDGER:String(forward.count)}:{})};
+   const invoke=['--dir',workspace,'--filter','@jiangkong/api','exec'];
+   if (lane !== 'execution') {
+-    receipt.stages.push('EXPENSE_290_MIGRATION_NOOP');
++    receipt.stages.push('EXPENSE_295_MIGRATION_NOOP');
+     const result=runCommand('pnpm',[...invoke,'prisma','migrate','deploy'],{cwd:workspace,extra,timeoutMs:180_000});
+     assert.match(result.stdout,/No pending migrations to apply\./u);
+   }
+-  receipt.stages.push('EXPENSE_290_MIGRATION_STATUS');
++  receipt.stages.push('EXPENSE_295_MIGRATION_STATUS');
+   const status=runCommand('pnpm',[...invoke,'prisma','migrate','status'],{cwd:workspace,extra,timeoutMs:180_000});
+   assert.match(status.stdout,/Database schema is up to date/u);
+-  receipt.stages.push('EXPENSE_290_ORIGINAL_JEST');
++  receipt.stages.push('EXPENSE_295_ORIGINAL_JEST');
+   const run=runCommand('pnpm',[...invoke,'jest','--runInBand','--runTestsByPath',spec,'--json'],
+     {cwd:workspace,extra,timeoutMs:lane==='receipt'?180_000:900_000,allowFailure:true});
+   const summary=run.stdout.split('\n').find(line=>line.startsWith('{"numFailedTestSuites":'));
+@@ -63,7 +68,7 @@
+       prismaCodes:[...new Set((test.failureMessages??[]).join(' ').match(/\bP[0-9]{4}\b/gu)??[])],
+       frames:[...(test.failureMessages??[]).join(' ').matchAll(/project-expense-(?:execution|finance|receipt)-concurrency(?:\.owned282)?\.spec\.ts:(\d+):(\d+)/gu)].slice(0,5).map(m=>[Number(m[1]),Number(m[2])]),
+     })))};
+-  assert.equal(run.code,0,'EXPENSE_290_JEST_EXIT');
++  assert.equal(run.code,0,'EXPENSE_295_JEST_EXIT');
+   assert.equal(result.testResults?.length,1);
+   assert.equal(result.testResults?.[0]?.name,join(api,spec));
+   assert.equal(result.numTotalTests,1);

@@ -17,7 +17,8 @@ describe("delegation ledger page configuration", () => {
       "生效时间",
       "失效时间",
       "到期提醒",
-      "状态"
+      "状态",
+      "操作"
     ]);
   });
 

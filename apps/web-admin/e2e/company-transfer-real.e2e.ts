@@ -1,15 +1,32 @@
-import { test, expect, type Page, type Locator } from "@playwright/test";
+import { test, expect, type Page, type Locator, type Response, type TestInfo } from "@playwright/test";
 const f = JSON.parse(process.env.COMPANY_TRANSFER_FIXTURE!);
+const sourceCompanyLabel = "转出公司（实际出款）";
+
+async function expectHttpStatus(response: Response, expected: number, info: TestInfo, step: number) {
+  const status = response.status();
+  if (status !== expected) {
+    const body: unknown = await response.json().catch(() => null);
+    const message = body && typeof body === "object" && "message" in body ? body.message : undefined;
+    const issue = message === "统计基准日格式不正确" || message === "统计基准日无效" ? "BUSINESS_DATE"
+      : message === "当前账号无权查看该项目台账" ? "PROJECT_ACCESS"
+        : message === "当前岗位仅可查看合同摘要，不能读取金额台账" ? "LEDGER_ACCESS" : "OTHER";
+    await info.attach("company-transfer-http", {
+      contentType: "application/json", body: Buffer.from(JSON.stringify({ step, status, issue }))
+    });
+  }
+  expect(status).toBe(expected);
+}
+
 async function login(page: Page, role: string) { await page.goto("/login"); const session = f.sessions[role]; await page.evaluate(value => localStorage.setItem("jiangkong-web-admin-auth", JSON.stringify(value)), { user: session.user, accessToken: session.tokens.accessToken, refreshToken: session.tokens.refreshToken }); await page.goto(`/公司互转台账?projectId=${f.projectId}`); await expect(page.getByText("公司互转审批与台账", { exact: true })).toBeVisible(); }
 const field = (drawer: Locator, label: string) => drawer.locator(".t-form__item").filter({ has: drawer.page().getByText(label, { exact: true }) });
 async function select(page: Page, drawer: Locator, label: string, option: string) { await field(drawer, label).locator(".t-select").click(); const choice = page.locator(".t-select-option:visible").filter({ hasText: option }).first(); await expect(choice).toBeVisible(); const box = await choice.boundingBox(); expect(box).not.toBeNull(); expect(box!.x).toBeGreaterThanOrEqual(0); expect(box!.x + box!.width).toBeLessThanOrEqual(page.viewportSize()!.width); await choice.click(); await expect(field(drawer, label).locator("input")).toHaveValue(new RegExp(option.replaceAll(".", "\\."))); await expect(page.locator(".t-select-option:visible")).toHaveCount(0); }
 test("财务申请→领导终审→财务出款与独立到账→项目负责人余额回读", async ({ page }, info) => {
   const amount = info.project.name === "desktop" ? "100.00" : "200.00";
   await login(page, "finance_staff"); await page.getByRole("button", { name: "发起公司互转", exact: true }).click(); let drawer = page.locator(".t-drawer:visible");
-  await select(page, drawer, "办理类别", "临时借款调剂"); await select(page, drawer, "转出公司", "验收第一建设公司"); await select(page, drawer, "转入公司", "验收第二建设公司"); for (const label of ["转出资金归属", "转入资金归属"]) await select(page, drawer, label, "同项目四岗位合同互转验收");
+  await select(page, drawer, "办理类别", "临时借款调剂"); await select(page, drawer, sourceCompanyLabel, "验收第一建设公司"); await select(page, drawer, "转入公司", "验收第二建设公司"); for (const label of ["转出资金归属", "转入资金归属"]) await select(page, drawer, label, "同项目四岗位合同互转验收");
   await field(drawer, "转出银行完整账号").locator("input").fill("6222000011111111"); await field(drawer, "转入银行完整账号").locator("input").fill("6222000022222222"); await field(drawer, "申请金额（元）").locator("input").fill(amount); await field(drawer, "用途和依据").locator("textarea").fill(`四岗位真实浏览器验收-${info.project.name}`);
   await drawer.getByLabel("上传互转申请依据").setInputFiles({ name: "合成互转依据.png", mimeType: "image/png", buffer: Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAAC0lEQVR4nGNgAAIAAAUAAen63NgAAAAASUVORK5CYII=", "base64") }); await field(drawer, "当前登录密码").locator("input").fill(f.password);
-  const created = page.waitForResponse(r => new URL(r.url()).pathname === "/api/company-transfers" && r.request().method() === "POST"); await drawer.getByRole("button", { name: "提交领导终审", exact: true }).click(); const response = await created; const createdBody = await response.json(); expect(createdBody).toMatchObject({ status: "submitted" }); await expect(drawer).toBeHidden();
+  const created = page.waitForResponse(r => new URL(r.url()).pathname === "/api/company-transfers" && r.request().method() === "POST"); await drawer.getByRole("button", { name: "提交领导终审", exact: true }).click(); const response = await created; await expectHttpStatus(response, 201, info, 0); const createdBody = await response.json(); expect(createdBody).toMatchObject({ status: "submitted" }); await expect(drawer).toBeHidden();
   const row = () => page.locator("article").filter({ hasText: `四岗位真实浏览器验收-${info.project.name}` }); await expect(row()).toContainText("待领导终审");
   await login(page, info.project.name === "desktop" ? "chairman" : "general_manager"); await row().getByRole("button", { name: "终审通过", exact: true }).click(); drawer = page.locator(".t-drawer:visible"); await field(drawer, "当前登录密码").locator("input").fill(f.password); await drawer.getByRole("button", { name: "签署并终审通过", exact: true }).click(); await expect(drawer).toBeHidden(); await expect(row()).toContainText("已批准待出款");
   await login(page, "finance_staff"); await row().getByRole("button", { name: "登记实际出款", exact: true }).click(); drawer = page.locator(".t-drawer:visible"); await select(page, drawer, "已核验且未认领的实际银行流水", amount); await field(drawer, "当前登录密码").locator("input").fill(f.password); await drawer.getByRole("button", { name: "确认办理", exact: true }).click(); await expect(drawer).toBeHidden(); await expect(row()).toContainText("已出款待到账");
@@ -18,7 +35,7 @@ test("财务申请→领导终审→财务出款与独立到账→项目负责�
   const repayAmount = info.project.name === "desktop" ? "30.00" : "60.00";
   await login(page, "finance_staff"); await page.getByRole("button", { name: "发起公司互转", exact: true }).click(); drawer = page.locator(".t-drawer:visible");
   await select(page, drawer, "办理类别", "归还已有往来"); await select(page, drawer, "原借款或代付往来", createdBody.code);
-  await expect(field(drawer,"转出公司").locator("input")).toHaveValue("验收第二建设公司");
+  await expect(field(drawer,sourceCompanyLabel).locator("input")).toHaveValue("验收第二建设公司");
   await field(drawer,"转出银行完整账号").locator("input").fill("6222000022222222"); await field(drawer,"转入银行完整账号").locator("input").fill("6222000011111111");
   await field(drawer,"申请金额（元）").locator("input").fill(repayAmount); await field(drawer,"用途和依据").locator("textarea").fill(`归还闭环验收-${info.project.name}`);
   await drawer.getByLabel("上传互转申请依据").setInputFiles({name:"合成归还依据.png",mimeType:"image/png",buffer:Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAAC0lEQVR4nGNgAAIAAAUAAen63NgAAAAASUVORK5CYII=","base64")});
@@ -33,5 +50,24 @@ test("财务申请→领导终审→财务出款与独立到账→项目负责�
 
 test("合同、财务及经营八个页面在同一项目读取一致的三类金额", async ({ page }, info) => {
   const pages = [['/合同工作台', 'contract_staff'], ['/结算工作台', 'contract_staff'], ['/付款管理', 'finance_staff'], ['/统一资金办理工作台', 'finance_staff'], ['/资金执行案件', 'finance_director'], ['/项目经营', 'project_manager'], ['/清分工作台', 'finance_director'], ['/历史经营接管', 'finance_director']];
-  for (const [path, role] of pages) { await login(page, role); const response = page.waitForResponse(r => new URL(r.url()).pathname === '/api/contract-relationship-ledger' && new URL(r.url()).searchParams.get('projectId') === f.projectId && new URL(r.url()).searchParams.get('section') === 'contracts'); await page.goto(`${path}?projectId=${f.projectId}&ledgerSection=contracts`); const r = await response; expect(r.status()).toBe(200); const value = await r.json(); expect(value.totals.map((t: { relationship: string; knownAmountCents: string }) => [t.relationship, t.knownAmountCents])).toEqual(expect.arrayContaining([['inside', '500000'], ['outside', '100000'], ['upward', '700000']])); const ledger = page.getByRole('region', { name: '签约关系分类台账' }).first(); await expect(ledger).toBeVisible(); for (const amount of ['5,000.00', '1,000.00', '7,000.00']) await expect(ledger.locator('.relationship-ledger__totals')).toContainText(amount); await page.screenshot({ path: info.outputPath(`${path.slice(1)}.png`), fullPage: true }); }
+  for (const [index, [path, role]] of pages.entries()) {
+    await login(page, role);
+    const response = page.waitForResponse(res => {
+      const url = new URL(res.url());
+      return res.request().method() === "GET" && url.pathname === "/api/contract-relationship-ledger" &&
+        url.searchParams.get("projectId") === f.projectId && url.searchParams.get("section") === "contracts";
+    });
+    await page.goto(`${path}?projectId=${f.projectId}&ledgerSection=contracts`);
+    const result = await response;
+    await expectHttpStatus(result, 200, info, index + 1);
+    const value = await result.json();
+    expect(value.totals.map((item: { relationship: string; knownAmountCents: string }) => [item.relationship, item.knownAmountCents]))
+      .toEqual(expect.arrayContaining([["inside", "500000"], ["outside", "100000"], ["upward", "700000"]]));
+    const ledger = page.getByRole("region", { name: "签约关系分类台账" }).first();
+    await expect(ledger).toBeVisible();
+    for (const amount of ["5,000.00", "1,000.00", "7,000.00"]) {
+      await expect(ledger.locator(".relationship-ledger__totals")).toContainText(amount);
+    }
+    await page.screenshot({ path: info.outputPath(`${path.slice(1)}.png`), fullPage: true });
+  }
 });

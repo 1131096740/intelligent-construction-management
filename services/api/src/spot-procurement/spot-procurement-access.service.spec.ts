@@ -1,4 +1,5 @@
 import { ForbiddenException } from "@nestjs/common";
+import type { Prisma } from "@prisma/client";
 import { SpotProcurementAccessService } from "./spot-procurement-access.service";
 
 type AccessFixture = {
@@ -9,6 +10,8 @@ type AccessFixture = {
     projectId: string;
     applicantUserId: string;
     handlerUserId: string;
+    currentVersionId?: string;
+    status?: string;
   }>;
   payments?: Array<{
     id: string;
@@ -102,6 +105,7 @@ type AccessFixture = {
     paymentExecutionId: string;
     fileId: string;
   }>;
+  paymentArchiveFiles?: Array<{ fileId: string; archiveId: string }>;
   discrepancies?: Array<{
     id: string;
     projectId?: string;
@@ -217,13 +221,30 @@ function buildPrisma(fixture: AccessFixture = {}) {
         )
       )
     },
-    spotProcurementAttachment: {
-      findMany: jest.fn(({ where }: { where: { fileId: string } }) =>
-        Promise.resolve(
-          (fixture.attachments ?? []).filter((row) => row.fileId === where.fileId)
-        )
-      )
-    },
+    $queryRaw: jest.fn(async (statement: Prisma.Sql) => {
+      const sql = statement.sql.trim().replace(/\s+/gu, " ");
+      if (sql.startsWith('SELECT d."id", d."fromUserId", d."toUserId" FROM "ApprovalDelegation" d')) return [];
+      const [fileId] = statement.values;
+      if (statement.values.length !== 1) throw new Error("unexpected attachment binding read");
+      switch (sql) {
+        case 'SELECT "versionId" FROM public."SpotProcurementAttachment" WHERE "fileId" = ?':
+          return (fixture.attachments ?? []).filter(row => row.fileId === fileId).map(({ versionId }) => ({ versionId }));
+        case 'SELECT "paymentId", "executedByUserId", "voidedAt" FROM public."SpotProcurementPaymentExecution" WHERE "voucherFileId" = ?':
+          return (fixture.executions ?? []).filter(row => row.voucherFileId === fileId)
+            .map(({ paymentId, executedByUserId, voidedAt }) => ({ paymentId, executedByUserId, voidedAt }));
+        case 'SELECT "paymentId", "uploadedByUserId", "invalidatedByUserId" FROM public."SpotProcurementPaymentInvoice" WHERE "fileId" = ?':
+          return (fixture.paymentInvoices ?? []).filter(row => row.fileId === fileId)
+            .map(({ paymentId, uploadedByUserId, invalidatedByUserId }) => ({ paymentId, uploadedByUserId, invalidatedByUserId }));
+        case 'SELECT "paymentExecutionId" FROM public."SpotProcurementPaymentExecutionVoucher" WHERE "fileId" = ?':
+          return (fixture.executionVouchers ?? []).filter(row => row.fileId === fileId)
+            .map(({ paymentExecutionId }) => ({ paymentExecutionId }));
+        case 'SELECT "archiveId" FROM public."SpotProcurementPaymentArchiveFile" WHERE "fileId" = ?':
+          return (fixture.paymentArchiveFiles ?? []).filter(row => row.fileId === fileId).map(({ archiveId }) => ({ archiveId }));
+        default:
+          throw new Error("unexpected attachment binding read");
+      }
+    }),
+    spotProcurementPaymentArchiveFile: { findMany: jest.fn() },
     spotProcurementPayment: {
       findUnique: jest.fn(({ where }: { where: { id: string } }) =>
         Promise.resolve(fixture.payments?.find((row) => row.id === where.id) ?? null)
@@ -734,11 +755,17 @@ function invoiceEvidenceFixture(
 
 describe("SpotProcurementAccessService", () => {
   it("returns not_spot only when no Spot business record binds the file", async () => {
-    const service = new SpotProcurementAccessService(buildPrisma() as never);
+    const prisma = buildPrisma();
+    const service = new SpotProcurementAccessService(prisma as never);
 
     await expect(service.resolveFileDownloadAccess("ordinary-file", "user-1")).resolves.toBe(
       "not_spot"
     );
+    for (const [statement] of prisma.$queryRaw.mock.calls) {
+      expect(statement.values).toEqual(["ordinary-file"]);
+      expect(statement.sql).not.toContain('"id"');
+    }
+    expect(prisma.$queryRaw.mock.calls).toHaveLength(5);
   });
 
   it.each([
@@ -2129,6 +2156,23 @@ describe("SpotProcurementAccessService", () => {
       new SpotProcurementAccessService(buildPrisma(base) as never)
         .resolveFileDownloadAccess("file-1", "unrelated-finance")
     ).resolves.toBe("denied");
+  });
+
+  it.each([
+    ["当前并联轮申请人", "version-1", "applicant-1", true, "allowed"],
+    ["当前并联轮无关人员", "version-1", "unrelated", true, "denied"],
+    ["旧轮申请人", "version-old", "applicant-1", true, "denied"],
+    ["旧串联办理中", "version-1", "applicant-1", false, "denied"]
+  ] as const)("办理中PDF只放行当前并联轮授权主体：%s", async (_label, currentVersionId, actor, parallel, expected) => {
+    const fixture: AccessFixture = {
+      versions: [{ id: "version-1", procurementId: "procurement-1", handlerUserId: "handler-1" }],
+      procurements: [{ id: "procurement-1", projectId: "project-1", applicantUserId: "applicant-1", handlerUserId: "handler-1", currentVersionId, status: "approval_pending" }],
+      approvals: [{ id: "approval-1", businessType: "spot_procurement_version", businessId: "version-1", status: "approval_pending", currentNodeIndex: 0, applicantUserId: "applicant-1", frozenNodes: parallel ? [
+        {name: "物资主管", mode: "any", roleKeys: ["material_director"], protocolVersion: 1, executionMode: "parallel"},
+        {name: "项目经理", mode: "any", roleKeys: ["project_manager"], protocolVersion: 1, executionMode: "parallel"}
+      ] : [{roleKeys: ["material_director"]}] }]
+    };
+    await expect(new SpotProcurementAccessService(buildPrisma(fixture) as never).resolveBusinessDownloadAccess("spot_procurement_version", "version-1", actor)).resolves.toBe(expected);
   });
 
   it("authorizes a formal Spot business before any PDF repair write", async () => {

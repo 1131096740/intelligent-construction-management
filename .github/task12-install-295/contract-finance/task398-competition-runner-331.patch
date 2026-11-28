@@ -1,0 +1,96 @@
+--- original
++++ revised
+@@ -199,4 +199,5 @@
+ }
+ async function runBusiness(options,{candidate,short,storage,url,sql,env,current280=false,readPostgresLog,ownedMigrationBaseline,correctionCatalog,standard290,textDirectReceipt}){
++ const competitionCorrection=standard290?.purpose==="TASK398_COMPETITION_EXACT_331";
+  const textDirect331=textDirectReceipt?.purpose==="TASK425_TEXT_DIRECT_FINANCE_331";
+  const textDirectFinance=textDirect331||textDirectReceipt?.purpose==="TASK425_TEXT_DIRECT_FINANCE_330";
+@@ -235,4 +236,24 @@
+  const check=await sql("jiangkong",`SELECT CASE WHEN NOT EXISTS(SELECT FROM pg_catalog.pg_roles r WHERE r.rolname IN ('jg_task01_runtime','jg_task01_observer') AND (r.rolsuper OR r.rolcreaterole OR r.rolcreatedb OR r.rolreplication OR r.rolbypassrls OR r.rolinherit)) AND NOT EXISTS(SELECT FROM pg_catalog.pg_auth_members m JOIN pg_catalog.pg_roles r ON r.oid=m.member OR r.oid=m.roleid WHERE r.rolname IN ('jg_task01_runtime','jg_task01_observer')) AND NOT has_table_privilege('jg_task01_runtime','public."OperatingLedgerWriteSecret"','SELECT,INSERT,UPDATE,DELETE') AND NOT has_any_column_privilege('jg_task01_runtime','public."OperatingLedgerWriteSecret"','SELECT,INSERT,UPDATE,REFERENCES') AND NOT has_any_column_privilege('jg_task01_runtime','public."OperatingFact"','INSERT,UPDATE,REFERENCES') AND NOT has_any_column_privilege('jg_task01_runtime','public."OperatingImpactEntry"','INSERT,UPDATE,REFERENCES') AND NOT has_any_column_privilege('jg_task01_observer','public."OperatingFact"','INSERT,UPDATE,REFERENCES') AND NOT has_schema_privilege('jg_task01_runtime','public','CREATE') AND NOT has_schema_privilege('jg_task01_observer','public','CREATE') AND (${technicalDeleteCheckSql()}) AND (${signatureBindingCheckSql()}) AND (${approvalDependencyCheckSql()}) AND (${spotGuardCheckSql()}) AND (${businessReadCheckSql(advanceExcludedReads,current280)}) AND (${observerReadCheckSql(browserScenario||overpayScenario||ledgerLossScenario,ledgerLossScenario,transferScenario,handoverScenario)}) AND (${meSensitiveReadCheckSql()}) THEN 'TASK398_ROLE_CHECK_OK' ELSE 'TASK398_ROLE_CHECK_FAILED' END;`);
+  if(!check.includes("TASK398_ROLE_CHECK_OK"))throw new Error("TASK398_ROLE_CHECK");
++ if(competitionCorrection){
++  // FOR UPDATE needs one UPDATE column. The existing original-row guard forbids changing the id.
++  const correctionRead='"id","idempotencyKey","paymentExecutionId","paymentRequestId","projectId","status","correctionReason","selfReviewReason","reviewNote","originalAmountCents","correctedAmountCents","amountDeltaCents","originalPaidAt","correctedPaidAt","originalSnapshot","reversalSnapshot","correctionSnapshot","fundRegistrationId","requestedByUserId","confirmedByUserId","confirmedAt","confirmationKey","payloadFingerprint","createdAt","updatedAt"';
++  const correctionWrite='"id","idempotencyKey","paymentExecutionId","paymentRequestId","projectId","status","correctionReason","originalAmountCents","correctedAmountCents","amountDeltaCents","originalPaidAt","correctedPaidAt","originalSnapshot","reversalSnapshot","correctionSnapshot","requestedByUserId","payloadFingerprint","createdAt","updatedAt"';
++  const correctionConfirm='"status","confirmedByUserId","confirmedAt","confirmationKey","selfReviewReason","reviewNote","fundRegistrationId","updatedAt"';
++  await sql("jg_task01_owner",`
++   GRANT UPDATE ("id") ON public."PaymentExecution" TO jg_task01_runtime;
++   GRANT SELECT (${correctionRead}), INSERT (${correctionWrite}), UPDATE (${correctionConfirm}) ON public."PaymentExecutionCorrection" TO jg_task01_runtime;
++   GRANT INSERT ("coveredExecutionIds") ON public."FundAccountBalanceRegistration" TO jg_task01_runtime;
++   DO $$ BEGIN
++    IF has_table_privilege('jg_task01_runtime','public."PaymentExecutionCorrection"','SELECT,INSERT,UPDATE,DELETE,TRUNCATE,REFERENCES,TRIGGER')
++     OR has_column_privilege('jg_task01_runtime','public."PaymentExecutionCorrection"','originalAmountCents','UPDATE')
++     OR has_column_privilege('jg_task01_runtime','public."PaymentExecutionCorrection"','originalSnapshot','UPDATE')
++     OR has_column_privilege('jg_task01_runtime','public."PaymentExecution"','amountCents','UPDATE')
++     OR has_column_privilege('jg_task01_runtime','public."FundAccountBalanceRegistration"','balanceYuan','UPDATE')
++    THEN RAISE EXCEPTION 'TASK398_COMPETITION_CORRECTION_ACL'; END IF;
++   END $$;
++  `);
++  env.TASK398_COMPETITION_CORRECTION="1";
++ }
+  if(textDirectFinance){
+   const refundRead='"id","idempotencyKey","executionType","paymentExecutionId","spotProcurementPaymentExecutionId","expenseClaimPaymentExecutionId","paymentRequestId","projectId","accountId","fundRegistrationId","amountCents","receivedAt","reason","evidenceReference","recordedByUserId","payloadFingerprint","createdAt"';
+@@ -351,10 +372,12 @@
+  if(transferScenario&&!usesAdvanceRuntime){env.TASK406_TRANSFER_MODE=transferRejection?"rejection":transferBrowser?"browser":"1";env.TASK406_PRIVATE_FAILURE_PATH=path.join(privateLogDir,"transfer-failure.jsonl");}
+  if(browserScenario){const evidenceDir=realpathSync(mkdtempSync(current280?path.join(storage,"browser-evidence-"):"/private/tmp/jg398-browser-evidence-"));chmodSync(evidenceDir,0o700);env.TASK398_BROWSER_MODE=scenario==="src/database/task16-real-browser-completion.pg.spec.ts"?"2":"1";env.TASK398_CANDIDATE_SHA=candidate;env.TASK398_BROWSER_EVIDENCE=path.join(evidenceDir,"receipt.json");console.log(`TASK398_BROWSER_EVIDENCE_DIR ${evidenceDir}`);}
+- const postgresBefore=textDirectFinance?readPostgresLog():null;
++ const postgresBefore=(textDirectFinance||competitionCorrection)?readPostgresLog():null;
+  const scenarios=companyProxyScenario
+   ? [scenario,"src/expense-claim/expense-claim-registered-payment.http.pg.spec.ts"]
+   : [scenario];
+  try{
+-  const knownTitle="rejects a project source gap, then shares three valid instalments and supplements the voucher";
++  const knownTitle=overpayScenario
++   ?"allows only one of two concurrent instalments that would together overpay"
++   :"rejects a project source gap, then shares three valid instalments and supplements the voucher";
+   const reportFile=path.join(privateLogDir,"standard-290-jest.json");
+   const selection=standard290||textDirectFinance?["--json","--outputFile",reportFile]:[];
+@@ -367,4 +390,9 @@
+       matched.length!==8||matched.filter(row=>row.title===knownTitle).length!==1)throw Error("TASK398_STANDARD_290_ORIGINAL_COVERAGE");
+    standard290.original={business:1,passed:8,skipped:0};
++   if(standard290.purpose==="TASK398_COMPETITION_EXACT_331"){
++    standard290.competition={http:[201,409],paidCents:"6000",remainingCents:"4000",bothQueues:true,voucherReadback:true,
++     correction:{missingReason:400,wrongPassword:400,replayed:201,compensations:1,netPaidCents:"5000",remainingCents:"5000",originalUnchanged:true}};
++
++   }
+   }
+   if(textDirectFinance){
+@@ -389,4 +417,12 @@
+    const postgresAfter=readPostgresLog();
+    writeFileSync(path.join(privateLogDir,"owned-postgresql.log"),postgresAfter,{mode:0o600,flag:"wx"});
++   if(competitionCorrection&&postgresAfter.startsWith(postgresBefore)){
++    const objects=["PaymentRequest","PaymentExecution","PaymentExecutionCorrection","RegisteredPaymentFunding","Settlement",
++     "RegisteredFundAccount","FundAccountBalanceRegistration","FundAccountSourceBatch","CompanyEntity","User","AuditLog"];
++    const denied=objects.filter(object=>postgresAfter.slice(postgresBefore.length).split("\n").some(line=>
++     /^NATIVE_TASK16 \[\d+\] ERROR:  permission denied for (?:table|relation) /u.test(line)&&line.endsWith(" "+object)
++    ));
++    standard290.correctionFailure={denied};
++   }
+    if(textDirectFinance&&postgresAfter.startsWith(postgresBefore)){
+     const failed=postgresAfter.slice(postgresBefore.length);
+@@ -541,12 +577,14 @@
+ }
+ async function runTask398Owned282Voucher(context, mode="standard", receipt){
+- const modes=new Map([["text-direct-331",["--text-direct-finance"]],["standard-331",[]],["text-direct-330",["--text-direct-finance"]],["standard-330",[]],["standard-329",[]],["standard-295",[]],["standard-290",[]],["standard",[]],["principal-return",["--principal-return-real"]],["cash-handover",["--cash-handover-real"]],["correction-catalog",["--cash-handover-real"]]]);
++ const modes=new Map([["competition-331",["--overpay-real"]],["text-direct-331",["--text-direct-finance"]],["standard-331",[]],["text-direct-330",["--text-direct-finance"]],["standard-330",[]],["standard-329",[]],["standard-295",[]],["standard-290",[]],["standard",[]],["principal-return",["--principal-return-real"]],["cash-handover",["--cash-handover-real"]],["correction-catalog",["--cash-handover-real"]]]);
+  const standard295=mode==="standard-295";
+  const standard320=mode==="standard-329";
+- const current331=mode==="text-direct-331"||mode==="standard-331";
++ const competition=mode==="competition-331";
++ const current331=mode==="text-direct-331"||mode==="standard-331"||competition;
+  const textDirect=mode==="text-direct-330"||mode==="text-direct-331";
+  const standard=mode==="standard-330"||mode==="standard-331";
+- const current330=textDirect||standard;
++ const current330=textDirect||standard||competition;
+  const paymentCount=current331?331:330;
++ if(competition&&receipt?.purpose!=="TASK398_COMPETITION_EXACT_331")throw Error("TASK398_COMPETITION_SCOPE");
+  if(standard&&receipt?.purpose!=="TASK398_STANDARD_EXACT_"+paymentCount)throw Error("TASK398_STANDARD_SCOPE");
+  if(textDirect&&receipt?.purpose!=="TASK425_TEXT_DIRECT_FINANCE_"+paymentCount)throw Error("TASK425_TEXT_FINANCE_SCOPE");
+@@ -617,5 +655,5 @@
+  `);
+  const catalog=await runBusiness(options,{candidate,short,storage,url,sql,env,current280:true,readPostgresLog,
+-  correctionCatalog:mode==="correction-catalog"?{context,receipt}:undefined,standard290:standard||standard320||standard295||mode==="standard-290"?receipt:undefined,
++  correctionCatalog:mode==="correction-catalog"?{context,receipt}:undefined,standard290:competition||standard||standard320||standard295||mode==="standard-290"?receipt:undefined,
+   textDirectReceipt:textDirect?receipt:undefined,ownedMigrationBaseline:{
+   expectedDirectoryCount:282,terminalMigration:"20261118231000_registered_payment_voucher_fixed_read",

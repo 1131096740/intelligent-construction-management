@@ -1,0 +1,26 @@
+import {readFileSync} from 'node:fs';
+import {join} from 'node:path';
+import PizZip from 'pizzip';
+import {DOMParser} from '@xmldom/xmldom';
+import {prepareLayoutSourceMapping,readLayoutSourcePositions} from '../contract-template/layout-field-mapping';
+import {assertBuiltInPartyPlacementPlan,renderContractBody} from './contract-body-document';
+import {prepareLegacyPartyRoleBindings} from './contract-mechanical-party-placement';
+const source=readFileSync(join(__dirname,'../../assets/templates/equipment-rental-real-v1.docx'));
+it('keeps a mapped billing block readable and rejects generation until the mapping is resolved',()=>{
+ const positions=readLayoutSourcePositions(source).positions;
+ const target=positions.find(p=>p.part==='word/document.xml'&&p.paragraphIndex===94)!;
+ const required=['contract.name','party.owner.name','party.counterparty.name','contract.temporaryCode','document.watermark'];
+ const slots=positions.filter(p=>p.positionId!==target.positionId&&p.text.length>0&&!/[{}]/u.test(p.text)).slice(0,5);
+ const mapped=prepareLayoutSourceMapping(source,'fixture',1,[...required.map((fieldKey,index)=>({positionId:slots[index].positionId,start:0,end:1,fieldKey})),{positionId:target.positionId,start:0,end:1,fieldKey:'field.useLocation'}]).docx;
+ const values={'field.useLocation':'虚构作业地点','contract.name':'虚构合同','party.owner.name':'虚构甲方','party.counterparty.name':'虚构乙方','contract.temporaryCode':'TEST','document.watermark':'草稿'};
+ expect(()=>assertBuiltInPartyPlacementPlan(source,mapped,'test',undefined)).toThrow();
+ expect(()=>prepareLegacyPartyRoleBindings(source,mapped)).toThrow();
+ expect(()=>renderContractBody(source,mapped,{values},[],'test',undefined,{partyDetailsVersion:'built-in-party-placement-v1'})).toThrow();
+ const current=renderContractBody(source,mapped,{values},[],'test',undefined,{partyDetailsVersion:'built-in-party-placement-v1',partyDetailsConflictPreview:true});
+ expect(current.partyDetailsMappingConflict).toBe(true);
+ const previous=renderContractBody(source,mapped,{values},[],'test');
+ const count=(bytes:Buffer)=>{const doc=new DOMParser().parseFromString(new PizZip(bytes).file('word/document.xml')!.asText(),'application/xml');return Array.from(doc.getElementsByTagName('w:t')).filter(n=>n.textContent?.includes('虚构作业地点')).length;};
+ const previousCount=count(previous.docx);
+ expect(previousCount).toBeGreaterThan(0);
+ expect(count(current.docx)).toBe(previousCount);
+});

@@ -1,0 +1,40 @@
+{
+  "installer": {
+    "base": "969b376ad45bf4ca54d60e00e234dca316cde1e09d22d9e4d0300c85b4e273b5",
+    "after": "8e892cb58105f36cb8622012a99fec3dfe1a143af4de0236f26f7c5baabd242b"
+  },
+  "general16": {
+    "consumer.cjs": {
+      "base": "31c0f9db4ec443efe44c5d43472a566f455d94245f79e5022af0217c7d5f8ccc",
+      "after": "578d9dc8c3cb378a6de0ccd7394675b521227abef4120f5182a328acc5f79135",
+      "patch": "general16-consumer.cjs.patch"
+    },
+    "stage-procurement.cjs": {
+      "base": "f14d9c829afe86929915e52e1b4ee703002c3a382c16a0ac975868d596434303",
+      "after": "222f5e611672074dca3e83cca38e2e70dbe5d624ee63f931bec29c64b480a67e",
+      "patch": "general16-stage-procurement.cjs.patch"
+    },
+    "stage-browser.cjs": {
+      "base": "54456814ce83dcf0f982f721a520bdffafcdbd4023e895c5b0c5934d12aa8d1f",
+      "after": "8adbaf1cd69af3d8154f163c490922bf5a5150ae8b21d3f705389282babbe71f",
+      "patch": "general16-stage-browser.cjs.patch"
+    }
+  },
+  "project11": {
+    "consumer.cjs": {
+      "base": "b7fae1d98881c2d87453ad61212ca842628e0127810e408f84c8f7ba33a7cdb4",
+      "after": "4a6fbde3e85265debbc6b187791f5390a49b36a3fc6efa7b24ac42bb704b7b92",
+      "patch": "project11-consumer.cjs.patch"
+    },
+    "stage-procurement.cjs": {
+      "base": "87585e4874d409a0693f886c24364385643819c82d30484113f031ed40edfb41",
+      "after": "582f1d006635ad7093829b64d1ee9d929ff218a3ece4b85f984959b79412443f",
+      "patch": "project11-stage-procurement.cjs.patch"
+    },
+    "stage-browser.cjs": {
+      "base": "54456814ce83dcf0f982f721a520bdffafcdbd4023e895c5b0c5934d12aa8d1f",
+      "after": "8adbaf1cd69af3d8154f163c490922bf5a5150ae8b21d3f705389282babbe71f",
+      "patch": "project11-stage-browser.cjs.patch"
+    }
+  }
+}

@@ -1,0 +1,42 @@
+--- runner
++++ runner
+@@ -485,7 +485,9 @@
+  `);
+ }
+ async function runTask398Owned282Voucher(context, mode="standard", receipt){
+- const modes=new Map([["standard-290",[]],["standard",[]],["principal-return",["--principal-return-real"]],["cash-handover",["--cash-handover-real"]],["correction-catalog",["--cash-handover-real"]]]);
++ const modes=new Map([["standard-295",[]],["standard-290",[]],["standard",[]],["principal-return",["--principal-return-real"]],["cash-handover",["--cash-handover-real"]],["correction-catalog",["--cash-handover-real"]]]);
++ const standard295=mode==="standard-295";
++ if(standard295&&receipt?.purpose!=="TASK398_STANDARD_EXACT_295") throw Error("TASK398_STANDARD_295_SCOPE");
+  if(!modes.has(mode))throw new Error("TASK398_OWNED_282_SCENARIO");
+  if(mode==="standard-290"&&receipt?.purpose!=="TASK398_STANDARD_EXACT_290") throw Error("TASK398_STANDARD_290_SCOPE");
+  if(mode==="correction-catalog"&&receipt?.purpose!=="NTF04_CONTROLLED_ROUND_EXACT_290") throw Error("NTF04_CATALOG_SCOPE");
+@@ -493,7 +495,7 @@
+  const fences=ownedCashFenceProfile(options.principalScenario);
+  const {candidateTree,sourceBaseSha: candidate,runId,database,workDir,sql:ownerSql,readPostgresLog}=context;
+  const short=runId.replaceAll("-","");
+- if(candidateTree!==((mode==="correction-catalog"||mode==="standard-290")?"23b1c98bc15f36e986d17059579e6673315b9be8":"8d3e50a0c525a68e717b74fbecbcceabc80840f7")||candidate!=="0a5b607cf912ffbb50237af2608ac8b2a5360c16"||containerName(runId)===""||database!==`jg_task01_${short}`
++ if(candidateTree!==(standard295?"67644d9465a0ab4ee80ede099139d9c129d66f14":(mode==="correction-catalog"||mode==="standard-290")?"23b1c98bc15f36e986d17059579e6673315b9be8":"8d3e50a0c525a68e717b74fbecbcceabc80840f7")||candidate!=="0a5b607cf912ffbb50237af2608ac8b2a5360c16"||containerName(runId)===""||database!==`jg_task01_${short}`
+    ||!path.isAbsolute(workDir)||typeof ownerSql!=="function"||typeof readPostgresLog!=="function")throw new Error("TASK398_OWNED_280_IDENTITY");
+  const roleUrls={jg_task01_owner:context.ownerUrl,jg_task01_runtime:context.runtimeUrl,jg_task01_observer:context.observerUrl};
+  const urls=Object.entries(roleUrls).map(([role,value])=>{
+@@ -533,8 +535,8 @@
+  `));
+  const ledger=readback.ledger.map(row=>({name:row.name,sha256:row.sha256,finished:true,rolledBack:false}));
+  if(readback.database!==database||readback.actor!=="jg_task01_owner"||readback.ownerOid!=="10"
+-   ||readback.sameActor!==true||readback.tls!==true||readback.inactiveLedger!==0||ledger.length!==((mode==="correction-catalog"||mode==="standard-290")?290:282)
+-   ||createHash("sha256").update(JSON.stringify(ledger)).digest("hex")!==((mode==="correction-catalog"||mode==="standard-290")?"8741d9da09253efb803af9e132b4cde09de0dfef86da7edf952b6c0056a057a5":"be6d9aed22658af5e273010a2e1e839544fa27e74e998701fb3d9e9248f88cfc"))throw new Error("TASK398_OWNED_280_LEDGER");
++   ||readback.sameActor!==true||readback.tls!==true||readback.inactiveLedger!==0||ledger.length!==(standard295?295:(mode==="correction-catalog"||mode==="standard-290")?290:282)
++   ||createHash("sha256").update(JSON.stringify(ledger)).digest("hex")!==(standard295?"b0d398a46c4c6a3209e1448ddd415938ea95425c3d823f1f8a77d81dde396f2d":(mode==="correction-catalog"||mode==="standard-290")?"8741d9da09253efb803af9e132b4cde09de0dfef86da7edf952b6c0056a057a5":"be6d9aed22658af5e273010a2e1e839544fa27e74e998701fb3d9e9248f88cfc"))throw new Error("TASK398_OWNED_280_LEDGER");
+  const protectedExec=await snapshotOwned280CashProfile(sql,fences);
+  const storage=mkdtempSync(path.join(workDir,"cash-storage-"));
+  chmodSync(storage,0o700);
+@@ -550,7 +552,7 @@
+    ${options.handoverScenario?owned282CashHandoverSql:""}
+  `);
+  const catalog=await runBusiness(options,{candidate,short,storage,url,sql,env,current280:true,readPostgresLog,
+-  correctionCatalog:mode==="correction-catalog"?{context,receipt}:undefined,standard290:mode==="standard-290"?receipt:undefined,ownedMigrationBaseline:{
++  correctionCatalog:mode==="correction-catalog"?{context,receipt}:undefined,standard290:standard295||mode==="standard-290"?receipt:undefined,ownedMigrationBaseline:{
+   expectedDirectoryCount:282,terminalMigration:"20261118231000_registered_payment_voucher_fixed_read",
+   terminalMigrationChecksum:"e1ff36a191e8173a2cf06db3c20aa386db58360bfceba39eed010f9444da196e"
+  }});

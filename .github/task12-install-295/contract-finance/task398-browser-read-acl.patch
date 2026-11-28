@@ -1,0 +1,39 @@
+--- runner
++++ runner
+@@ -215,4 +215,14 @@
+  const requirements=require("./task16-current259-voucher-acl.requirements.json");
+  const plan=runtimePlan();
++ // The current browser reads use late-migration facts projected by the API.
++ const browserReads=browserScenario&&[329,330].includes(ownedMigrationBaseline?.expectedDirectoryCount)?{
++  PaymentExecutionRefund:["id","paymentRequestId","paymentExecutionId","amountCents","receivedAt","fundRegistrationId"],
++  PaymentExecutionCorrection:["id","paymentRequestId","amountDeltaCents","status"],
++  OperatingCostAttributionConfirmation:["id","projectId","status","operatingFactId","companyEntityVersionId","companyNameSnapshot"]
++ }:{};
++ for(const [table,select] of Object.entries(browserReads)){
++  if(plan.runtime.tables.some(row=>row.table===table))throw new Error("TASK398_BROWSER_READ_SCOPE_DUPLICATE");
++  plan.runtime.tables.push({table,select,insert:[],update:[],references:[]});
++ }
+  const routines=[...plan.runtime.functions.filter(name=>!name.includes("jg_task01_connection_identity")),...CASH_WRITER_FUNCTIONS,...requirements.routineSources.map(row=>row.signature),"public.jg_read_registered_payment_impacts(text,text,text,text,text)"];
+  if(routines.some(name=>typeof name!=="string"||!/^[a-zA-Z0-9_.,()" ]+$/u.test(name)))throw new Error("TASK398_ROUTINE_LIST");
+@@ -235,4 +245,21 @@
+  const check=await sql("jiangkong",`SELECT CASE WHEN NOT EXISTS(SELECT FROM pg_catalog.pg_roles r WHERE r.rolname IN ('jg_task01_runtime','jg_task01_observer') AND (r.rolsuper OR r.rolcreaterole OR r.rolcreatedb OR r.rolreplication OR r.rolbypassrls OR r.rolinherit)) AND NOT EXISTS(SELECT FROM pg_catalog.pg_auth_members m JOIN pg_catalog.pg_roles r ON r.oid=m.member OR r.oid=m.roleid WHERE r.rolname IN ('jg_task01_runtime','jg_task01_observer')) AND NOT has_table_privilege('jg_task01_runtime','public."OperatingLedgerWriteSecret"','SELECT,INSERT,UPDATE,DELETE') AND NOT has_any_column_privilege('jg_task01_runtime','public."OperatingLedgerWriteSecret"','SELECT,INSERT,UPDATE,REFERENCES') AND NOT has_any_column_privilege('jg_task01_runtime','public."OperatingFact"','INSERT,UPDATE,REFERENCES') AND NOT has_any_column_privilege('jg_task01_runtime','public."OperatingImpactEntry"','INSERT,UPDATE,REFERENCES') AND NOT has_any_column_privilege('jg_task01_observer','public."OperatingFact"','INSERT,UPDATE,REFERENCES') AND NOT has_schema_privilege('jg_task01_runtime','public','CREATE') AND NOT has_schema_privilege('jg_task01_observer','public','CREATE') AND (${technicalDeleteCheckSql()}) AND (${signatureBindingCheckSql()}) AND (${approvalDependencyCheckSql()}) AND (${spotGuardCheckSql()}) AND (${businessReadCheckSql(advanceExcludedReads,current280)}) AND (${observerReadCheckSql(browserScenario||overpayScenario||ledgerLossScenario,ledgerLossScenario,transferScenario,handoverScenario)}) AND (${meSensitiveReadCheckSql()}) THEN 'TASK398_ROLE_CHECK_OK' ELSE 'TASK398_ROLE_CHECK_FAILED' END;`);
+  if(!check.includes("TASK398_ROLE_CHECK_OK"))throw new Error("TASK398_ROLE_CHECK");
++ if(Object.keys(browserReads).length){
++  const exact=Object.entries(browserReads).map(([table,columns])=>{
++   const relation=`'public."${table}"'::regclass`;
++   const selected=`ARRAY[${columns.map(column=>`'${column}'`).join(",")}]`;
++   return `NOT has_table_privilege('jg_task01_runtime',${relation},'SELECT,INSERT,UPDATE,DELETE,TRUNCATE,REFERENCES,TRIGGER')
++    AND NOT has_any_column_privilege('jg_task01_runtime',${relation},'INSERT,UPDATE,REFERENCES')
++    AND NOT has_any_column_privilege('jg_task01_observer',${relation},'SELECT')
++    AND (SELECT count(*) FROM pg_catalog.pg_attribute
++      WHERE attrelid=${relation} AND attnum>0 AND NOT attisdropped AND attname=ANY(${selected}))=${columns.length}
++    AND NOT EXISTS (SELECT FROM pg_catalog.pg_attribute
++      WHERE attrelid=${relation} AND attnum>0 AND NOT attisdropped
++        AND (has_column_privilege('jg_task01_runtime',attrelid,attname,'SELECT') IS DISTINCT FROM (attname=ANY(${selected}))
++          OR has_column_privilege('jg_task01_runtime',attrelid,attname,'SELECT WITH GRANT OPTION')))`;
++  }).join(" AND ");
++  const proof=await sql("jg_task01_owner",`SELECT CASE WHEN ${exact} THEN 'TASK398_BROWSER_READ_SCOPE_OK' END;`);
++  if(!proof.includes("TASK398_BROWSER_READ_SCOPE_OK"))throw new Error("TASK398_BROWSER_READ_SCOPE");
++ }
+  if(transferScenario){
+   const transferCheck=await sql("jiangkong",`SELECT CASE WHEN

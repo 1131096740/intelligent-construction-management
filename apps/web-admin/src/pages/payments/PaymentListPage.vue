@@ -1,5 +1,5 @@
 <template>
-  <section class="payment-page">
+  <section class="payment-page jg-responsive-ledger">
     <BusinessPageHeader
       title="付款管理"
       description="按付款来源、审批状态、实付状态和付款凭证管理已创建申请。"
@@ -13,6 +13,12 @@
           刷新
         </t-button>
         <t-button
+          variant="outline"
+          @click="showExport = true"
+        >
+          导出当前筛选
+        </t-button>
+        <t-button
           theme="primary"
           @click="openCreateWorkbench"
         >
@@ -20,7 +26,8 @@
         </t-button>
       </template>
     </BusinessPageHeader>
-    <ContractRelationshipLedger initial-section="payments" />
+    <RegisteredPaymentExecutionPanel @recorded="refreshPaymentViews" />
+    <ContractRelationshipLedger ref="relationshipLedger" initial-section="payments" />
 
 
     <t-tabs v-model="activeView">
@@ -94,6 +101,14 @@
         </t-button>
         <t-button
           size="small"
+          variant="outline"
+          :loading="ledgerLoading"
+          @click="loadPaymentLedger"
+        >
+          查询
+        </t-button>
+        <t-button
+          size="small"
           variant="text"
           @click="resetPaymentFilters"
         >
@@ -113,31 +128,35 @@
           :placeholder="field.placeholder"
           size="small"
           clearable
+          @enter="loadPaymentLedger"
+        />
+        <t-date-picker
+          v-else-if="field.type === 'date'"
+          v-model="paymentFilters[field.key]"
+          value-type="YYYY-MM-DD"
+          size="small"
+          clearable
         />
         <t-select
           v-else
           v-model="paymentFilters[field.key]"
           :options="optionsForFilter(field.key)"
           size="small"
+          @change="loadPaymentLedger"
         />
       </label>
     </BusinessTableToolbar>
 
-    <section
+    <LedgerColumnSettings
       v-if="showColumnSettings"
-      class="column-settings"
-      aria-label="付款台账列设置"
-    >
-      <strong>显示列</strong>
-      <t-checkbox
-        v-for="option in paymentColumnOptions"
-        :key="option.key"
-        :checked="visiblePaymentColumnKeys.includes(option.key)"
-        @change="togglePaymentColumn(option.key)"
-      >
-        {{ option.title }}
-      </t-checkbox>
-    </section>
+      :columns="paymentColumnOptions.map((option) => ({ key: option.key, label: option.title, required: exportColumns.find((column) => column.key === option.key)?.required }))"
+      :visible-column-keys="visiblePaymentColumnKeys"
+      :column-order="preferences.columnOrder"
+      :column-widths="preferences.columnWidths"
+      @update:visible-column-keys="onPaymentColumnsChange"
+      @update:column-order="onPaymentColumnOrderChange"
+      @update:column-widths="onPaymentColumnWidthsChange"
+    />
 
     <section
       class="ledger-section"
@@ -161,6 +180,7 @@
         @action="loadPaymentLedger"
       />
 
+      <div class="jg-table-region jg-table-region--wide jg-desktop-record-list">
       <t-table
         v-if="!errorMessage && (ledgerLoading || filteredPaymentLedgerRows.length)"
         row-key="id"
@@ -169,6 +189,9 @@
         :columns="visiblePaymentLedgerColumns"
         :data="filteredPaymentLedgerRows"
         :loading="ledgerLoading"
+        :sort="tableSort ? { sortBy: tableSort.key, descending: tableSort.direction === 'desc' } : undefined"
+        horizontal-scroll-affixed-bottom
+        @sort-change="onSortChange"
       >
         <template #approvalStatus="{ row }">
           <t-tag
@@ -197,6 +220,7 @@
           </t-link>
         </template>
       </t-table>
+      </div>
 
       <t-pagination
         v-if="!errorMessage && lifecycleMeta.total > lifecycleMeta.pageSize"
@@ -213,6 +237,14 @@
         :actions="[{ label: '新建付款申请', to: '/付款工作台' }]"
       />
 
+      <p
+        v-if="exportError"
+        class="ledger-export-error"
+        role="alert"
+      >
+        {{ exportError }}
+      </p>
+
       <footer class="ledger-footer">
         <span>数据范围</span>
         <p>
@@ -222,23 +254,42 @@
         </p>
       </footer>
     </section>
+
+    <LedgerExportDialog
+      v-model:visible="showExport"
+      title="导出付款台账"
+      :row-count="lifecycleMeta.total"
+      :filters="exportFilters"
+      :columns="exportColumns"
+      :visible-column-keys="visiblePaymentColumnKeys"
+      :busy="exporting"
+      @confirm="confirmExport"
+    />
   </section>
 </template>
 
 <script setup lang="ts">
+import RegisteredPaymentExecutionPanel from "./RegisteredPaymentExecutionPanel.vue";
 import { formatUnknownApiError } from "../../api/error-message";
 import ContractRelationshipLedger from "../../components/ContractRelationshipLedger.vue";
 import type { DraftLedgerView } from "@jiangkong/shared-domain";
-import { computed, onMounted, reactive, ref, watch } from "vue";
+import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import {
+  downloadPaymentLedgerExport,
   fetchPaymentLifecycleLedger,
+  fetchProjects,
   type PaymentLifecycleLedgerRow
 } from "../../api/core-flow-read.api";
+import LedgerExportDialog from "../../components/LedgerExportDialog.vue";
+import LedgerColumnSettings from "../../components/LedgerColumnSettings.vue";
 import {
+  normalizeColumnOrder,
+  normalizeColumnWidths,
   normalizeVisibleColumnKeys,
   readPersonalTablePreferences,
-  writePersonalTablePreferences
+  writePersonalTablePreferences,
+  type PersonalTableSort
 } from "../../app/personal-table-preferences";
 import { useAuthStore } from "../../auth/auth.store";
 import BusinessFeedback from "../../components/BusinessFeedback.vue";
@@ -254,7 +305,6 @@ import type {
 } from "./payment-list.config";
 import {
   emptyPaymentLedgerFilters,
-  filterPaymentLedgerRows,
   paymentFilterFields,
   paymentLedgerColumns,
   paymentLedgerFilterOptions,
@@ -270,8 +320,19 @@ const errorMessage = ref("");
 const paymentLedgerRows = ref<(PaymentLedgerRow & PaymentLifecycleLedgerRow)[]>([]);
 const paymentFilters = reactive(emptyPaymentLedgerFilters());
 const ledgerLoading = ref(false);
+let ledgerGeneration = 0;
+const relationshipLedger = ref<{ refresh: () => Promise<void> } | null>(null);
 const showColumnSettings = ref(false);
 const showPaymentRules = ref(false);
+const showExport = ref(false);
+const exporting = ref(false);
+const exportError = ref("");
+const tableSort = ref<PersonalTableSort | null>(null);
+const projectOptions = ref<Array<{ label: string; value: string }>>([]);
+const preferences = ref({
+  columnOrder: [] as string[],
+  columnWidths: {} as Record<string, number>
+});
 const lifecycleViews = new Set<DraftLedgerView>([
   "formal_ledger",
   "my_drafts",
@@ -317,9 +378,7 @@ const summaryValues = computed(() => {
     value: errorMessage.value ? "—" : String(values[index] ?? 0)
   }));
 });
-const filteredPaymentLedgerRows = computed(() =>
-  filterPaymentLedgerRows(paymentLedgerRows.value, paymentFilters)
-);
+const filteredPaymentLedgerRows = computed(() => paymentLedgerRows.value);
 const filterOptions = computed(() => paymentLedgerFilterOptions(paymentLedgerRows.value));
 const paymentPreferenceStorageKey = computed(() =>
   auth.user?.id ? `jiangkong:web-admin:payment-ledger:${auth.user.id}` : ""
@@ -331,14 +390,48 @@ const paymentColumnOptions = computed(() =>
 );
 const visiblePaymentLedgerColumns = computed(() => {
   const visible = new Set(visiblePaymentColumnKeys.value);
-  return paymentLedgerColumns.filter((column) =>
-    column.colKey === "operation" || column.colKey === "contractRelationshipLabel" || visible.has(String(column.colKey))
-  );
+  const byKey = new Map(paymentLedgerColumns.map((column) => [String(column.colKey), column]));
+  const order = preferences.value.columnOrder.length
+    ? preferences.value.columnOrder
+    : configurablePaymentColumnKeys;
+  const ordered = order
+    .map((key) => byKey.get(key))
+    .filter((column): column is (typeof paymentLedgerColumns)[number] => Boolean(column))
+    .filter((column) => visible.has(String(column.colKey)))
+    .map((column) => ({
+      ...column,
+      width: preferences.value.columnWidths[String(column.colKey)] ?? column.width,
+      sorter: column.colKey === "updatedAt" || column.colKey === "requestedAmount"
+    }));
+  const operation = paymentLedgerColumns.find((column) => column.colKey === "operation");
+  return operation ? [...ordered, { ...operation }] : ordered;
+});
+const exportColumns = computed(() =>
+  paymentLedgerColumns
+    .filter((column) => column.colKey !== "operation")
+    .map((column) => ({
+      key: String(column.colKey),
+      label: String(column.title),
+      required: ["paymentNo", "project", "requestedAmount"].includes(String(column.colKey))
+    }))
+);
+const exportFilters = computed(() => {
+  const filters: Array<{ label: string; value: string }> = [];
+  const project = projectOptions.value.find((option) => option.value === paymentFilters.projectId);
+  if (project) filters.push({ label: "项目", value: project.label });
+  if (paymentFilters.dateFrom) filters.push({ label: "开始日期", value: paymentFilters.dateFrom });
+  if (paymentFilters.dateTo) filters.push({ label: "结束日期", value: paymentFilters.dateTo });
+  if (paymentFilters.status) filters.push({ label: "审批/实付状态", value: paymentFilters.status });
+  if (paymentFilters.keyword.trim()) filters.push({ label: "关键词", value: paymentFilters.keyword.trim() });
+  return filters;
 });
 
 function optionsForFilter(key: PaymentFilterKey) {
-  if (key === "keyword") return [];
-  return filterOptions.value[key];
+  if (key === "keyword" || key === "dateFrom" || key === "dateTo") return [];
+  if (key === "projectId") {
+    return [{ label: "全部项目", value: "" }, ...projectOptions.value];
+  }
+  return filterOptions.value.status;
 }
 
 function openCreateWorkbench() {
@@ -354,13 +447,70 @@ function openDetail(paymentId: string) {
 
 function resetPaymentFilters() {
   Object.assign(paymentFilters, emptyPaymentLedgerFilters());
+  tableSort.value = null;
+  lifecycleMeta.value.page = 1;
+  void loadPaymentLedger();
 }
 
-function togglePaymentColumn(key: string) {
-  const next = visiblePaymentColumnKeys.value.includes(key)
-    ? visiblePaymentColumnKeys.value.filter((item) => item !== key)
-    : [...visiblePaymentColumnKeys.value, key];
-  visiblePaymentColumnKeys.value = normalizeVisibleColumnKeys(next, configurablePaymentColumnKeys);
+function onSortChange(context: { sortBy?: string; descending?: boolean }) {
+  tableSort.value = context.sortBy
+    ? { key: context.sortBy, direction: context.descending ? "desc" : "asc" }
+    : null;
+  savePaymentColumnPreferences();
+  lifecycleMeta.value.page = 1;
+  void loadPaymentLedger();
+}
+
+function ledgerQueryParams() {
+  return {
+    projectId: paymentFilters.projectId || undefined,
+    dateFrom: paymentFilters.dateFrom || undefined,
+    dateTo: paymentFilters.dateTo || undefined,
+    status: paymentFilters.status || undefined,
+    keyword: paymentFilters.keyword.trim() || undefined,
+    sort: tableSort.value
+      ? `${tableSort.value.key === "requestedAmount" ? "requestedAmountCents" : tableSort.value.key}:${tableSort.value.direction}`
+      : undefined
+  };
+}
+
+async function confirmExport() {
+  exporting.value = true;
+  exportError.value = "";
+  try {
+    await downloadPaymentLedgerExport(activeView.value, {
+      ...ledgerQueryParams(),
+      columns: visiblePaymentColumnKeys.value.join(",")
+    });
+    showExport.value = false;
+  } catch (cause) {
+    exportError.value = formatUnknownApiError(cause, "导出付款台账失败");
+  } finally {
+    exporting.value = false;
+  }
+}
+
+function onPaymentColumnsChange(keys: string[]) {
+  visiblePaymentColumnKeys.value = normalizeVisibleColumnKeys(
+    keys,
+    configurablePaymentColumnKeys
+  );
+  savePaymentColumnPreferences();
+}
+
+function onPaymentColumnOrderChange(order: string[]) {
+  preferences.value.columnOrder = normalizeColumnOrder(
+    order,
+    configurablePaymentColumnKeys
+  );
+  savePaymentColumnPreferences();
+}
+
+function onPaymentColumnWidthsChange(widths: Record<string, number>) {
+  preferences.value.columnWidths = normalizeColumnWidths(
+    widths,
+    configurablePaymentColumnKeys
+  );
   savePaymentColumnPreferences();
 }
 
@@ -368,21 +518,31 @@ function loadPaymentColumnPreferences() {
   const storageKey = paymentPreferenceStorageKey.value;
   if (!storageKey) {
     visiblePaymentColumnKeys.value = [...configurablePaymentColumnKeys];
+    preferences.value = { columnOrder: [...configurablePaymentColumnKeys], columnWidths: {} };
     return;
   }
-  visiblePaymentColumnKeys.value = readPersonalTablePreferences(
+  const saved = readPersonalTablePreferences(
     getPreferenceStorage(),
     storageKey,
     configurablePaymentColumnKeys
-  ).visibleColumnKeys;
+  );
+  visiblePaymentColumnKeys.value = saved.visibleColumnKeys;
+  preferences.value = {
+    columnOrder: normalizeColumnOrder(saved.columnOrder, configurablePaymentColumnKeys),
+    columnWidths: normalizeColumnWidths(saved.columnWidths, configurablePaymentColumnKeys)
+  };
+  tableSort.value = saved.sort;
 }
 
 function savePaymentColumnPreferences() {
   const storageKey = paymentPreferenceStorageKey.value;
   if (!storageKey) return;
   writePersonalTablePreferences(getPreferenceStorage(), storageKey, {
-    query: "",
-    visibleColumnKeys: visiblePaymentColumnKeys.value
+    query: paymentFilters.keyword,
+    visibleColumnKeys: visiblePaymentColumnKeys.value,
+    columnOrder: preferences.value.columnOrder,
+    columnWidths: preferences.value.columnWidths,
+    sort: tableSort.value
   });
 }
 
@@ -395,30 +555,43 @@ function getPreferenceStorage(): Storage | null {
 }
 
 function applyRouteProjectFilter(value: unknown) {
-  if (typeof value === "string" && value.trim()) {
-    paymentFilters.project = value.trim();
-  }
+  if (typeof value !== "string" || !value.trim()) return;
+  const project = projectOptions.value.find(
+    (option) => option.value === value.trim() || option.label === value.trim()
+  );
+  if (project) paymentFilters.projectId = project.value;
 }
 
 async function loadPaymentLedger() {
+  const request = ++ledgerGeneration;
   ledgerLoading.value = true;
   errorMessage.value = "";
   try {
     const result = await fetchPaymentLifecycleLedger(
       activeView.value,
       lifecycleMeta.value.page,
-      lifecycleMeta.value.pageSize
+      lifecycleMeta.value.pageSize,
+      ledgerQueryParams()
     );
+    if (request !== ledgerGeneration) return;
     paymentLedgerRows.value = result.rows;
     ledgerSummary.value = result.statistics;
     lifecycleSummary.value = result.viewCounts;
     lifecycleMeta.value = result.pagination;
   } catch (error) {
+    if (request !== ledgerGeneration) return;
     const reason = formatUnknownApiError(error, "未知错误");
     errorMessage.value = `付款记录读取失败：${reason}。这不代表当前没有付款记录；本页统计与台账暂不可用于判断，请检查网络与权限后重试。`;
   } finally {
-    ledgerLoading.value = false;
+    if (request === ledgerGeneration) ledgerLoading.value = false;
   }
+}
+
+onBeforeUnmount(() => { ledgerGeneration++; });
+
+function refreshPaymentViews() {
+  void loadPaymentLedger();
+  void relationshipLedger.value?.refresh();
 }
 
 function changeLifecyclePage(page: number) {
@@ -445,10 +618,17 @@ watch(activeView, (view) => {
   void loadPaymentLedger();
 });
 
-onMounted(() => {
+onMounted(async () => {
   if (route.query.view !== activeView.value) {
     void router.replace({ query: { ...route.query, view: activeView.value } });
   }
+  try {
+    const projects = await fetchProjects();
+    projectOptions.value = projects.map((project) => ({ label: project.name, value: project.id }));
+  } catch {
+    projectOptions.value = [];
+  }
+  applyRouteProjectFilter(route.query.project);
   void loadPaymentLedger();
 });
 </script>
@@ -558,6 +738,12 @@ onMounted(() => {
 
 .ledger-heading p,
 .ledger-heading > span,
+.ledger-export-error {
+  margin: var(--jg-space-md) var(--jg-space-lg) 0;
+  color: var(--jg-color-danger);
+  font-size: var(--jg-font-size-meta);
+}
+
 .ledger-footer {
   color: var(--jg-color-text-tertiary);
   font-size: var(--jg-font-size-meta);
@@ -569,10 +755,6 @@ onMounted(() => {
 
 .ledger-error {
   margin: var(--jg-space-md) var(--jg-space-lg);
-}
-
-.ledger-section :deep(.t-table__content) {
-  overflow-x: auto;
 }
 
 .ledger-section :deep(.t-table th) {
@@ -588,6 +770,12 @@ onMounted(() => {
 
 .ledger-section :deep(.t-empty) {
   padding: var(--jg-space-xxl);
+}
+
+.ledger-export-error {
+  margin: var(--jg-space-md) var(--jg-space-lg) 0;
+  color: var(--jg-color-danger);
+  font-size: var(--jg-font-size-meta);
 }
 
 .ledger-footer {

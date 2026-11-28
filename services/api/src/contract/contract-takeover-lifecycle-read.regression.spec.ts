@@ -157,7 +157,7 @@ describe("historical takeover closure and contract ledger reading", () => {
     const submitted = await takeoverService.submitReview(
       "project-regression", "historical-takeover", "contract-handler"
     );
-    expect(submitted).toMatchObject({ takeoverStatus: "pending_review", submittedAt: expect.any(Date) });
+    expect(submitted).toMatchObject({ takeoverStatus: "pending_finance", submittedAt: expect.any(Date) });
 
     await expect(takeoverService.abandonDraft(
       "project-regression", "historical-takeover", {

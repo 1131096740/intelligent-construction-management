@@ -1,0 +1,72 @@
+[
+  {
+    "lane": "lifecycle-rest",
+    "source": "material/lifecycle-rest/personnel-lifecycle-http-postgres.owned282.spec.ts",
+    "target": "services/api/src/database/personnel-lifecycle-http-postgres.owned282.spec.ts",
+    "sha256": "47857e62d533607e9eef0964fd6ffe56862990593c06b34e88e6f0e8d2c76c80",
+    "proof": "EXECUTED_IMAGE_FILE"
+  },
+  {
+    "lane": "lifecycle-desktop",
+    "source": "material/lifecycle-desktop/personnel-lifecycle-http-postgres.owned282.spec.ts",
+    "target": "services/api/src/database/personnel-lifecycle-http-postgres.owned282.spec.ts",
+    "sha256": "1823dce4c8fde65ca985a97155dc6586580f8886cd4ff6512cf881487a610c85",
+    "proof": "EXECUTED_IMAGE_FILE"
+  },
+  {
+    "lane": "lifecycle-desktop",
+    "source": "material/lifecycle-desktop/personnel-lifecycle-real.e2e.ts",
+    "target": "apps/web-admin/e2e/personnel-lifecycle-real.e2e.ts",
+    "sha256": "34ff6bf7dcb4c8223b43caaa9cc11fb76a0a2a4c502ed2005aea53ae1ba67b28",
+    "proof": "EXECUTED_IMAGE_FILE"
+  },
+  {
+    "lane": "lifecycle-mobile",
+    "source": "material/lifecycle-mobile/personnel-lifecycle-http-postgres.owned282.spec.ts",
+    "target": "services/api/src/database/personnel-lifecycle-http-postgres.owned282.spec.ts",
+    "sha256": "3ff861aa1c90962894d7a5ddf5065dc33628204e0ccdccb6390920533dcf5b2d",
+    "proof": "EXECUTED_IMAGE_FILE"
+  },
+  {
+    "lane": "lifecycle-mobile",
+    "source": "material/lifecycle-mobile/personnel-lifecycle-real.e2e.ts",
+    "target": "apps/web-admin/e2e/personnel-lifecycle-real.e2e.ts",
+    "sha256": "34ff6bf7dcb4c8223b43caaa9cc11fb76a0a2a4c502ed2005aea53ae1ba67b28",
+    "proof": "EXECUTED_IMAGE_FILE"
+  },
+  {
+    "lane": "downstream",
+    "source": "material/downstream/employee-onboarding-http-postgres.owned282.spec.ts",
+    "target": "services/api/src/database/employee-onboarding-http-postgres.owned282.spec.ts",
+    "sha256": "7eb9a2f364f58ecaf3f148506e405182e1924b5a3b8eeb113c620861385a6911",
+    "proof": "EXECUTED_IMAGE_FILE"
+  },
+  {
+    "lane": "downstream",
+    "source": "material/downstream/employee-phone-reuse-postgres.owned282.spec.ts",
+    "target": "services/api/src/database/employee-phone-reuse-postgres.owned282.spec.ts",
+    "sha256": "1f89ff8755cde7cf39cefb59dc43970f9b7f49dfe11be8b854171be2911b10f5",
+    "proof": "EXECUTED_IMAGE_FILE"
+  },
+  {
+    "lane": "downstream",
+    "source": "material/downstream/employee-role-consistency-http-postgres.owned282.spec.ts",
+    "target": "services/api/src/database/employee-role-consistency-http-postgres.owned282.spec.ts",
+    "sha256": "0e0d148754d7a74b4bfce002584a8207c86293675a5bdd220868e6e6ec892abf",
+    "proof": "EXECUTED_IMAGE_FILE"
+  },
+  {
+    "lane": "downstream",
+    "source": "material/downstream/personnel-roster-read-http-postgres.owned282.spec.ts",
+    "target": "services/api/src/database/personnel-roster-read-http-postgres.owned282.spec.ts",
+    "sha256": "f72cbe15e4a081ca4e614f570c10443e9bbd930a530148b56bd93f64b6f6b16b",
+    "proof": "EXECUTED_IMAGE_FILE"
+  },
+  {
+    "lane": "roster",
+    "source": "material/roster/roster.spec.ts",
+    "target": "services/api/src/database/project-roster-http-postgres.owned282.spec.ts",
+    "sha256": "8024443c64bc20376ffe5305c3048ad8cce374ff6e00c4e315aa46b4550db385",
+    "proof": "EXECUTED_READONLY_MOUNT"
+  }
+]

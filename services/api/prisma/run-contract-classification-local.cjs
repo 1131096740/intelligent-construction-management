@@ -5,6 +5,7 @@ const { rm } = require('node:fs/promises');
 const { resolve, join } = require('node:path');
 const { tmpdir } = require('node:os');
 const { createCommandRuntime, createRunnerCleanup, runInterruption } = require('./money-bigint-runner-runtime.cjs');
+const { CI_DYNAMIC_MIGRATION_LABEL, createCiDynamicMigrationFixture } = require('./local-staged-ci-dynamic.cjs');
 const cwd = resolve(__dirname, '..');
 const docker = process.platform === 'win32' ? 'docker.exe' : 'docker';
 const runLabel = 'io.jiangkong.local-test.run', taskLabel = 'io.jiangkong.local-test.task';
@@ -13,7 +14,7 @@ async function main() {
     if (process.env.NODE_ENV === 'production' || Object.keys(process.env).some(k => k === 'DATABASE_URL' || k.endsWith('_DATABASE_URL')))
         throw Error('Refuse inherited database target');
     const artifacts = mkdtempSync(join(tmpdir(), 'jg-contract-check-'));
-    const runId = randomUUID(), name = 'jg-contract-test-' + runId.slice(0, 8), password = randomUUID(), db = 'jiangkong_project_affiliate_company_contract_test';
+    const runId = randomUUID(), name = 'jiangkong-contract-test-' + runId.slice(0, 8), password = randomUUID(), db = 'jiangkong_project_affiliate_company_contract_test';
     const runtime = createCommandRuntime({ defaultCwd: cwd, defaultTimeoutMs: 0 });
     const manifest = { task: 'contract-classification', runId, sourceSha: null, runnerSha256: createHash('sha256').update(readFileSync(__filename)).digest('hex'), createdAt: new Date().toISOString(), endpoint: null, daemonId: null, status: 'running', phase: 'preflight', container: { name, id: null, anonymousVolumeNames: [] }, cleanup: { status: 'pending' } };
     function writeReceipt(filename, value) {
@@ -143,7 +144,7 @@ async function main() {
         persist();
         const env = { ...process.env, ...dockerEnv, POSTGRES_PASSWORD: password };
         delete env.DOCKER_CONTEXT;
-        const startedId = (await run(docker, ['run', '--rm', '--detach', "--pull=never", '--name', name, '--label', runLabel + '=' + runId, '--label', taskLabel + '=' + manifest.task, '--env', 'POSTGRES_USER=jiangkong', '--env', 'POSTGRES_PASSWORD', '--env', 'POSTGRES_DB=' + db, '--publish', '127.0.0.1::5432', "postgres:16"], env)).trim();
+        const startedId = (await run(docker, ['run', '--rm', '--detach', "--pull=never", '--name', name, '--label', runLabel + '=' + runId, '--label', taskLabel + '=' + manifest.task, '--label', CI_DYNAMIC_MIGRATION_LABEL + '=' + runId, '--env', 'POSTGRES_USER=jiangkong', '--env', 'POSTGRES_PASSWORD', '--env', 'POSTGRES_DB=' + db, '--publish', '127.0.0.1::5432', "postgres:16"], env)).trim();
         const owned = await inspectOwnedContainer();
         if (!owned || owned.id !== startedId)
             throw Error("Cannot identify this run's container");
@@ -167,8 +168,29 @@ async function main() {
             throw Error('Disposable PostgreSQL TCP server did not become ready');
         const target = 'postgresql://jiangkong:' + password + '@127.0.0.1:' + port + '/' + db;
         let testEnv = { ...process.env, NODE_ENV: 'test', DATABASE_URL: target, PROJECT_AFFILIATE_COMPANY_CONTRACT_DATABASE_URL: target, RUN_PROJECT_AFFILIATE_COMPANY_CONTRACT_DB_TESTS: '1', OPERATING_LEDGER_DB_WRITE_SECRET: randomUUID(), FILE_STORAGE_DRIVER: "local", FILE_STORAGE_ROOT: join(artifacts, "files"), INITIAL_USER_TEMPORARY_PASSWORD: "Local-Transfer-Initial-01", SMS_ENABLED: "false", RUN_COMPANY_TRANSFER_HTTP: "1" };
-        await run('pnpm', ['exec', 'prisma', 'migrate', 'deploy'], testEnv);
-        await run('pnpm', ['exec', 'prisma', 'migrate', 'deploy'], testEnv);
+        const coreDb = 'jiangkong_pol114', paymentDb = 'jiangkong_payment_execution_concurrency';
+        const staged = createCiDynamicMigrationFixture({
+            ciFixture: 'DYNAMIC_CONTRACT_CLASSIFICATION_V1',
+            container: { id: startedId, name, runId }, databaseNames: [db, coreDb, paymentDb], temporaryRoot: artifacts,
+            dockerCommand: (args, options) => {
+                if (interrupted) throw Error('本轮测试已中断');
+                return runtime.command(docker, args, { ...options, env: dockerEnv });
+            },
+            deploy: async ({ databaseUrl, runtimeEnv, schemaPath }) => {
+                const args = ['exec', 'prisma', 'migrate', 'deploy'];
+                if (schemaPath) args.push('--schema', schemaPath);
+                return { stdout: await run('pnpm', args, { ...runtimeEnv, DATABASE_URL: databaseUrl }) };
+            }
+        });
+        const migrate = database => staged.migrate({ databaseUrl: target.replace('/' + db, '/' + database), runtimeEnv: testEnv });
+        await migrate(db);
+        await migrate(db);
+        // Finish role-provenanced migrations before the bank fixture creates
+        // its separate cluster-wide contract_runtime and contract_backup.
+        await run(docker, ['exec', name, 'createdb', '-U', 'jiangkong', coreDb]);
+        await migrate(coreDb);
+        await run(docker, ['exec', name, 'createdb', '-U', 'jiangkong', paymentDb]);
+        await migrate(paymentDb);
         // Track this synchronous fixture as a child, so interruption can stop it
         // before the exact owned container is removed. Secrets stay in its env.
         const fixtureProgram = "const input=JSON.parse(process.env.JG_CONTRACT_BANK_FIXTURE_INPUT);process.stdout.write(require(process.argv[1]).prepareContractBankRuntime(input));";
@@ -190,16 +212,10 @@ async function main() {
             throw Error('Restored bank facts and role ACL must survive the complete backup');
         backupVerified = true;
         writeReceipt('backup-restore-summary.json', { bankFactsRestored: true, runtimeAllowed: true, backupIssuerDenied: true });
-        const coreDb = 'jiangkong_pol114';
-        await run('docker', ['exec', name, 'createdb', '-U', 'jiangkong', coreDb]);
         const coreEnv = { ...testEnv, DATABASE_URL: target.replace('/' + db, '/' + coreDb), RUN_POL114_HTTP_PG16: '1', RUN_POL114_SETTLEMENT_FINANCE_HTTP_PG16: '1', RUN_POL114_PAYMENT_HTTP_PG16: '1', COMPANY_TRANSFER_CORE_RECEIPT: join(artifacts, 'core-fixture.json') };
-        await run('pnpm', ['exec', 'prisma', 'migrate', 'deploy'], coreEnv);
         await run('pnpm', ['exec', 'jest', '--runInBand', 'src/database/contract-business-entry-http.spec.ts', '--testNamePattern', '合同现役提交与旧入口退出：aggregate', '--json', '--outputFile', join(artifacts, 'core-tests.json')], coreEnv);
         await run('pnpm', ['exec', 'jest', '--runInBand', 'src/database/company-transfer-http-postgres.spec.ts', '--json', '--outputFile', join(artifacts, 'role-tests.json')], coreEnv);
-        const paymentDb = 'jiangkong_payment_execution_concurrency';
-        await run('docker', ['exec', name, 'createdb', '-U', 'jiangkong', paymentDb]);
         testEnv = { ...testEnv, DATABASE_URL: target.replace('/' + db, '/' + paymentDb), RUN_PAYMENT_EXECUTION_CONCURRENCY: '1' };
-        await run('pnpm', ['exec', 'prisma', 'migrate', 'deploy'], testEnv);
         await run('pnpm', ['exec', 'jest', '--runInBand', 'src/database/payment-execution-concurrency.spec.ts', '--json', '--outputFile', join(artifacts, 'payment-tests.json')], testEnv);
         checksPassed = true;
         await cleanup();

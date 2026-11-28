@@ -21,7 +21,7 @@ import {
   IsStrictDateOnly
 } from "../../validation/static-field-validation";
 
-export type ContractTakeoverLevel = "A" | "B" | "C";
+export type ContractTakeoverLevel = "A" | "B" | "C" | "NONE";
 
 export type ContractLifecycleStatus =
   | "signed_not_started"
@@ -234,11 +234,12 @@ export class CreateContractTakeoverDto {
   @Type(() => HistoricalPricingItemDto)
   pricingItems?: HistoricalPricingItemDto[];
 
+  @ValidateIf((object, value) => !object.frameworkNoTotal || value !== undefined)
   @IsCanonicalMoneyText({
     typeMessage: "合同金额格式不正确",
     formatMessage: "合同金额必须按分填写为 0 或更大的整数"
   })
-  amountCents!: string;
+  amountCents?: string;
 
   @IsRequiredText({
     requiredMessage: "请按 YYYY-MM-DD 填写签订日期",
@@ -248,8 +249,21 @@ export class CreateContractTakeoverDto {
   @IsStrictDateOnly({ message: "签订日期必须按 YYYY-MM-DD 填写且日期必须有效" })
   signedAt!: string;
 
-  @IsIn(["A", "B", "C"], { message: "接管等级请选择 A级、B级或C级" })
-  takeoverLevel!: ContractTakeoverLevel;
+  /**
+   * 历史兼容字段：新接管不再让经办人选择等级，后端统一落为 NONE。
+   * 仅保留旧客户端/导入文件的可解析性。
+   */
+  @IsOptional()
+  @IsIn(["A", "B", "C", "NONE"], { message: "接管等级不在系统支持范围内" })
+  takeoverLevel?: ContractTakeoverLevel;
+
+  @IsOptional()
+  @IsIn(["inside", "outside", "upward"], { message: "合同关系不在系统支持范围内" })
+  relationship?: "inside" | "outside" | "upward";
+
+  @IsOptional()
+  @IsBoolean({ message: "框架无总价标记必须是布尔值" })
+  frameworkNoTotal?: boolean;
 
   @IsIn(
     ["signed_not_started", "in_progress", "suspended", "completed", "terminated", "disputed"],

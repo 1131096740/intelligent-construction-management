@@ -1,0 +1,81 @@
+{
+  "sourceTree": "bf315288b9118f890354adc33ab11836e673d140",
+  "count": 329,
+  "ledgerSha256": "3e88a4a2ad3ebb128572fafd29f08a816bada6d61795ce35c6c8a4b73ba08bd2",
+  "predecessorCount": 295,
+  "predecessorLedgerSha256": "b0d398a46c4c6a3209e1448ddd415938ea95425c3d823f1f8a77d81dde396f2d",
+  "businessTables": 368,
+  "ownerSchemaTables": 13,
+  "ownerSchemaPayloads": 0,
+  "sequences": [
+    "PersonnelChange_sequence_seq"
+  ],
+  "businessAdditions": [
+    [
+      "20261119004000_contract_signed_change_review",
+      "ContractSignedChange"
+    ],
+    [
+      "20261119004000_contract_signed_change_review",
+      "PaymentRequestAgreementSnapshot"
+    ],
+    [
+      "20261119004100_signed_contract_settlement_registration",
+      "SignedContractSettlement"
+    ],
+    [
+      "20261119004100_signed_contract_settlement_registration",
+      "SignedContractSettlementAttachment"
+    ],
+    [
+      "20261119005100_contract_work_completion",
+      "ContractWorkCompletion"
+    ],
+    [
+      "20261119005400_contract_work_completion_approval",
+      "ContractWorkCompletionFact"
+    ],
+    [
+      "20261123010000_payment_execution_refund_and_correction",
+      "PaymentExecutionRefund"
+    ],
+    [
+      "20261123010000_payment_execution_refund_and_correction",
+      "PaymentExecutionCorrection"
+    ],
+    [
+      "20261123220000_actual_purchase_batch",
+      "ActualPurchaseBatch"
+    ],
+    [
+      "20261123220000_actual_purchase_batch",
+      "ActualPurchaseBatchLine"
+    ],
+    [
+      "20261123220000_actual_purchase_batch",
+      "ActualPurchaseBatchCorrection"
+    ],
+    [
+      "20261126000000_operating_cost_attribution_confirmation",
+      "OperatingCostAttributionConfirmation"
+    ]
+  ],
+  "ownerSchemaOnlyEmptyAdditions": [
+    [
+      "20261119004400_signed_settlement_attachment_metadata",
+      "jg_signed_settlement_attachment_witness_key"
+    ],
+    [
+      "20261119004700_contract_signed_change_submit",
+      "jg_contract_signed_change_submit_witness"
+    ],
+    [
+      "20261119004900_signed_settlement_draft_save",
+      "jg_signed_settlement_draft_witness_key"
+    ],
+    [
+      "20261119005100_contract_work_completion",
+      "jg_contract_work_completion_witness"
+    ]
+  ]
+}

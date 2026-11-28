@@ -10,7 +10,7 @@ function deferred<T>() {
 }
 const paths = [
   "/operating-projections/as-of?scopeKind=projects",
-  "/operating-projections/project/p-1?asOf=2026-10-20",
+  "/operating-projections/project/p-1?numericProtocolVersion=2&asOf=2026-10-20",
   "/projects/p-1/operating-funds-overview",
   "/projects/p-1/close-profit"
 ];

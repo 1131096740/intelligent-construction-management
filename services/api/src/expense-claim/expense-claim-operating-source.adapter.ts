@@ -1,6 +1,8 @@
 import { BadRequestException } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
-import type { PrimaryCostCategoryCode } from "@jiangkong/shared-domain";
+import { businessAmountFromLegacyCents, businessAmountToLegacyCents, normalizeBusinessAmount, sumBusinessAmounts, type PrimaryCostCategoryCode } from "@jiangkong/shared-domain";
+import type { OperatingMoneyInput } from "../operating-ledger/operating-money-protocol";
+import { observeRegisteredOperationalPaymentSource } from "../fund-account/registered-operational-payment";
 
 import {
   frozenAffiliateFromJson,
@@ -16,6 +18,7 @@ import {
 } from "../operating-ledger/formal-operating-source.helpers";
 import type {
   AppendOperatingFactInput,
+  OperatingImpactInput,
   OperatingSubjectReference
 } from "../operating-ledger/operating-ledger.service";
 import type {
@@ -50,13 +53,17 @@ type ExpenseClaimApprovalRow = {
   code: string;
   claimType: string;
   incidentalExpenseCategory: string | null;
+  actualPurchaseBatchId: string | null;
   projectId: string | null;
   companyEntityId: string;
+  costBearingCompanySpecified: boolean;
+  costBearingCompanyEntityId: string | null;
   applicantUserId: string | null;
   applicantNameSnapshot: string;
   applicantPhoneSnapshot: string | null;
   payeeNameSnapshot: string | null;
   requestedAmountCents: bigint;
+  requestedAmountYuan?: Prisma.Decimal | null;
   companyPayableAmountCents: bigint;
   approvedAt: Date | null;
 };
@@ -161,25 +168,38 @@ export class ExpenseClaimApprovalOperatingSourceAdapter
       "companyPayableAmountCents",
       "费用确认"
     );
-    if (amountCents <= 0n || payableCents < 0n || payableCents > amountCents) {
-      throw new BadRequestException("费用确认金额或待付金额不正确");
-    }
-    const company: OperatingSubjectReference = {
-      kind: "participating_company",
-      id: requiredJsonText(source, "companyEntityId", "费用确认")
-    };
+    const companyId = source.costBearingCompanyEntityId === null
+      ? null
+      : requiredJsonText(source,
+          source.costBearingCompanyEntityId === undefined ? "companyEntityId" : "costBearingCompanyEntityId", "费用确认");
+    const company: OperatingSubjectReference | null = companyId ? { kind: "participating_company", id: companyId } : null;
     const claimType = requiredJsonText(source, "claimType", "费用确认");
     const payee = claimPayee(source, claimType, "费用确认");
-    const impacts =
-      claimType === "reimbursement"
-        ? reimbursementCostImpacts(snapshot, source, company, amountCents)
+    const batchLinked = typeof source.actualPurchaseBatchId === "string" && source.actualPurchaseBatchId.trim().length > 0;
+    const exactHeader = claimType === "reimbursement" && !batchLinked && typeof source.requestedAmountYuan === "string"
+      ? positiveSourceAmount(source.requestedAmountYuan) : null;
+    // A cent-exact cost already round-trips through the established cash-link protocol.
+    const lines = source.reimbursementLines;
+    const exactAmountYuan = exactHeader && Array.isArray(lines) && lines.some((entry) => {
+      const line = requiredJsonRecord(entry, "报销费用明细");
+      return positiveSourceAmount(requiredJsonText(line, "amountYuan", "报销费用明细")) !==
+        businessAmountFromLegacyCents(requiredJsonMoney(line, "amountCents", "报销费用明细"));
+    }) ? exactHeader : null;
+    if ((exactAmountYuan === null && amountCents <= 0n) ||
+      (exactHeader !== null && businessAmountToLegacyCents(exactHeader) !== amountCents.toString()) ||
+      payableCents < 0n || payableCents > amountCents) {
+      throw new BadRequestException("费用确认金额或待付金额不正确");
+    }
+    const impacts = batchLinked ? []
+      : claimType === "reimbursement"
+        ? reimbursementCostImpacts(snapshot, source, company, amountCents, exactAmountYuan)
         : incidentalCostImpacts(snapshot, source, company, amountCents);
     if (payableCents > 0n) {
       impacts.push({
         idempotencyKey: `${snapshot.sourceType}:${snapshot.sourceBusinessId}:payable`,
         sourceImpactKey: "payable_increase",
         impactKind: "payable_increase",
-        amountCents: payableCents,
+        ...expenseOperatingMoney(payableCents, exactAmountYuan ? businessAmountFromLegacyCents(payableCents) : null),
         direction: "increase",
         subjectRole: "payee",
         subject: payee,
@@ -199,10 +219,11 @@ export class ExpenseClaimApprovalOperatingSourceAdapter
         confirmedAt,
         effectiveDate,
         amountCents,
+        exactAmountYuan,
         confirmedByUserId: requiredJsonText(source, "confirmedByUserId", "费用确认"),
         factKind: "expense",
         direction: "outflow",
-        subjects: { costBearingCompany: company },
+        subjects: company ? { costBearingCompany: company } : {},
         impacts,
         basisSnapshot: sourceJson({
           authority: "approved_expense_claim",
@@ -228,7 +249,8 @@ export class ExpenseClaimApprovalOperatingSourceAdapter
           expenseCategory: true,
           occurredOn: true,
           purpose: true,
-          amountCents: true
+          amountCents: true,
+          amountYuan: true
         },
         orderBy: { sortOrder: "asc" }
       }),
@@ -275,12 +297,15 @@ export class ExpenseClaimApprovalOperatingSourceAdapter
         formalStatus: "confirmed",
         claimType: row.claimType,
         incidentalExpenseCategory: row.incidentalExpenseCategory,
+        actualPurchaseBatchId: row.actualPurchaseBatchId,
         companyEntityId: row.companyEntityId,
+        ...(row.costBearingCompanySpecified ? { costBearingCompanyEntityId: row.costBearingCompanyEntityId } : {}),
         applicantUserId: row.applicantUserId,
         applicantNameSnapshot: row.applicantNameSnapshot,
         applicantPhoneSnapshot: row.applicantPhoneSnapshot,
         payeeNameSnapshot: row.payeeNameSnapshot,
         requestedAmountCents: row.requestedAmountCents.toString(),
+        ...(row.requestedAmountYuan == null ? {} : { requestedAmountYuan: row.requestedAmountYuan.toFixed(4) }),
         companyPayableAmountCents: row.companyPayableAmountCents.toString(),
         approvedAt: row.approvedAt.toISOString(),
         confirmedByUserId: confirmation.actorUserId,
@@ -291,7 +316,8 @@ export class ExpenseClaimApprovalOperatingSourceAdapter
           expenseCategory: line.expenseCategory,
           occurredOn: line.occurredOn.toISOString(),
           purpose: line.purpose,
-          amountCents: line.amountCents.toString()
+          amountCents: line.amountCents.toString(),
+          ...(line.amountYuan == null ? {} : { amountYuan: line.amountYuan.toFixed(4) })
         })),
         operatingLedgerEffectiveDate: effectiveDate.toISOString(),
         affiliate
@@ -366,10 +392,16 @@ export class ExpenseClaimPaymentExecutionOperatingSourceAdapter
     );
     const amountCents = requiredJsonMoney(source, "amountCents", "费用实际付款");
     if (amountCents <= 0n) throw new BadRequestException("费用实际付款金额必须大于 0");
-    const payer: OperatingSubjectReference = {
-      kind: "participating_company",
-      id: requiredJsonText(source, "paymentSubjectCompanyEntityId", "费用实际付款")
-    };
+    const funding = source.registeredFunding === undefined
+      ? null
+      : requiredJsonRecord(source.registeredFunding, "费用登记付款");
+    const isPublicCash = funding !== null && funding.actualPayerCompanyId === null;
+    const payer: OperatingSubjectReference = isPublicCash
+      ? { kind: "public_cash", id: "public_cash" }
+      : { kind: "participating_company", id: funding
+          ? requiredJsonText(funding, "actualPayerCompanyId", "费用登记付款")
+          : requiredJsonText(source, "paymentSubjectCompanyEntityId", "费用实际付款") };
+    const fundsImpact = isPublicCash ? "public_cash_funds_decrease" : "company_project_funds_decrease";
     const claimType = requiredJsonText(source, "claimType", "费用实际付款");
     const payee = claimPayee(source, claimType, "费用实际付款");
     return {
@@ -402,13 +434,13 @@ export class ExpenseClaimPaymentExecutionOperatingSourceAdapter
           },
           {
             idempotencyKey: `${snapshot.sourceType}:${snapshot.sourceBusinessId}:funds`,
-            sourceImpactKey: "company_project_funds_decrease",
-            impactKind: "company_project_funds_decrease",
+            sourceImpactKey: fundsImpact,
+            impactKind: fundsImpact,
             amountCents,
             direction: "decrease",
             subjectRole: "actual_payer",
             subject: payer,
-            description: "费用实际付款减少我方公司项目资金"
+            description: isPublicCash ? "费用实际付款减少公共现金" : "费用实际付款减少我方公司项目资金"
           }
         ],
         basisSnapshot: sourceJson({
@@ -436,7 +468,11 @@ export class ExpenseClaimPaymentExecutionOperatingSourceAdapter
     ) {
       throw new BadRequestException("费用实际付款缺少可投影的项目费用申请");
     }
-    if (!claim.paymentSubjectCompanyEntityId) {
+    const registeredFunding = await observeRegisteredOperationalPaymentSource(tx, {
+      sourceType: EXPENSE_CLAIM_PAYMENT_EXECUTION_SOURCE_TYPE,
+      executionId: row.id
+    });
+    if (!registeredFunding && !claim.paymentSubjectCompanyEntityId) {
       throw new BadRequestException("费用实际付款缺少冻结付款主体");
     }
     const [effectiveDate, affiliate] = await Promise.all([
@@ -457,7 +493,9 @@ export class ExpenseClaimPaymentExecutionOperatingSourceAdapter
         formalStatus: "confirmed",
         expenseClaimId: claim.id,
         claimType: claim.claimType,
-        paymentSubjectCompanyEntityId: claim.paymentSubjectCompanyEntityId,
+        ...(registeredFunding
+          ? { registeredFunding }
+          : { paymentSubjectCompanyEntityId: claim.paymentSubjectCompanyEntityId }),
         applicantUserId: claim.applicantUserId,
         applicantNameSnapshot: claim.applicantNameSnapshot,
         applicantPhoneSnapshot: claim.applicantPhoneSnapshot,
@@ -782,13 +820,17 @@ function expenseClaimApprovalSelect() {
     code: true,
     claimType: true,
     incidentalExpenseCategory: true,
+    actualPurchaseBatchId: true,
     projectId: true,
     companyEntityId: true,
+    costBearingCompanySpecified: true,
+    costBearingCompanyEntityId: true,
     applicantUserId: true,
     applicantNameSnapshot: true,
     applicantPhoneSnapshot: true,
     payeeNameSnapshot: true,
     requestedAmountCents: true,
+    requestedAmountYuan: true,
     companyPayableAmountCents: true,
     approvedAt: true,
     status: true
@@ -817,6 +859,7 @@ function formalInput(input: {
   confirmedAt: Date;
   effectiveDate: Date;
   amountCents: bigint;
+  exactAmountYuan?: string | null;
   confirmedByUserId: string;
   factKind: AppendOperatingFactInput["factKind"];
   direction: AppendOperatingFactInput["direction"];
@@ -838,7 +881,7 @@ function formalInput(input: {
     factKind: input.factKind,
     operatingLevel: "project",
     evidenceLevel: "A",
-    amountCents: input.amountCents,
+    ...expenseOperatingMoney(input.amountCents, input.exactAmountYuan ?? null),
     currencyCode: "CNY",
     direction: input.direction,
     isBeforeOperatingLedgerEffectiveDate: occurredBeforeEffectiveDate(
@@ -891,30 +934,48 @@ function claimPayee(
   throw new BadRequestException("费用申请类型不支持经营账投影");
 }
 
+function expenseOperatingMoney(amountCents: bigint, exactAmountYuan: string | null): OperatingMoneyInput {
+  return exactAmountYuan === null ? { amountCents } : { numericProtocolVersion: 2, amountCents: null, amountYuan: exactAmountYuan };
+}
+
+function positiveSourceAmount(value: string): string {
+  const amount = normalizeBusinessAmount(value);
+  if (!amount || amount === "0.0000") throw new BadRequestException("报销费用金额必须大于 0");
+  return amount;
+}
+
 function reimbursementCostImpacts(
   snapshot: OperatingSourceSnapshot,
   source: Record<string, Prisma.InputJsonValue>,
-  company: OperatingSubjectReference,
-  requestedAmountCents: bigint
+  company: OperatingSubjectReference | null,
+  requestedAmountCents: bigint,
+  requestedAmountYuan: string | null
 ): AppendOperatingFactInput["impacts"] {
   const lines = source.reimbursementLines;
-  if (!Array.isArray(lines) || !lines.length) {
-    throw new BadRequestException("报销确认快照缺少费用明细");
-  }
-  const impacts = lines.map((entry) => {
+  if (!Array.isArray(lines) || !lines.length) throw new BadRequestException("报销确认快照缺少费用明细");
+
+  let totalCents = 0n;
+  const exactLines: string[] = [];
+  const impacts: OperatingImpactInput[] = lines.map((entry) => {
     const line = requiredJsonRecord(entry, "报销费用明细");
     const amountCents = requiredJsonMoney(line, "amountCents", "报销费用明细");
-    if (amountCents <= 0n) throw new BadRequestException("报销费用明细金额必须大于 0");
+    const exactAmountYuan = requestedAmountYuan === null
+      ? null
+      : positiveSourceAmount(requiredJsonText(line, "amountYuan", "报销费用明细"));
+    if (amountCents < 0n || (amountCents === 0n && exactAmountYuan === null)) {
+      throw new BadRequestException("报销费用明细金额必须大于 0");
+    }
+    totalCents += amountCents;
+    if (exactAmountYuan !== null) exactLines.push(exactAmountYuan);
     const sortOrder = requiredJsonText(line, "sortOrder", "报销费用明细");
     return {
       idempotencyKey: `${snapshot.sourceType}:${snapshot.sourceBusinessId}:confirmed_cost:${sortOrder}`,
       sourceImpactKey: `confirmed_cost:${sortOrder}`,
-      impactKind: "confirmed_cost" as const,
-      amountCents,
-      direction: "increase" as const,
-      subjectRole: "cost_bearing_company" as const,
-      subject: company,
-      costCategoryCode: "project_daily_expense" as const,
+      impactKind: "confirmed_cost",
+      ...expenseOperatingMoney(amountCents, exactAmountYuan),
+      direction: "increase",
+      ...(company ? { subjectRole: "cost_bearing_company" as const, subject: company } : {}),
+      costCategoryCode: "project_daily_expense",
       description: `报销费用确认：${requiredJsonText(line, "expenseCategory", "报销费用明细")}`,
       impactSnapshot: sourceJson({
         lineId: requiredJsonText(line, "id", "报销费用明细"),
@@ -923,8 +984,8 @@ function reimbursementCostImpacts(
       })
     };
   });
-  const total = impacts.reduce((sum, impact) => sum + impact.amountCents, 0n);
-  if (total !== requestedAmountCents) {
+  if (totalCents !== requestedAmountCents ||
+    (requestedAmountYuan !== null && sumBusinessAmounts(exactLines) !== requestedAmountYuan)) {
     throw new BadRequestException("报销费用明细合计与确认金额不一致");
   }
   return impacts;
@@ -933,7 +994,7 @@ function reimbursementCostImpacts(
 function incidentalCostImpacts(
   snapshot: OperatingSourceSnapshot,
   source: Record<string, Prisma.InputJsonValue>,
-  company: OperatingSubjectReference,
+  company: OperatingSubjectReference | null,
   amountCents: bigint
 ): AppendOperatingFactInput["impacts"] {
   const category = requiredJsonText(source, "incidentalExpenseCategory", "零星费用确认");
@@ -959,8 +1020,7 @@ function incidentalCostImpacts(
       impactKind: "confirmed_cost",
       amountCents,
       direction: "increase",
-      subjectRole: "cost_bearing_company",
-      subject: company,
+      ...(company ? { subjectRole: "cost_bearing_company" as const, subject: company } : {}),
       costCategoryCode,
       description: "零星费用确认项目成本"
     }

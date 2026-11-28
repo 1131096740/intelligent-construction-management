@@ -1,0 +1,72 @@
+[
+  {
+    "path": "apps/web-admin/e2e/flow-detail-responsive.e2e.ts",
+    "expected": "e51effd249755ff5fe4c0a9694e984fd626248cc0ac7f1aee51febf4a08ef8a7",
+    "candidate": "f46e4251d1a08ae7e7e16e59f93f718b0c55759cbb4ad31db84925a1ab79d402"
+  },
+  {
+    "path": "apps/web-admin/src/api/core-flow-read.api.ts",
+    "expected": "c83128b15dbd395bae3875c5994c11e54b13ec426b6959b3e677371bb49a303f",
+    "candidate": "a7360ec2843d22c34aaa24d64cdbceb344028f88fce84adde857ce1c1e16f7e4"
+  },
+  {
+    "path": "apps/web-admin/src/components/ContractFinancialBalances.vue",
+    "expected": "dd2091b6ed35034821cdbfc2143253679a02399fd16ddac5e79ab63d7b8b436d",
+    "candidate": "63c4571783ca52f46699e98a584c8f8d3db3b723ca8fed107183a43b11e16052"
+  },
+  {
+    "path": "apps/web-admin/src/pages/projects/ProjectOperatingOverviewPage.vue",
+    "expected": "d407ee01a3f21c2a94805c9b6a0c1be27187170a73965b521c57267a4c81cde6",
+    "candidate": "887a4a731e5900a61a18848fb0928be22041d1b126c0f8f6e7ddbfa6ff59c5ba"
+  },
+  {
+    "path": "services/api/src/approval/approval-form.service.spec.ts",
+    "expected": "5f42c450c0515fb809ea0fcfbf259c27281edc30da0c2e645a8e5c825e650c6a",
+    "candidate": "ed73cdfbde187aee5076242dc0eb857f1101666d8389e1b62a3d6f44f8c37867"
+  },
+  {
+    "path": "services/api/src/business-entry-definition/business-entry-excel.service.ts",
+    "expected": "377376aabe6bb588ac04f00b789f7ee4770847d264c4bf1656e212746759ddf4",
+    "candidate": "fd298aa705af76471e4d1ff4767339f2f7c6301b47a6b3f83bab0462685b4624"
+  },
+  {
+    "path": "services/api/src/database/approval-pdf-acceptance.test-support.ts",
+    "expected": "2bc2169ccb885f6979b4d757364b756ea73ac53845aa9b32c49ea51c89e7e626",
+    "candidate": "99fc10285a780b0034acc9ca4660595d941185b3565e412daabc30e083ec6ad7"
+  },
+  {
+    "path": "services/api/src/database/general-procurement-http-postgres.spec.ts",
+    "expected": "3ce1fa518856776aff97bc860c542a21e74732fbead2139cdd577013f1d29b52",
+    "candidate": "f15a36a770d87d0728a2a2efe770cd07d4a5ffae69252b0f2f77c1e74410bce9"
+  },
+  {
+    "path": "services/api/src/operating-ledger/operating-ledger.service.spec.ts",
+    "expected": "4efc97cd59dc5501cb2cc64aedf3628be2a629b3ed77487e87e6041a3e61c4f1",
+    "candidate": "4c91f89537f771e6ade0ad8aaf6f0de018890de50c542b6ef6da2720165a786b"
+  },
+  {
+    "path": "services/api/src/operating-ledger/operating-ledger.service.ts",
+    "expected": "7f04a2ab7fb46b2e48b856dd6c1977b4c92475a02c32cfd15ec0eb27d9207a6b",
+    "candidate": "21cf2f9de2da07c45e5fcd7fa52a62c588b837a4acb6c7a4f3353ad7ee416e4b"
+  },
+  {
+    "path": "services/api/src/operating-projection/operating-projection.reducer.spec.ts",
+    "expected": "06a294fec93f7e014734a80e973c804b35379e0f785b7b557723d7713f8610df",
+    "candidate": "6a9950ac745d0c46688677958934c23c45e381e5c5514b5795439b696bef5a58"
+  },
+  {
+    "path": "services/api/src/operating-projection/operating-projection.reducer.ts",
+    "expected": "f0a1f1fb47106a66dfbf21ce4bb0dcb9433e874cb26110c85faf57eaf5d6693c",
+    "candidate": "55bb0aece7485c25d7edd5328d9963f61f67a65cb5deaac40fc62ce52e55eeed"
+  },
+  {
+    "path": "services/api/src/operating-projection/operating-projection.service.spec.ts",
+    "expected": "61935cb7aa74bc9d6a7d5b9678df3cbd6dc5d1ff640ab14f76ba376d61d36739",
+    "candidate": "3ab746806f63bc33a0d67debecbfd933e422b9f0d384ef3f5a69fed9ff6a4a98"
+  },
+  {
+    "path": "services/api/src/operating-projection/operating-projection.service.ts",
+    "expected": "584d3bdc230749b81dd07064640ced8d79835dacb2a76b581c847ee0034dcf0e",
+    "candidate": "396e81ca77197aa2ac883eafcfe08fcb5dd4c56043aa0ba19c3c72d310d7556e"
+  }
+]

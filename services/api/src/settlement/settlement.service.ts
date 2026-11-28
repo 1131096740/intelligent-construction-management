@@ -1,5 +1,8 @@
+import { contractTaxForNewSettlement, readOrdinaryContractTaxFact } from "../contract/contract-effective-tax.service";
 import { finalApprovalEvidence } from "../approval/approval-evidence";
+import { assertTakeoverContinuationAllowed } from "../contract-takeover/contract-takeover-handover";
 import { assertSettlementApplicant } from "./settlement-applicant";
+import { assertNoConfirmedSignedSettlementForPeriod } from "../operating-ledger/settlement-source-dedup";
 import { assertEconomicContractReady, lockEconomicProject } from "../contract-ledger/contract-economic-coverage";
 import { loadProjectApprovalAssignments } from "../approval/project-approval-assignments";
 import {
@@ -471,7 +474,8 @@ export class SettlementService {
     };
     lines: Array<SettlementDocumentInput["lines"][number] & { contractBillRowId: string | null }>;
   }> {
-    const version = await lockContractAndAssertCurrentEffective(tx, draft.contractVersionId);
+    const currentVersion = await lockContractAndAssertCurrentEffective(tx, draft.contractVersionId);
+    const version = await contractTaxForNewSettlement(tx, currentVersion);
     if (version.contractId !== draft.contractId ||
       (!settlementLinesOverride && !Array.isArray(draft.lines))) {
       throw new BadRequestException("结算草稿合同或明细事实已损坏，请重新保存草稿");
@@ -689,7 +693,8 @@ export class SettlementService {
       throw new Error("结算预览服务暂不可用，请稍后重试或联系管理员");
     }
     return this.prisma.$transaction(async (tx) => {
-      const version = await lockContractAndAssertCurrentEffective(tx, contractVersionId);
+      const currentVersion = await lockContractAndAssertCurrentEffective(tx, contractVersionId);
+      const version = await contractTaxForNewSettlement(tx, currentVersion);
       const contract = await tx.contract.findUnique({ where: { id: version.contractId } });
       if (!contract) throw new BadRequestException("未找到结算关联合同，请刷新合同台账后重试");
       assertSettlementContractType(contract.contractTypeKey);
@@ -1430,11 +1435,8 @@ export class SettlementService {
     governedDraft?: GovernedSettlementDraftSubmission
   ): Promise<Settlement> {
     const { input, submittedAmountCents, settlementTemplateVersionId } = prepared;
-    const version = await lockContractAndAssertCurrentEffective(
-      tx,
-      input.contractVersionId,
-      true
-    );
+    const currentVersion = await lockContractAndAssertCurrentEffective(tx, input.contractVersionId, true);
+    const version = await contractTaxForNewSettlement(tx, currentVersion);
     const unlimitedFramework = isUnlimitedFrameworkContract(version);
     if (version.contractGovernanceVersion === 1 && !governedDraft) {
       throw new BadRequestException("新受治理结算必须从草稿完成参与人和乙方签章文件门禁后提交");
@@ -1450,6 +1452,15 @@ export class SettlementService {
     const contract = await tx.contract.findUnique({ where: { id: version.contractId } });
     if (!contract) {
       throw new Error("未找到结算关联合同，请刷新合同台账后重试");
+    }
+    if (contract.source === "historical_takeover") {
+      const takeover = await tx.contractTakeover.findUnique({
+        where: { contractVersionId: version.id },
+        select: { id: true, takeoverLevel: true }
+      });
+      if (takeover) {
+        await assertTakeoverContinuationAllowed(tx, takeover, "发起后续结算");
+      }
     }
     if (contract.settlementClosedAt || contract.finalSettlementId) {
       throw new BadRequestException("该合同已由最终结算关闭，不能再发起结算审批");
@@ -2891,7 +2902,8 @@ export class SettlementService {
           tx,
           effectiveSettlement.projectId,
           effectiveSettlement.id,
-          actorUserId
+          actorUserId,
+          settlement
         );
         await this.audit.record(tx, {
           actorUserId,
@@ -2952,7 +2964,8 @@ export class SettlementService {
         tx,
         effectiveSettlement.projectId,
         effectiveSettlement.id,
-        actorUserId
+        actorUserId,
+        settlement
       );
 
       await this.audit.record(tx, {
@@ -2973,8 +2986,14 @@ export class SettlementService {
     tx: Prisma.TransactionClient,
     projectId: string,
     settlementId: string,
-    actorUserId: string
+    actorUserId: string,
+    settlement: Pick<Settlement, "contractId" | "contractVersionId" | "periodLabel" | "code">
   ): Promise<void> {
+    await this.assertNoConfirmedSignedSettlementForPeriod(
+      tx,
+      projectId,
+      settlement
+    );
     await this.operatingSources.appendConfirmedSourceIfEnabledInTransaction(
       tx,
       {
@@ -2984,6 +3003,25 @@ export class SettlementService {
       },
       actorUserId
     );
+  }
+
+  /**
+   * 旧结算生效与已签结算确认都能确认同一笔下游成本。若同一合同版本、同一
+   * 结算期次已由新已签结算确认，旧入口必须 fail-closed，整个归档确认事务回滚。
+   */
+  private async assertNoConfirmedSignedSettlementForPeriod(
+    tx: Prisma.TransactionClient,
+    projectId: string,
+    legacy: Pick<Settlement, "contractId" | "contractVersionId" | "periodLabel" | "code">
+  ): Promise<void> {
+    try {
+      await assertNoConfirmedSignedSettlementForPeriod(tx, {
+        projectId,
+        ...legacy
+      });
+    } catch (error) {
+      throw new ConflictException((error as Error).message);
+    }
   }
 
   private async closeContractAfterFinalSettlement(
@@ -3230,13 +3268,14 @@ export class SettlementService {
       }) ?? Promise.resolve([]),
       settlement.taxFactRevisionSnapshot !== null &&
       documentSnapshotClient.contractTaxFactRevision
-        ? documentSnapshotClient.contractTaxFactRevision.findFirst({
+        ? readOrdinaryContractTaxFact(tx, settlement.contractVersionId, settlement.contractId, settlement.taxFactRevisionSnapshot)
+          .then(ordinary => ordinary ?? documentSnapshotClient.contractTaxFactRevision!.findFirst({
             where: {
               contractVersionId: settlement.contractVersionId,
-              revisionNo: settlement.taxFactRevisionSnapshot,
+              revisionNo: settlement.taxFactRevisionSnapshot!,
               status: "confirmed"
             }
-          })
+          }))
         : Promise.resolve(null)
     ]);
 

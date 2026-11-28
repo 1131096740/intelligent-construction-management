@@ -5,11 +5,15 @@ const { spawnSync } = require("node:child_process");
 const path = require("node:path");
 const { mkdtempSync, rmSync } = require("node:fs");
 const { tmpdir } = require("node:os");
+const { createCommandRuntime } = require("./money-bigint-runner-runtime.cjs");
+const { CI_DYNAMIC_MIGRATION_LABEL, createCiDynamicMigrationFixture } = require("./local-staged-ci-dynamic.cjs");
+const { renderProjectBusinessScopeFileGuardGrant } = require("./contract-bank-runtime-fixture.cjs");
 const storageRoot = mkdtempSync(path.join(tmpdir(), "project-business-scope-files-"));
 
 const root = path.resolve(__dirname, "../../..");
 const password = randomUUID();
-const name = `jiangkong-project_business_scope-http-${randomUUID()}`;
+const fixtureRunId = randomUUID();
+const name = `jiangkong-project-business-scope-http-${fixtureRunId}`;
 let containerId;
 
 function command(bin, args, env = process.env, quiet = false, timeout = 180_000) {
@@ -26,8 +30,9 @@ const endpoint = process.env.DOCKER_HOST || command("docker", ["context", "inspe
 if (!endpoint.startsWith("unix://")) throw new Error("只允许本机 Docker");
 const docker = (args, env = process.env, quiet = false) => command("docker", ["--host", endpoint, ...args], env, quiet);
 
-try {
+async function verify() {
   containerId = docker(["run", "--detach", "--rm", "--pull=never", "--name", name,
+    "--label", CI_DYNAMIC_MIGRATION_LABEL + "=" + fixtureRunId,
     "--env", "POSTGRES_PASSWORD", "--env", "POSTGRES_USER=jiangkong", "--env", "POSTGRES_DB=project_business_scope",
     "--publish", "127.0.0.1::5432", "postgres:16"], { ...process.env, POSTGRES_PASSWORD: password }, true);
   if (!/^[a-f0-9]{64}$/.test(containerId)) throw new Error("一次性容器标识无效");
@@ -42,7 +47,20 @@ try {
     DATABASE_URL: `postgresql://jiangkong:${password}@127.0.0.1:${port}/project_business_scope` };
   console.log(`PROJECT_BUSINESS_SCOPE 一次性容器：${name}`);
   docker(["exec", containerId, "psql", "-U", "jiangkong", "-d", "project_business_scope", "-Atc", "SHOW server_version;"]);
-  command("pnpm", ["--filter", "@jiangkong/api", "exec", "prisma", "migrate", "deploy"], env);
+  const { command: stagedCommand } = createCommandRuntime({ defaultCwd: root });
+  const migration = createCiDynamicMigrationFixture({
+    ciFixture: "DYNAMIC_PROJECT_BUSINESS_SCOPE_V1",
+    container: { id: containerId, name, runId: fixtureRunId },
+    databaseNames: ["project_business_scope"],
+    temporaryRoot: mkdtempSync(path.join(storageRoot, "staged-migrations-")),
+    dockerCommand: (args, options) => stagedCommand("docker", ["--host", endpoint, ...args], { ...options, env: process.env }),
+    deploy({ databaseUrl, runtimeEnv, schemaPath }) {
+      const args = ["--filter", "@jiangkong/api", "exec", "prisma", "migrate", "deploy"];
+      if (schemaPath) args.push("--schema", schemaPath);
+      return { stdout: command("pnpm", args, { ...runtimeEnv, DATABASE_URL: databaseUrl }) };
+    }
+  });
+  await migration.migrate({ databaseUrl: env.DATABASE_URL, runtimeEnv: env });
   // Preserve the inherited CRUD state on the new table: deployment must remove DELETE itself.
   const runtime = "project_business_scope_runtime";
   docker(["exec", containerId, "psql", "-v", "ON_ERROR_STOP=1", "-U", "jiangkong", "-d", "project_business_scope", "-c", `
@@ -51,17 +69,24 @@ try {
     GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO ${runtime};
     REVOKE ALL ON TABLE public."OperatingLedgerWriteSecret", public."OperatingLedgerWriteContext" FROM ${runtime};
     REVOKE INSERT, UPDATE, DELETE ON TABLE public."OperatingFact" FROM ${runtime};
+    ${renderProjectBusinessScopeFileGuardGrant()}
   `], process.env, true);
   docker(["cp", path.join(__dirname, "general-procurement-runtime-grants.sql"), `${containerId}:/tmp/procurement-grants.sql`], process.env, true);
   docker(["exec", "--env", `OPERATING_LEDGER_RUNTIME_ROLE=${runtime}`, containerId, "psql", "-v", "ON_ERROR_STOP=1", "-U", "jiangkong", "-d", "project_business_scope", "--file=/tmp/procurement-grants.sql"], process.env, true);
   const grants = docker(["exec", containerId, "psql", "-U", "jiangkong", "-d", "project_business_scope", "-Atc", `SELECT has_table_privilege('${runtime}', 'public."GeneralProcurement"', 'INSERT'), has_table_privilege('${runtime}', 'public."GeneralProcurement"', 'DELETE');`], process.env, true);
   if (grants !== "t|f") throw new Error("新表运行权限必须可写、不可删除");
+  env.PROJECT_BUSINESS_SCOPE_FIXTURE_DATABASE_URL = env.DATABASE_URL;
   env.DATABASE_URL = `postgresql://${runtime}:${password}@127.0.0.1:${port}/project_business_scope`;
   command("pnpm", ["--filter", "@jiangkong/api", "test", "--", "--runInBand", "src/database/project-business-scope-http-postgres.spec.ts"], env, false, 300_000);
-} finally {
+}
+
+verify().finally(() => {
   rmSync(storageRoot, { recursive: true, force: true });
   if (containerId && /^[a-f0-9]{64}$/.test(containerId)) {
     docker(["rm", "--force", "--volumes", containerId], process.env, true);
     console.log(`PROJECT_BUSINESS_SCOPE 已清理自身容器：${name}`);
   }
-}
+}).catch((error) => {
+  console.error(error.message.replaceAll(password, "[redacted]"));
+  process.exitCode = 1;
+});

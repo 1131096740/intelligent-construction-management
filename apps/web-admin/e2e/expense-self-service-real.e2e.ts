@@ -7,7 +7,7 @@ async function openForm(page: Page, variable: "POL115_FINANCE_SESSION" | "POL115
   });
   await page.goto("/费用与报销工作台");
   const options = page.waitForResponse((response) => response.url().endsWith("/expense-claims/create-options"));
-  await page.getByRole("button", { name: "新建费用报销 / 借款", exact: true }).click();
+  await page.getByRole("button", { name: "新建费用申请", exact: true }).click();
   expect((await options).status()).toBe(200);
   return session;
 }
@@ -16,25 +16,34 @@ function field(page: Page, label: string) {
   return page.locator(".t-drawer .t-form__item").filter({ has: page.getByText(label, { exact: true }) }).locator("input");
 }
 
-test("公司财务可选各项目，为本人借款时必须明确选择业务项目", async ({ page }, testInfo) => {
+async function selectIncidentalExpense(page: Page) {
+  const drawer = page.locator(".t-drawer");
+  await expect(drawer.getByText("借款申请", { exact: true })).toHaveCount(0);
+  await drawer.getByText("零星费用", { exact: true }).click();
+  await drawer.locator(".t-form__item").filter({ hasText: "零星费用分类" }).locator(".t-select").click();
+  await page.locator(".t-select__dropdown:visible").getByText("非材料临时服务", { exact: true }).click();
+}
+
+test("公司财务可选各项目，为本人申请零星费用时必须明确选择业务项目", async ({ page }, testInfo) => {
   const session = await openForm(page, "POL115_FINANCE_SESSION");
   const drawer = page.locator(".t-drawer");
   await expect(field(page, "选择人员")).toHaveValue(session.user.name);
   await expect(drawer.getByText("代办系统账号", { exact: true })).toHaveCount(0);
-  await drawer.getByText("借款申请", { exact: true }).click();
+  await selectIncidentalExpense(page);
   await expect(field(page, "项目")).toHaveValue("");
   await field(page, "项目").click();
-  await expect(page.locator(".t-select-option")).toHaveCount(3);
-  await page.locator(".t-select-option").filter({ hasText: "入口合成项目" }).click();
+  const projectOptions = page.locator(".t-select__dropdown:visible .t-select-option");
+  const expectedProjects = JSON.parse(process.env.POL115_FINANCE_PROJECT_LABELS!) as string[];
+  await expect(projectOptions).toHaveText(expectedProjects);
+  await projectOptions.filter({ hasText: "入口合成项目" }).click();
   await expect(field(page, "项目")).toHaveValue(/入口合成项目/);
   await page.getByRole("button", { name: "下一步", exact: true }).click();
   const form = page.getByRole("region", { name: "费用申请单条业务表单" });
-  await form.locator('[data-field="reason"] textarea').fill("财务本人合成借款");
+  await form.locator('[data-field="reason"] textarea').fill("财务本人合成零星费用");
   await form.locator('[data-field="requestedAmountYuan"] input').fill("0.01");
   await page.getByRole("button", { name: "下一步", exact: true }).click();
   const payee = page.getByRole("region", { name: "费用收款单条业务表单" });
-  await payee.locator('[data-field="loanExpectedClearanceOn"] input').click();
-  await page.locator(".t-date-picker__cell--now").click();
+  await payee.locator('[data-field="payeeName"] input').fill("合成收款方");
   await page.getByRole("button", { name: "下一步", exact: true }).click();
   const saved = page.waitForResponse((response) => response.url().endsWith("/expense-claims") && response.request().method() === "POST");
   await page.getByRole("button", { name: "保存草稿", exact: true }).click();
@@ -68,7 +77,7 @@ test("公司综合部本人和代办均可选各项目，切换模式保留有�
   const session = await openForm(page, "POL115_PROXY_SESSION");
   const drawer = page.locator(".t-drawer");
   await expect(field(page, "选择人员")).toHaveValue(session.user.name);
-  await drawer.getByText("借款申请", { exact: true }).click();
+  await selectIncidentalExpense(page);
   await expect(field(page, "项目")).toHaveValue("");
   await drawer.getByText("代办系统账号", { exact: true }).click();
   await field(page, "选择人员").click();

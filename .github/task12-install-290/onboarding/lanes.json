@@ -1,0 +1,77 @@
+{
+  "lifecycle-rest": {
+    "caseCount": 19,
+    "expectedFiltered": 1,
+    "originalReceiptSha256": "19d7e499368fc001e46b45f47f2254cf93a40023fff4c611615577cc6211c11d",
+    "oldImage": "sha256:acf9c957d5bfd05bd81ede01af4c5ba761381ef92b7f3ae4d4a0e1a36194ce66",
+    "fixturePins": {
+      "services/api/src/database/personnel-lifecycle-http-postgres.owned282.spec.ts": "47857e62d533607e9eef0964fd6ffe56862990593c06b34e88e6f0e8d2c76c80"
+    }
+  },
+  "lifecycle-desktop": {
+    "caseCount": 1,
+    "expectedFiltered": 19,
+    "originalReceiptSha256": "171f25027c26cafc2d75d69965ee41b1cb87619e89471dd34b9543f3a53d654b",
+    "oldImage": "sha256:d077ce5015f50a38d8e0fc5f97c2bfde16d0ea856ffa7baeae4db260bd94d192",
+    "fixturePins": {
+      "services/api/src/database/personnel-lifecycle-http-postgres.owned282.spec.ts": "1823dce4c8fde65ca985a97155dc6586580f8886cd4ff6512cf881487a610c85",
+      "apps/web-admin/e2e/personnel-lifecycle-real.e2e.ts": "34ff6bf7dcb4c8223b43caaa9cc11fb76a0a2a4c502ed2005aea53ae1ba67b28"
+    }
+  },
+  "lifecycle-mobile": {
+    "caseCount": 1,
+    "expectedFiltered": 19,
+    "originalReceiptSha256": "e5e4fa469794a9c50680fc860e5554c8b02a1ca70ab5237cfb9e8423169087d6",
+    "oldImage": "sha256:075cc38d508815cf99e7c59271a1f5e93dbc411064410ecabf8911885b477e56",
+    "fixturePins": {
+      "services/api/src/database/personnel-lifecycle-http-postgres.owned282.spec.ts": "3ff861aa1c90962894d7a5ddf5065dc33628204e0ccdccb6390920533dcf5b2d",
+      "apps/web-admin/e2e/personnel-lifecycle-real.e2e.ts": "34ff6bf7dcb4c8223b43caaa9cc11fb76a0a2a4c502ed2005aea53ae1ba67b28"
+    }
+  },
+  "downstream": {
+    "caseCount": 27,
+    "expectedFiltered": 2,
+    "originalReceiptSha256": "b47652007a743e1bb2d8bce9b0752a45b6ff0c988b6b6faec7cc6daeaf70058f",
+    "oldImage": "sha256:c6c6d14b2bdf39bfe991c4b63b2159169426aed3206978d80df031725cbaa289",
+    "fixturePins": {
+      "services/api/src/database/employee-onboarding-http-postgres.owned282.spec.ts": "7eb9a2f364f58ecaf3f148506e405182e1924b5a3b8eeb113c620861385a6911",
+      "services/api/src/database/employee-phone-reuse-postgres.owned282.spec.ts": "1f89ff8755cde7cf39cefb59dc43970f9b7f49dfe11be8b854171be2911b10f5",
+      "services/api/src/database/employee-role-consistency-http-postgres.owned282.spec.ts": "0e0d148754d7a74b4bfce002584a8207c86293675a5bdd220868e6e6ec892abf",
+      "services/api/src/database/personnel-roster-read-http-postgres.owned282.spec.ts": "f72cbe15e4a081ca4e614f570c10443e9bbd930a530148b56bd93f64b6f6b16b"
+    }
+  },
+  "roster": {
+    "caseCount": 10,
+    "expectedFiltered": 0,
+    "originalReceiptSha256": "a24f2704fed5244e0c514f4b626d35803465ea70345ce97dc8642dfdc2672720",
+    "oldImage": "sha256:acf9c957d5bfd05bd81ede01af4c5ba761381ef92b7f3ae4d4a0e1a36194ce66",
+    "fixturePins": {
+      "services/api/src/database/project-roster-http-postgres.owned282.spec.ts": "8024443c64bc20376ffe5305c3048ad8cce374ff6e00c4e315aa46b4550db385"
+    }
+  },
+  "roster-read": {
+    "caseCount": 1,
+    "expectedFiltered": 1,
+    "originalReceiptSha256": "4832fa7211bcf94462fc7c5f5c7c56c78f1665e498b9f3657d304e4c1f394e46",
+    "oldImage": "sha256:c6c6d14b2bdf39bfe991c4b63b2159169426aed3206978d80df031725cbaa289",
+    "fixturePins": {
+      "services/api/src/database/employee-onboarding-http-postgres.owned282.spec.ts": "7eb9a2f364f58ecaf3f148506e405182e1924b5a3b8eeb113c620861385a6911",
+      "services/api/src/database/employee-phone-reuse-postgres.owned282.spec.ts": "1f89ff8755cde7cf39cefb59dc43970f9b7f49dfe11be8b854171be2911b10f5",
+      "services/api/src/database/employee-role-consistency-http-postgres.owned282.spec.ts": "0e0d148754d7a74b4bfce002584a8207c86293675a5bdd220868e6e6ec892abf",
+      "services/api/src/database/personnel-roster-read-http-postgres.owned282.spec.ts": "f72cbe15e4a081ca4e614f570c10443e9bbd930a530148b56bd93f64b6f6b16b"
+    }
+  },
+  "reset-case12": {
+    "caseCount": 1,
+    "expectedFiltered": 11,
+    "originalReceiptSha256": "4d9588447c73d2b477cd6327e05361f053b2115d638fc4e97d869a015a504c88",
+    "oldImage": "sha256:c6c6d14b2bdf39bfe991c4b63b2159169426aed3206978d80df031725cbaa289",
+    "fixturePins": {
+      "services/api/src/database/employee-onboarding-http-postgres.owned282.spec.ts": "7eb9a2f364f58ecaf3f148506e405182e1924b5a3b8eeb113c620861385a6911",
+      "services/api/src/database/employee-phone-reuse-postgres.owned282.spec.ts": "1f89ff8755cde7cf39cefb59dc43970f9b7f49dfe11be8b854171be2911b10f5",
+      "services/api/src/database/employee-role-consistency-http-postgres.owned282.spec.ts": "0e0d148754d7a74b4bfce002584a8207c86293675a5bdd220868e6e6ec892abf",
+      "services/api/src/database/personnel-roster-read-http-postgres.owned282.spec.ts": "f72cbe15e4a081ca4e614f570c10443e9bbd930a530148b56bd93f64b6f6b16b",
+      "apps/web-admin/e2e/employee-onboarding-real.e2e.ts": "0701e75e52607109b35a936b43cc8b374f6f651b147ec48eb68dc0b5f2ae89c5"
+    }
+  }
+}

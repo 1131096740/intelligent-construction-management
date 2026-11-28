@@ -1,0 +1,201 @@
+--- a/installer.cjs
++++ b/installer.cjs
+@@ -363,7 +363,7 @@
+       {metadataRows:4134, verifiedFiles:318, subsetManifestSha256:subsetManifestSha} : {})}};
+   const runId = randomUUID(), database = 'jg_task01_' + runId.replaceAll('-',''), started = Math.floor(Date.now()/1000);
+   const root = fs.mkdtempSync('/tmp/jg394-'), data = path.join(root,'data');
+-  const pfqMode=['ORIGINAL_PFQ_EXACT_295','ORIGINAL_PFQ_EXACT_329','ORIGINAL_PFQ_EXACT_330','ORIGINAL_PFQ_EXACT_331','ORIGINAL_PFQ_EXACT_332','ORIGINAL_PFQ_EXACT_334'].includes(receipt.purpose)?'--pfq-'+receipt.lane+'-289-local':undefined;
++  const pfqMode=['ORIGINAL_PFQ_EXACT_295','ORIGINAL_PFQ_EXACT_329','ORIGINAL_PFQ_EXACT_330','ORIGINAL_PFQ_EXACT_331','ORIGINAL_PFQ_EXACT_332','ORIGINAL_PFQ_EXACT_334','ORIGINAL_PFQ_EXACT_346'].includes(receipt.purpose)?'--pfq-'+receipt.lane+'-289-local':undefined;
+   const plan = {runId, database, historical, source:{witness:{profile}}, prismaTools:{cli, engine}, limits:{migrationMs:180000},
+     ...(pfqPositiveModes.includes(pfqMode)?{pfqPositive:require(pfqPositiveFixtures)[pfqMode]}:{}),
+     ...(Object.hasOwn(pfqConflicts,pfqMode)?{recoveryProfile:{module:pfqRecoveryModule,kind:pfqConflicts[pfqMode],prefix:114,terminal:115,
+@@ -904,7 +904,11 @@
+       const a28 = forward320.historicalTakeover ? require('./historical-takeover-333-profile.cjs') : null;
+       const signed = forward320.historicalSettlement ? require('./historical-settlement-334-profile.cjs') : null;
+       if (a28) batches.push(tails.slice(37,38));
+-      if (signed) batches.push(tails.slice(38));
++      const expenseWitness = forward320.expenseWitness;
++      let priorExpenseCatalog;
++      if (signed) batches.push(expenseWitness ? tails.slice(38,39) : tails.slice(38));
++      if (expenseWitness) batches.push(...tails.slice(39).map(row=>[row]));
++      let observed334LedgerSha256;
+       for (const batch of batches) {
+         for (const row of batch) {
+           const index = tails.indexOf(row);
+@@ -973,8 +977,33 @@
+           signed.assertCatalog(catalog,receipt.historicalSettlementPredecessor.routineCatalog);
+           receipt.historicalSettlement334Catalog=catalog;
+         }
++        if (expenseWitness) {
++          const count=qualifiedLedger.length;
++          if (count===334) observed334LedgerSha256=hash(JSON.stringify(current.ledger));
++          if (count>=334) expenseWitness.assertPrefix(count,hash(JSON.stringify(qualifiedLedger)));
++          if ([334,341,342,343,344,345,expenseWitness.count].includes(count)) {
++            const observed=await jsonSql(expenseWitness.catalogSql);
++            expenseWitness.assertCatalog(count,observed,priorExpenseCatalog);
++            priorExpenseCatalog=observed;
++            receipt.expenseWitnessCatalog ??= {};
++            receipt.expenseWitnessCatalog[count]=observed;
++          }
++          if (count>=344) {
++            const cash=await jsonSql(expenseWitness.cashSql);
++            expenseWitness.assertCash(cash);
++            if (count===344) receipt.expenseWitnessVoucher344=cash;
++            else need(equal(cash,receipt.expenseWitnessVoucher344),'EXPENSE_WITNESS_344_VOUCHER_PRESERVED');
++          }
++        }
+       }
+-      receipt.forward320={count:qualifiedLedger.length,ledgerSha256:hash(JSON.stringify(qualifiedLedger)),observedLedgerSha256:hash(JSON.stringify(current.ledger)),sameIdentity:true,sourceTree,tails};
++      const observedLedgerSha256=hash(JSON.stringify(current.ledger));
++      receipt.forward320=expenseWitness
++        ? {count:334,ledgerSha256:signed.ledgerSha256,observedLedgerSha256:observed334LedgerSha256,sameIdentity:true,sourceTree,tails:tails.slice(0,39)}
++        : {count:qualifiedLedger.length,ledgerSha256:hash(JSON.stringify(qualifiedLedger)),observedLedgerSha256,sameIdentity:true,sourceTree,tails};
++      if (expenseWitness) {
++        receipt.expenseWitnessForward={count:qualifiedLedger.length,ledgerSha256:hash(JSON.stringify(qualifiedLedger)),sameIdentity:true,sourceTree,tails:tails.slice(39)};
++        receipt.pfqObserved346={rows:current.ledger.length,sha256:observedLedgerSha256};
++      }
+       receipt.forward320.fileGuards=await jsonSql(`SELECT coalesce(jsonb_agg(jsonb_build_object(
+         'name',t.tgname,'enabled',t.tgenabled='O','function',p.proname,'definer',p.prosecdef,'sha256',encode(sha256(convert_to(p.prosrc,'UTF8')),'hex')
+       ) ORDER BY t.tgname),'[]'::jsonb) FROM pg_trigger t JOIN pg_proc p ON p.oid=t.tgfoid
+@@ -1083,13 +1112,20 @@
+       if (forward320?.historicalTakeover) {
+         const a28=require('./historical-takeover-333-profile.cjs');
+         const signed=forward320.historicalSettlement ? require('./historical-settlement-334-profile.cjs') : null;
+-        need(hash(JSON.stringify(qualifiedLedger))===(signed?.ledgerSha256 ?? a28.ledgerSha256),'A28_LEDGER_AFTER_CONSUMER');
++        need(hash(JSON.stringify(qualifiedLedger))===(forward320.expenseWitness?.ledgerSha256 ?? signed?.ledgerSha256 ?? a28.ledgerSha256),'A28_LEDGER_AFTER_CONSUMER');
+         need(equal(await jsonSql(a28.catalogSql),receipt.historicalTakeover333Catalog),'A28_333_CATALOG_AFTER_CONSUMER');
+-        need(hash(JSON.stringify(afterConsumer.ledger))===receipt.forward320.observedLedgerSha256,'PFQ_334_OBSERVED_LEDGER_AFTER_CONSUMER');
++        need(hash(JSON.stringify(afterConsumer.ledger))===(receipt.pfqObserved346?.sha256??receipt.forward320.observedLedgerSha256),
++          forward320.expenseWitness?'PFQ_346_OBSERVED_LEDGER_AFTER_CONSUMER':'PFQ_334_OBSERVED_LEDGER_AFTER_CONSUMER');
+         receipt.historicalTakeoverCatalogAfterBusiness=true;
+         if (signed) {
+           need(equal(await jsonSql(signed.catalogSql),receipt.historicalSettlement334Catalog),'A28_334_CATALOG_AFTER_CONSUMER');
+           receipt.historicalSettlementCatalogAfterBusiness=true;
++        }
++        if (forward320.expenseWitness) {
++          const profile=forward320.expenseWitness;
++          need(equal(await jsonSql(profile.catalogSql),receipt.expenseWitnessCatalog[profile.count]),'EXPENSE_WITNESS_CATALOG_AFTER_CONSUMER');
++          need(equal(await jsonSql(profile.cashSql),receipt.expenseWitnessVoucher344),'EXPENSE_WITNESS_344_VOUCHER_AFTER_CONSUMER');
++          receipt.expenseWitnessCatalogAfterBusiness=true;
+         }
+       }
+       if(cleanupLegacy){
+@@ -1498,8 +1534,9 @@
+   const textDirect=target>=330;
+   const paymentRemainder=target>=331;
+   const upwardArchive=target>=332;
+-  const historicalTakeover=target===334;
+-  const historicalSettlement=target===334;
++  const historicalTakeover=target>=333;
++  const historicalSettlement=target>=334;
++  const expenseWitness=target===346?require('./expense-witness-346-profile.cjs'):null;
+   need(typeof sourceTree==='string' && /^[0-9a-f]{40}$/u.test(sourceTree) &&
+     typeof migrations==='string' && path.isAbsolute(migrations) &&
+     Array.isArray(tails) && tails.length===target-295,'FORWARD_320_SOURCE');
+@@ -1538,7 +1575,7 @@
+     need(hash(bytes)===row.sha256,'FORWARD_320_TAIL_DIGEST');
+     return bytes;
+   });
+-  return {sourceTree,tails:rows,sql,textDirect,paymentRemainder,upwardArchive,historicalTakeover,historicalSettlement};
++  return {sourceTree,tails:rows,sql,textDirect,paymentRemainder,upwardArchive,historicalTakeover,historicalSettlement,expenseWitness};
+ }
+
+ module.exports.withCombined320ContractPayment = (receipt,consume,material) => {
+@@ -1641,9 +1678,14 @@
+ module.exports.withCombined330MultiWitnessForProfile=(receipt,consume,material)=>
+   withCombinedOrdinaryLoan(receipt,consume,exactMultiWitness295,false,readForward320(material,330),'profile');
+
++module.exports.withCombinedExpenseWitness = (receipt,consume,material,target) => {
++  need(typeof consume==='function'&&material&&typeof material==='object'&&target===346,'PFQ_346_ARGUMENTS');
++  require('./expense-witness-346-profile.cjs').assertRuntimeBaseline(require('./workspace/services/api/prisma/migration-baseline.cjs'));
++  return withCombinedOrdinaryLoan(receipt,consume,exactMultiWitness295,false,readForward320(material,target));
++};
+ async function withPfq(receipt,mode,material) {
+   const current320=material!==undefined;
+-  const count={'current-320':329,'text-direct-330':330,'payment-remainder-331':331,'upward-archive-332':332,'historical-settlement-334':334}[material?.mode]??295;
++  const count={'current-320':329,'text-direct-330':330,'payment-remainder-331':331,'upward-archive-332':332,'historical-settlement-334':334,'expense-witness-346':346}[material?.mode]??295;
+   need(!current320||count>295,'PFQ_FORWARD_MODE');
+   need(receipt.purpose==='ORIGINAL_PFQ_EXACT_'+count && mode==='--pfq-'+receipt.lane+'-289-local','PFQ_295_SCOPE');
+   const pfqPositiveMode=pfqPositiveModes.includes(mode)?mode:undefined;
+@@ -1651,8 +1693,21 @@
+   need(pfqPositiveMode || pfqConflict || mode==='--pfq-app-289-local','PFQ_EXACT_289_MODE');
+   const consume=async context=>{
+     need(context.candidateTree===(current320?material.sourceTree:require('./scope.json').tree)&&receipt.orderedTails?.at(-1)?.size===295,'PFQ_EXACT_295_CONTEXT');
+-    if(count===334) require('./historical-settlement-334-profile.cjs')
+-      .assertFinanceInstallation(receipt,require('./contract-finance-source.json'));
++    if(count>=334) {
++      const source=require('./contract-finance-source.json');
++      const historical=require('./historical-settlement-334-profile.cjs');
++      const historyTails=count===346?source.tails.slice(0,source.predecessor334.migrationCount-source.predecessor.migrationCount):source.tails;
++      historical.assertFinanceInstallation(receipt,{...source,tails:historyTails});
++      if(count===346) {
++        need(equal(receipt.expenseWitnessForward,{
++          count,ledgerSha256:source.ledgerSha256,sameIdentity:true,sourceTree:source.sourceTree,
++          tails:source.tails.slice(historyTails.length).map(({name,sha256})=>({name,sha256}))
++        }),'PFQ_346_SUCCESSOR');
++        need(receipt.pfqObserved346?.rows===count+Number(Boolean(pfqConflict))&&
++          /^[0-9a-f]{64}$/u.test(receipt.pfqObserved346.sha256)&&
++          (receipt.pfqObserved346.sha256===source.ledgerSha256)===!pfqConflict,'PFQ_346_OBSERVED_LEDGER');
++      }
++    }
+     if(mode==='--pfq-app-289-local')await require('./workspace/services/api/prisma/task12-pfq-app.cjs').runPfqApp(context,receipt);
+     else if(pfqConflict){
+       const observed=receipt.pfqRecovery;
+@@ -1681,6 +1736,7 @@
+     assertOutsideWitness(289,JSON.parse((await context.sql(outsideWitnessSql(289,current320,count>=332))).stdout.trim()));
+     receipt.pfqPostconsume={count,exactB7:true};
+   };
++  if(count===346) return module.exports.withCombinedExpenseWitness(receipt,consume,material,count);
+   const install=count===334?module.exports.withCombined334HistoricalSettlement:count===332?module.exports.withCombined332UpwardArchive:
+     count===331?module.exports.withCombined331PaymentRemainder:
+     count===330?module.exports.withCombined330TextAgreement:module.exports.withCombined320ContractPayment;
+--- a/entry.cjs
++++ b/entry.cjs
+@@ -3,10 +3,11 @@
+ const {withPfq295,withPfq320}=require('./installer.cjs');
+ const source=require('./contract-finance-source.json');
+ const requestedMode=process.argv[3];
+-const count={'--current-320':329,'--text-direct-330':330,'--payment-remainder-331':331,'--upward-archive-332':332,'--historical-settlement-334':334}[requestedMode]??295;
++const count={'--current-320':329,'--text-direct-330':330,'--payment-remainder-331':331,'--upward-archive-332':332,'--historical-settlement-334':334,'--expense-witness-346':346}[requestedMode]??295;
+ const current320=count>295;
+ const archiveProfile=count===332?require('./upward-archive-332-profile.cjs'):undefined;
+-const historicalProfile=count===334?require('./historical-settlement-334-profile.cjs'):undefined;
++const expenseWitness=count===346?require('./expense-witness-346-profile.cjs'):undefined;
++const historicalProfile=count>=334?require('./historical-settlement-334-profile.cjs'):undefined;
+ const lane=process.argv[2];
+ const expected={
+   'pre115-clean':{prefix:114},
+@@ -27,7 +28,8 @@
+     assert.equal(source.mode,requestedMode.slice(2));
+     assert.equal(source.predecessor.migrationCount,295);
+     if(archiveProfile) archiveProfile.assertSource(source,source.sourceSha,require('./multi-witness.cjs').final);
+-    if(historicalProfile) historicalProfile.assertSource(source,require('./multi-witness.cjs').final);
++    if(expenseWitness) expenseWitness.assertSource(source,require('./multi-witness.cjs').final);
++    else if(historicalProfile) historicalProfile.assertSource(source,require('./multi-witness.cjs').final);
+     return withPfq320(receipt,mode,{
+       mode:source.mode,sourceTree:source.sourceTree,migrations:'/qualification/workspace/services/api/prisma/migrations',tails:source.tails
+     });
+@@ -40,16 +42,20 @@
+   assert.equal(receipt.combinedAfterBusiness?.exactB7,true);
+   if(current320) {
+     assert.equal(receipt.installOnly295.ledgerSha256,source.predecessor.ledgerSha256);
+-    assert.equal(receipt.forward320.count,count);
++    assert.equal(receipt.forward320.count,expenseWitness?source.predecessor334.migrationCount:count);
+     assert.equal(receipt.forward320.sourceTree,source.sourceTree);
+-    assert.equal(receipt.forward320.ledgerSha256,source.ledgerSha256);
++    assert.equal(receipt.forward320.ledgerSha256,expenseWitness?source.predecessor334.ledgerSha256:source.ledgerSha256);
+     assert.equal(receipt.forward320.sameBaseB7,true);
+     assert.equal(receipt.combinedAfterBusiness.count,count);
+     assert.equal(receipt.combinedAfterBusiness.ledgerSha256,source.ledgerSha256);
+     assert.equal(receipt.combinedAfterBusiness.sameIdentity,true);
+     if(archiveProfile) archiveProfile.assertInstallation(receipt,source);
+     if(historicalProfile){
+-      historicalProfile.assertFinanceInstallation(receipt,source);
++      if(expenseWitness) {
++        assert.equal(receipt.expenseWitnessCatalogAfterBusiness,true);
++      } else {
++        historicalProfile.assertFinanceInstallation(receipt,source);
++      }
+       assert.equal(receipt.historicalTakeoverCatalogAfterBusiness,true);
+       assert.equal(receipt.historicalSettlementCatalogAfterBusiness,true);
+       assert.match(receipt.forward320.observedLedgerSha256,/^[a-f0-9]{64}$/u);

@@ -7,7 +7,6 @@ import type {
   ProjectFinancingQuotaReviewDecision,
   ProjectFinancingQuotaReviewExecutionState,
   ProjectFinancingQuotaReviewResult,
-  ProjectFinancingQuotaRequestResult,
   ProjectFinancingQuotaTerminationExecutionState,
   ProjectFinancingQuotaTerminationResult,
   ProjectFinancingQuotaWorkbenchReadModel
@@ -18,10 +17,8 @@ const quotaRuntime = vi.hoisted(() => ({
   executeTermination: vi.fn(),
   executeReview: vi.fn(),
   fetchTermination: vi.fn(),
-  fetchWorkbench: vi.fn(),
   fetchReview: vi.fn(),
   review: vi.fn(),
-  request: vi.fn(),
   terminate: vi.fn()
 }));
 
@@ -45,19 +42,12 @@ vi.mock("../../../api/project-financing-quota.api", async (importOriginal) => {
     executeProjectFinancingQuotaReviewAction: quotaRuntime.executeReview,
     fetchProjectFinancingQuotaTerminationCapability:
       quotaRuntime.fetchTermination,
-    fetchProjectFinancingQuotaRequestCapability: quotaRuntime.fetchWorkbench,
     fetchProjectFinancingQuotaReviewCapability: quotaRuntime.fetchReview,
-    reviewProjectFinancingQuotaWithPreflight: quotaRuntime.review,
-    requestProjectFinancingQuotaWithUpload: quotaRuntime.request
+    reviewProjectFinancingQuotaWithPreflight: quotaRuntime.review
   };
 });
 
 type MutableValue<T> = { value: T };
-type RequestContext = {
-  projectId: string;
-  projectGeneration: number;
-  idempotencyKey: string;
-};
 type ReviewContext = {
   projectId: string;
   quotaId: string;
@@ -79,18 +69,6 @@ type TerminationContext = {
 };
 type TerminationOperationContext = TerminationContext & { operationId: number };
 type PanelBindings = {
-  openRequest: () => Promise<void>;
-  requestBusy: MutableValue<boolean>;
-  requestContext: MutableValue<RequestContext>;
-  requestError: MutableValue<string>;
-  requestLaunchError: MutableValue<string>;
-  requestFiles: MutableValue<Array<{ raw?: File }>>;
-  requestForm: MutableValue<{
-    amountYuan: string;
-    reason: string;
-    validUntil: string;
-  }>;
-  requestVisible: MutableValue<boolean>;
   openReview: (
     row: ProjectFinancingQuotaWorkbenchReadModel["rows"][number],
     decision: ProjectFinancingQuotaReviewDecision
@@ -106,7 +84,6 @@ type PanelBindings = {
   reviewVisible: MutableValue<boolean>;
   submitApproveReview: () => Promise<unknown>;
   submitRejectReview: () => Promise<unknown>;
-  submitRequest: () => Promise<unknown>;
   openTermination: (
     row: ProjectFinancingQuotaWorkbenchReadModel["rows"][number]
   ) => Promise<void>;
@@ -304,18 +281,6 @@ function terminationResult(
   };
 }
 
-function result(projectId: string): ProjectFinancingQuotaRequestResult {
-  return {
-    receipt: {
-      kind: "created",
-      idempotencyKey: "11111111-1111-4111-8111-111111111111",
-      projectId,
-      quotaId: "quota-1"
-    },
-    workbench: workbench(projectId)
-  };
-}
-
 function deferred<T>() {
   let resolve!: (value: T | PromiseLike<T>) => void;
   const promise = new Promise<T>((accept) => {
@@ -446,124 +411,14 @@ function setupPanel(projectId = "project-a") {
   return { bindings, emit, invokeBeforeUnmount, props, scope };
 }
 
-describe("project financing quota F1 panel", () => {
-  beforeEach(() => {
-    quotaRuntime.beforeUnmount.mockReset();
-    quotaRuntime.executeTermination.mockReset();
-    quotaRuntime.executeReview.mockReset();
-    quotaRuntime.fetchTermination.mockReset();
-    quotaRuntime.fetchWorkbench.mockReset();
-    quotaRuntime.fetchReview.mockReset();
-    quotaRuntime.review.mockReset();
-    quotaRuntime.request.mockReset();
-    quotaRuntime.terminate.mockReset();
-    installReviewExecutorMock();
-    installTerminationExecutorMock();
-  });
-
-  it("freezes one dialog attempt and emits only the authoritative refreshed workbench", async () => {
-    quotaRuntime.fetchWorkbench.mockResolvedValueOnce(workbench("project-a"));
-    quotaRuntime.request.mockResolvedValueOnce(result("project-a"));
-    const { bindings, emit, scope } = setupPanel();
-
-    await bindings.openRequest();
-    expect(bindings.requestVisible.value).toBe(true);
-    expect(bindings.requestContext.value).toMatchObject({
-      projectId: "project-a",
-      projectGeneration: 0
-    });
-    expect(bindings.requestContext.value.idempotencyKey).toMatch(
-      /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu
-    );
-    bindings.requestForm.value = {
-      amountYuan: "50000",
-      reason: "保障现场付款",
-      validUntil: ""
-    };
-    bindings.requestFiles.value = [{
-      raw: new File(["voucher"], "financing.pdf", {
-        type: "application/pdf"
-      })
-    }];
-
-    await bindings.submitRequest();
-
-    expect(emit).toHaveBeenCalledWith("updated", expect.objectContaining({
-      project: expect.objectContaining({ id: "project-a" })
-    }));
-    expect(bindings.requestVisible.value).toBe(false);
-    scope.stop();
-  });
-
-  it("does not publish a late result after the project switches", async () => {
-    const pending = deferred<ProjectFinancingQuotaRequestResult>();
-    quotaRuntime.fetchWorkbench.mockResolvedValueOnce(workbench("project-a"));
-    quotaRuntime.request.mockReturnValueOnce(pending.promise);
-    const { bindings, emit, props, scope } = setupPanel();
-
-    await bindings.openRequest();
-    const submission = bindings.submitRequest();
-    const requestInput = quotaRuntime.request.mock.calls[0]?.[1];
-    props.projectId = "project-b";
-    props.workbench = workbench("project-b");
-    await nextTick();
-
-    expect(requestInput.isCurrent(requestInput.context)).toBe(false);
-    pending.resolve(result("project-a"));
-    await submission;
-    await flushPromises();
-
-    expect(emit).not.toHaveBeenCalledWith("updated", expect.anything());
-    expect(bindings.requestVisible.value).toBe(false);
-    scope.stop();
-  });
-
-  it("does not publish a late result after unmount", async () => {
-    const pending = deferred<ProjectFinancingQuotaRequestResult>();
-    quotaRuntime.fetchWorkbench.mockResolvedValueOnce(workbench("project-a"));
-    quotaRuntime.request.mockReturnValueOnce(pending.promise);
-    const { bindings, emit, invokeBeforeUnmount, scope } = setupPanel();
-
-    await bindings.openRequest();
-    const submission = bindings.submitRequest();
-    const requestInput = quotaRuntime.request.mock.calls[0]?.[1];
-    invokeBeforeUnmount();
-
-    expect(requestInput.isCurrent(requestInput.context)).toBe(false);
-    pending.resolve(result("project-a"));
-    await submission;
-    await flushPromises();
-
-    expect(emit).not.toHaveBeenCalledWith("updated", expect.anything());
-    scope.stop();
-  });
-
-  it("normalizes a malformed fresh capability response before opening the dialog", async () => {
-    quotaRuntime.fetchWorkbench.mockRejectedValueOnce(
-      new SyntaxError("Unexpected end of JSON input")
-    );
-    const { bindings, scope } = setupPanel();
-
-    await bindings.openRequest();
-
-    expect(bindings.requestVisible.value).toBe(false);
-    expect(bindings.requestLaunchError.value).toBe(
-      "项目垫资额度申请资格数据异常，请刷新后重试"
-    );
-    scope.stop();
-  });
-});
-
 describe("project financing quota F2 review panel", () => {
   beforeEach(() => {
     quotaRuntime.beforeUnmount.mockReset();
     quotaRuntime.executeTermination.mockReset();
     quotaRuntime.executeReview.mockReset();
     quotaRuntime.fetchTermination.mockReset();
-    quotaRuntime.fetchWorkbench.mockReset();
     quotaRuntime.fetchReview.mockReset();
     quotaRuntime.review.mockReset();
-    quotaRuntime.request.mockReset();
     quotaRuntime.terminate.mockReset();
     installReviewExecutorMock();
     installTerminationExecutorMock();
@@ -794,10 +649,8 @@ describe("project financing quota F3 termination panel", () => {
     quotaRuntime.executeTermination.mockReset();
     quotaRuntime.executeReview.mockReset();
     quotaRuntime.fetchTermination.mockReset();
-    quotaRuntime.fetchWorkbench.mockReset();
     quotaRuntime.fetchReview.mockReset();
     quotaRuntime.review.mockReset();
-    quotaRuntime.request.mockReset();
     quotaRuntime.terminate.mockReset();
     installReviewExecutorMock();
     installTerminationExecutorMock();

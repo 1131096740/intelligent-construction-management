@@ -1,0 +1,29 @@
+--- installer.cjs
++++ installer.cjs
+@@ -243 +243,2 @@
+-  if(purpose===installOnly290) need(!probeOnly && !consume && release===outsideRelease,'INSTALL_ONLY_290_PREDECESSOR');
++  if(purpose===installOnly290) need(!probeOnly && release===outsideRelease,'INSTALL_ONLY_290_PREDECESSOR');
++  let consumerLedger;
+@@ -584,0 +586 @@
++      consumerLedger=expected;
+@@ -619 +621 @@
+-      enter('EXACT_'+release.count+'_CONSUMER');
++      enter(consumerLedger ? 'EXACT_290_POL109_CONSUMER' : 'EXACT_'+release.count+'_CONSUMER');
+@@ -638 +640 @@
+-      need(equal(afterConsumer.ledger,ledger) && ['database','databaseOid','namespaceOid','systemIdentifier','ownerOid','actorOid','sessionActor'].every(key => afterConsumer[key] === roleIdentity[key]), 'CONSUMER_DATABASE_CONTINUITY');
++      need(equal(afterConsumer.ledger,consumerLedger ?? ledger) && ['database','databaseOid','namespaceOid','systemIdentifier','ownerOid','actorOid','sessionActor'].every(key => afterConsumer[key] === roleIdentity[key]), 'CONSUMER_DATABASE_CONTINUITY');
+@@ -639,0 +642,5 @@
++      if (consumerLedger) {
++        const successor=require('./successor.cjs');
++        assertOutsideWitness(289,await jsonSql(outsideWitnessSql(289)));
++        need(successor.exactCatalog(await jsonSql(successor.catalogSql)),'SETTLEMENT_290_CATALOG_CONTINUITY');
++      }
+@@ -929 +936 @@
+-module.exports.withOutside290InstallOnly = receipt => {
++module.exports.withOutside290Pol109 = receipt => {
+@@ -935 +942,4 @@
+-  return installer(receipt,false,undefined,outsideRelease,installOnly290);
++  const proof=require('./workspace-proof.cjs').verifyWorkspace();
++  return installer(receipt,false,async context=>{
++    await require('./workspace/services/api/prisma/task12-pol109-ci.cjs').runPol109(context,receipt,proof);
++  },outsideRelease,installOnly290);

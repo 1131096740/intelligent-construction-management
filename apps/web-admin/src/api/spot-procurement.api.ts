@@ -311,17 +311,6 @@ export interface SpotProcurementReceiptSummaryReadModel {
   submittedAt: string | null;
   lockedAt: string | null;
   discrepancyStatus?: string | null;
-  workflow?: {
-    stage: string;
-    stageLabel: string;
-    resetAction: {
-      key: "reset_receipt_draft";
-      label: string;
-      enabled: boolean;
-      disabledReason: string | null;
-      expectedRevision: number;
-    };
-  };
 }
 
 export interface SpotProcurementReceiptWorkbenchReadModel {
@@ -333,7 +322,10 @@ export interface SpotProcurementReceiptWorkbenchReadModel {
   updatedAt: string;
 }
 
+export interface SpotProcurementPurchaseTask {pending: boolean; canHandle: boolean; label: string; requiresReceipt: false; note: string | null}
+
 export interface SpotProcurementListItemReadModel {
+  purchaseTask?: SpotProcurementPurchaseTask;
   id: string;
   code: string;
   project: SpotProcurementProjectSummary;
@@ -361,7 +353,10 @@ export interface SpotProcurementListItemReadModel {
   applicationName?: string;
   purchaserName?: string;
   purchaserDepartment?: string;
-  requestedArrivalAt?: string;
+  requestedArrivalAt?: string | null;
+  requestProtocolVersion?: number;
+  draftRevision?: number;
+  estimatedTotalAmount?: string | null;
 }
 
 export interface SpotProcurementListReadModel {
@@ -378,6 +373,8 @@ export interface SpotProcurementListReadModel {
     total: number;
     byStatus: Record<string, number>;
   };
+  columns?: SpotProcurementLedgerColumn[];
+  filters?: Record<string, string | null>;
 }
 
 export interface SpotProcurementApplicationTextSuggestionReadModel {
@@ -494,7 +491,10 @@ export interface SpotProcurementVersionReadModel {
   applicationName?: string;
   purchaserName?: string;
   purchaserDepartment?: string;
-  requestedArrivalAt?: string;
+  requestedArrivalAt?: string | null;
+  requestProtocolVersion?: number;
+  draftRevision?: number;
+  estimatedTotalAmount?: string | null;
 }
 
 export interface SpotProcurementLineReadModel {
@@ -502,8 +502,10 @@ export interface SpotProcurementLineReadModel {
   sortOrder: number;
   materialName: string;
   specification: string | null;
-  unit: string;
-  quantity: string;
+  unit: string | null;
+  quantity: string | null;
+  estimatedUnitPrice?: string | null;
+  estimatedAmount?: string | null;
   invoiceMode: InvoiceMode;
   invoiceType: VatInvoiceType | null;
   vatRateOptionId: string | null;
@@ -544,6 +546,7 @@ export interface SpotProcurementPaymentInvoiceReadModel {
 }
 
 export interface SpotProcurementDetailReadModel {
+  purchaseTask?: SpotProcurementPurchaseTask;
   procurement: {
     id: string;
     code: string;
@@ -625,6 +628,9 @@ export interface SpotProcurementDetailReadModel {
 
 export interface SpotProcurementPaymentExecutionReadModel {
   id: string;
+  actualPayerCompanyId?: string;
+  actualPayerCompanyName?: string | null;
+  relationshipEntryId?: string | null;
   amountCents: string;
   paidAt: string;
   paymentMethod: SpotProcurementPaymentMethod;
@@ -729,6 +735,8 @@ export interface SpotProcurementPaymentDetailReadModel {
     executedAmountCents: string;
     reservationStatus: string | null;
   };
+  originalDebtorCompanyId?: string | null;
+  originalDebtorCompanyName?: string | null;
   executions: SpotProcurementPaymentExecutionReadModel[];
   evidenceFiles: EvidenceFileReadModel[];
   invoiceCoverage?: SpotProcurementInvoiceCoverageReadModel;
@@ -836,10 +844,20 @@ export interface SpotProcurementListQuery {
   projectId?: string;
   status?: SpotProcurementStatus;
   keyword?: string;
+  dateFrom?: string;
+  dateTo?: string;
+  sort?: string;
+  columns?: string;
   page?: number;
   pageSize?: number;
   view?: "active" | "ended";
   surface?: "procurement" | "receipt";
+}
+
+export interface SpotProcurementLedgerColumn {
+  key: string;
+  header: string;
+  required: boolean;
 }
 
 export interface SpotProcurementPaymentListQuery {
@@ -852,8 +870,10 @@ export interface SpotProcurementPaymentListQuery {
 export interface SpotProcurementLinePayload {
   materialName: string;
   specification?: string;
-  unit: string;
-  quantity: string;
+  unit?: string | null;
+  quantity?: string | null;
+  estimatedUnitPrice?: string | null;
+  estimatedAmount?: string | null;
   note?: string;
 }
 
@@ -863,14 +883,17 @@ export interface SpotProcurementAttachmentPayload {
 }
 
 export interface SpotProcurementDraftPayload {
+  expectedDraftRevision?: number;
+  expectedVersionId?: string;
   entryDefinitionVersions?: {
     application: number;
     line: number;
   };
-  applicationDepartment: string;
-  applicationName: string;
-  requestedArrivalAt: string;
-  reason: string;
+  applicationDepartment?: string;
+  applicationName?: string;
+  requestedArrivalAt?: string | null;
+  estimatedTotalAmount?: string | null;
+  reason?: string;
   note?: string | null;
   lines: SpotProcurementLinePayload[];
   attachments?: SpotProcurementAttachmentPayload[];
@@ -891,6 +914,8 @@ export interface CreateSpotProcurementVersionPayload extends SpotProcurementDraf
 }
 
 export interface SpotProcurementReviewDecisionPayload {
+  selfReviewReason?: string;
+  confirmationPassword?: string;
   decision: SpotProcurementReviewDecision;
   comment?: string;
 }
@@ -908,6 +933,9 @@ export type SpotProcurementReviewActionDecision =
   | "return_to_applicant";
 
 export interface SpotProcurementReviewActionContext {
+  requiresSelfReviewConfirmation?: boolean;
+  selfReviewReason?: string;
+  confirmationPassword?: string;
   ownerScope: string;
   routeGeneration: number;
   detailEpoch: number;
@@ -1184,7 +1212,14 @@ export interface UpdateSpotProcurementPaymentDraftPayload {
   merchantPaymentProofFileId?: string | null;
 }
 
+export interface SpotRegisteredFundingInput {
+  scopeKey: string;
+  expectedRegistrationId: string;
+  sourceAllocations: Array<{sourceBatchId: string; amountCents: string}>;
+}
+
 export interface RecordSpotProcurementPaymentExecutionPayload {
+  registeredFunding?: SpotRegisteredFundingInput;
   amountCents: string;
   paidAt: string;
   paymentMethod: SpotProcurementPaymentMethod;
@@ -1201,28 +1236,9 @@ export interface UpdateSpotProcurementPaymentPayerPayload {
   paymentMethods?: SpotProcurementPaymentMethod[];
 }
 
-export interface UpdateSpotProcurementReceiptDraftPayload {
-  note?: string | null;
-  lines: Array<{
-    procurementLineId: string;
-    qualifiedQuantity: string;
-    unqualifiedQuantity: string;
-    unqualifiedReason?: string;
-    freeGiftQuantity: string;
-    replenishmentPending: boolean;
-    discrepancyNote?: string;
-  }>;
-}
-
-export interface AttachSpotProcurementReceiptPhotoPayload {
-  originalFileId: string;
-  source: "camera" | "album";
-  category: "material_scene" | "delivery_note";
-  note?: string;
-  appendReason?: string;
-}
-
 export interface SpotProcurementWriteReadModel {
+  draftRevision?: number;
+  requestProtocolVersion?: number;
   procurementId: string;
   projectId: string;
   code: string;
@@ -1358,20 +1374,6 @@ export function uploadSpotProcurementExecutionVoucherFile(
   );
 }
 
-export function uploadSpotProcurementReceiptPhotoFile(
-  procurementId: string,
-  file: Blob,
-  fileName: string,
-  idempotencyKey?: string
-) {
-  return uploadSpotProcurementPrivateFile(
-    `/spot-procurements/${encodeURIComponent(procurementId)}/receipt-photo-file-uploads`,
-    file,
-    fileName,
-    idempotencyKey
-  );
-}
-
 export function uploadSpotProcurementRefundVoucherFile(
   procurementId: string,
   file: Blob,
@@ -1410,6 +1412,45 @@ export function fetchSpotProcurements(query: SpotProcurementListQuery = {}) {
   return readJson<SpotProcurementListReadModel>(
     withQuery("/spot-procurements", query)
   );
+}
+
+export async function downloadSpotProcurementLedger(query: SpotProcurementListQuery = {}) {
+  const params = new URLSearchParams();
+  const entries: Array<[string, string | number | undefined]> = [];
+  // 只上送业务筛选，未知字段不进入导出请求。
+  if (typeof query === "object" && query !== null) {
+    for (const [key, value] of Object.entries(query)) {
+      if (value === undefined) continue;
+      const text = String(value).trim();
+      if (text === "") continue;
+      entries.push([key, text]);
+    }
+  }
+  for (const [key, value] of entries) params.set(key, String(value));
+  const search = params.toString();
+  const response = await apiFetch(
+    `/spot-procurements/ledger-export${search ? `?${search}` : ""}`
+  );
+  if (!response.ok) {
+    const errorBody = (await response.json().catch(() => ({}))) as { message?: unknown };
+    throw new Error(
+      typeof errorBody.message === "string" && errorBody.message.trim()
+        ? errorBody.message
+        : "导出${fallback.replace('.xlsx','')}失败"
+    );
+  }
+  const blob = await response.blob();
+  const disposition = response.headers.get("Content-Disposition") ?? "";
+  const match = /filename\*=UTF-8''([^;]+)/u.exec(disposition);
+  const fileName = match ? decodeURIComponent(match[1]) : "${fallback}";
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = fileName;
+  document.body.appendChild(anchor);
+  anchor.click();
+  anchor.remove();
+  URL.revokeObjectURL(url);
 }
 
 export function fetchSpotProcurementApplicationTextSuggestions(
@@ -1459,69 +1500,10 @@ export function fetchSpotProcurementReceipt(procurementId: string) {
   );
 }
 
-export function updateSpotProcurementReceiptDraft(
-  procurementId: string,
-  body: UpdateSpotProcurementReceiptDraftPayload
-) {
-  return patchJson<unknown>(
-    `/spot-procurements/${encodeURIComponent(procurementId)}/receipt/draft`,
-    body
-  );
-}
-
-export function attachSpotProcurementReceiptPhoto(
-  procurementId: string,
-  body: AttachSpotProcurementReceiptPhotoPayload
-) {
-  return postJson<unknown>(
-    `/spot-procurements/${encodeURIComponent(procurementId)}/receipt/photos`,
-    body
-  );
-}
-
-export function deleteSpotProcurementReceiptPhoto(procurementId: string, photoId: string) {
-  return deleteJson<unknown>(
-    `/spot-procurements/${encodeURIComponent(procurementId)}/receipt/photos/${encodeURIComponent(photoId)}`
-  );
-}
-
-export function submitSpotProcurementReceipt(procurementId: string) {
-  return postJson<unknown>(
-    `/spot-procurements/${encodeURIComponent(procurementId)}/receipt/submission`
-  );
-}
-
-export function createSpotProcurementReceiptDelegation(procurementId: string, delegateUserId: string) {
-  return postJson<unknown>(
-    `/spot-procurements/${encodeURIComponent(procurementId)}/receipt/delegations`,
-    { delegateUserId }
-  );
-}
-
-export function reviewSpotProcurementReceipt(
-  procurementId: string,
-  body: { decision: "approved" | "returned"; comment?: string }
-) {
-  return postJson<unknown>(
-    `/spot-procurements/${encodeURIComponent(procurementId)}/receipt/review`,
-    body
-  );
-}
-
-export function revokeSpotProcurementReceiptReview(
-  procurementId: string,
-  body: { targetReviewId: string; reason: string; confirmReviewRevocation: true }
-) {
-  return postJson<unknown>(
-    `/spot-procurements/${encodeURIComponent(procurementId)}/receipt/review-revocation`,
-    body
-  );
-}
-
 export function createSpotProcurementDiscrepancy(
   procurementId: string,
   body: {
-    operation: "initiate" | "confirm";
+    operation: "confirm";
     resolutionType?: "replenishment" | "full_refund";
     note?: string;
   }
@@ -1747,9 +1729,9 @@ export function createSpotProcurementVersion(
   );
 }
 
-export function submitSpotProcurement(procurementId: string) {
+export function submitSpotProcurement(procurementId: string, body?: {expectedDraftRevision?: number; expectedVersionId?: string}) {
   return postJson<SpotProcurementWriteReadModel>(
-    `/spot-procurements/${encodeURIComponent(procurementId)}/submission`
+    `/spot-procurements/${encodeURIComponent(procurementId)}/submission`, body
   );
 }
 
@@ -1823,6 +1805,7 @@ function reviewSpotProcurementActionPayload(
   return {
     decision,
     ...(decision !== "approve" ? { comment: context.comment } : {}),
+    ...(context.requiresSelfReviewConfirmation ? {selfReviewReason: context.selfReviewReason, confirmationPassword: context.confirmationPassword} : {}),
     expectedVersionId: context.expectedVersionId,
     expectedApprovalInstanceId: context.expectedApprovalInstanceId,
     expectedNodeIndex: context.expectedNodeIndex
@@ -1837,6 +1820,10 @@ function normalizeSpotProcurementReviewAction(
   const expectedVersionId = input.expectedVersionId.trim();
   const expectedApprovalInstanceId =
     input.expectedApprovalInstanceId.trim();
+  const requiresSelfReviewConfirmation = input.requiresSelfReviewConfirmation === true;
+  const selfReviewReason = requiresSelfReviewConfirmation ? input.selfReviewReason?.trim() : undefined;
+  const confirmationPassword = requiresSelfReviewConfirmation ? input.confirmationPassword : undefined;
+  if (requiresSelfReviewConfirmation && (!selfReviewReason || !confirmationPassword?.trim())) throw new Error("请填写自审原因并输入本人当前密码");
   const comment =
     input.decision !== "approve" ? input.comment?.trim() ?? "" : undefined;
   if (
@@ -1862,6 +1849,7 @@ function normalizeSpotProcurementReviewAction(
     );
   }
   return Object.freeze({
+    ...(requiresSelfReviewConfirmation ? {requiresSelfReviewConfirmation, selfReviewReason, confirmationPassword} : {}),
     ownerScope,
     routeGeneration: input.routeGeneration,
     detailEpoch: input.detailEpoch,
@@ -1888,6 +1876,7 @@ function assertSpotProcurementReviewPreflight(
     preflight.procurement.id !== context.procurementId ||
     preflight.currentVersion.id !== context.expectedVersionId ||
     enabledReviewActions.length !== 1 ||
+    Boolean(enabledReviewActions[0]?.requiresSelfReviewConfirmation) !== Boolean(context.requiresSelfReviewConfirmation) ||
     coordinates?.expectedVersionId !== context.expectedVersionId ||
     coordinates.expectedApprovalInstanceId !==
       context.expectedApprovalInstanceId ||
@@ -2322,16 +2311,6 @@ export function abandonSpotProcurementPaymentDraft(
   );
 }
 
-export function resetSpotProcurementReceiptDraft(
-  procurementId: string,
-  expectedRevision: number
-) {
-  return postJson<unknown>(
-    `/spot-procurements/${encodeURIComponent(procurementId)}/receipt/draft-reset`,
-    { expectedRevision }
-  );
-}
-
 export function recordSpotProcurementPaymentExecution(
   paymentId: string,
   body: RecordSpotProcurementPaymentExecutionPayload
@@ -2354,12 +2333,6 @@ async function postJson<T>(path: string, body?: unknown): Promise<T> {
 
 async function patchJson<T>(path: string, body: unknown): Promise<T> {
   return writeJson<T>(path, "PATCH", body);
-}
-
-async function deleteJson<T>(path: string): Promise<T> {
-  const response = await apiFetch(path, { method: "DELETE" });
-  await ensureOk(response, "提交零星采购操作失败");
-  return response.json() as Promise<T>;
 }
 
 async function writeJson<T>(

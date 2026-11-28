@@ -1,6 +1,11 @@
 import {
   isContractBillCustomColumn,
   normalizeTaxRatePercent,
+  normalizeBusinessAmount,
+  businessAmountFromLegacyCents,
+  calculateBusinessLineTaxAmounts,
+  calculateBusinessLineAmount,
+  sumBusinessAmounts,
   type DetailActionReadModel
 } from "@jiangkong/shared-domain";
 import type {
@@ -15,8 +20,13 @@ import type {
   WorkbenchBillRemainderCancellationFacts,
   WorkbenchBillRow
 } from "./contract-bill-editor";
+import { fourDecimalInputMessage } from "./contract-bill-editor";
 
 export interface ContractBillCandidateRow {
+  numericProtocolVersion?: number;
+  taxInclusiveAmountYuan?: string | null;
+  restoreRef?: { saveIntentKey: string; oldRowKey: string };
+  restoreOriginalValues?: Record<string, unknown>;
   clientRowKey: string;
   rowKey?: string;
   itemCode: string;
@@ -27,7 +37,9 @@ export interface ContractBillCandidateRow {
   unitPrice: string;
   taxRatePercent: string;
   taxRateSource: "version_default" | "row_override";
-  precisionPolicy?: "legacy" | "two_decimal";
+  precisionPolicy?: "legacy" | "two_decimal" | "four_decimal";
+  numericSource?: string;
+  numericReviewStatus?: string;
   initialQuantity?: string;
   initialUnitPrice?: string;
   initialTaxRatePercent?: string;
@@ -49,6 +61,7 @@ export interface ContractBillCellError {
 }
 
 export type AuthoritativeBillTotals =
+  | { kind: "decimal"; taxInclusiveAmountYuan: string | null; taxExclusiveAmountYuan: string | null; taxAmountYuan: string | null }
   | {
       kind: "authoritative";
       taxInclusiveAmountCents: string;
@@ -119,6 +132,9 @@ export function copyBillCandidateRow(
     rowKey: undefined,
     customData: { ...source.customData }
   };
+  delete copied.taxInclusiveAmountYuan;
+  delete copied.restoreRef;
+  delete copied.restoreOriginalValues;
   delete copied.precisionPolicy;
   delete copied.initialQuantity;
   delete copied.initialUnitPrice;
@@ -267,41 +283,43 @@ export function validateBillCandidateRows(
   );
 
   for (const row of rows) {
+    const decimal = (bill.inputNumericProtocolVersion ?? bill.numericProtocolVersion) === 2;
     const retainsLegacyPrecision = hasUnchangedLegacyPricingFacts(row, bill);
     if (!row.itemName.trim()) addCellError(errors, row, "itemName", "请填写项目名称");
     if (!row.unit.trim()) addCellError(errors, row, "unit", "请填写单位");
 
     const quantity = row.quantity.trim();
-    if (!quantity && !isUnlimitedFrameworkBill(bill)) {
+    if (!quantity && !decimal && !isUnlimitedFrameworkBill(bill)) {
       addCellError(errors, row, "quantity", "请填写数量");
     } else if (quantity) {
-      const message = positiveTwoDecimalMessage(quantity, "数量");
+      const message = decimal ? fourDecimalInputMessage(quantity, "数量", true) : positiveTwoDecimalMessage(quantity, "数量");
       if (message && !retainsLegacyPrecision) {
         addCellError(errors, row, "quantity", message);
       }
     }
 
     const unitPrice = row.unitPrice.trim();
-    if (!unitPrice) {
+    if (!unitPrice && !decimal) {
       addCellError(errors, row, "unitPrice", "请填写含税单价");
     } else {
-      const message = positiveTwoDecimalMessage(unitPrice, "含税单价");
+      const message = decimal ? fourDecimalInputMessage(unitPrice, "含税单价", false) : positiveTwoDecimalMessage(unitPrice, "含税单价");
       if (message && !retainsLegacyPrecision) {
         addCellError(errors, row, "unitPrice", message);
       }
     }
 
     const taxRate = effectiveTaxRate(row, bill);
-    if (!taxRate) {
+    if (!taxRate && !decimal) {
       addCellError(
         errors,
         row,
         "taxRatePercent",
         row.taxRateSource === "row_override" ? "请填写例外税率" : "请先填写合同税率"
       );
-    } else {
+    } else if (taxRate) {
       try {
         normalizeTaxRatePercent(taxRate);
+        if (decimal && !retainsLegacyPrecision) normalizeBusinessAmount(taxRate);
       } catch (error) {
         addCellError(
           errors,
@@ -324,9 +342,11 @@ export function validateBillCandidateRows(
 export function authoritativeBillTotals(
   bill: Pick<
     WorkbenchBill,
-    "taxInclusiveAmountCents" | "taxExclusiveAmountCents" | "taxAmountCents"
+    "numericProtocolVersion" | "taxInclusiveAmountYuan" | "taxExclusiveAmountYuan" | "taxAmountYuan" | "taxInclusiveAmountCents" | "taxExclusiveAmountCents" | "taxAmountCents"
   >
 ): AuthoritativeBillTotals {
+  if (bill.numericProtocolVersion === 2) return { kind: "decimal", taxInclusiveAmountYuan: bill.taxInclusiveAmountYuan ?? null,
+    taxExclusiveAmountYuan: bill.taxExclusiveAmountYuan ?? null, taxAmountYuan: bill.taxAmountYuan ?? null };
   const inclusive = bill.taxInclusiveAmountCents;
   const exclusive = bill.taxExclusiveAmountCents;
   const tax = bill.taxAmountCents;
@@ -348,8 +368,8 @@ export function authoritativeBillTotals(
   };
 }
 
-export function netUnitPriceDisplay(value: string | null | undefined): string {
-  return decimalDisplay(value, 2);
+export function netUnitPriceDisplay(value: string | null | undefined, scale = 2): string {
+  return decimalDisplay(value, scale);
 }
 
 export function netUnitPriceDetail(value: string | null | undefined): string {
@@ -379,6 +399,10 @@ function candidateFromWorkbenchRow(row: WorkbenchBillRow, clientRowKey: string):
   return {
     clientRowKey,
     rowKey: row.rowKey,
+    ...(typeof row.numericProtocolVersion === "number" ? { numericProtocolVersion: row.numericProtocolVersion } : {}),
+    ...(row.taxInclusiveAmountYuan !== undefined ? { taxInclusiveAmountYuan: typeof row.taxInclusiveAmountYuan === "string" ? row.taxInclusiveAmountYuan : null } : {}),
+    ...(row.restoreRef ? { restoreRef: { ...row.restoreRef } } : {}),
+    ...(row.restoreOriginalValues ? { restoreOriginalValues: JSON.parse(JSON.stringify(row.restoreOriginalValues)) as Record<string, unknown> } : {}),
     itemCode: textValue(row.itemCode),
     itemName: textValue(row.itemName),
     specification: textValue(row.specification),
@@ -387,7 +411,7 @@ function candidateFromWorkbenchRow(row: WorkbenchBillRow, clientRowKey: string):
     unitPrice: textValue(row.unitPrice),
     taxRatePercent: textValue(row.taxRatePercent ?? row.taxRate),
     taxRateSource: row.taxRateSource === "row_override" ? "row_override" : "version_default",
-    ...(row.precisionPolicy === "legacy" || row.precisionPolicy === "two_decimal"
+    ...(row.precisionPolicy === "legacy" || row.precisionPolicy === "two_decimal" || row.precisionPolicy === "four_decimal"
       ? { precisionPolicy: row.precisionPolicy }
       : {}),
     ...(row.initialQuantity !== null && row.initialQuantity !== undefined
@@ -397,6 +421,8 @@ function candidateFromWorkbenchRow(row: WorkbenchBillRow, clientRowKey: string):
       ? { initialUnitPrice: textValue(row.initialUnitPrice) }
       : { initialUnitPrice: textValue(row.unitPrice) }),
     initialTaxRatePercent: textValue(row.taxRatePercent ?? row.taxRate),
+    ...(typeof row.numericSource === "string" ? { numericSource: row.numericSource } : {}),
+    ...(typeof row.numericReviewStatus === "string" ? { numericReviewStatus: row.numericReviewStatus } : {}),
     taxExclusiveUnitPrice: row.taxExclusiveUnitPrice ?? null,
     taxInclusiveAmountCents: row.taxInclusiveAmountCents ?? null,
     taxExclusiveAmountCents: row.taxExclusiveAmountCents ?? null,
@@ -465,6 +491,8 @@ function nextLocalClientRowKey(rows: ContractBillCandidateRow[]): string {
 function cloneCandidateRow(row: ContractBillCandidateRow): ContractBillCandidateRow {
   const candidate = { ...row };
   delete candidate.precisionPolicy;
+  delete candidate.numericSource;
+  delete candidate.numericReviewStatus;
   delete candidate.initialQuantity;
   delete candidate.initialUnitPrice;
   delete candidate.initialTaxRatePercent;
@@ -545,7 +573,7 @@ function hasUnchangedLegacyPricingFacts(
   row: ContractBillCandidateRow,
   options: Pick<WorkbenchBill, "taxMode" | "defaultTaxRatePercent"> | BillCandidateTotalsOptions
 ): boolean {
-  if (row.precisionPolicy !== "legacy") return false;
+  if (row.precisionPolicy !== "legacy" && row.numericSource !== "legacy_cents") return false;
   if (
     row.initialQuantity === undefined ||
     row.initialUnitPrice === undefined ||
@@ -633,4 +661,33 @@ function pricingInputsEqual(
     current.taxRatePercent === next.taxRatePercent &&
     current.taxRateSource === next.taxRateSource
   );
+}
+
+
+export function previewBillRowGross(row: ContractBillCandidateRow, bill: WorkbenchBill): { value: string | null; invalid: boolean; historical: boolean } {
+  const unchanged = row.initialQuantity !== undefined && row.initialUnitPrice !== undefined &&
+    decimalEquivalent(row.quantity, row.initialQuantity) && decimalEquivalent(row.unitPrice, row.initialUnitPrice);
+  if (unchanged && hasUnchangedLegacyPricingFacts(row, bill)) {
+    try {
+      const value = row.numericProtocolVersion === 2 && row.taxInclusiveAmountYuan !== undefined
+        ? row.taxInclusiveAmountYuan : businessAmountFromLegacyCents(row.taxInclusiveAmountCents ?? null);
+      return { value, invalid: false, historical: true };
+    } catch { return { value: null, invalid: true, historical: true }; }
+  }
+  try {
+    if (bill.numericProtocolVersion === 2 && bill.pricingMode === "tax_exclusive") {
+      return { value: calculateBusinessLineAmount(row.quantity || null, row.unitPrice || null), invalid: false, historical: false };
+    }
+    if (fourDecimalInputMessage(row.quantity, "数量", true) || fourDecimalInputMessage(row.unitPrice, "含税单价", false)) return { value: null, invalid: true, historical: false };
+    const value = calculateBusinessLineTaxAmounts(row.quantity || null, row.unitPrice || null, effectiveTaxRate(row, bill) || null).taxInclusiveAmountYuan;
+    return { value, invalid: false, historical: false };
+  } catch { return { value: null, invalid: true, historical: false }; }
+}
+export function previewBillGross(rows: readonly ContractBillCandidateRow[], bill: WorkbenchBill): string {
+  const values = rows.map(row => previewBillRowGross(row, bill));
+  if (values.some(value => value.invalid)) return "请先修改输入";
+  const known = values.flatMap(value => value.value === null ? [] : [value.value]);
+  if (known.length > 0 && known.length < values.length) return `部分已知 ${sumBusinessAmounts(known)} 元，部分金额待确定`;
+  const amount = sumBusinessAmounts(values.map(value => value.value));
+  return amount === null ? "待确定" : `${amount} 元`;
 }

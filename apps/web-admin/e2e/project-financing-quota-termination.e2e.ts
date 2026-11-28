@@ -559,6 +559,14 @@ async function installProjectFinancingQuotaMock(
       return;
     }
 
+    if (method === "GET") {
+      const companion = projectCompanionReply(pathname, url.searchParams);
+      if (companion !== undefined) {
+        await fulfillJson(route, companion);
+        return;
+      }
+    }
+
     probe.unhandled.push(`${method} ${pathname}${url.search}`);
     await fulfillJson(
       route,
@@ -567,6 +575,60 @@ async function installProjectFinancingQuotaMock(
     );
   });
   return probe;
+}
+
+function projectCompanionReply(pathname: string, query: URLSearchParams) {
+  const projection = projectOperatingProjection();
+  if (pathname === "/api/operating-projections/as-of") {
+    return { ...projection, scope: { label: "多项目汇总口径", projectCount: PROJECTS.length } };
+  }
+  if (PROJECTS.some(project => pathname === `/api/operating-projections/project/${project.id}`)) {
+    return projection;
+  }
+  if (PROJECTS.some(project =>
+    pathname === `/api/approval-forms/project_financing_quota/quota-${project.id}/capability`)) {
+    return { available: false };
+  }
+  switch (pathname) {
+    case "/api/contract-relationship-ledger":
+      return { readAt: projection.asOf.readAt, asOf: query.get("asOf"), rows: [], totals: [], companies: [], notice: "" };
+    case "/api/contract-bank-verifications":
+      return { canPrepare: false, canReview: false, canReadEvidence: true, page: 1, pageSize: 50, total: 0, companies: [], rows: [] };
+    case "/api/contract-proxy-executions":
+      return { canPrepare: false, canReview: false, observations: [], requests: [], sources: [], payers: [], entries: [] };
+    case "/api/contract-proxy-executions/bank-options":
+      return [];
+    case "/api/upward-contract-amount-revisions":
+      return { canPrepare: false, canReview: false, contracts: [], revisions: [] };
+    case "/api/contract-economic-reviews":
+      return { canPrepare: false, canReview: false, documents: [], candidates: [], reviews: [], pendingSettlements: [] };
+    case "/api/business-entry-definitions/project_upstream_fund_fact":
+      return { key: "project_upstream_fund_fact", entityType: "project_upstream_fund_fact", name: "施工企业资金事实",
+        version: 1, fields: [], rules: [] };
+  }
+  const project = PROJECTS.find(item => pathname.startsWith(`/api/projects/${item.id}/`));
+  if (!project) return undefined;
+  switch (pathname.slice(`/api/projects/${project.id}/`.length)) {
+    case "cost-attributions":
+      return { candidates: [], confirmations: [] };
+    case "participating-company-options":
+      return [];
+    case "upstream-fund-facts/reference-options":
+      return { projectId: project.id, affiliateCompanyContracts: [], affiliateSettlements: [], invoices: [], upstreamSettlements: [] };
+    case "upstream-fund-facts":
+      return { items: [], page: { pageSize: 50, readAt: projection.asOf.readAt, nextCursor: null } };
+    case "close-profit":
+      return {
+        schema: "project_close_profit/V1", projectId: project.id, canReconcileImpacts: false, availableActions: [],
+        projection: { readAt: projection.asOf.readAt, cutoffAt: projection.asOf.readAt, fingerprint: "quota-termination", view: projection },
+        stages: [], currentProfitConfirmation: null, currentDistribution: null,
+        currentDecisionSubmissions: { finalProfit: null, distribution: null },
+        participatingCompanies: [], downstreamCostAttestations: [], temporaryDistributions: [], impacts: [],
+        history: { stageVersions: [], profitConfirmations: [], distributions: [], decisionSubmissions: [] }
+      };
+    default:
+      return undefined;
+  }
 }
 
 async function loginAndOpenOperations(page: Page) {
@@ -587,6 +649,7 @@ async function loginAndOpenOperations(page: Page) {
     page.locator(".financing-quota-card.jg-table-region").first()
       .getByText("第一项目额度", { exact: true })
   ).toBeVisible();
+  await expect(page.getByRole("button", { name: "申请垫资额度", exact: true })).toHaveCount(0);
 }
 
 async function openTerminationDialog(page: Page) {
@@ -664,7 +727,9 @@ function financingQuotaWorkbench(projectId: string, terminated: boolean) {
       netUsedAmountCents: "1200000",
       currentlyAvailableAmountCents: terminated ? "0" : "3800000"
     },
-    requestAction: disabledAction("request_financing_quota"),
+    // A legacy server may still advertise the retired action.
+    requestAction: { ...disabledAction("request_financing_quota"),
+      label: "申请垫资额度", enabled: true, disabledReason: null, requiresFile: true },
     rows: [
       {
         id: quotaId,
@@ -728,6 +793,39 @@ function disabledAction(key: string, requiresPassword = false) {
   };
 }
 
+function projectOperatingProjection() {
+  return {
+    scope: { label: "单项目口径", projectCount: 1 },
+    asOf: { businessDate: "2026-08-02", readAt: "2026-08-02T02:00:00.000Z", retroactiveFactCount: 0 },
+    integrity: { statusLabel: "金额完整", moneyComplete: true, notices: [] },
+    commitments: { contractCommitmentCents: "10000000" },
+    relationshipTotals: [],
+    operating: { confirmedIncomeCents: "8000000", confirmedCostCents: "1200000", receivableCents: "0", payableCents: "4800000" },
+    actualFunds: {
+      constructionEnterpriseFundsCents: "0", companyProjectFundsCents: "6800000",
+      netProjectCashPositionCents: "6800000", nonNegativeUsableCashStartCents: "6800000",
+      confirmedProjectInflowsCents: "8000000", confirmedProjectOutflowsCents: "1200000",
+      companyAdvanceForProjectCents: "0", companyReturnableToProjectCents: "0", interSubjectBalanceCents: "0"
+    },
+    restrictions: {
+      estimatedClearingExpenseCents: "0", necessaryExpenseReserveCents: "0", projectDisputedFundsCents: "0",
+      constructionEnterpriseFrozenFundsCents: "0", openPendingReconciliationGrossCents: "0",
+      openCoveredReconciliationCents: "0", openUncoveredReconciliationCents: "0",
+      continuedWithheldRetainedCents: "0", temporaryProfitDistributionCents: "0", relationshipCompletenessLabel: "关系完整"
+    },
+    profitAndLoss: {
+      currentOperatingProfitCents: "6800000", estimatedClearingExpenseCents: "0", currentEstimatedProfitCents: "6800000",
+      finalConfirmedProfitCents: null, finalConfirmable: false
+    },
+    distribution: { cashCeilingCents: "2000000", projectedProfitCeilingCents: "6800000", currentDistributableProfitCents: "2000000" },
+    evidence: {
+      A: { factCount: 1, amountCents: "8000000" }, B: { factCount: 0, amountCents: "0" }, C: { factCount: 0, amountCents: "0" },
+      gapFactCount: 0, gapAmountCents: "0"
+    },
+    sources: []
+  };
+}
+
 function projectOperatingOverview(projectId: string) {
   const project = projectById(projectId);
   return {
@@ -762,7 +860,9 @@ function projectOperatingOverview(projectId: string) {
       rows: []
     },
     counts: { contracts: 1, settlements: 1, payments: 1 },
-    dataGaps: []
+    dataGaps: [],
+    contractDrilldown: [],
+    operatingProjection: projectOperatingProjection()
   };
 }
 

@@ -65,8 +65,39 @@ test("keeps navigation, page content, and confirmation controls usable across de
           handledByMe: [],
           delegatedToMe: [],
           overdueReminder: []
-        }
+        },
+        groups: [{
+          key: "approval",
+          title: "待审批",
+          description: "等待你当前岗位审批或同意的单据。",
+          count: 1,
+          targetPath: "/审批中心?view=pendingApproval",
+          items: [{
+            id: "responsive-item-1",
+            type: "approval",
+            businessType: "payment",
+            title: "付款审批：材料结算",
+            projectName: "响应式验收项目",
+            businessCode: "FK-RWD-001",
+            amountText: "¥256,000.00",
+            currentNode: "财务主管审批",
+            stayedText: "已停留 5 小时",
+            nextAction: "处理付款审批",
+            targetPath: "/付款管理/FK-RWD-001",
+            tone: "warning",
+            actionGroup: "approval"
+          }]
+        }]
       })
+    })
+  );
+  await page.route("**/api/projects", (route) =>
+    route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify([
+        { id: "responsive-project-1", code: "P-RWD-001", name: "响应式验收项目" },
+        { id: "responsive-project-2", code: "P-RWD-002", name: "第二个响应式项目" }
+      ])
     })
   );
   await page.route("**/api/approval-delegations/user-options", (route) =>
@@ -197,12 +228,25 @@ test("keeps navigation, page content, and confirmation controls usable across de
   await expect(page.locator(".navigation-drawer")).toHaveCount(0);
   await expect(page.locator(".t-drawer__content-wrapper")).toHaveCount(0);
 
-  const previousKeyboardState = await page.evaluate(() => document.documentElement.getAttribute("data-keyboard"));
   try {
-    // The viewport adapter owns this state on phones; exercise its compact layout without an OS keyboard.
-    await page.evaluate(() => document.documentElement.setAttribute("data-keyboard", "open"));
+    // Simulate the viewport shrinking around a focused editor, as with a soft keyboard.
+    await page.getByPlaceholder("编号、项目、节点或下一步").focus();
+    const visibleHeight = await page.evaluate(() => {
+      const viewport = window.visualViewport;
+      if (!viewport) throw new Error("缺少浏览器可视视口");
+      Object.defineProperty(viewport, "height", {
+        configurable: true,
+        get: () => window.innerHeight - 240
+      });
+      viewport.dispatchEvent(new Event("resize"));
+      return viewport.height;
+    });
+    await expect(page.locator("html")).toHaveAttribute("data-keyboard", "open");
     await expect(bottomNavigation).not.toBeVisible();
-    await expect(toggle).toBeInViewport();
+    await expect(toggle).toBeVisible();
+    const toggleBounds = await toggle.boundingBox();
+    expect(toggleBounds!.y).toBeGreaterThanOrEqual(0);
+    expect(toggleBounds!.y + toggleBounds!.height).toBeLessThan(visibleHeight);
     await toggle.focus();
     await page.keyboard.press("Enter");
     await expect(links.first()).toBeFocused();
@@ -211,11 +255,14 @@ test("keeps navigation, page content, and confirmation controls usable across de
     await expect(page.locator(".navigation-drawer")).toHaveCount(0);
     await expect(page.locator(".t-drawer__content-wrapper")).toHaveCount(0);
   } finally {
-    await page.evaluate((state) => {
-      if (state === null) document.documentElement.removeAttribute("data-keyboard");
-      else document.documentElement.setAttribute("data-keyboard", state);
-    }, previousKeyboardState);
+    await page.evaluate(() => {
+      const viewport = window.visualViewport;
+      if (!viewport) return;
+      Reflect.deleteProperty(viewport, "height");
+      viewport.dispatchEvent(new Event("resize"));
+    });
   }
+  await expect(page.locator("html")).toHaveAttribute("data-keyboard", "closed");
   await expect(bottomNavigation).toBeVisible();
   await toggle.focus();
   await page.keyboard.press("Enter");

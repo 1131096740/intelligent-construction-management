@@ -1,3 +1,4 @@
+import { requireLegacyOperatingCents } from "../operating-ledger/operating-money-protocol";
 import { BadRequestException } from "@nestjs/common";
 
 import { WageStatementOperatingSourceAdapter } from "./wage-statement-operating-source.adapter";
@@ -195,7 +196,7 @@ describe("WageStatementOperatingSourceAdapter", () => {
     const mapped = adapter.toOperatingFactInput(snapshot!);
 
     expect(mapped.input.impacts).toHaveLength(2);
-    expect(mapped.input.impacts.every((impact) => impact.amountCents > 0n)).toBe(true);
+    expect(mapped.input.impacts.every((impact) => requireLegacyOperatingCents(impact) > 0n)).toBe(true);
     expect(mapped.input.impacts.map((impact) => impact.sourceImpactKey)).toEqual(["cost:cost-cell-positive", "payable:payable-ref-1"]);
   });
 });

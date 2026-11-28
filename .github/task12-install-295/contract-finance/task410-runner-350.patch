@@ -1,0 +1,31 @@
+--- predecessor/fixture
++++ forward/fixture
+@@ -315 +315 @@
+- if(companyProxyScenario){env.RUN_COMPANY_PROXY_REPAYMENT_HTTP="1";env.RUN_EXPENSE_REGISTERED_PAYMENT_PG16="1";env.TASK410_ISOLATED_RUN_ID=short;if(standard290)env.TASK410_OWNED_290="1";if([329,330,331,332,334,346,349].includes(ownedMigrationBaseline?.expectedDirectoryCount))env.TASK410_OWNED_320="1";if(ownedMigrationBaseline?.expectedDirectoryCount===330)env.TASK410_OWNED_TEXT_DIRECT_330="1";if(ownedMigrationBaseline?.expectedDirectoryCount===331)env.TASK410_OWNED_PAYMENT_REMAINDER_331="1";if(ownedMigrationBaseline?.expectedDirectoryCount===332)env.TASK410_OWNED_UPWARD_ARCHIVE_332="1";if(ownedMigrationBaseline?.expectedDirectoryCount===334)env.TASK410_OWNED_HISTORICAL_SETTLEMENT_334="1";if([346,349].includes(ownedMigrationBaseline?.expectedDirectoryCount))env.TASK410_OWNED_EXPENSE_WITNESS_346="1";if(ownedMigrationBaseline?.expectedDirectoryCount===349)env.TASK410_OWNED_EXPENSE_WITNESS_349="1";}
++ if(companyProxyScenario){env.RUN_COMPANY_PROXY_REPAYMENT_HTTP="1";env.RUN_EXPENSE_REGISTERED_PAYMENT_PG16="1";env.TASK410_ISOLATED_RUN_ID=short;if(standard290)env.TASK410_OWNED_290="1";if([329,330,331,332,334,346,349,350].includes(ownedMigrationBaseline?.expectedDirectoryCount))env.TASK410_OWNED_320="1";if(ownedMigrationBaseline?.expectedDirectoryCount===330)env.TASK410_OWNED_TEXT_DIRECT_330="1";if(ownedMigrationBaseline?.expectedDirectoryCount===331)env.TASK410_OWNED_PAYMENT_REMAINDER_331="1";if(ownedMigrationBaseline?.expectedDirectoryCount===332)env.TASK410_OWNED_UPWARD_ARCHIVE_332="1";if(ownedMigrationBaseline?.expectedDirectoryCount===334)env.TASK410_OWNED_HISTORICAL_SETTLEMENT_334="1";if([346,349,350].includes(ownedMigrationBaseline?.expectedDirectoryCount))env.TASK410_OWNED_EXPENSE_WITNESS_346="1";if(ownedMigrationBaseline?.expectedDirectoryCount===349)env.TASK410_OWNED_EXPENSE_WITNESS_349="1";if(ownedMigrationBaseline?.expectedDirectoryCount===350)env.TASK410_OWNED_SIGNED_SETTLEMENT_350="1";}
+@@ -324 +324 @@
+- if(companyProxyScenario&&[329,330,331,332,334,346,349].includes(ownedMigrationBaseline?.expectedDirectoryCount)){
++ if(companyProxyScenario&&[329,330,331,332,334,346,349,350].includes(ownedMigrationBaseline?.expectedDirectoryCount)){
+@@ -550 +550 @@
+- const modes=new Map([["company-proxy-repayment-349",["--company-proxy-repayment-real"]],["company-proxy-repayment-346",["--company-proxy-repayment-real"]],["company-proxy-repayment-334",["--company-proxy-repayment-real"]],["company-proxy-repayment-332",["--company-proxy-repayment-real"]],["company-proxy-repayment-331",["--company-proxy-repayment-real"]],["company-proxy-repayment-330",["--company-proxy-repayment-real"]],["company-proxy-repayment-329",["--company-proxy-repayment-real"]],["company-proxy-repayment-295",["--company-proxy-repayment-real"]],["standard-290",[]],["cash-handover-290",["--cash-handover-real"]],["principal-return-290",["--principal-return-real"]],["company-proxy-repayment-290",["--company-proxy-repayment-real"]],["standard",[]],["principal-return",["--principal-return-real"]],["cash-handover",["--cash-handover-real"]],["correction-catalog",["--cash-handover-real"]]]);
++ const modes=new Map([["company-proxy-repayment-350",["--company-proxy-repayment-real"]],["company-proxy-repayment-349",["--company-proxy-repayment-real"]],["company-proxy-repayment-346",["--company-proxy-repayment-real"]],["company-proxy-repayment-334",["--company-proxy-repayment-real"]],["company-proxy-repayment-332",["--company-proxy-repayment-real"]],["company-proxy-repayment-331",["--company-proxy-repayment-real"]],["company-proxy-repayment-330",["--company-proxy-repayment-real"]],["company-proxy-repayment-329",["--company-proxy-repayment-real"]],["company-proxy-repayment-295",["--company-proxy-repayment-real"]],["standard-290",[]],["cash-handover-290",["--cash-handover-real"]],["principal-return-290",["--principal-return-real"]],["company-proxy-repayment-290",["--company-proxy-repayment-real"]],["standard",[]],["principal-return",["--principal-return-real"]],["cash-handover",["--cash-handover-real"]],["correction-catalog",["--cash-handover-real"]]]);
+@@ -553 +553,2 @@
+- const exact349=mode==="company-proxy-repayment-349";
++ const exact350=mode==="company-proxy-repayment-350";
++ const exact349=exact350||mode==="company-proxy-repayment-349";
+@@ -561 +562 @@
+- const count=exact349?349:exact346?346:prefixCount;
++ const count=exact350?350:exact349?349:exact346?346:prefixCount;
+@@ -586,0 +588,6 @@
++ const signed=exact350?receipt?.signedSettlementForward:undefined;
++ if(exact350&&(signed?.count!==350||signed.sameIdentity!==true||signed.sourceTree!==forward.sourceTree
++    ||signed.ledgerSha256!=="6dd4b8f7c484e4afeacd893991256275b087e2ae1ee2c940df87f812dc60a860"
++    ||signed.tails?.length!==1||signed.tails[0].name!=="20261129019000_signed_settlement_exact_operating_cost"
++    ||signed.tails[0].sha256!=="86ad90ea7fad6231f1d8b24dd8e4eb25d5ba0b1696d3544f5999680ebaa4c6e4"))
++   throw Error("TASK410_COMPANY_PROXY_350_SCOPE");
+@@ -638 +645 @@
+-   ||createHash("sha256").update(JSON.stringify(ledger)).digest("hex")!==(exact346?(precision??expense).ledgerSha256:exact320?forward.ledgerSha256:exact295?"b0d398a46c4c6a3209e1448ddd415938ea95425c3d823f1f8a77d81dde396f2d":(mode==="correction-catalog"||exact290)?"8741d9da09253efb803af9e132b4cde09de0dfef86da7edf952b6c0056a057a5":"be6d9aed22658af5e273010a2e1e839544fa27e74e998701fb3d9e9248f88cfc"))throw new Error("TASK398_OWNED_280_LEDGER");
++   ||createHash("sha256").update(JSON.stringify(ledger)).digest("hex")!==(exact346?(signed??precision??expense).ledgerSha256:exact320?forward.ledgerSha256:exact295?"b0d398a46c4c6a3209e1448ddd415938ea95425c3d823f1f8a77d81dde396f2d":(mode==="correction-catalog"||exact290)?"8741d9da09253efb803af9e132b4cde09de0dfef86da7edf952b6c0056a057a5":"be6d9aed22658af5e273010a2e1e839544fa27e74e998701fb3d9e9248f88cfc"))throw new Error("TASK398_OWNED_280_LEDGER");
+@@ -664 +671 @@
+-  expectedDirectoryCount:count,terminalMigration:(precision??expense??forward).tails.at(-1).name,terminalMigrationChecksum:(precision??expense??forward).tails.at(-1).sha256
++  expectedDirectoryCount:count,terminalMigration:(signed??precision??expense??forward).tails.at(-1).name,terminalMigrationChecksum:(signed??precision??expense??forward).tails.at(-1).sha256

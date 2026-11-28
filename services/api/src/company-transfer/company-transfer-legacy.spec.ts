@@ -45,6 +45,8 @@ describe('旧公司代付与新互转余额同源', () => {
   it('按原项目和双方分列旧债，只有到账归还减少余额，未来到账不倒灌', async () => {
     const { appendLegacyProxyBalances } = await import('./company-transfer-legacy-balances');
     const tx = {
+      $queryRaw: jest.fn().mockResolvedValue([{ delta: 0n }]),
+      registeredOperationalPayment: { findMany: jest.fn().mockResolvedValue([]) },
       interEntityRelationshipEntry: { findMany: jest.fn().mockResolvedValue([{ id: 'root', projectId: 'p', originalDebtorCompanyId: 'b', creditorCompanyId: 'a', amountCents: 100n }]), aggregate: jest.fn().mockResolvedValue({ _sum: { amountCents: 10n } }) },
       companyEntity: { findMany: jest.fn().mockResolvedValue([{ id: 'a', name: '甲' }, { id: 'b', name: '乙' }]) },
       companyTransfer: { findMany: jest.fn().mockResolvedValue([{ id: 'repay', amountCents: 40n }]) },

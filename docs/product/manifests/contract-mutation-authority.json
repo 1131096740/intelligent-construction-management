@@ -12,11 +12,11 @@
     "deletionAuthorized": false
   },
   "summary": {
-    "routeCount": 80,
+    "routeCount": 86,
     "authorityCounts": {
       "aggregate_member_writer": 1,
-      "governed_specialized_command": 55,
-      "exit_candidate": 24
+      "governed_specialized_command": 60,
+      "exit_candidate": 25
     },
     "actionTargetCount": 29,
     "advertisedActionCount": 22,
@@ -94,6 +94,15 @@
       "tombstoned": true,
       "authority": "exit_candidate",
       "authorityRule": "tombstoned_cutover_exit"
+    },
+    {
+      "method": "PATCH",
+      "path": "/contracts/:contractVersionId/work-completions/:completionId",
+      "controller": "ContractController",
+      "handler": "reviseWorkCompletionDraft",
+      "tombstoned": false,
+      "authority": "governed_specialized_command",
+      "authorityRule": "governed_specialized_command"
     },
     {
       "method": "PATCH",
@@ -425,8 +434,8 @@
       "controller": "ContractController",
       "handler": "createChangeDraft",
       "tombstoned": false,
-      "authority": "governed_specialized_command",
-      "authorityRule": "governed_specialized_command"
+      "authority": "exit_candidate",
+      "authorityRule": "registered_exit_candidate"
     },
     {
       "method": "POST",
@@ -445,6 +454,33 @@
       "tombstoned": false,
       "authority": "exit_candidate",
       "authorityRule": "legacy_cutover_exit"
+    },
+    {
+      "method": "POST",
+      "path": "/contracts/:contractVersionId/work-completion-drafts",
+      "controller": "ContractController",
+      "handler": "createWorkCompletionDraft",
+      "tombstoned": false,
+      "authority": "governed_specialized_command",
+      "authorityRule": "governed_specialized_command"
+    },
+    {
+      "method": "POST",
+      "path": "/contracts/:contractVersionId/work-completions/:completionId/approval",
+      "controller": "ContractController",
+      "handler": "reviewWorkCompletion",
+      "tombstoned": false,
+      "authority": "governed_specialized_command",
+      "authorityRule": "governed_specialized_command"
+    },
+    {
+      "method": "POST",
+      "path": "/contracts/:contractVersionId/work-completions/:completionId/submission",
+      "controller": "ContractController",
+      "handler": "submitWorkCompletion",
+      "tombstoned": false,
+      "authority": "governed_specialized_command",
+      "authorityRule": "governed_specialized_command"
     },
     {
       "method": "POST",
@@ -559,6 +595,15 @@
       "path": "/projects/:projectId/contract-takeovers/:takeoverId/finance-side/confirmation-withdrawal",
       "controller": "ContractTakeoverController",
       "handler": "withdrawFinanceSideConfirmation",
+      "tombstoned": false,
+      "authority": "governed_specialized_command",
+      "authorityRule": "governed_specialized_command"
+    },
+    {
+      "method": "POST",
+      "path": "/projects/:projectId/contract-takeovers/:takeoverId/finance-supplement-return",
+      "controller": "ContractTakeoverController",
+      "handler": "returnFinanceForSupplement",
       "tombstoned": false,
       "authority": "governed_specialized_command",
       "authorityRule": "governed_specialized_command"
@@ -739,6 +784,15 @@
       "path": "/projects/:projectId/contract-takeovers/:takeoverId/finance-side",
       "controller": "ContractTakeoverController",
       "handler": "saveFinanceFacts",
+      "tombstoned": false,
+      "authority": "governed_specialized_command",
+      "authorityRule": "governed_specialized_command"
+    },
+    {
+      "method": "PUT",
+      "path": "/projects/:projectId/contract-takeovers/:takeoverId/handover",
+      "controller": "ContractTakeoverController",
+      "handler": "registerHandover",
       "tombstoned": false,
       "authority": "governed_specialized_command",
       "authorityRule": "governed_specialized_command"

@@ -1,0 +1,189 @@
+{
+  "bank/execution-files.json": {
+    "kind": "execution-manifest",
+    "material": "313788fae8f39d5dc444d22cd98c918d76b683b773be9b4a4b4eddbc7ce3260e.gz",
+    "sha256": "ae305b0e93201322da07825b47100c588c056a5a98e0a6ddccec8c62f62ce041"
+  },
+  "bank/overlay/services/api/prisma/contract-affiliate-finite.cjs": {
+    "kind": "full",
+    "material": "6924dc69a3f5586d5e1fb9529849e7567efdae4cefc3f0c7ec59fe698d967007.gz",
+    "sha256": "6924dc69a3f5586d5e1fb9529849e7567efdae4cefc3f0c7ec59fe698d967007"
+  },
+  "bank/overlay/services/api/prisma/contract-bank-runtime-fixture.cjs": {
+    "kind": "patch",
+    "material": "fa059fac7eecacacc8ed743f2dbbe8e950c64a6c98e91ef895eadd106cdefb87.gz",
+    "sha256": "2b69b9017a0d2bbc5aec74e40c8d9efd92f282d72e72cffd5b8f62c6c5aa37fb",
+    "source": "services/api/prisma/contract-bank-runtime-fixture.cjs",
+    "sourceSha256": "5a66b1783cc597983a08e8381f9df34afeacf36e71681bd5e982a363247fd171"
+  },
+  "bank/overlay/services/api/prisma/contract-finance-owned-ci.cjs": {
+    "kind": "full",
+    "material": "f4f1e91a04b12e87b900493f5220cabe63f01954c4dcadb048fe06051eae34bb.gz",
+    "sha256": "f4f1e91a04b12e87b900493f5220cabe63f01954c4dcadb048fe06051eae34bb"
+  },
+  "bank/overlay/services/api/prisma/task398-owned-280-business-read-baseline.json": {
+    "kind": "full",
+    "material": "d9406ad3c45b4b77db171eca6bdf7a5cbad285dd107988f5ab6f33051b5beb60.gz",
+    "sha256": "d9406ad3c45b4b77db171eca6bdf7a5cbad285dd107988f5ab6f33051b5beb60"
+  },
+  "bank/overlay/services/api/src/database/contract-finance-owned.test-support.ts": {
+    "kind": "full",
+    "material": "d074eb68c0f8857889d9227e367d33a716d01c3b1d3759096f21180762dd09f6.gz",
+    "sha256": "d074eb68c0f8857889d9227e367d33a716d01c3b1d3759096f21180762dd09f6"
+  },
+  "bank/overlay/services/api/src/database/ordinary-original-loan-seed.test-support.ts": {
+    "kind": "full",
+    "material": "3ad949da6d980877e22585ba06d8493bdc6b0f923878253abd4659bc5fd93964.gz",
+    "sha256": "3ad949da6d980877e22585ba06d8493bdc6b0f923878253abd4659bc5fd93964"
+  },
+  "bank/overlay/services/api/src/database/project-affiliate-company-contract-db.spec.ts": {
+    "kind": "patch",
+    "material": "e84423a222ec1c30826c25cf85ef1a12f2d295c34bb67fe07cbf1bdfe1b9c24b.gz",
+    "sha256": "915510a2db512b5f77f4952323708c2d3eea40c3e08ce34223cad23b5a1e6e4f",
+    "source": "services/api/src/database/project-affiliate-company-contract-db.spec.ts",
+    "sourceSha256": "16461e7680018c3370fb9000caa096f191c2cbca5762651c40ff91d2feeb8cf8"
+  },
+  "bank/overlay/services/api/src/database/task12-owned-280.test-support.ts": {
+    "kind": "full",
+    "material": "0653380689b72c974ab8abf63aa19dcd2fda7e8dc48114ccdd7a6d38793d5ba7.gz",
+    "sha256": "0653380689b72c974ab8abf63aa19dcd2fda7e8dc48114ccdd7a6d38793d5ba7"
+  },
+  "restore/app-inputs.json": {
+    "kind": "correction-manifest",
+    "material": "ac2da66c9bad2401644ea6ba8a1c395e11ab8187a3a359d754f1d0cd03cf2ef5.gz",
+    "sha256": "b4ea82a94850da9dc9d5620b468addf5816fe775e0b69ba8065828539adb795e"
+  },
+  "restore/correction/services/api/prisma/contract-bank-runtime-fixture.cjs": {
+    "kind": "patch",
+    "material": "758e992149e820f1272e4ac40695717f8fecb755e3172fe8fa945d02c1803bc1.gz",
+    "sha256": "f8a52c20be644145418a7b643b8bb279589a94b1000bbdd9861750afebc4693b",
+    "source": "services/api/prisma/contract-bank-runtime-fixture.cjs",
+    "sourceSha256": "5a66b1783cc597983a08e8381f9df34afeacf36e71681bd5e982a363247fd171"
+  },
+  "restore/correction/services/api/prisma/run-task398-shared-standard-local.cjs": {
+    "kind": "patch",
+    "material": "29ee20b98cab752f66d05adbfbad853e422001568745475bc8b1b9e771be66fe.gz",
+    "sha256": "e0003422b0c2db8cac3d3d9c13960d92b2c954bdc321b78cbd640065152c7773",
+    "source": "services/api/prisma/run-task398-shared-standard-local.cjs",
+    "sourceSha256": "2764fa86dbf04307ca4282df6228b384710a66de5db726ec8761a42df1515e27"
+  },
+  "restore/correction/services/api/prisma/task398-owned-280-business-read-baseline.json": {
+    "kind": "full",
+    "material": "d9406ad3c45b4b77db171eca6bdf7a5cbad285dd107988f5ab6f33051b5beb60.gz",
+    "sha256": "d9406ad3c45b4b77db171eca6bdf7a5cbad285dd107988f5ab6f33051b5beb60"
+  },
+  "restore/correction/services/api/src/database/task16-shared-standard.http.pg.spec.ts": {
+    "kind": "patch",
+    "material": "3817d96c066977dd54185356b94d9df60fd93b284d1b3249251fb392d766e00e.gz",
+    "sha256": "e70aa4d7364f7232f694881bb96fce88bfa57a89bd24fc6f527b4d85dfa6b901",
+    "source": "services/api/src/database/task16-shared-standard.http.pg.spec.ts",
+    "sourceSha256": "0e8cea4b115d71631300e9ea79dff48ab05fc81b937a7f89dfcb19c5e534c6d7"
+  },
+  "restore/correction/services/api/src/database/task25-public-cash-handover.http.pg.spec.ts": {
+    "kind": "patch",
+    "material": "ee97107b8c0a216dc55dcdd643cac1f8e8c552552e31790becff6221ae5b9de2.gz",
+    "sha256": "e1e257e269942c3659a8a407efe77467f73697265e5fab94c12c92456787f6fd",
+    "source": "services/api/src/database/task25-public-cash-handover.http.pg.spec.ts",
+    "sourceSha256": "2ca2cdde5695dc5ffbc65ce7bc46adf7bfd21d54643ce3f844deb143e6eacca2"
+  },
+  "restore/correction/services/api/src/database/task27-principal-return.http.pg.spec.ts": {
+    "kind": "patch",
+    "material": "f27c9a8237d90c592266a043461474c6a344a79fe10cdc81fbe075dbad98070e.gz",
+    "sha256": "c541006fafbe750c4d8d1f5ee94c1fab74acc33083d4761b0167f5c3c2b85ca9",
+    "source": "services/api/src/database/task27-principal-return.http.pg.spec.ts",
+    "sourceSha256": "b65d21d49f34822f2730734438ece64c82251f8ec9ab0d24adc631c9ae7319f9"
+  },
+  "restore/correction/services/api/src/database/task398-owned-database.test-support.ts": {
+    "kind": "full",
+    "material": "e8cab9ed9d2e1822e3d75023b91f404f409ef9baf4dca779789d745adb37ae3a.gz",
+    "sha256": "e8cab9ed9d2e1822e3d75023b91f404f409ef9baf4dca779789d745adb37ae3a"
+  },
+  "restore/correction/services/api/src/database/task398-voucher281.test-support.ts": {
+    "kind": "full",
+    "material": "27262f4a6c6166b797b7da68faa7f9d401f0d76e0c2f3053f39de8adb996c355.gz",
+    "sha256": "27262f4a6c6166b797b7da68faa7f9d401f0d76e0c2f3053f39de8adb996c355"
+  },
+  "restore/correction/services/api/src/database/task419-notification-lock.test-support.ts": {
+    "kind": "full",
+    "material": "b6bda7fbef405cc1f28b57588afae412973c2f813731000f90d5828a00f96282.gz",
+    "sha256": "b6bda7fbef405cc1f28b57588afae412973c2f813731000f90d5828a00f96282"
+  },
+  "restore/loan-relocated-manifest.json": {
+    "kind": "execution-manifest",
+    "material": "313788fae8f39d5dc444d22cd98c918d76b683b773be9b4a4b4eddbc7ce3260e.gz",
+    "sha256": "a78098221b762caea724a05c226d8fb5b1ecef09f0073e47d898b3cddbeb0f64"
+  },
+  "restore/loan/services/api/prisma/contract-affiliate-finite.cjs": {
+    "kind": "full",
+    "material": "123c9ad2c9f912522b0e63cdab554ffd861538faef5b08243ce2fc448decae02.gz",
+    "sha256": "123c9ad2c9f912522b0e63cdab554ffd861538faef5b08243ce2fc448decae02"
+  },
+  "restore/loan/services/api/prisma/contract-bank-runtime-fixture.cjs": {
+    "kind": "patch",
+    "material": "fa059fac7eecacacc8ed743f2dbbe8e950c64a6c98e91ef895eadd106cdefb87.gz",
+    "sha256": "2b69b9017a0d2bbc5aec74e40c8d9efd92f282d72e72cffd5b8f62c6c5aa37fb",
+    "source": "services/api/prisma/contract-bank-runtime-fixture.cjs",
+    "sourceSha256": "5a66b1783cc597983a08e8381f9df34afeacf36e71681bd5e982a363247fd171"
+  },
+  "restore/loan/services/api/prisma/contract-finance-owned-ci.cjs": {
+    "kind": "full",
+    "material": "826690071214938ccf9c8fdb66224a04b7e7a2263f3a5787cef6b2d992930b4c.gz",
+    "sha256": "826690071214938ccf9c8fdb66224a04b7e7a2263f3a5787cef6b2d992930b4c"
+  },
+  "restore/loan/services/api/prisma/task398-owned-280-business-read-baseline.json": {
+    "kind": "full",
+    "material": "d9406ad3c45b4b77db171eca6bdf7a5cbad285dd107988f5ab6f33051b5beb60.gz",
+    "sha256": "d9406ad3c45b4b77db171eca6bdf7a5cbad285dd107988f5ab6f33051b5beb60"
+  },
+  "restore/loan/services/api/src/database/contract-finance-owned.test-support.ts": {
+    "kind": "full",
+    "material": "d49db8d267ba930f878c7bcba55cc4ddf18b7958c44efb1ec3c04f9e424378d0.gz",
+    "sha256": "d49db8d267ba930f878c7bcba55cc4ddf18b7958c44efb1ec3c04f9e424378d0"
+  },
+  "restore/loan/services/api/src/database/ordinary-original-loan-seed.test-support.ts": {
+    "kind": "full",
+    "material": "5d28a1c3c48a4d69aa63c6a8eb639900df537bbe96081760de93f43e43ef229c.gz",
+    "sha256": "5d28a1c3c48a4d69aa63c6a8eb639900df537bbe96081760de93f43e43ef229c"
+  },
+  "restore/loan/services/api/src/database/project-affiliate-company-contract-db.spec.ts": {
+    "kind": "patch",
+    "material": "a88b37eeefbc46146fbd20c055e270562e563c6d963425af6124465e86636eae.gz",
+    "sha256": "87a24fab2e77e70cbf5be90ef6f3e9672ee9131823acb835d1240b243224cd32",
+    "source": "services/api/src/database/project-affiliate-company-contract-db.spec.ts",
+    "sourceSha256": "16461e7680018c3370fb9000caa096f191c2cbca5762651c40ff91d2feeb8cf8"
+  },
+  "restore/loan/services/api/src/database/task12-owned-280.test-support.ts": {
+    "kind": "full",
+    "material": "0653380689b72c974ab8abf63aa19dcd2fda7e8dc48114ccdd7a6d38793d5ba7.gz",
+    "sha256": "0653380689b72c974ab8abf63aa19dcd2fda7e8dc48114ccdd7a6d38793d5ba7"
+  },
+  "restore/named-roles/contract-bank-runtime-fixture.cjs": {
+    "kind": "patch",
+    "material": "fa059fac7eecacacc8ed743f2dbbe8e950c64a6c98e91ef895eadd106cdefb87.gz",
+    "sha256": "2b69b9017a0d2bbc5aec74e40c8d9efd92f282d72e72cffd5b8f62c6c5aa37fb",
+    "source": "services/api/prisma/contract-bank-runtime-fixture.cjs",
+    "sourceSha256": "5a66b1783cc597983a08e8381f9df34afeacf36e71681bd5e982a363247fd171"
+  },
+  "restore/named-roles/contract-bank-verification-runtime-grants.sql": {
+    "kind": "copy",
+    "sha256": "d846ec24589e554e35b8302d94eec04c35e675905dd14eca207b9e1855b43c7c",
+    "source": "services/api/prisma/contract-bank-verification-runtime-grants.sql",
+    "sourceSha256": "d846ec24589e554e35b8302d94eec04c35e675905dd14eca207b9e1855b43c7c"
+  },
+  "restore/named-roles/contract-finance-owned-ci.cjs": {
+    "kind": "full",
+    "material": "e5c1c35f0f7a58c9f3decc2be13fd543415b255c704652a641f5918bf29fcf9d.gz",
+    "sha256": "e5c1c35f0f7a58c9f3decc2be13fd543415b255c704652a641f5918bf29fcf9d"
+  },
+  "restore/named-roles/local-staged-migration-qualification.json": {
+    "kind": "copy",
+    "sha256": "3087e301d32b593cfa6e7303c1d3c0bcf10cbc9becf733bdf8492ccd68d34ae5",
+    "source": "services/api/prisma/local-staged-migration-qualification.json",
+    "sourceSha256": "3087e301d32b593cfa6e7303c1d3c0bcf10cbc9becf733bdf8492ccd68d34ae5"
+  },
+  "restore/named-roles/task398-owned-280-business-read-baseline.json": {
+    "kind": "full",
+    "material": "d9406ad3c45b4b77db171eca6bdf7a5cbad285dd107988f5ab6f33051b5beb60.gz",
+    "sha256": "d9406ad3c45b4b77db171eca6bdf7a5cbad285dd107988f5ab6f33051b5beb60"
+  }
+}

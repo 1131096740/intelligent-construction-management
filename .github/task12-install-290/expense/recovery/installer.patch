@@ -1,0 +1,190 @@
+--- installer.cjs
++++ installer.cjs
+@@ -174,2 +174,13 @@
+-async function migrateNativeTask16(plan,root,port,password,sql,jsonSql,command,enter,fromHistory){
+- const controls=fromHistory('./local-staged-migration-controls.cjs'),{createLocalTailQualification}=fromHistory('./local-staged-tail-qualification.cjs');
++const pfqRecoveryModule='./task12-pfq-recovery.cjs';
++const pfqPositiveModes=Object.freeze(['--pfq-pre115-clean-289-local','--pfq-pre116-legacy-289-local']);
++const pfqConflicts=Object.freeze({
++ '--pfq-duplicate-289-local':'duplicate',
++ '--pfq-cross-business-289-local':'cross_business',
++ '--pfq-replacement-child-289-local':'replacement_child',
++ '--pfq-replacement-parent-289-local':'replacement_parent',
++});
++const pfqPositiveFixtures='./task12-pfq-positive-fixtures.json';
++async function migrateNativeTask16(plan,root,port,password,sql,jsonSql,command,enter,fromHistory,receipt,observePfqFailure){
++ const controls=fromHistory('./local-staged-migration-controls.cjs');
++ const retained=plan.recoveryProfile?require(plan.recoveryProfile.module):undefined;
++ const {createLocalTailQualification}=retained?retained.tailModule(plan.historical):fromHistory('./local-staged-tail-qualification.cjs');
+@@ -180 +191 @@
+- for(const size of [...new Set([203,205,213,215,218,221,ledger.length])]){
++ for(const size of [...new Set([...(plan.recoveryProfile?[plan.recoveryProfile.prefix,plan.recoveryProfile.terminal]:[]),...(plan.pfqPositive?[plan.pfqPositive.prefix]:[]),203,205,213,215,218,221,ledger.length])]){
+@@ -192 +203 @@
+- const deploy=async(size,url=baseUrl)=>{enter('MIGRATE_'+size);await command(process.execPath,[cli,'migrate','deploy','--schema',path.join(roots.get(size),'schema.prisma')],{timeoutMs:plan.limits.migrationMs,extra:{DATABASE_URL:url.toString(),PRISMA_SCHEMA_ENGINE_BINARY:engine,PRISMA_HIDE_UPDATE_MESSAGE:'1',CHECKPOINT_DISABLE:'1'}});};
++ const deploy=async(size,url=baseUrl,allowFailure=false)=>{enter('MIGRATE_'+size);return command(process.execPath,[cli,'migrate','deploy','--schema',path.join(roots.get(size),'schema.prisma')],{allowFailure,timeoutMs:plan.limits.migrationMs,extra:{DATABASE_URL:url.toString(),PRISMA_SCHEMA_ENGINE_BINARY:engine,PRISMA_HIDE_UPDATE_MESSAGE:'1',CHECKPOINT_DISABLE:'1'}});};
+@@ -194 +205,39 @@
+- const checkLedger=(row,size)=>{need(equal(row.ledger,ledger.slice(0,size)),'NATIVE_DIRECT_MIGRATION_LEDGER');};
++ const checkLedger=(row,size)=>{
++  if(retained) retained.assertLedger(row.ledger,ledger,size);
++  else need(equal(row.ledger,ledger.slice(0,size)),'NATIVE_DIRECT_MIGRATION_LEDGER');
++ };
++ let retainedIdentity;
++ const recovery=retained && await retained.recover({
++  ledger,sql,jsonSql,inspect:controls.inspectSql(),enter,identity,kind:plan.recoveryProfile.kind,
++  resolve:name=>command(process.execPath,[cli,'migrate','resolve','--rolled-back',name,'--schema',
++   path.join(roots.get(plan.recoveryProfile.terminal),'schema.prisma')],{timeoutMs:plan.limits.migrationMs,
++    extra:{DATABASE_URL:baseUrl.toString(),PRISMA_SCHEMA_ENGINE_BINARY:engine,PRISMA_HIDE_UPDATE_MESSAGE:'1',CHECKPOINT_DISABLE:'1'}}),
++  deploy:async(size,url=baseUrl,expectedFailure=false)=>{
++   if(!expectedFailure) return deploy(size,url);
++   enter('PFQ_ORIGINAL_MIGRATION_FAILURE');
++   need(size===plan.recoveryProfile.terminal&&typeof observePfqFailure==='function','PFQ_RECOVERY_PRISMA_SCOPE');
++   const {result,markerInPostgres}=await observePfqFailure(()=>deploy(size,url,true));
++   need(result.code===1,'PFQ_RECOVERY_PRISMA_EXIT');
++   const {marker}=plan.recoveryProfile;
++   return {prismaCode:/\bP[0-9]{4}\b/u.exec(result.stderr??'')?.[0],
++     markerInPrismaStdout:(result.stdout??'').includes(marker),markerInPrismaStderr:(result.stderr??'').includes(marker),
++     markerInPostgres};
++  },
++ });
++ if(recovery){
++  receipt.expenseRecovery=recovery.receipt;
++  retainedIdentity=recovery.binding;
++ }
++ if(plan.pfqPositive){
++  const {prefix,terminal,seed}=plan.pfqPositive;
++  need(ledger[prefix-1]?.name===terminal.directory&&ledger[prefix-1].sha256===terminal.sha256,'PFQ_POSITIVE_PREFIX_SOURCE');
++  await deploy(prefix);
++  const before=await jsonSql(controls.inspectSql());
++  retainedIdentity=identity(before);
++  checkLedger(before,prefix);
++  enter('PFQ_ORIGINAL_RETAINED_SEED');
++  for(const batch of seed) await sql(batch);
++  const after=await jsonSql(controls.inspectSql());
++  need(equal(identity(after),retainedIdentity),'PFQ_POSITIVE_IDENTITY');
++  checkLedger(after,prefix);
++ }
+@@ -195,0 +245 @@
++ if(retainedIdentity)need(equal(bound,retainedIdentity),'PFQ_HISTORY_IDENTITY');
+@@ -204 +254,2 @@
+- return {plan:migrationPlan,setup,materials};
++ if(recovery)await recovery.verify();
++ return {plan:migrationPlan,setup,materials,recovery};
+@@ -241,4 +292 @@
+-const installOnly290 = Symbol('install-only290');
+-async function installer(receipt, probeOnly, consume, release=stableRelease, purpose) {
+-  if(purpose===installOnly290) need(!probeOnly && !consume && release===outsideRelease,'INSTALL_ONLY_290_PREDECESSOR');
+-
++async function installer(receipt, probeOnly, consume, release=stableRelease, pfqMode) {
+@@ -277 +325,6 @@
+-  const plan = {runId, database, historical, source:{witness:{profile}}, prismaTools:{cli, engine}, limits:{migrationMs:180000}};
++  const plan = {runId, database, historical, source:{witness:{profile}}, prismaTools:{cli, engine}, limits:{migrationMs:180000},
++    recoveryProfile: ({
++      execution:{module:'./task12-expense-execution-recovery.cjs',prefix:110,terminal:111,marker:'project_expense_execution_audit_missing'},
++      finance:{module:'./task12-expense-finance-recovery.cjs',prefix:111,terminal:112,marker:'project_expense_finance_audit_missing'},
++    })[pfqMode]};
++  need(plan.recoveryProfile,'EXPENSE_RECOVERY_PROFILE');
+@@ -402 +455,25 @@
+-    receipt.migrationMaterials = (await installHistory(plan, root, port, credentials, sql, jsonSql, command, enter, fromHistory, stageTree, receipt)).materials;
++    const observePfqFailure = plan.recoveryProfile ? async(operation)=>{
++      const isOriginal = ()=>need(lifetime.running()&&equal(readPostmaster(),postmaster),'PFQ_RECOVERY_LOG_POSTMASTER');
++      const fd=fs.openSync(logPath,fs.constants.O_RDONLY|fs.constants.O_NOFOLLOW|fs.constants.O_NONBLOCK);
++      try{
++        const stat=()=>{
++          isOriginal();
++          native.assertNativeTask16LogIdentity(fd,logIdentity,logPath);
++          return fs.fstatSync(fd);
++        };
++        const before=stat();
++        const result=await operation();
++        const after=stat();
++        const length=after.size-before.size;
++        need(length>=0&&length<=1024*1024,'PFQ_RECOVERY_LOG_WINDOW');
++        const delta=Buffer.alloc(length);
++        need(fs.readSync(fd,delta,0,length,before.size)===length,'PFQ_RECOVERY_LOG_WINDOW');
++        need(stat().size===after.size,'PFQ_RECOVERY_LOG_WINDOW');
++        const { hasPostgresMarker }=require(plan.recoveryProfile.module);
++        return {result,markerInPostgres:hasPostgresMarker(delta.toString('utf8'),plan.recoveryProfile.kind)};
++      }finally{fs.closeSync(fd);}
++    } : undefined;
++    const installed=await installHistory(plan,root,port,credentials,sql,jsonSql,command,enter,fromHistory,stageTree,receipt,observePfqFailure);
++    receipt.migrationMaterials=installed.materials;
++    const retained=installed.recovery&&require(plan.recoveryProfile.module);
++
+@@ -417 +494,2 @@
+-      need(equal(observed.ledger,ledger.slice(0,size)) && ['database','databaseOid','namespaceOid','systemIdentifier','ownerOid','actorOid','sessionActor'].every(key => observed[key] === roleIdentity[key]), 'STAGED_TAIL_CONTINUITY');
++      if(retained)retained.assertLedger(observed.ledger,ledger,size);
++      need((retained||equal(observed.ledger,ledger.slice(0,size))) && ['database','databaseOid','namespaceOid','systemIdentifier','ownerOid','actorOid','sessionActor'].every(key => observed[key] === roleIdentity[key]), 'STAGED_TAIL_CONTINUITY');
+@@ -424,0 +503 @@
++      if(installed.recovery)await installed.recovery.verify();
+@@ -580,2 +659,2 @@
+-    receipt.status = 'INSTALLED_'+release.count+'_NOT_BUSINESS_ADMISSION';
+-    if (purpose===installOnly290) {
++    let consumerLedger=ledger;
++    if (pfqMode) {
+@@ -584,0 +664 @@
++      consumerLedger=expected;
+@@ -590 +670,2 @@
+-      need(equal(installed.ledger,expected)&&['database','databaseOid','namespaceOid','systemIdentifier','ownerOid','actorOid','sessionActor']
++      if(retained)retained.assertLedger(installed.ledger,expected,expected.length);
++      need((retained||equal(installed.ledger,expected))&&['database','databaseOid','namespaceOid','systemIdentifier','ownerOid','actorOid','sessionActor']
+@@ -596,2 +677,13 @@
+-      receipt.installOnly290={ledgerSha256:hash(JSON.stringify(installed.ledger)),count:installed.ledger.length,exactPrior289:true,shape};
+-    }
++      if(installed.recovery)await installed.recovery.verify();
++      receipt.installOnly290={ledgerSha256:hash(JSON.stringify(expected)),count:expected.length,exactPrior289:true,shape};
++    }
++    if(pfqMode==='--pfq-app-289-local'){
++      for(const [operation,marker] of [['deploy',/No pending migrations to apply\.?/u],['status',/Database schema is up to date/u]]){
++        enter('PFQ_APP_MIGRATION_'+operation.toUpperCase());
++        const result=await command(process.execPath,[cli,'migrate',operation,'--schema',path.join(folder,'schema.prisma')],
++          {timeoutMs:180000,extra:{DATABASE_URL:endpoint.toString(),PRISMA_SCHEMA_ENGINE_BINARY:engine,PRISMA_HIDE_UPDATE_MESSAGE:'1',CHECKPOINT_DISABLE:'1'}});
++        need(marker.test(result.stdout)&&equal((await jsonSql(control.inspectSql())).ledger,consumerLedger),'PFQ_APP_MIGRATION_'+operation.toUpperCase());
++      }
++      receipt.pfqAppMigrationStatus=true;
++    }
++    receipt.status = 'INSTALLED_'+release.count+'_NOT_BUSINESS_ADMISSION';
+@@ -638 +730,2 @@
+-      need(equal(afterConsumer.ledger,ledger) && ['database','databaseOid','namespaceOid','systemIdentifier','ownerOid','actorOid','sessionActor'].every(key => afterConsumer[key] === roleIdentity[key]), 'CONSUMER_DATABASE_CONTINUITY');
++      if(retained)retained.assertLedger(afterConsumer.ledger,consumerLedger,consumerLedger.length);
++      need((retained||equal(afterConsumer.ledger,consumerLedger)) && ['database','databaseOid','namespaceOid','systemIdentifier','ownerOid','actorOid','sessionActor'].every(key => afterConsumer[key] === roleIdentity[key]), 'CONSUMER_DATABASE_CONTINUITY');
+@@ -639,0 +733,2 @@
++      if(installed.recovery)await installed.recovery.verify();
++      if (pfqMode) need(require('./successor.cjs').exactCatalog(await jsonSql(require('./successor.cjs').catalogSql)),'PFQ_290_CATALOG_CONTINUITY');
+@@ -653 +748 @@
+-async function installHistory(plan,root,port,credentials,sql,jsonSql,command,enter,fromHistory,stageTree,receipt){
++async function installHistory(plan,root,port,credentials,sql,jsonSql,command,enter,fromHistory,stageTree,receipt,observePfqFailure){
+@@ -655 +750 @@
+-const migration=await migrateNativeTask16(plan,root,port,credentials.owner,sql,jsonSql,command,enter,fromHistory);
++const migration=await migrateNativeTask16(plan,root,port,credentials.owner,sql,jsonSql,command,enter,fromHistory,receipt,observePfqFailure);
+@@ -659 +754,4 @@
+-  const roleScope=JSON.stringify({identity:roleIdentity,app:{name:migration.plan.appName,oid:migration.setup.appOid,nonce:migration.plan.nonce},ledger:plan.source.witness.profile.ledger,competition:false});
++  const retained=migration.recovery&&require(plan.recoveryProfile.module);
++  const ledger=plan.source.witness.profile.ledger;
++  const roleScope=JSON.stringify({identity:roleIdentity,app:{name:migration.plan.appName,oid:migration.setup.appOid,nonce:migration.plan.nonce},
++    ledger:retained?retained.expectedLedger(ledger,ledger.length):ledger,competition:false});
+@@ -665 +763,5 @@
+- const run=async(label,statement)=>{enter(label);return (await sql(statement)).stdout;};
++ const run=async(label,statement)=>{
++  enter(label);
++  if(migration.recovery)await migration.recovery.verify();
++  return (await sql(retained?retained.bindArchiveLedger(statement,ledger):statement)).stdout;
++ };
+@@ -929,2 +1031,3 @@
+-module.exports.withOutside290InstallOnly = receipt => {
+-  const {contract289, verifyMaterialized}=require('./checkout.cjs');
++async function withOutside290ExpenseRecovery(receipt,lane) {
++  need(lane==='execution'||lane==='finance','EXPENSE_RECOVERY_LANE');
++  const {contract289,verifyMaterialized}=require('./checkout.cjs');
+@@ -934,3 +1037,9 @@
+-  Object.assign(receipt,{releaseTree:scope.tree,predecessorTree:outsideRelease.tree,sourceBaseSha:stableRelease.sha,sourceKind:'UNCOMMITTED_EXACT_GIT_TREE'});
+-  return installer(receipt,false,undefined,outsideRelease,installOnly290);
+-};
++  Object.assign(receipt,{releaseTree:scope.tree,predecessorTree:outsideRelease.tree,
++    sourceBaseSha:stableRelease.sha,sourceKind:'UNCOMMITTED_EXACT_GIT_TREE'});
++  return installer(receipt,false,async context=>{
++    need(receipt.expenseRecovery?.PrismaResolve===true&&receipt.expenseRecovery?.expectedFailure===true,
++      'EXPENSE_RECOVERY_COMPLETION');
++    assertOutsideWitness(289,JSON.parse((await context.sql(outsideWitnessSql(289))).stdout.trim()));
++  },outsideRelease,lane);
++}
++module.exports.withOutside290ExpenseRecovery=withOutside290ExpenseRecovery;

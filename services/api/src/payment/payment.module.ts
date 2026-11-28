@@ -1,3 +1,4 @@
+import { PaymentApprovalNotificationService } from "./payment-approval-notification.service";
 import { Module } from "@nestjs/common";
 import { BusinessEntryTransactionModule } from "../business-entry-definition/business-entry-transaction.module";
 import { ApprovalModule } from "../approval/approval.module";
@@ -12,6 +13,13 @@ import { PaymentController } from "./payment.controller";
 import { PaymentAmountService } from "./payment-amount.service";
 import { PaymentReadService } from "./payment-read.service";
 import { PaymentRequestService } from "./payment-request.service";
+import { RegisteredPaymentExecutionController } from "./registered-payment-execution.controller";
+import { RegisteredPaymentExecutionService } from "./registered-payment-execution.service";
+import { RegisteredPaymentNotificationService } from "./registered-payment-notification.service";
+import { PaymentRefundService } from "./payment-refund.service";
+import { PaymentCorrectionService } from "./payment-correction.service";
+import { FinancialCorrectionEntryService } from "./financial-correction-entry.service";
+import { PaymentFinancialController } from "./payment-financial.controller";
 
 @Module({
   imports: [
@@ -25,8 +33,8 @@ import { PaymentRequestService } from "./payment-request.service";
     OperatingLedgerModule,
     ProjectFundingModule
   ],
-  controllers: [PaymentController],
-  providers: [PaymentAmountService, PaymentRequestService, PaymentReadService],
-  exports: [PaymentAmountService, PaymentRequestService, PaymentReadService]
+  controllers: [PaymentController, RegisteredPaymentExecutionController, PaymentFinancialController],
+  providers: [PaymentAmountService, PaymentRequestService, PaymentReadService, RegisteredPaymentExecutionService, RegisteredPaymentNotificationService, PaymentApprovalNotificationService, PaymentRefundService, PaymentCorrectionService, FinancialCorrectionEntryService],
+  exports: [PaymentAmountService, PaymentRequestService, PaymentReadService, PaymentRefundService, PaymentCorrectionService]
 })
 export class PaymentModule {}

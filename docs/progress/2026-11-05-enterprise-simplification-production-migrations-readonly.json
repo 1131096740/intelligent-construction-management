@@ -1,0 +1,14 @@
+{
+  "candidateSha": "2f474055bd018b3e454b458038d91080203ad5dc",
+  "productionCheckoutSha": "6bf7820c0d925e5804ad7d03ae8b983a9220b5e3",
+  "transactionReadOnly": "on",
+  "serverVersionNum": "160014",
+  "ledgerRows": 197,
+  "appliedMigrations": 197,
+  "candidateMigrations": 197,
+  "candidateOnly": [],
+  "productionOnly": [],
+  "mismatched": [],
+  "unfinishedOrRolledBack": [],
+  "sourceReceiptSha256": "7d1bde7c486b19931f46140045466748a12b3e005d2e584b5ef319b72ea0cb8b"
+}

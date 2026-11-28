@@ -1,4 +1,26 @@
+import { ACTUAL_PURCHASE_BATCH_PAGE_ACTION_IDS, proveActualPurchaseBatchPageAction } from "./actual-purchase-batch-page-action-proof.mjs";
+import { COST_ATTRIBUTION_PAGE_ACTION_IDS, proveCostAttributionPageAction } from "./cost-attribution-page-action-proof.mjs";
+import { HISTORY_EXPENSE_PAGE_ACTION_IDS, proveHistoryExpensePageAction } from "./history-expense-page-action-proof.mjs";
+import { PUBLIC_CASH_HANDOVER_ACTIONS, provePublicCashHandoverPageAction } from "./public-cash-handover-page-action-proof.mjs";
+import { proveSignedPageAction, SIGNED_PAGE_ACTION_IDS } from "./contract-signed-pages-action-proof.mjs";
 import { createRequire } from "node:module";
+import {
+  GENERATED_ARCHIVE_ACTIONS,
+  GENERATED_ARCHIVE_API,
+  GENERATED_ARCHIVE_CONFIRM,
+  GENERATED_ARCHIVE_CONSUMER,
+  GENERATED_ARCHIVE_UPLOAD,
+  GENERATED_ARCHIVE_WRITE,
+  proveGeneratedArchivePageAction
+} from "./contract-generated-archive-page-action-proof.mjs";
+import {
+  proveContractSealPageAction,
+  SEAL_ACTION_IDS,
+  SEAL_API,
+  SEAL_COMPOSABLE,
+  SEAL_WRITE,
+  SEAL_WRITE_ACTION_IDS
+} from "./contract-seal-page-action-proof.mjs";
 import { mkdir, readFile, readdir, writeFile } from "node:fs/promises";
 import {
   basename,
@@ -8642,21 +8664,73 @@ function uniqueVariableBinding(ast, name, symbols) {
   return bindings.size === 1 ? [...bindings][0] : null;
 }
 
-function isServerReadAwait(
-  expression,
-  symbols,
-  serverReadBinding
-) {
-  const awaited = unwrapPreflightExpression(expression);
-  const call = awaited?.type === "AwaitExpression"
-    ? unwrapPreflightExpression(awaited.argument)
-    : null;
+function isBoundServerReadCall(call, symbols, serverReadBinding) {
   return call?.type === "CallExpression" &&
     call.callee?.type === "Identifier" &&
     symbols.scopeBindings?.get(call.callee) === serverReadBinding &&
     (call.arguments ?? []).every(
       (argument) => argument?.type !== "SpreadElement"
     );
+}
+
+function isGuardedWorkbenchReadAwait(expression, symbols, serverReadBinding) {
+  const awaited = unwrapPreflightExpression(expression);
+  const branch = awaited?.type === "AwaitExpression"
+    ? unwrapPreflightExpression(awaited.argument)
+    : null;
+  if (branch?.type !== "ConditionalExpression" ||
+      branch.test?.type !== "MemberExpression" ||
+      branch.test.computed || branch.test.optional ||
+      branch.test.object?.type !== "Identifier" ||
+      branch.test.object.name !== "options" ||
+      branch.test.property?.name !== "routePath") return false;
+
+  const guarded = unwrapPreflightExpression(branch.consequent);
+  const regular = unwrapPreflightExpression(branch.alternate);
+  if (!isBoundServerReadCall(guarded, symbols, serverReadBinding) ||
+      !isBoundServerReadCall(regular, symbols, serverReadBinding) ||
+      guarded.optional || regular.optional ||
+      guarded.arguments.length !== 2 || regular.arguments.length !== 1) {
+    return false;
+  }
+  const [guardedId, requestOptions] = guarded.arguments;
+  const [regularId] = regular.arguments;
+  const coordinate = symbols.scopeBindings?.get(regularId);
+  const [definition] = coordinate?.defs ?? [];
+  if (regularId.type !== "Identifier" || regularId.name !== "requestedVersionId" ||
+      guardedId.type !== "Identifier" || guardedId.name !== regularId.name ||
+      symbols.scopeBindings?.get(guardedId) !== coordinate ||
+      coordinate?.defs.length !== 1 || definition?.type !== "Parameter" ||
+      definition.node?.type !== "FunctionDeclaration" || definition.node.id?.name !== "load" ||
+      requestOptions?.type !== "ObjectExpression" || requestOptions.properties.length !== 1) {
+    return false;
+  }
+  const [option] = requestOptions.properties;
+  return option?.type === "Property" && option.kind === "init" &&
+    !option.computed && !option.method && propertyKey(option) === "responseIsCurrent" &&
+    option.value?.type === "Identifier" && option.value.name === "loadingCurrent" &&
+    Boolean(symbols.scopeBindings?.get(option.value));
+}
+
+function isServerReadAwait(expression, symbols, serverReadBinding) {
+  const awaited = unwrapPreflightExpression(expression);
+  const call = awaited?.type === "AwaitExpression"
+    ? unwrapPreflightExpression(awaited.argument)
+    : null;
+  return isBoundServerReadCall(call, symbols, serverReadBinding) ||
+    isGuardedWorkbenchReadAwait(expression, symbols, serverReadBinding);
+}
+
+function hasGuardedWorkbenchLoad(ast, symbols, serverReadBinding) {
+  let matches = 0;
+  walkEstree(ast, (node) => {
+    if (node.type === "AssignmentExpression" && node.operator === "=" &&
+        node.left?.type === "Identifier" && node.left.name === "result" &&
+        isGuardedWorkbenchReadAwait(node.right, symbols, serverReadBinding)) {
+      matches++;
+    }
+  });
+  return matches === 1;
 }
 
 function immutableServerReadBinding(
@@ -8818,9 +8892,11 @@ function contractDraftAuthoritySnapshotProvenance(
     !/return\s+Object\.freeze\s*\(\s*\{[\s\S]*?\bavailableActions\s*,[\s\S]*?\}\s*\)\s*;/.test(
       authoritySnapshotSource
     ) ||
-    !/result\s*=\s*await\s+fetchContractDraftWorkbench\s*\(\s*requestedVersionId\s*\)\s*;/.test(
+    (!/result\s*=\s*await\s+fetchContractDraftWorkbench\s*\(\s*requestedVersionId\s*\)\s*;/.test(
       composableSource
-    ) ||
+    ) && !hasGuardedWorkbenchLoad(
+      composableAst, composableSymbols, workbenchImportBinding
+    )) ||
     !/fresh\s*=\s*await\s+fetchContractDraftWorkbench\s*\(\s*conflictingVersionId\s*\)\s*;/.test(
       composableSource
     )
@@ -8850,10 +8926,13 @@ function contractDraftAuthoritySnapshotProvenance(
 }
 
 function capabilityServerProvenance(capability, context) {
-  const sources = capabilityServerProvenanceSources(
-    capability,
-    context
-  );
+  const verifiedDraftSource = context.draftOperationSource?.capability === capability;
+  if (isContractDraftCreationCapability(capability, context) && !verifiedDraftSource) {
+    return null;
+  }
+  const sources = verifiedDraftSource
+    ? new Set([context.draftOperationSource.sourceIdentity])
+    : capabilityServerProvenanceSources(capability, context);
   if (sources?.size === 1) {
     return {
       sources,
@@ -9917,15 +9996,22 @@ function literalBindingsForCall(definition, callNode, symbols) {
   return bindings;
 }
 
-function leadingAwaitedLocalPreflight(definition, symbols) {
+function leadingAwaitedLocalPreflight(definition, symbols, bindReceipt = false) {
   const statement = (definition?.body?.body ?? []).find(
     (candidate) => candidate.type !== "EmptyStatement"
   );
-  if (statement?.type !== "ExpressionStatement") return null;
+  const declaration = bindReceipt && statement?.type === "VariableDeclaration" &&
+    statement.kind === "const" && statement.declarations.length === 1
+    ? statement.declarations[0]
+    : null;
+  const receipt = declaration?.id?.type === "Identifier"
+    ? symbols.scopeBindings.get(declaration.id)
+    : null;
+  if (statement?.type !== "ExpressionStatement" && !receipt) return null;
   // Preserve the AwaitExpression while unwrapping only TypeScript wrappers.
   // unwrapValueExpression intentionally erases awaits for ordinary data-flow
   // analysis, but a delegated preflight must prove that it completes first.
-  const awaited = unwrapPreflightExpression(statement.expression);
+  const awaited = unwrapPreflightExpression(receipt ? declaration.init : statement.expression);
   const call = awaited?.type === "AwaitExpression"
     ? unwrapValueExpression(awaited.argument)
     : null;
@@ -9940,7 +10026,7 @@ function leadingAwaitedLocalPreflight(definition, symbols) {
     ? uniqueIndexedNode(symbols.definitionsByBinding, binding)
     : null;
   return binding && helperDefinition
-    ? { binding, definition: helperDefinition, call }
+    ? { binding, definition: helperDefinition, call, receipt }
     : null;
 }
 
@@ -10031,17 +10117,444 @@ function delegatedPreflightCapabilityCheck(
   return false;
 }
 
+const CONTRACT_DRAFT_OPERATION_WRITES = new Map([
+  ["acquire_contract_draft_edit_lease", ["acquireContractDraftEditLease", [0]]],
+  ["heartbeat_contract_draft_edit_lease", ["heartbeatContractDraftEditLease", [0, 2]]],
+  ["release_contract_draft_edit_lease", ["releaseContractDraftEditLease", [0, 2]]],
+  ["take_over_contract_draft_edit_lease", ["takeOverContractDraftEditLease", [0, 2]]],
+  ["save_contract_draft", ["saveContractDraftAggregate", [0, 1, 2]]],
+  ["queue_contract_draft_preview", ["queueContractDraftPreview", [0, 1]]],
+  ["submit_contract_draft", ["submitContractDraft", [0, 1, 2]]]
+]);
+
+function draftOperationAuthorityRead(definition, context) {
+  const { symbols } = context;
+  const reference = (node) => resolvedReferenceBinding(node, symbols);
+  const bound = (node) => symbols.scopeBindings.get(node);
+  const [versionId, revision, operation, denial, responseCurrent] =
+    (definition.params ?? []).map(bound);
+  if (
+    definition.id?.name !== "assertCurrentContractDraftOperationCapability" ||
+    !definition.async || definition.generator || definition.params.length !== 5 ||
+    definition.params.some((parameter) => parameter.type !== "Identifier") ||
+    !versionId || !revision || !operation || !denial || !responseCurrent
+  ) return null;
+
+  const statements = definition.body?.body ?? [];
+  if (statements.length !== 5) return null;
+  const [load, versionGuard, operationGuard, revisionGuard, result] = statements;
+  const [declaration] = load.declarations ?? [];
+  const response = bound(declaration?.id);
+  const read = declaration?.init?.argument;
+  if (
+    load.type !== "VariableDeclaration" || load.kind !== "const" ||
+    load.declarations.length !== 1 || !response ||
+    declaration.init?.type !== "AwaitExpression" || read?.type !== "ConditionalExpression" ||
+    reference(read.test) !== responseCurrent
+  ) return null;
+
+  const regular = read.alternate;
+  const guarded = read.consequent;
+  const readBinding = reference(regular?.callee);
+  const imported = symbols.importsByBinding.get(readBinding);
+  if (
+    imported?.sourceFile !== CONTRACT_WORKBENCH_API_PATH ||
+    imported.importedName !== "fetchContractDraftOperationCapabilities" ||
+    !isBoundServerReadCall(regular, symbols, readBinding) ||
+    !isBoundServerReadCall(guarded, symbols, readBinding) ||
+    regular.optional || guarded.optional ||
+    regular.arguments.length !== 1 || guarded.arguments.length !== 2 ||
+    reference(regular.arguments[0]) !== versionId ||
+    reference(guarded.arguments[0]) !== versionId
+  ) return null;
+  const options = guarded.arguments[1];
+  if (options?.type !== "ObjectExpression" || options.properties.length !== 2) {
+    return null;
+  }
+  const [retry, callback] = options.properties;
+  const valueProperty = (node, name) =>
+    node?.type === "Property" && node.kind === "init" &&
+    !node.computed && !node.method && propertyKey(node) === name;
+  if (
+    !valueProperty(retry, "retryUnauthorized") ||
+    retry.value?.type !== "Literal" || retry.value.value !== false ||
+    !valueProperty(callback, "responseIsCurrent") ||
+    reference(callback.value) !== responseCurrent
+  ) return null;
+
+  const responseField = (node, field) =>
+    node?.type === "MemberExpression" && !node.optional &&
+    staticMemberProperty(node) === field &&
+    bindingMemberIs(node.object, response, "version", symbols);
+  const mismatch = (node, field, binding) =>
+    node?.type === "BinaryExpression" && node.operator === "!==" &&
+    responseField(node.left, field) && reference(node.right) === binding;
+  const includesOperation = (node) =>
+    node?.type === "CallExpression" && !node.optional &&
+    node.callee?.type === "MemberExpression" && !node.callee.optional &&
+    staticMemberProperty(node.callee) === "includes" &&
+    bindingMemberIs(node.callee.object, response, "draftOperationAvailableActions", symbols) &&
+    node.arguments.length === 1 && reference(node.arguments[0]) === operation;
+  const isGuard = (node) => node?.type === "IfStatement" && !node.alternate;
+  const revisionStatements = revisionGuard.consequent?.type === "BlockStatement"
+    ? revisionGuard.consequent.body
+    : [];
+  const [conflict, revisionThrow] = revisionStatements;
+  const operationTest = operationGuard.test;
+  if (
+    !isGuard(versionGuard) || !mismatch(versionGuard.test, "id", versionId) ||
+    !isGuard(operationGuard) || operationTest?.type !== "UnaryExpression" ||
+    operationTest.operator !== "!" || !includesOperation(operationTest.argument) ||
+    !isGuard(revisionGuard) || !mismatch(revisionGuard.test, "draftRevision", revision) ||
+    revisionGuard.consequent?.type !== "BlockStatement" ||
+    revisionGuard.consequent.body.length !== 2 ||
+    result.type !== "ReturnStatement" || reference(result.argument) !== response
+  ) return null;
+
+  const versionError = authorityRefreshThrow(versionGuard.consequent, symbols);
+  const deniedError = authorityRefreshThrow(operationGuard.consequent, symbols);
+  const revisionError = authorityRefreshThrow(revisionThrow, symbols);
+  if (
+    literalString(versionError) === null || reference(deniedError) !== denial ||
+    literalString(revisionError) === null ||
+    !isGuard(conflict) || !throwOnlyStatement(conflict.consequent)
+  ) return null;
+
+  const terms = flattenedStrictConjunction(conflict.test) ?? [];
+  const [saveTest, integerTest, newerTest, permissionTest] = terms;
+  if (
+    terms.length !== 4 ||
+    saveTest.type !== "BinaryExpression" || saveTest.operator !== "===" ||
+    reference(saveTest.left) !== operation || literalString(saveTest.right) !== "save_contract_draft" ||
+    !draftOperationBuiltinCall(integerTest, "Number", "isInteger", symbols) ||
+    integerTest.arguments.length !== 1 || !responseField(integerTest.arguments[0], "draftRevision") ||
+    newerTest.type !== "BinaryExpression" || newerTest.operator !== ">" ||
+    !responseField(newerTest.left, "draftRevision") || reference(newerTest.right) !== revision ||
+    !includesOperation(permissionTest)
+  ) return null;
+  const conflictThrow = (conflict.consequent.body?.[0] ?? conflict.consequent).argument;
+  if (!draftOperationRevisionConflict(conflictThrow, symbols)) return null;
+  const sourceIdentity = importedReadSource(regular, context.serverReadImports, symbols);
+  return sourceIdentity ? { sourceIdentity, response } : null;
+}
+
+function authorityRefreshThrow(node, symbols) {
+  if (!throwOnlyStatement(node)) return null;
+  const value = (node.body?.[0] ?? node).argument;
+  if (
+    value?.type !== "NewExpression" || value.callee?.type !== "Identifier" ||
+    value.callee.name !== "ContractDraftAuthorityRefreshRequiredError" ||
+    value.arguments.length !== 1
+  ) return null;
+  const definitions = resolvedReferenceBinding(value.callee, symbols)?.defs ?? [];
+  const methods = definitions[0]?.node?.body?.body ?? [];
+  const constructor = methods[0]?.value;
+  const [forward, name] = constructor?.body?.body ?? [];
+  const base = definitions[0]?.node?.superClass;
+  const call = forward?.expression;
+  const assignment = name?.expression;
+  if (
+    definitions.length !== 1 || definitions[0].node.type !== "ClassDeclaration" ||
+    (definitions[0].node.decorators ?? []).length !== 0 ||
+    !unshadowedRuntimeGlobal(base, new Set(["Error"]), symbols.scopeBindings) ||
+    methods.length !== 1 || methods[0].kind !== "constructor" ||
+    constructor.params.length !== 1 || constructor.params[0].type !== "Identifier" ||
+    constructor.body.body.length !== 2 ||
+    forward?.type !== "ExpressionStatement" || call?.type !== "CallExpression" ||
+    call.callee?.type !== "Super" || call.arguments.length !== 1 ||
+    resolvedReferenceBinding(call.arguments[0], symbols) !== symbols.scopeBindings.get(constructor.params[0]) ||
+    name?.type !== "ExpressionStatement" || assignment?.type !== "AssignmentExpression" ||
+    assignment.operator !== "=" || assignment.left?.type !== "MemberExpression" ||
+    assignment.left.object?.type !== "ThisExpression" ||
+    staticMemberProperty(assignment.left) !== "name" ||
+    literalString(assignment.right) !== value.callee.name
+  ) return null;
+  return value.arguments[0];
+}
+
+function draftOperationBuiltinCall(node, object, method, symbols) {
+  return node?.type === "CallExpression" && !node.optional &&
+    node.callee?.type === "MemberExpression" && !node.callee.optional &&
+    staticMemberProperty(node.callee) === method &&
+    unshadowedRuntimeGlobal(node.callee.object, new Set([object]), symbols.scopeBindings);
+}
+
+function draftOperationRevisionConflict(node, symbols) {
+  if (!draftOperationBuiltinCall(node, "Object", "assign", symbols) || node.arguments.length !== 2) {
+    return false;
+  }
+  const [error, payload] = node.arguments;
+  const [code] = payload?.properties ?? [];
+  return error?.type === "NewExpression" &&
+    unshadowedRuntimeGlobal(error.callee, new Set(["Error"]), symbols.scopeBindings) &&
+    error.arguments.length === 1 && literalString(error.arguments[0]) !== null &&
+    payload.type === "ObjectExpression" && payload.properties.length === 1 &&
+    code?.type === "Property" && code.kind === "init" && !code.method && !code.computed &&
+    propertyKey(code) === "code" && literalString(code.value) === "DRAFT_REVISION_CONFLICT";
+}
+
+function draftSubmissionReceiptGuard(node, receipt, payload, symbols) {
+  const test = node?.test;
+  const protocolField = test?.left;
+  if (
+    node?.type !== "IfStatement" || node.alternate || !receipt ||
+    test?.type !== "LogicalExpression" || test.operator !== "&&" ||
+    protocolField?.type !== "BinaryExpression" || protocolField.operator !== "in" ||
+    literalString(protocolField.left) !== "submissionProtocolVersion" ||
+    resolvedReferenceBinding(protocolField.right, symbols) !== payload ||
+    literalString(authorityRefreshThrow(node.consequent, symbols)) === null
+  ) return false;
+
+  const differences = flattenedStrictDisjunction(test.right) ?? [];
+  const fields = ["numericProtocolVersion", "documentContentRevision", "documentContentFingerprint"];
+  return differences.length === fields.length && differences.every((difference, index) => {
+    const field = fields[index];
+    const left = difference.left;
+    return difference.type === "BinaryExpression" && difference.operator === "!==" &&
+      left?.type === "MemberExpression" && !left.optional &&
+      staticMemberProperty(left) === field &&
+      bindingMemberIs(left.object, receipt, "version", symbols) &&
+      (index === 0
+        ? difference.right?.type === "Literal" && difference.right.value === 2
+        : bindingMemberIs(difference.right, payload, field, symbols));
+  });
+}
+
+function draftOperationPreflight(candidate, leading, capability, context) {
+  const { symbols } = context;
+  const [wrapperName, writeCoordinates] = CONTRACT_DRAFT_OPERATION_WRITES.get(capability.key) ?? [];
+  const caller = candidate.expression;
+  const statements = caller.body?.body ?? [];
+  const write = statements.at(-1)?.argument;
+  const submits = capability.key === "submit_contract_draft";
+  const usesPayload = submits || capability.key === "save_contract_draft";
+  if (
+    !wrapperName || !caller.async || caller.generator ||
+    caller.params.some((parameter) => parameter.type !== "Identifier") ||
+    caller.params.length !== (usesPayload ? 4 : Math.max(1, ...writeCoordinates) + 1) ||
+    statements.at(-1)?.type !== "ReturnStatement" ||
+    write?.type !== "CallExpression" || write.optional ||
+    leading.call.optional || leading.call.arguments.length !== 4 ||
+    literalString(leading.call.arguments[2]) !== capability.key ||
+    literalString(leading.call.arguments[3]) === null
+  ) return null;
+
+  const version = symbols.scopeBindings.get(caller.params?.[0]);
+  const reference = (node) => resolvedReferenceBinding(node, symbols);
+  const importedWrite = symbols.importsByBinding.get(reference(write.callee));
+  if (
+    !version || reference(leading.call.arguments[0]) !== version ||
+    reference(write.arguments[0]) !== version ||
+    importedWrite?.sourceFile !== CONTRACT_WORKBENCH_API_PATH ||
+    importedWrite.importedName !== wrapperName ||
+    write.arguments.length !== writeCoordinates.length ||
+    !writeCoordinates.every((parameter, index) => {
+      const binding = symbols.scopeBindings.get(caller.params?.[parameter]);
+      return binding && reference(write.arguments[index]) === binding;
+    })
+  ) return null;
+
+  const revisionArgument = leading.call.arguments[1];
+  if (usesPayload) {
+    const payload = symbols.scopeBindings.get(caller.params[2]);
+    const callback = symbols.scopeBindings.get(caller.params[3]);
+    const dispatchStatement = statements.at(-2);
+    const dispatch = dispatchStatement?.expression;
+    if (
+      statements.length !== (submits ? 4 : 3) ||
+      dispatchStatement?.type !== "ExpressionStatement" ||
+      dispatch?.type !== "CallExpression" || dispatch.optional || dispatch.arguments.length !== 0 ||
+      !callback || reference(dispatch.callee) !== callback ||
+      !payload || !bindingMemberIs(revisionArgument, payload, "expectedRevision", symbols) ||
+      (submits && !draftSubmissionReceiptGuard(statements[1], leading.receipt, payload, symbols))
+    ) return null;
+  } else {
+    const revision = symbols.scopeBindings.get(caller.params[1]);
+    if (
+      statements.length !== 2 || !revision || reference(revisionArgument) !== revision
+    ) return null;
+  }
+
+  const read = draftOperationAuthorityRead(leading.definition, context);
+  return read ? {
+    helperBinding: leading.binding,
+    sourceBindings: new Set([read.response]),
+    sourceIdentity: read.sourceIdentity,
+    writeIdentity: wrapperIdentity(CONTRACT_WORKBENCH_API_PATH, wrapperName),
+    writeName: write.callee.name
+  } : null;
+}
+
+function isContractDraftCreationCapability(capability, context) {
+  return context?.sourceFile === CONTRACT_DRAFT_COMPOSABLE_PATH &&
+    capability?.key === "create_contract_draft";
+}
+
+function draftCreationPreflight(definition, context) {
+  const { symbols } = context;
+  const binding = (node) => symbols.scopeBindings.get(node);
+  const reference = (node) => resolvedReferenceBinding(node, symbols);
+  const member = (node, owner, field) =>
+    node?.type === "MemberExpression" && !node.optional &&
+    bindingMemberIs(node, owner, field, symbols);
+  const call = (node) => node?.type === "CallExpression" && !node.optional;
+  const declaration = (node) =>
+    node?.type === "VariableDeclaration" && node.kind === "const" &&
+    node.declarations.length === 1 && node.declarations[0].id.type === "Identifier"
+      ? node.declarations[0]
+      : null;
+  const guardedIf = (node) => node?.type === "IfStatement" && !node.alternate;
+  const isNegation = (node) => node?.type === "UnaryExpression" && node.operator === "!";
+  const rejects = (node) => {
+    if (!throwOnlyStatement(node)) return false;
+    const value = (node.body?.[0] ?? node).argument;
+    return value?.type === "NewExpression" &&
+      unshadowedRuntimeGlobal(value.callee, new Set(["Error"]), symbols.scopeBindings) &&
+      value.arguments.length === 1 && literalString(value.arguments[0]) !== null;
+  };
+
+  const statements = definition?.body?.body ?? [];
+  if (
+    definition?.type !== "FunctionDeclaration" ||
+    definition.id?.name !== "createWorkbenchDraftWithCapability" ||
+    !definition.async || definition.generator ||
+    definition.params.length !== 2 ||
+    definition.params.some((parameter) => parameter.type !== "Identifier") ||
+    statements.length !== 10
+  ) return null;
+  const [payload, direct] = definition.params.map(binding);
+  if (!payload || !direct) return null;
+  const [mode, load, match, projectGuard, allowed, permissionGuard, upwardGuard,
+    regularReturn, dispatch, directReturn] = statements;
+
+  const upward = declaration(mode);
+  const upwardBinding = binding(upward?.id);
+  const upwardTerms = flattenedStrictConjunction(upward?.init) ?? [];
+  const [hasMode, isDirect, isUpward] = upwardTerms;
+  const comparesPayload = (node, field, expected) =>
+    node?.type === "BinaryExpression" && node.operator === "===" &&
+    member(node.left, payload, field) && literalString(node.right) === expected;
+  if (
+    !upwardBinding || upwardTerms.length !== 3 ||
+    hasMode.type !== "BinaryExpression" || hasMode.operator !== "in" ||
+    literalString(hasMode.left) !== "handlingMode" || reference(hasMode.right) !== payload ||
+    !comparesPayload(isDirect, "handlingMode", "direct_signed") ||
+    !comparesPayload(isUpward, "relationship", "upward")
+  ) return null;
+
+  const receipt = declaration(load);
+  const receiptBinding = binding(receipt?.id);
+  const arms = receipt?.init?.argument;
+  if (
+    !receiptBinding || receipt.init?.type !== "AwaitExpression" ||
+    arms?.type !== "ConditionalExpression" || reference(arms.test) !== direct
+  ) return null;
+  const guarded = arms.consequent;
+  const regular = arms.alternate;
+  const readBinding = reference(regular?.callee);
+  const readImport = symbols.importsByBinding.get(readBinding);
+  if (
+    !call(guarded) || !call(regular) || reference(guarded.callee) !== readBinding ||
+    readImport?.sourceFile !== CONTRACT_WORKBENCH_API_PATH ||
+    readImport.importedName !== "fetchContractCreateCapabilities" ||
+    guarded.arguments.length !== 3 || regular.arguments.length !== 1 ||
+    !member(guarded.arguments[0], payload, "projectId") ||
+    !member(regular.arguments[0], payload, "projectId")
+  ) return null;
+  const [, options, relationship] = guarded.arguments;
+  const [retry, current] = options?.properties ?? [];
+  const option = (node, key) =>
+    node?.type === "Property" && node.kind === "init" &&
+    !node.computed && !node.method && propertyKey(node) === key;
+  if (
+    options?.type !== "ObjectExpression" || options.properties.length !== 2 ||
+    !option(retry, "retryUnauthorized") ||
+    retry.value?.type !== "Literal" || retry.value.value !== false ||
+    !option(current, "responseIsCurrent") || !member(current.value, direct, "current") ||
+    relationship?.type !== "ConditionalExpression" ||
+    reference(relationship.test) !== upwardBinding ||
+    literalString(relationship.consequent) !== "upward" ||
+    !unshadowedRuntimeGlobal(relationship.alternate, new Set(["undefined"]), symbols.scopeBindings)
+  ) return null;
+
+  const matchingProject = declaration(match);
+  const matches = matchingProject?.init;
+  const containsAction = (node, key) =>
+    call(node) && node.callee?.type === "MemberExpression" && !node.callee.optional &&
+    staticMemberProperty(node.callee) === "includes" &&
+    member(node.callee.object, receiptBinding, "availableActions") &&
+    node.arguments.length === 1 && literalString(node.arguments[0]) === key;
+  const permission = declaration(allowed);
+  const rejectsUnless = (node, condition) =>
+    condition && guardedIf(node) && isNegation(node.test) &&
+    reference(node.test.argument) === condition && rejects(node.consequent);
+  const additional = upwardGuard.test;
+  if (
+    matches?.type !== "BinaryExpression" || matches.operator !== "===" ||
+    !member(matches.left, receiptBinding, "projectId") ||
+    !member(matches.right, payload, "projectId") ||
+    !rejectsUnless(projectGuard, binding(matchingProject.id)) ||
+    !containsAction(permission?.init, "create_contract_draft") ||
+    !rejectsUnless(permissionGuard, binding(permission.id)) ||
+    !guardedIf(upwardGuard) || additional?.type !== "LogicalExpression" ||
+    additional.operator !== "&&" || reference(additional.left) !== upwardBinding ||
+    !isNegation(additional.right) ||
+    !containsAction(additional.right.argument, "create_upward_direct_draft") ||
+    !rejects(upwardGuard.consequent)
+  ) return null;
+
+  const directWrite = directReturn.argument;
+  const writeBinding = reference(directWrite?.callee);
+  const writeImport = symbols.importsByBinding.get(writeBinding);
+  const write = (node, guarded) => node?.type === "ReturnStatement" &&
+    call(node.argument) && reference(node.argument.callee) === writeBinding &&
+    node.argument.arguments.length === (guarded ? 2 : 1) &&
+    reference(node.argument.arguments[0]) === payload &&
+    (!guarded || member(node.argument.arguments[1], direct, "current"));
+  const beforeDispatch = dispatch.expression;
+  if (
+    writeImport?.sourceFile !== CONTRACT_WORKBENCH_API_PATH ||
+    writeImport.importedName !== "createWorkbenchDraft" ||
+    !guardedIf(regularReturn) || !isNegation(regularReturn.test) ||
+    reference(regularReturn.test.argument) !== direct || !write(regularReturn.consequent, false) ||
+    dispatch.type !== "ExpressionStatement" || !call(beforeDispatch) ||
+    !member(beforeDispatch.callee, direct, "beforeDispatch") || beforeDispatch.arguments.length !== 0 ||
+    !write(directReturn, true)
+  ) return null;
+
+  const sourceIdentity = importedReadSource(regular, context.serverReadImports, symbols);
+  return sourceIdentity ? {
+    sourceBindings: new Set([receiptBinding]),
+    sourceIdentity,
+    writeIdentity: wrapperIdentity(CONTRACT_WORKBENCH_API_PATH, "createWorkbenchDraft"),
+    writeName: directWrite.callee.name
+  } : null;
+}
+
 function delegatedBackgroundCapabilityPreflight(
   candidate,
   capability,
   context
 ) {
   if (candidate?.kind !== "background_call") return null;
+  if (isContractDraftCreationCapability(capability, context)) {
+    return capability.kind === "available_action_string" &&
+      capability.source === "capability.availableActions"
+      ? draftCreationPreflight(candidate.expression, context)
+      : null;
+  }
+  const draftOperation = context.sourceFile === CONTRACT_DRAFT_COMPOSABLE_PATH &&
+    capability.kind === "available_action_string" &&
+    capability.source === "operationCapabilities.draftOperationAvailableActions";
   const leading = leadingAwaitedLocalPreflight(
     candidate.expression,
-    context.symbols
+    context.symbols,
+    draftOperation && capability.key === "submit_contract_draft"
   );
   if (!leading) return null;
+  if (draftOperation) {
+    return draftOperationPreflight(candidate, leading, capability, context);
+  }
   const sourceBindings = capabilitySourceBindings(
     [leading.definition],
     capability.source,
@@ -10203,6 +10716,7 @@ function backgroundCapabilityDominates(
 
 function capabilityDominates(candidate, capability, context) {
   if (!SERVER_CAPABILITY_KINDS.has(capability.kind)) return false;
+  const draftCreation = isContractDraftCreationCapability(capability, context);
   if (
     capability.kind === "server_definition" &&
     context.handlerLocalCapabilitySource?.valid &&
@@ -10216,6 +10730,7 @@ function capabilityDominates(candidate, capability, context) {
     return true;
   }
   if (
+    !draftCreation &&
     conditionalEvidence(candidate.elementNode).some(({ expression, truthy }) =>
       capabilityRequired(
         expression,
@@ -10228,7 +10743,7 @@ function capabilityDominates(candidate, capability, context) {
     return true;
   }
   if (
-    candidate.kind === "background_call" &&
+    !draftCreation && candidate.kind === "background_call" &&
     backgroundCapabilityDominates(
       candidate,
       capability,
@@ -10243,11 +10758,18 @@ function capabilityDominates(candidate, capability, context) {
     context
   );
   if (delegated) {
+    if (delegated.sourceIdentity) {
+      context.draftOperationSource = {
+        capability,
+        sourceIdentity: delegated.sourceIdentity
+      };
+    }
     for (const binding of delegated.sourceBindings) {
       context.discoveredCapabilitySourceBindings?.add(binding);
     }
     return true;
   }
+  if (draftCreation) return false;
   if (
     candidate.kind === "prop_callback" &&
     candidate.element === "business-draft-action" &&
@@ -10943,7 +11465,12 @@ function inspectVueTemplate(path, source, ast) {
         });
         continue;
       }
-      for (const root of eventHandlerRoots(expression)) {
+      const roots = eventHandlerRoots(expression);
+      const directRegistration = path === CONTRACT_WORKBENCH_PAGE_PATH &&
+        normalizedElementName(node) === "t-button" && event.toLowerCase() === "click" &&
+        directRegistrationEvent(expression);
+      if (directRegistration) roots.push({ handler: "directRegistration", variants: [directRegistration.variant] });
+      for (const root of roots) {
         actions.push({
           kind: "event",
           sourceFile: path,
@@ -14851,7 +15378,3293 @@ function guardedUploadPipelineProof({ action, wrapper, handler, context }) {
 // are wider than the ordinary single-wrapper causal proof.  It never relies on
 // a file name or action id: the witness is the fresh read, fail-closed guards,
 // value flow and the concrete transport wrapper call in the trigger handler.
+/* A bounded proof for an immutable, owner-bound server action projection.
+ * It supplements one pipeline proof; the general causal/try rules stay strict.
+ */
+function frozenServerGrantPipelineProof({ action, wrapper, handler, context }) {
+  if (action.capability.kind !== "available_action_string" ||
+      !/^[A-Za-z_$][\w$]*\.value\.(?:actions|serverAvailableActions)$/u.test(action.capability.source) ||
+      handler.definitions.length !== 1) return null;
+  const { symbols } = context;
+  const definition = handler.definition;
+  const fileGrant = action.capability.source.endsWith(".serverAvailableActions");
+  const actionField = fileGrant ? "serverAvailableActions" : "actions";
+  const approvedFileLoops = new Set();
+  const roots = topLevelScopeVariables(symbols.scopeManager, capabilitySourceRoot(action.capability.source));
+  if (roots.length !== 1) return null;
+  const rootBinding = roots[0];
+  const rootDeclaration = uniqueIndexedNode(symbols.declarationsByBinding, rootBinding);
+  if (!expressionIsEmptyVueRef(rootDeclaration, symbols)) return null;
+  const ids = new Map();
+  const identity = (binding) => {
+    if (!ids.has(binding)) ids.set(binding, `b${ids.size}`);
+    return ids.get(binding);
+  };
+  const bindingOf = (node) => symbols.scopeBindings?.get(unwrapValueExpression(node));
+  const member = (node) => {
+    const value = unwrapValueExpression(node);
+    return value?.type === "MemberExpression" && !value.optional
+      ? staticMemberProperty(value) : null;
+  };
+  const path = (node, environment = new Map(), seen = []) => {
+    const value = unwrapValueExpression(node);
+    if (value?.type === "MemberExpression" && !value.optional) {
+      const name = member(value), base = path(value.object, environment, seen);
+      return name && base ? `${base}.${name}` : null;
+    }
+    if (value?.type !== "Identifier") return null;
+    const binding = bindingOf(value);
+    if (!binding || seen.length > 48 || seen.some(frame => frame.binding === binding && frame.environment === environment)) return null;
+    const next = [...seen, { binding, environment }];
+    if (environment.has(binding)) {
+      const bound = environment.get(binding);
+      return path(bound.node, bound.environment, next);
+    }
+    const declaration = uniqueIndexedNode(symbols.declarationsByBinding, binding);
+    const initializer = unwrapValueExpression(declaration);
+    const vueRef = initializer?.type === "CallExpression" &&
+      symbols.vueRefImportBindings.has(bindingOf(initializer.callee));
+    if (!vueRef && (symbols.writesByBinding.get(binding) ?? []).length > 0) return null;
+    if (declaration && !expressionIsEmptyVueRef(declaration, symbols)) {
+      const candidate = path(declaration, environment, next);
+      if (candidate) return candidate;
+    }
+    return identity(binding);
+  };
+  const cap = `${identity(rootBinding)}.value`;
+  const globalCall = (node, globalName, methodName = null) => {
+    const value = unwrapValueExpression(node);
+    const callee = unwrapValueExpression(value?.callee);
+    const root = methodName ? unwrapValueExpression(callee?.object) : callee;
+    return value?.type === "CallExpression" && (!methodName || member(callee) === methodName) &&
+      root?.type === "Identifier" && root.name === globalName &&
+      unshadowedRuntimeGlobal(root, new Set([globalName]), symbols.scopeBindings);
+  };
+  const frozen = (node) => globalCall(node, "Object", "freeze") && node.arguments?.length === 1
+    ? unwrapValueExpression(node.arguments[0]) : null;
+  const assignments = symbols.writesByBinding.get(rootBinding) ?? [];
+  const populated = assignments.filter(write => !expressionIsEmptyCapabilityState(write.value));
+  if (populated.length !== 1 || assignments.some(write => write.operator !== "=" || write.path !== `${capabilitySourceRoot(action.capability.source)}.value`)) return null;
+  const record = frozen(populated[0].value);
+  const requiredFields = fileGrant ? ["ownerKey", "readGeneration", "fileId", "documentId", "serverAction", "serverAvailableActions"] : ["ownerKey", "readGeneration", "sourceRevision", "fingerprint", "actions"];
+  if (record?.type !== "ObjectExpression" || record.properties.length !== requiredFields.length ||
+      record.properties.some(property => property.type !== "Property" || property.kind !== "init" || property.method || property.computed)) return null;
+  const properties = new Map(record.properties.map(property => [property.key.name ?? property.key.value, property.value]));
+  if (!requiredFields.every(key => properties.has(key))) return null;
+  const functions = [...symbols.definitionsByBinding.entries()].flatMap(([binding]) => {
+    const value = uniqueIndexedNode(symbols.definitionsByBinding, binding);
+    return value?.range && value.range[0] < record.range[0] && value.range[1] > record.range[1]
+      ? [{ binding, definition: value }] : [];
+  });
+  if (functions.length !== 1) return null;
+  const writer = functions[0];
+  if (![1, 2].includes(writer.definition.params?.length) || writer.definition.params.some(parameter => parameter.type !== "Identifier")) return null;
+  const targetCalls = importedWrapperCalls([definition], wrapper, context);
+  if (targetCalls.length !== 1) return null;
+  const target = targetCalls[0];
+  const attempts = [];
+  directCallableNodes(definition, node => { if (node.type === "TryStatement" && node.block.range[0] < target.range[0] && node.block.range[1] > target.range[1]) attempts.push(node); });
+  if (attempts.length !== 1) return null;
+  const attempt = attempts[0];
+  const writerCalls = [];
+  directCallableNodes(attempt.block, node => {
+    if (node.type === "CallExpression" && bindingOf(node.callee) === writer.binding && node.range[0] < target.range[0]) writerCalls.push(node);
+  });
+  if (writerCalls.length !== 1 || writerCalls[0].arguments.length !== writer.definition.params.length) return null;
+  const callSites = binding => {
+    const sites = [];
+    walkEstree(symbols.ast, node => { if (node.type === "CallExpression" && bindingOf(node.callee) === binding) sites.push(node); });
+    return sites;
+  };
+  const callableEscapes = binding => {
+    let escaped = false;
+    walkEstree(symbols.ast, node => {
+      if (node.type !== "Identifier" || bindingOf(node) !== binding || !symbols.scopeReferenceIdentifiers.has(node)) return;
+      const parent = astAncestorChain(symbols.ast, node)?.at(-2);
+      if (parent?.type !== "CallExpression" || parent.callee !== node) escaped = true;
+    });
+    return escaped;
+  };
+  const enclosingCallable = node => [...symbols.definitionsByBinding.keys()].map(binding => ({ binding,
+    definition: uniqueIndexedNode(symbols.definitionsByBinding, binding) })).filter(value => value.definition?.range &&
+      value.definition.range[0] < node.range[0] && value.definition.range[1] > node.range[1])
+    .sort((left, right) => (left.definition.range[1] - left.definition.range[0]) - (right.definition.range[1] - right.definition.range[0]))[0] ?? null;
+  const awaitedBefore = (call, before, requireRejectedResult = false) => {
+    const ancestors = astAncestorChain(symbols.ast, call) ?? [];
+    const awaited = ancestors.at(-2);
+    if (awaited?.type !== "AwaitExpression" || awaited.argument !== call) return false;
+    const block = ancestors.filter(node => node.type === "BlockStatement").at(-1);
+    if (!block || before <= block.range[0] || before >= block.range[1]) return false;
+    const statement = block.body.find(node => node.range[0] <= call.range[0] && node.range[1] >= call.range[1]);
+    if (!statement || statement.range[1] >= before) return false;
+    if (!requireRejectedResult && statement.type === "ExpressionStatement" && statement.expression === awaited) return true;
+    if (!requireRejectedResult && statement.type === "VariableDeclaration" && statement.kind === "const" && statement.declarations.length === 1 && statement.declarations[0].init === awaited) return true;
+    const test = unwrapValueExpression(statement.test), stop = statement.consequent?.type === "BlockStatement" ? statement.consequent.body.at(-1) : statement.consequent;
+    return statement.type === "IfStatement" && !statement.alternate && test?.type === "UnaryExpression" && test.operator === "!" &&
+      test.argument === awaited && ["ReturnStatement", "ThrowStatement"].includes(stop?.type);
+  };
+  const bindCall = (callable, call, outer = new Map()) => {
+    if (callable.params.length !== call.arguments.length || callable.params.some(parameter => parameter.type !== "Identifier") || call.arguments.some(argument => argument.type === "SpreadElement")) return null;
+    const environment = new Map(outer);
+    callable.params.forEach((parameter, index) => environment.set(bindingOf(parameter), { node: call.arguments[index], environment: outer }));
+    return environment;
+  };
+  if (callableEscapes(writer.binding) || !awaitedBefore(writerCalls[0], target.range[0])) return null;
+  const writerBody = writer.definition.body?.body ?? [];
+  const replacement = writerBody.findIndex(statement => statement.type === "ExpressionStatement" &&
+    statement.expression.type === "AssignmentExpression" && statement.expression.right === populated[0].value);
+  if (replacement < 0) return null;
+  const rejectsFailure = awaitedBefore(writerCalls[0], target.range[0], true);
+  for (const statement of writerBody.slice(0, replacement)) {
+    if (["ExpressionStatement", "VariableDeclaration"].includes(statement.type)) continue;
+    const stop = statement.consequent?.type === "BlockStatement" ?
+      (statement.consequent.body.length === 1 ? statement.consequent.body[0] : null) : statement.consequent;
+    if (statement.type !== "IfStatement" || statement.alternate || !(stop?.type === "ThrowStatement" ||
+        rejectsFailure && stop?.type === "ReturnStatement" && unwrapValueExpression(stop.argument)?.type === "Literal" && stop.argument.value === false)) return null;
+  }
+  const suffix = writerBody.slice(replacement + 1);
+  if (suffix.length > 1 || suffix.length === 1 && suffix[0].type !== "ReturnStatement") return null;
+  const writerEnvironment = bindCall(writer.definition, writerCalls[0]);
+  if (!writerEnvironment) return null;
+  const actualOwner = path(writerCalls[0].arguments[0]);
+  const owner = path(writer.definition.params[0], writerEnvironment);
+  if (path(properties.get("ownerKey"), writerEnvironment) !== `${owner}.ownerKey` ||
+      path(properties.get("readGeneration"), writerEnvironment) !== `${owner}.generation`) return null;
+  const projectedReads = new Map();
+  const projectedIdentityRead = binding => {
+    if (projectedReads.has(binding)) return projectedReads.get(binding);
+    projectedReads.set(binding, null);
+    const imported = symbols.importsByBinding.get(binding);
+    if (imported?.kind !== "named") return null;
+    const metadata = context.wrapperIndex?.get(wrapperIdentity(imported.sourceFile, imported.importedName));
+    const requests = metadata ? normalizedMainRequests(metadata) : [];
+    if (metadata?.kind !== "transport" || metadata.returnProvenance !== "unverified" || !metadata.productionConsumers?.includes(context.sourceFile) || requests.length !== 1 || requests[0].method?.toUpperCase() !== "GET") return null;
+    const ast = context.asts.get(imported.sourceFile);
+    if (!ast) return null;
+    const local = buildSymbolContext(ast, imported.sourceFile, context.sourceFileSet), localBinding = node => local.scopeBindings.get(unwrapValueExpression(node));
+    const bindings = topLevelScopeVariables(local.scopeManager, imported.importedName), facadeBinding = bindings.length === 1 ? bindings[0] : null;
+    const facade = facadeBinding ? uniqueIndexedNode(local.definitionsByBinding, facadeBinding) : null;
+    if (!facade || (local.writesByBinding.get(facadeBinding) ?? []).length || facade.params.length !== 1 || facade.params[0].type !== "Identifier" || facade.body?.type !== "BlockStatement" || facade.body.body.length !== 2) return null;
+    const [declaration, returned] = facade.body.body;
+    const raw = declaration.type === "VariableDeclaration" && declaration.kind === "const" && declaration.declarations.length === 1 ? declaration.declarations[0] : null;
+    const read = raw?.init?.type === "AwaitExpression" ? unwrapValueExpression(raw.init.argument) : null;
+    const output = returned.type === "ReturnStatement" ? unwrapValueExpression(returned.argument) : null;
+    const body = raw?.id.type === "Identifier" ? localBinding(raw.id) : null, transport = read?.callee?.type === "Identifier" ? localBinding(read.callee) : null;
+    if (!body || !transport || (local.writesByBinding.get(body) ?? []).length || (local.writesByBinding.get(transport) ?? []).length || output?.type !== "ObjectExpression" || output.properties.length !== 2 ||
+        output.properties[0].type !== "SpreadElement" || localBinding(output.properties[0].argument) !== body || output.properties[1].type !== "Property" || output.properties[1].computed || output.properties[1].method || output.properties[1].kind !== "init") return null;
+    const coordinates = new Set(["contractVersionId", "draftRevision", "documentContentRevision", "layoutTemplateVersionId", "sourceSha256"]);
+    const override = output.properties[1], field = override.key.name ?? override.key.value, normalize = unwrapValueExpression(override.value);
+    if (coordinates.has(field) || normalize?.type !== "CallExpression" || normalize.callee.type !== "Identifier" || normalize.arguments.length !== 1 ||
+        normalize.arguments[0].type !== "MemberExpression" || normalize.arguments[0].computed || member(normalize.arguments[0]) !== field || localBinding(normalize.arguments[0].object) !== body) return null;
+    // Reuse the existing producer's transparent GET transport witness, not a
+    // helper name. This wrapper remains unverified as a whole response.
+    const trustedTransport = [...(context.wrapperIndex?.values() ?? [])].some(wrapper => {
+      if (wrapper.apiFile !== imported.sourceFile || wrapper.returnProvenance !== "transparent_main_response" || normalizedMainRequests(wrapper).length !== 1 || normalizedMainRequests(wrapper)[0].method?.toUpperCase() !== "GET") return false;
+      const siblings = topLevelScopeVariables(local.scopeManager, wrapper.name), sibling = siblings.length === 1 ? uniqueIndexedNode(local.definitionsByBinding, siblings[0]) : null;
+      const expression = sibling?.body?.type === "BlockStatement" && sibling.body.body.length === 1 && sibling.body.body[0].type === "ReturnStatement" ? unwrapValueExpression(sibling.body.body[0].argument) : null;
+      return expression?.type === "CallExpression" && localBinding(expression.callee) === transport;
+    });
+    if (!trustedTransport) return null;
+    let confined = true;
+    walkEstree(ast, reference => {
+      if (reference.type !== "Identifier" || localBinding(reference) !== body || !local.scopeReferenceIdentifiers.has(reference)) return;
+      const parent = astAncestorChain(ast, reference)?.at(-2);
+      if (parent?.type === "VariableDeclarator" && parent.id === reference && parent.init === raw.init || parent === output.properties[0] || parent === normalize.arguments[0]) return;
+      confined = false;
+    });
+    if (!confined) return null;
+    const normalizerBinding = localBinding(normalize.callee), normalizer = normalizerBinding ? uniqueIndexedNode(local.definitionsByBinding, normalizerBinding) : null;
+    if (!normalizer || (local.writesByBinding.get(normalizerBinding) ?? []).length || normalizer.async || normalizer.params.length !== 1 || normalizer.params[0].type !== "Identifier" || normalizer.body?.type !== "BlockStatement" || normalizer.body.body.length !== 3 ||
+        normalizer.body.body[0].type !== "IfStatement" || normalizer.body.body[1].type !== "IfStatement" || normalizer.body.body[2].type !== "ReturnStatement") return null;
+    const global = (node, name) => node?.type === "Identifier" && node.name === name && unshadowedRuntimeGlobal(node, new Set([name]), local.scopeBindings);
+    const literalConstant = variable => {
+      const value = variable ? unwrapValueExpression(uniqueIndexedNode(local.declarationsByBinding, variable)) : null;
+      return value?.type === "Literal" && ["string", "number", "boolean"].includes(typeof value.value) && !(local.writesByBinding.get(variable) ?? []).length;
+    };
+    const constantSets = new Map();
+    const constantSet = variable => {
+      if (constantSets.has(variable)) return constantSets.get(variable);
+      constantSets.set(variable, false);
+      const value = variable ? unwrapValueExpression(uniqueIndexedNode(local.declarationsByBinding, variable)) : null;
+      if (value?.type !== "NewExpression" || !global(value.callee, "Set") || value.arguments.length !== 1 || value.arguments[0].type !== "ArrayExpression" || value.arguments[0].elements.some(item => item?.type !== "Literal" || typeof item.value !== "string") || (local.writesByBinding.get(variable) ?? []).length) return false;
+      let valid = true;
+      walkEstree(ast, reference => {
+        if (reference.type !== "Identifier" || localBinding(reference) !== variable || !local.scopeReferenceIdentifiers.has(reference)) return;
+        const ancestors = astAncestorChain(ast, reference), parent = ancestors?.at(-2), call = ancestors?.at(-3);
+        if (parent?.type === "VariableDeclarator" && parent.id === reference && parent.init === value) return;
+        if (parent?.type !== "MemberExpression" || parent.computed || parent.object !== reference || member(parent) !== "has" || call?.type !== "CallExpression" || call.callee !== parent) valid = false;
+      });
+      constantSets.set(variable, valid); return valid;
+    };
+    const normalSyntax = new Set(["FunctionDeclaration", "ArrowFunctionExpression", "Identifier", "BlockStatement", "IfStatement", "ReturnStatement", "CallExpression", "MemberExpression", "LogicalExpression", "BinaryExpression", "UnaryExpression", "Literal", "ArrayExpression", "SpreadElement", "NewExpression", "TSAsExpression", "TSTypeAnnotation", "TSUnknownKeyword", "TSTypeReference", "TSUnionType", "TSArrayType", "TSStringKeyword", "TSTypeParameterInstantiation"]);
+    const pureJsonArray = (node, parameters, arrayReturns = true) => {
+      let valid = true;
+      directCallableNodes(node, current => {
+        if (!valid) return;
+        if (!normalSyntax.has(current.type) || current.type === "UnaryExpression" && !["!", "typeof"].includes(current.operator)) { valid = false; return; }
+        if (current.type === "Identifier" && local.scopeReferenceIdentifiers.has(current)) {
+          const variable = localBinding(current), parent = astAncestorChain(ast, current)?.at(-2);
+          if (parameters.has(variable) || literalConstant(variable) || global(current, "undefined")) return;
+          if (parent?.type === "MemberExpression" && parent.object === current && member(parent) === "has" && constantSet(variable)) return;
+          if (parent?.type === "MemberExpression" && parent.object === current && global(current, "Array") && member(parent) === "isArray" || parent?.type === "NewExpression" && parent.callee === current && global(current, "Set")) return;
+          valid = false; return;
+        }
+        if (current.type === "ReturnStatement" && arrayReturns && unwrapValueExpression(current.argument)?.type !== "ArrayExpression") { valid = false; return; }
+        if (current.type === "NewExpression" && !(global(current.callee, "Set") && current.arguments.length === 1 && parameters.has(localBinding(unwrapValueExpression(current.arguments[0]))))) { valid = false; return; }
+        if (current.type !== "CallExpression") return;
+        if (member(current.callee) === "isArray" && global(current.callee.object, "Array") && current.arguments.length === 1 && parameters.has(localBinding(current.arguments[0]))) return;
+        if (member(current.callee) === "has" && constantSet(localBinding(current.callee.object)) && current.arguments.length === 1 && parameters.has(localBinding(current.arguments[0]))) return;
+        const callback = current.arguments[0];
+        if (member(current.callee) === "some" && parameters.has(localBinding(current.callee.object)) && current.arguments.length === 1 && callback?.type === "ArrowFunctionExpression" && !callback.async && callback.params.length === 1 && callback.params[0].type === "Identifier" && pureJsonArray(callback, new Set([...parameters, localBinding(callback.params[0])]), false)) return;
+        valid = false;
+      });
+      return valid;
+    };
+    if (!pureJsonArray(normalizer, new Set([localBinding(normalizer.params[0])]))) return null;
+    const proof = { sourceIdentity: wrapperIdentity(imported.sourceFile, imported.importedName), fields: coordinates };
+    projectedReads.set(binding, proof); return proof;
+  };
+  // Trace one immutable field through const aliases, bound parameters and a
+  // single frozen record return. Unselected fields never become authority.
+  const fieldOrigin = (node, environment, frame, trail = [], seen = new Set(), missing = new Set()) => {
+    const value = unwrapValueExpression(node);
+    if (!value || seen.size > 32) return null;
+    const freeze = frozen(value);
+    if (freeze?.type === "ConditionalExpression") {
+      const check = unwrapValueExpression(freeze.test), yes = unwrapValueExpression(freeze.consequent), no = unwrapValueExpression(freeze.alternate);
+      const arrayCheck = unwrapValueExpression(check?.left), every = unwrapValueExpression(check?.right);
+      const callback = unwrapValueExpression(every?.arguments?.[0]);
+      const predicate = unwrapValueExpression(callback?.body), typed = unwrapValueExpression(predicate?.left);
+      const cloned = yes?.type === "ArrayExpression" && yes.elements.length === 1 && yes.elements[0]?.type === "SpreadElement" ? yes.elements[0].argument : null;
+      const sourcePath = cloned ? path(cloned, environment) : null;
+      if (check?.type !== "LogicalExpression" || check.operator !== "&&" || !globalCall(arrayCheck, "Array", "isArray") || arrayCheck.arguments.length !== 1 ||
+          every?.type !== "CallExpression" || member(every.callee) !== "every" || every.arguments.length !== 1 ||
+          callback?.type !== "ArrowFunctionExpression" || callback.async || callback.params.length !== 1 || callback.params[0].type !== "Identifier" ||
+          predicate?.type !== "BinaryExpression" || predicate.operator !== "===" || literalString(predicate.right) !== "string" ||
+          typed?.type !== "UnaryExpression" || typed.operator !== "typeof" || typed.argument.type !== "Identifier" || bindingOf(typed.argument) !== bindingOf(callback.params[0]) ||
+          !sourcePath || path(arrayCheck.arguments[0], environment) !== sourcePath || path(every.callee.object, environment) !== sourcePath ||
+          no?.type !== "ArrayExpression" || no.elements.length !== 0) return null;
+      const source = fieldOrigin(cloned, environment, frame, trail, seen, missing);
+      if (source?.kind !== "read") return null;
+      return { ...source, immutableArray: true };
+    }
+    if (freeze?.type === "ArrayExpression") {
+      if (freeze.elements.length !== 1 || freeze.elements[0]?.type !== "SpreadElement") return null;
+      const source = fieldOrigin(freeze.elements[0].argument, environment, frame, trail, seen, missing);
+      return source?.kind === "read" ? { ...source, immutableArray: true } : null;
+    }
+    if (freeze?.type === "ObjectExpression" && freeze.properties.length === 1 && freeze.properties[0].type === "SpreadElement") {
+      const source = fieldOrigin(freeze.properties[0].argument, environment, frame, trail, seen, missing);
+      return source?.kind === "read" ? { ...source, immutableRecord: true } : null;
+    }
+    if (freeze?.type === "ObjectExpression") {
+      if (freeze.properties.length > 8 || freeze.properties.some(property => property.type !== "Property" || property.kind !== "init" || property.method || property.computed)) return null;
+      const fields = new Map(freeze.properties.map(property => [property.key.name ?? property.key.value, property.value]));
+      return fields.size === freeze.properties.length ? { kind: "record", fields, environment, frame, trail } : null;
+    }
+    if (value.type === "MemberExpression" && !value.optional) {
+      const field = member(value), object = fieldOrigin(value.object, environment, frame, trail, seen, missing);
+      if (!field || !object) return null;
+      if (object.kind === "record") {
+        const selected = object.fields.get(field);
+        return selected ? fieldOrigin(selected, object.environment, object.frame, object.trail, seen, missing) : null;
+      }
+      if (object.allowedFields && object.fields.length === 0 && !object.allowedFields.has(field)) return null;
+      return { ...object, fields: [...object.fields, field] };
+    }
+    if (value.type === "Identifier") {
+      const binding = bindingOf(value);
+      if (!binding || seen.has(binding) || (symbols.writesByBinding.get(binding) ?? []).length > 0) return null;
+      const next = new Set(seen).add(binding);
+      const bound = environment.get(binding);
+      const initializer = bound?.node ?? uniqueIndexedNode(symbols.declarationsByBinding, binding);
+      if (!initializer) { missing.add(binding); return null; }
+      const source = fieldOrigin(initializer, bound?.environment ?? environment, frame, trail, next, missing);
+      return source?.kind === "read" && !source.holder && source.fields.length === 0 ? { ...source, holder: binding } : source;
+    }
+    if (value.type !== "CallExpression" || value.callee.type !== "Identifier" || value.arguments.some(argument => argument.type === "SpreadElement")) return null;
+    const binding = bindingOf(value.callee), sourceIdentity = context.serverReadImports.get(binding);
+    if ((symbols.writesByBinding.get(binding) ?? []).length > 0) return null;
+    if (sourceIdentity) {
+      return value.arguments.length === 1 ? { kind: "read", sourceIdentity, read: value, coordinate: path(value.arguments[0], environment),
+        environment, frame, trail, fields: [], holder: null } : null;
+    }
+    const projected = projectedIdentityRead(binding);
+    if (projected && value.arguments.length === 1) {
+      return { kind: "read", sourceIdentity: projected.sourceIdentity, allowedFields: projected.fields, read: value, coordinate: path(value.arguments[0], environment), environment, frame, trail, fields: [], holder: null };
+    }
+    const callable = binding ? uniqueIndexedNode(symbols.definitionsByBinding, binding) : null;
+    if (!callable || (symbols.writesByBinding.get(binding) ?? []).length > 0 || seen.has(binding) || callable.params.length !== value.arguments.length || callable.params.some(parameter => parameter.type !== "Identifier")) return null;
+    const returns = [];
+    directCallableNodes(callable, current => {
+      if (current.type === "ReturnStatement" && !expressionIsEmptyCapabilityState(current.argument)) returns.push(current);
+    });
+    if (returns.length !== 1 || !frozen(returns[0].argument)) return null;
+    const local = new Map(environment);
+    callable.params.forEach((parameter, index) => local.set(bindingOf(parameter), { node: value.arguments[index], environment }));
+    return fieldOrigin(returns[0].argument, local, { definition: callable, limit: returns[0].range[0] }, [...trail, value], new Set(seen).add(binding), missing);
+  };
+  const readHasIdentity = (origin, idField, revisionField, actualOwner, extraFields = []) => {
+    const equal = (left, right) => [left, right].sort().join("=");
+    if (!origin.holder) return false;
+    const equalities = new Set();
+    const collect = node => {
+      const value = unwrapValueExpression(node);
+      if (value?.type === "LogicalExpression" && value.operator === "||") { collect(value.left); collect(value.right); }
+      else if (value?.type === "BinaryExpression" && value.operator === "!==") {
+        const left = path(value.left, origin.environment), right = path(value.right, origin.environment);
+        if (left && right) equalities.add(equal(left, right));
+      }
+    };
+    for (const statement of origin.frame.definition.body.body ?? []) {
+      if (statement.range[0] >= origin.frame.limit) break;
+      if (statement.range[0] <= origin.read.range[1]) continue;
+      const stopped = statement.consequent?.type === "BlockStatement" && statement.consequent.body.length === 1 ? statement.consequent.body[0] : statement.consequent;
+      if (statement.type === "IfStatement" && !statement.alternate && stopped?.type === "ThrowStatement") collect(statement.test);
+    }
+    return equalities.has(equal(`${identity(origin.holder)}.${idField}`, `${actualOwner}.context.contractVersionId`)) &&
+      equalities.has(equal(`${identity(origin.holder)}.${revisionField}`, `${actualOwner}.context.draftRevision`)) &&
+      extraFields.every(([field, ownerField]) => equalities.has(equal(`${identity(origin.holder)}.${field}`, `${actualOwner}.${ownerField}`)));
+  };
+  const evaluateProjection = (environment, caller, before) => {
+    const missing = new Set();
+    const actualOwner = path(writer.definition.params[0], environment);
+    if (!actualOwner || path(properties.get("ownerKey"), environment) !== `${actualOwner}.ownerKey` ||
+        path(properties.get("readGeneration"), environment) !== `${actualOwner}.generation`) return { missing };
+    const sourceFrame = { definition: writer.definition, limit: record.range[0] };
+  const actionOrigin = fieldOrigin(properties.get(actionField), environment, sourceFrame, [], new Set(), missing);
+  const fingerprintOrigin = fieldOrigin(properties.get("fingerprint"), environment, sourceFrame, [], new Set(), missing);
+  const revisionOrigin = fieldOrigin(properties.get("sourceRevision"), environment, sourceFrame, [], new Set(), missing);
+  const sameRead = (left, right) => left?.kind === "read" && right?.kind === "read" && left.read === right.read &&
+    left.coordinate === right.coordinate && left.trail.length === right.trail.length && left.trail.every((call, index) => call === right.trail[index]);
+  if (fileGrant) {
+    const pdf = writer.definition.params.length === 2 ? path(writer.definition.params[1], environment) : null;
+    const serverAction = fieldOrigin(properties.get("serverAction"), environment, sourceFrame, [], new Set(), missing);
+    if (!pdf || path(properties.get("fileId"), environment) !== `${pdf}.fileId` || path(properties.get("documentId"), environment) !== `${pdf}.documentId` ||
+        actionOrigin?.kind !== "read" || !actionOrigin.immutableArray || actionOrigin.fields.join(".") !== "availableActions" ||
+        !sameRead(actionOrigin, serverAction) || !serverAction.immutableRecord || serverAction.fields.join(".") !== "action" ||
+        actionOrigin.coordinate !== `${pdf}.fileId` || actionOrigin.frame.definition !== writer.definition || actionOrigin.trail.length !== 0 ||
+        !awaitedBefore(actionOrigin.read, record.range[0])) return { missing };
+    return { missing, sourceIdentity: actionOrigin.sourceIdentity };
+  }
+  if (actionOrigin?.kind !== "read" || !actionOrigin.immutableArray || actionOrigin.fields.join(".") !== "draftOperationAvailableActions" ||
+      !sameRead(actionOrigin, fingerprintOrigin) || fingerprintOrigin.fields.join(".") !== "version.documentContentFingerprint" ||
+      revisionOrigin?.kind !== "read" || actionOrigin.coordinate !== `${actualOwner}.context.contractVersionId` || revisionOrigin.coordinate !== actionOrigin.coordinate) return { missing };
+  const sourceIdentity = actionOrigin.sourceIdentity;
+  const currentRead = origin => {
+    const range = origin.frame.definition.range;
+    if (!range || origin.read.range[0] <= range[0] || origin.read.range[1] >= range[1] || origin.trail.length > 1 ||
+        !awaitedBefore(origin.read, origin.frame.limit)) return false;
+    if (origin.frame.definition === writer.definition) return true;
+    const invocation = origin.trail[0];
+    return Boolean(invocation && invocation.range[0] > caller.range[0] && invocation.range[1] < caller.range[1] &&
+      invocation.range[1] < before && awaitedBefore(invocation, before));
+  };
+  if (!currentRead(actionOrigin) || !currentRead(revisionOrigin)) return { missing };
+
+  if (!readHasIdentity(actionOrigin, "version.id", "version.draftRevision", actualOwner)) return { missing };
+  if (sameRead(actionOrigin, revisionOrigin)) {
+    if (revisionOrigin.fields.join(".") !== "version.draftRevision") return { missing };
+  } else if (revisionOrigin.fields.join(".") !== "draftRevision" || !readHasIdentity(revisionOrigin, "contractVersionId", "draftRevision", actualOwner)) return { missing };
+    return { missing, sourceIdentity };
+  };
+  const mainProjection = evaluateProjection(writerEnvironment, definition, writerCalls[0].range[0]);
+  if (!mainProjection.sourceIdentity) return null;
+  const sourceIdentity = mainProjection.sourceIdentity;
+  // Every other writer call must have the same trusted read. One lexical
+  // parameter-forwarding frame covers the current read-only recovery chain;
+  // an unknown caller or deeper/dynamic argument flow stays unproven.
+  for (const call of callSites(writer.binding)) {
+    if (call === writerCalls[0]) continue;
+    const caller = enclosingCallable(call), initial = bindCall(writer.definition, call);
+    const callBlock = (astAncestorChain(symbols.ast, call) ?? []).filter(node => node.type === "BlockStatement").at(-1);
+    if (!caller || !initial || !callBlock || !awaitedBefore(call, callBlock.range[1] - 1)) return null;
+    const projected = evaluateProjection(initial, caller.definition, call.range[0]);
+    if (projected.sourceIdentity === sourceIdentity) continue;
+    if (projected.missing.size !== 1) return null;
+    const [parameter] = projected.missing;
+    const parents = [...symbols.definitionsByBinding.keys()].map(binding => ({ binding,
+      definition: uniqueIndexedNode(symbols.definitionsByBinding, binding) })).filter(value =>
+        value.definition?.params?.some(node => bindingOf(node) === parameter));
+    if (parents.length !== 1 || parents[0].definition !== caller.definition || callableEscapes(parents[0].binding)) return null;
+    const parent = parents[0], callers = callSites(parent.binding);
+    if (callers.length === 0 || callers.length > 16) return null;
+    for (const incoming of callers) {
+      const outerCaller = enclosingCallable(incoming), outer = bindCall(parent.definition, incoming);
+      const environment = outer ? bindCall(writer.definition, call, outer) : null;
+      if (!outerCaller || !environment || evaluateProjection(environment, outerCaller.definition, incoming.range[0]).sourceIdentity !== sourceIdentity) return null;
+    }
+  }
+  const equal = (left, right) => [left, right].sort().join("=");
+  const terminates = statement => statement?.type === "ReturnStatement" || statement?.type === "ThrowStatement" ||
+    (statement?.type === "BlockStatement" && statement.body.length === 1 && terminates(statement.body[0]));
+  const capturedAfterRead = node => {
+    let fresh = true;
+    walkEstree(node, candidate => {
+      if (candidate.type !== "Identifier") return;
+      const value = path(candidate), binding = bindingOf(candidate);
+      if (!value || !(value === cap || value.startsWith(`${cap}.`)) || binding === rootBinding) return;
+      const capture = uniqueIndexedNode(symbols.declarationsByBinding, binding);
+      if (!capture?.range || capture.range[0] <= writerCalls[0].range[1]) fresh = false;
+    });
+    return fresh;
+  };
+  if (!target.arguments.every(capturedAfterRead)) return null;
+  const actualPdf = fileGrant && writerCalls[0].arguments.length === 2 ? path(writerCalls[0].arguments[1]) : null;
+  if (!actualOwner) return null;
+  if (fileGrant) {
+    const options = unwrapValueExpression(target.arguments[1]);
+    const fields = options?.type === "ObjectExpression" && options.properties.every(property => property.type === "Property" && !property.computed && !property.method && property.kind === "init") ?
+      new Map(options.properties.map(property => [property.key.name ?? property.key.value, property.value])) : null;
+    if (!actualPdf || target.arguments.length !== 3 || path(target.arguments[0]) !== `${cap}.fileId` || literalString(target.arguments[2]) !== "pdf-blob" ||
+        !fields || fields.size !== 3 || options.properties.length !== 3 || !["confirmationPassword", "downloadReason", "accessMode"].every(key => fields.has(key)) || literalString(fields.get("accessMode")) !== "preview") return null;
+  } else if (target.arguments.length !== 2 || path(target.arguments[0]) !== `${actualOwner}.context.contractVersionId` || path(target.arguments[1]) !== `${cap}.sourceRevision`) return null;
+  const purePredicates = new Set();
+  const trustedIncludes = new Set();
+  const frameworkImport = (binding, moduleName, importedName, localSymbols = symbols) => (localSymbols.ast?.body ?? []).some(statement =>
+    statement.type === "ImportDeclaration" && literalString(statement.source) === moduleName && statement.specifiers.some(specifier =>
+      specifier.type === "ImportSpecifier" && (specifier.imported.name ?? specifier.imported.value) === importedName && topLevelScopeVariables(localSymbols.scopeManager, specifier.local.name).includes(binding)));
+  const plainData = node => {
+    const value = unwrapValueExpression(node);
+    return value?.type === "Literal" && (value.value === null || ["string", "number", "boolean"].includes(typeof value.value)) ||
+      value?.type === "ObjectExpression" && value.properties.every(property => property.type === "Property" && !property.computed && !property.method && property.kind === "init" && unwrapValueExpression(property.value)?.type === "Literal" && plainData(property.value));
+  };
+  const confinedDataBindings = new Map();
+  const confinedDataBinding = (binding, seen = new Set()) => {
+    if (!seen.size && confinedDataBindings.has(binding)) return confinedDataBindings.get(binding);
+    if (!binding || seen.has(binding) || (symbols.writesByBinding.get(binding) ?? []).length) return false;
+    let valid = true;
+    walkEstree(symbols.ast, reference => {
+      if (!valid || reference.type !== "Identifier" || bindingOf(reference) !== binding || !symbols.scopeReferenceIdentifiers.has(reference)) return;
+      const parent = astAncestorChain(symbols.ast, reference)?.at(-2);
+      if (parent?.type === "VariableDeclarator" && parent.id === reference) return;
+      if (parent?.type === "VariableDeclarator" && parent.init === reference && parent.id.type === "Identifier" && confinedDataBinding(bindingOf(parent.id), new Set(seen).add(binding))) return;
+      if (parent?.type === "MemberExpression" && parent.object === reference && !parent.computed) return;
+      valid = false;
+    });
+    if (!seen.size) confinedDataBindings.set(binding, valid);
+    return valid;
+  };
+  let scalarRefProducer = () => false;
+  const scalarRefValue = (node, environment = new Map(), seen = new Set()) => {
+    const value = unwrapValueExpression(node);
+    if (!value || seen.size > 16) return false;
+    if (value.type === "Literal") return value.value === null || ["string", "number", "boolean"].includes(typeof value.value);
+    if (value.type === "Identifier") {
+      if (value.name === "undefined" && unshadowedRuntimeGlobal(value, new Set(["undefined"]), symbols.scopeBindings)) return true;
+      const variable = bindingOf(value), bound = environment.get(variable);
+      if (!variable || seen.has(variable) || (symbols.writesByBinding.get(variable) ?? []).length) return false;
+      const initial = bound?.node ?? uniqueIndexedNode(symbols.declarationsByBinding, variable);
+      return Boolean(initial) && scalarRefValue(initial, bound?.environment ?? environment, new Set(seen).add(variable));
+    }
+    if (value.type === "ConditionalExpression") return scalarRefValue(value.consequent, environment, seen) && scalarRefValue(value.alternate, environment, seen);
+    return scalarRefProducer(value, environment);
+  };
+  const basicRefValue = (node, environment = new Map()) => scalarRefValue(node, environment) ||
+    fieldOrigin(node, environment, { definition, limit: target.range[0] })?.kind === "record";
+  let qualifiedRefValue = basicRefValue;
+  const rawDataRefs = new Map();
+  const rawDataRefConfined = binding => {
+    if (rawDataRefs.has(binding)) return rawDataRefs.get(binding);
+    const initial = unwrapValueExpression(uniqueIndexedNode(symbols.declarationsByBinding, binding));
+    if (initial?.type === "CallExpression" && symbols.vueRefImportBindings.has(bindingOf(initial.callee)) &&
+        (!qualifiedRefValue(initial.arguments[0]) || (symbols.writesByBinding.get(binding) ?? []).some(write => !qualifiedRefValue(write.value)))) {
+      rawDataRefs.set(binding, false); return false;
+    }
+    let valid = true;
+    walkEstree(symbols.ast, reference => {
+      if (reference.type !== "Identifier" || bindingOf(reference) !== binding || !symbols.scopeReferenceIdentifiers.has(reference)) return;
+      const parent = astAncestorChain(symbols.ast, reference)?.at(-2);
+      if (parent?.type === "VariableDeclarator" && parent.id === reference) return;
+      if (parent?.type !== "MemberExpression" || parent.object !== reference || parent.computed || parent.optional || member(parent) !== "value") valid = false;
+    });
+    rawDataRefs.set(binding, valid);
+    return valid;
+  };
+  let derivedCollectionsReady = false;
+  const jsonIterationParameter = (binding, environment) => {
+    let valid = false;
+    walkEstree(symbols.ast, node => {
+      if (approvedFileLoops.has(node) && node.left.declarations.some(declaration => bindingOf(declaration.id) === binding)) valid = true;
+      if (node.type !== "ArrowFunctionExpression" || bindingOf(node.params[0]) !== binding) return;
+      const parent = astAncestorChain(symbols.ast, node)?.at(-2);
+      if (parent?.type === "CallExpression" && parent.arguments[0] === node && ["filter", "find", "some", "every"].includes(member(parent.callee)) &&
+          (fieldOrigin(parent.callee.object, environment, { definition, limit: target.range[0] })?.kind === "read" || derivedCollectionsReady && readDerivedCollection(parent.callee.object, environment))) valid = true;
+    });
+    return valid;
+  };
+  const computeImportedDataFactory = binding => {
+    const imported = symbols.importsByBinding.get(binding), ast = imported && context.asts.get(imported.sourceFile);
+    if (!ast) return false;
+    const local = buildSymbolContext(ast, imported.sourceFile, context.sourceFileSet), roots = topLevelScopeVariables(local.scopeManager, imported.importedName);
+    if (roots.length !== 1 || (local.writesByBinding.get(roots[0]) ?? []).length) return false;
+    const localBinding = node => local.scopeBindings.get(unwrapValueExpression(node));
+    const trustedResponseRequest = requestBinding => requestBinding && local.importsByBinding.has(requestBinding) && [...(context.wrapperIndex?.values() ?? [])].some(sibling => {
+          if (sibling.apiFile !== imported.sourceFile || sibling.returnProvenance !== "transparent_main_response" || normalizedMainRequests(sibling).length !== 1 || normalizedMainRequests(sibling)[0].method?.toUpperCase() !== "GET") return false;
+          const variables = topLevelScopeVariables(local.scopeManager, sibling.name), definition = variables.length === 1 ? uniqueIndexedNode(local.definitionsByBinding, variables[0]) : null;
+          const call = definition?.body?.body?.length === 1 && definition.body.body[0].type === "ReturnStatement" ? unwrapValueExpression(definition.body.body[0].argument) : null;
+          const reader = call?.type === "CallExpression" ? uniqueIndexedNode(local.definitionsByBinding, localBinding(call.callee)) : null;
+          const readDeclaration = reader?.body?.body?.[0]?.declarations?.[0]?.init;
+          return readDeclaration?.type === "AwaitExpression" && localBinding(readDeclaration.argument.callee) === requestBinding;
+        });
+    const callable = uniqueIndexedNode(local.definitionsByBinding, roots[0]);
+    if (callable && !callable.generator && callable.body?.type === "BlockStatement" && callable.body.body.length === 1 && callable.body.body[0].type === "ReturnStatement" && plainData(callable.body.body[0].argument)) return true;
+    if (fileGrant && binding === bindingOf(target.callee) && callable?.async && !callable.generator && callable.params.length === 3 && callable.params.every(parameter => parameter.type === "Identifier") && callable.body?.type === "BlockStatement") {
+      const statements = callable.body.body, declaration = statement => statement?.type === "VariableDeclaration" && statement.kind === "const" && statement.declarations.length === 1 ? statement.declarations[0] : null;
+      const ticket = declaration(statements[3]), response = declaration(statements[5]), blob = declaration(statements[8]), returned = statements[9];
+      const ticketBinding = localBinding(ticket?.id), responseBinding = localBinding(response?.id), blobBinding = localBinding(blob?.id), delivery = localBinding(callable.params[2]);
+      const localMember = (node, binding, fields) => {
+        let current = unwrapValueExpression(node); const names = [];
+        while (current?.type === "MemberExpression" && !current.computed && !current.optional) { names.unshift(member(current)); current = unwrapValueExpression(current.object); }
+        return localBinding(current) === binding && names.join(".") === fields;
+      };
+      const delivered = node => node?.type === "BinaryExpression" && node.operator === "===" && localBinding(node.left) === delivery && literalString(node.right) === "pdf-blob";
+      const throws = node => node?.type === "BlockStatement" && node.body.length === 1 && node.body[0].type === "ThrowStatement";
+      const regexTest = (node, pattern, flags, argument) => node?.type === "CallExpression" && member(node.callee) === "test" && node.callee.object?.regex?.pattern === pattern && node.callee.object.regex.flags === flags && node.arguments.length === 1 && argument(node.arguments[0]);
+      const request = response?.init?.type === "AwaitExpression" ? unwrapValueExpression(response.init.argument) : null;
+      const blobCall = blob?.init?.type === "AwaitExpression" ? unwrapValueExpression(blob.init.argument) : null;
+      const result = returned?.consequent?.type === "ReturnStatement" ? unwrapValueExpression(returned.consequent.argument) : null;
+      const urlGuard = statements[4], urlTest = urlGuard?.test?.right, slash = urlTest?.right;
+      const mimeGuard = statements[7], mimeTest = mimeGuard?.test?.right;
+      const contentType = node => node?.type === "LogicalExpression" && node.operator === "??" && literalString(node.right) === "" && node.left.type === "CallExpression" &&
+        member(node.left.callee) === "get" && localMember(node.left.callee.object, responseBinding, "headers") && node.left.arguments.length === 1 && literalString(node.left.arguments[0]) === "content-type";
+      const validation = statements[6]?.expression?.type === "AwaitExpression" ? unwrapValueExpression(statements[6].expression.argument) : null;
+      const validatorBinding = validation?.type === "CallExpression" ? localBinding(validation.callee) : null, validator = validatorBinding ? uniqueIndexedNode(local.definitionsByBinding, validatorBinding) : null;
+      const first = validator?.body?.body?.[0], last = validator?.body?.body?.at(-1), parameter = validator?.params?.[0], success = first?.consequent?.type === "BlockStatement" && first.consequent.body.length === 1 ? first.consequent.body[0] : null;
+      const returns = [];
+      if (validator) directCallableNodes(validator, node => { if (node.type === "ReturnStatement") returns.push(node); });
+      let confined = Boolean(responseBinding);
+      walkEstree(ast, reference => {
+        if (reference.type !== "Identifier" || localBinding(reference) !== responseBinding || !local.scopeReferenceIdentifiers.has(reference)) return;
+        const parent = astAncestorChain(ast, reference)?.at(-2);
+        if (parent === response || parent?.type === "MemberExpression" && parent.object === reference && !parent.computed || parent === validation && validation.arguments[0] === reference) return;
+        confined = false;
+      });
+      if (ticketBinding && responseBinding && blobBinding && [ticketBinding, responseBinding, blobBinding].every(variable => !(local.writesByBinding.get(variable) ?? []).length) && confined &&
+          ticket.init?.type === "AwaitExpression" && request?.type === "CallExpression" && request.arguments.length === 1 && trustedResponseRequest(localBinding(request.callee)) && localMember(request.arguments[0], ticketBinding, "downloadUrl") &&
+          urlGuard?.type === "IfStatement" && !urlGuard.alternate && urlGuard.test?.type === "LogicalExpression" && urlGuard.test.operator === "&&" && delivered(urlGuard.test.left) && throws(urlGuard.consequent) &&
+          urlTest?.type === "LogicalExpression" && urlTest.operator === "||" && urlTest.left?.type === "UnaryExpression" && urlTest.left.operator === "!" && regexTest(urlTest.left.argument, "^\\/files\\/[^/?#]+\\/download\\?", "", node => localMember(node, ticketBinding, "downloadUrl")) &&
+          slash?.type === "CallExpression" && member(slash.callee) === "includes" && localMember(slash.callee.object, ticketBinding, "downloadUrl") && slash.arguments.length === 1 && literalString(slash.arguments[0]) === "\\" &&
+          mimeGuard?.type === "IfStatement" && !mimeGuard.alternate && mimeGuard.test?.type === "LogicalExpression" && mimeGuard.test.operator === "&&" && delivered(mimeGuard.test.left) && throws(mimeGuard.consequent) &&
+          mimeTest?.type === "UnaryExpression" && mimeTest.operator === "!" && regexTest(mimeTest.argument, "^application\\/pdf(?:;|$)", "i", contentType) &&
+          blobCall?.type === "CallExpression" && !blobCall.arguments.length && member(blobCall.callee) === "blob" && localBinding(blobCall.callee.object) === responseBinding &&
+          returned?.type === "IfStatement" && !returned.alternate && delivered(returned.test) && result?.type === "ObjectExpression" && result.properties.length === 2 && result.properties.every(property => property.type === "Property" && !property.computed && !property.method && property.kind === "init") &&
+          (result.properties[0].key.name ?? result.properties[0].key.value) === "blob" && localBinding(result.properties[0].value) === blobBinding && (result.properties[1].key.name ?? result.properties[1].key.value) === "fileName" && localMember(result.properties[1].value, ticketBinding, "fileName") &&
+          validation?.arguments.length >= 1 && localBinding(validation.arguments[0]) === responseBinding && validator?.async && !validator.generator && !(local.writesByBinding.get(validatorBinding) ?? []).length && parameter?.type === "Identifier" && !(local.writesByBinding.get(localBinding(parameter)) ?? []).length &&
+          first?.type === "IfStatement" && !first.alternate && localMember(first.test, localBinding(parameter), "ok") && success?.type === "ReturnStatement" && !success.argument && returns.length === 1 && returns[0] === success && last?.type === "ThrowStatement") return { nativeBlob: true };
+    }
+    // Data-only qualification for the selected HTTP write's awaited result.
+    // This never contributes a server-read or capability witness.
+    if (binding === bindingOf(target.callee) && callable?.body?.type === "BlockStatement" && callable.body.body.length === 1 && callable.body.body[0].type === "ReturnStatement") {
+      const forwarded = unwrapValueExpression(callable.body.body[0].argument), localBinding = node => local.scopeBindings.get(unwrapValueExpression(node));
+      const transportBinding = forwarded?.type === "CallExpression" ? localBinding(forwarded.callee) : null;
+      const transport = transportBinding ? uniqueIndexedNode(local.definitionsByBinding, transportBinding) : null;
+      if (transport?.async && !transport.generator && !(local.writesByBinding.get(transportBinding) ?? []).length && transport.body?.type === "BlockStatement" && transport.body.body.length === 3) {
+        const [declaration, validation, returned] = transport.body.body;
+        const response = declaration.type === "VariableDeclaration" && declaration.kind === "const" && declaration.declarations.length === 1 ? declaration.declarations[0] : null;
+        const request = response?.init?.type === "AwaitExpression" ? unwrapValueExpression(response.init.argument) : null;
+        const parsed = returned.type === "ReturnStatement" ? unwrapValueExpression(returned.argument) : null;
+        const responseBinding = response?.id.type === "Identifier" ? localBinding(response.id) : null;
+        const requestBinding = request?.type === "CallExpression" ? localBinding(request.callee) : null;
+        const validated = validation.type === "ExpressionStatement" && validation.expression.type === "AwaitExpression" ? unwrapValueExpression(validation.expression.argument) : null;
+        const validatorBinding = validated?.type === "CallExpression" ? localBinding(validated.callee) : null;
+        const validator = validatorBinding ? uniqueIndexedNode(local.definitionsByBinding, validatorBinding) : null;
+        const first = validator?.body?.body?.[0], last = validator?.body?.body?.at(-1), parameter = validator?.params?.[0];
+        const stops = [];
+        if (validator) directCallableNodes(validator, node => { if (node.type === "ReturnStatement") stops.push(node); });
+        const success = first?.consequent?.type === "BlockStatement" && first.consequent.body.length === 1 ? first.consequent.body[0] : first?.consequent;
+        const trustedRequest = trustedResponseRequest(requestBinding);
+        if (responseBinding && !(local.writesByBinding.get(responseBinding) ?? []).length && trustedRequest &&
+            parsed?.type === "CallExpression" && !parsed.arguments.length && member(parsed.callee) === "json" && localBinding(parsed.callee.object) === responseBinding &&
+            validated?.arguments.length >= 1 && localBinding(validated.arguments[0]) === responseBinding && validator?.async && !validator.generator &&
+            !(local.writesByBinding.get(validatorBinding) ?? []).length && parameter?.type === "Identifier" && !(local.writesByBinding.get(localBinding(parameter)) ?? []).length &&
+            first?.type === "IfStatement" && !first.alternate && member(first.test) === "ok" && localBinding(first.test.object) === localBinding(parameter) &&
+            success?.type === "ReturnStatement" && !success.argument && stops.length === 1 && stops[0] === success && last?.type === "ThrowStatement") return true;
+      }
+    }
+    const store = unwrapValueExpression(uniqueIndexedNode(local.declarationsByBinding, roots[0]));
+    if (store?.type !== "CallExpression" || !frameworkImport(local.scopeBindings.get(store.callee), "pinia", "defineStore", local) || store.arguments.length !== 2) return false;
+    const options = unwrapValueExpression(store.arguments[1]);
+    if (options?.type !== "ObjectExpression" || options.properties.some(property => property.type !== "Property" || property.computed || property.method || property.kind !== "init")) return false;
+    const state = options.properties.find(property => (property.key.name ?? property.key.value) === "state")?.value;
+    const getters = options.properties.find(property => (property.key.name ?? property.key.value) === "getters")?.value;
+    const output = state?.type === "ArrowFunctionExpression" && !state.async && !state.params.length ? unwrapValueExpression(state.body) : null;
+    // A store may expose only its plain state fields as data, never its getters.
+    if (!plainData(output) || output?.type !== "ObjectExpression" || getters?.type !== "ObjectExpression") return false;
+    return { stateFields: new Set(output.properties.map(property => property.key.name ?? property.key.value)), getterFields: new Set(getters.properties.map(property => property.key.name ?? property.key.value)) };
+  };
+  // This cache contains completed module-source summaries only. Every caller's
+  // storage confinement and awaited target-result binding is checked afresh.
+  const importedDataFactories = new Map();
+  const importedDataFactory = binding => {
+    if (!importedDataFactories.has(binding)) importedDataFactories.set(binding, computeImportedDataFactory(binding));
+    return importedDataFactories.get(binding);
+  };
+  // Resolve own data properties through immutable records and Vue ref storage.
+  // Accessors, unknown factories, computed keys and reassigned aliases fail closed.
+  const ownDataMember = (node, fields = [], environment = new Map(), seen = []) => {
+    const value = unwrapValueExpression(node);
+    if (!value || seen.length > 24) return false;
+    if (value.type === "MemberExpression") {
+      if (value.optional && value.computed) return false;
+      const field = staticMemberProperty(value);
+      return field ? ownDataMember(value.object, [field, ...fields], environment, seen) : false;
+    }
+    const record = frozen(value) ?? value;
+    if (record.type === "ObjectExpression") {
+      // An ordinary nested object can escape through a projected alias. A
+      // frozen outer record does not make that child immutable.
+      if (record === value && !plainData(record)) return false;
+      if (!fields.length || record.properties.some(property => property.type !== "Property" || property.computed || property.method || property.kind !== "init" ||
+          ["ObjectExpression", "ArrayExpression"].includes(unwrapValueExpression(property.value)?.type))) return false;
+      const matches = record.properties.filter(property => (property.key.name ?? property.key.value) === fields[0]);
+      return matches.length === 1 && (fields.length === 1 || ownDataMember(matches[0].value, fields.slice(1), environment, seen));
+    }
+    if (value.type === "Identifier") {
+      const binding = bindingOf(value);
+      if (!binding || seen.some(frame => frame.binding === binding && frame.environment === environment)) return false;
+      const next = [...seen, { binding, environment }], bound = environment.get(binding);
+      if (bound) return ownDataMember(bound.node, fields, bound.environment, next);
+      const initial = unwrapValueExpression(uniqueIndexedNode(symbols.declarationsByBinding, binding));
+      const writes = symbols.writesByBinding.get(binding) ?? [];
+      if (initial?.type === "CallExpression" && symbols.vueRefImportBindings.has(bindingOf(initial.callee)) && fields[0] === "value") {
+        if (!rawDataRefConfined(binding)) return false;
+        if (fields.length === 1) return true;
+        if (!writes.every(write => write.kind === "assignment" && write.operator === "=" && write.path === `${binding.name}.value`)) return false;
+        const values = [initial.arguments[0], ...writes.map(write => write.value)].filter(item => item && !expressionIsEmptyCapabilityState(item));
+        return values.length > 0 && values.every(item => ownDataMember(item, fields.slice(1), environment, next));
+      }
+      return !writes.length && Boolean(initial) && (initial.type !== "ObjectExpression" || confinedDataBinding(binding)) && ownDataMember(initial, fields, environment, next);
+    }
+    if (value.type !== "CallExpression" || value.callee.type !== "Identifier") return false;
+    const binding = bindingOf(value.callee), callable = binding ? uniqueIndexedNode(symbols.definitionsByBinding, binding) : null;
+    if (!callable || callable.async || callable.generator || seen.some(frame => frame.binding === binding && frame.environment === environment) || (symbols.writesByBinding.get(binding) ?? []).length) return false;
+    const local = bindCall(callable, value, environment);
+    if (!local) return false;
+    const returns = [];
+    directCallableNodes(callable, current => { if (current.type === "ReturnStatement" && !expressionIsEmptyCapabilityState(current.argument)) returns.push(current.argument); });
+    return returns.length === 1 && Boolean(frozen(returns[0])) && ownDataMember(returns[0], fields, local, [...seen, { binding, environment }]);
+  };
+  const projectMember = (base, fields) => fields.reduce((object, name) => ({ type: "MemberExpression", object, property: { type: "Identifier", name }, computed: false, optional: false }), base);
+  const primitiveGetterValue = (node, seen = new Set(), environment = new Map()) => {
+    const value = unwrapValueExpression(node);
+    if (!value || seen.size > 16) return false;
+    if (value.type === "MemberExpression" && value.optional && !value.computed && staticMemberProperty(value)) return primitiveGetterValue({ ...value, optional: false }, seen, environment);
+    if (globalCall(value, "Boolean") && value.arguments.length === 1) return true;
+    if (value.type === "Literal") return value.value === null || ["string", "number", "boolean"].includes(typeof value.value);
+    if (value.type === "Identifier") {
+      const binding = bindingOf(value);
+      if (!binding || seen.has(binding) || (symbols.writesByBinding.get(binding) ?? []).length > 0) return false;
+      const bound = environment.get(binding), initializer = bound?.node ?? uniqueIndexedNode(symbols.declarationsByBinding, binding);
+      return initializer ? primitiveGetterValue(initializer, new Set(seen).add(binding), bound?.environment ?? environment) : jsonIterationParameter(binding, environment);
+    }
+    if (value.type === "MemberExpression" && !value.computed && value.property.type === "Identifier") {
+      if (fieldOrigin(value, environment, { definition, limit: target.range[0] })?.kind === "read") return true;
+      const record = fieldOrigin(value.object, environment, { definition, limit: target.range[0] });
+      if (record?.kind === "record" && record.fields.has(member(value))) {
+        const selected = record.fields.get(member(value));
+        return !seen.has(selected) && primitiveGetterValue(selected, new Set(seen).add(selected), record.environment);
+      }
+      const spread = frozen(value.object);
+      if (spread?.type === "ObjectExpression" && spread.properties.length === 1 && spread.properties[0].type === "SpreadElement") {
+        return primitiveGetterValue(projectMember(spread.properties[0].argument, [member(value)]), seen, environment);
+      }
+      const fields = [];
+      let root = value;
+      while (root?.type === "MemberExpression" && !root.computed) { fields.unshift(member(root)); root = unwrapValueExpression(root.object); }
+      if (root?.type !== "Identifier") return false;
+      const binding = bindingOf(root), bound = environment.get(binding);
+      if (!binding || seen.has(binding)) return false;
+      if (bound) return primitiveGetterValue(projectMember(bound.node, fields), new Set(seen).add(binding), bound.environment);
+      const initializer = unwrapValueExpression(uniqueIndexedNode(symbols.declarationsByBinding, binding));
+      if (!initializer) return jsonIterationParameter(binding, environment);
+      if (initializer.type === "ObjectExpression") {
+        if (!plainData(initializer) || !confinedDataBinding(binding)) return false;
+        const matches = initializer.properties.filter(property => (property.key.name ?? property.key.value) === fields[0]);
+        return matches.length === 1 && primitiveGetterValue(projectMember(matches[0].value, fields.slice(1)), new Set(seen).add(binding), environment);
+      }
+      const sourceRecord = fieldOrigin(initializer, environment, { definition, limit: target.range[0] });
+      if (sourceRecord?.kind === "record" && sourceRecord.fields.has(fields[0])) return primitiveGetterValue(projectMember(sourceRecord.fields.get(fields[0]), fields.slice(1)), new Set(seen).add(binding), sourceRecord.environment);
+      if (initializer.type === "CallExpression") {
+        const called = bindingOf(initializer.callee);
+        if (symbols.vueRefImportBindings.has(called)) {
+          if (!rawDataRefConfined(binding) || fields[0] !== "value") return false;
+          const values = [initializer.arguments[0], ...(symbols.writesByBinding.get(binding) ?? []).map(write => write.value)].filter(value => value && (fields.length === 1 || !expressionIsEmptyCapabilityState(value)));
+          if (fields.length === 1) return values.length > 0 && values.every(value => scalarRefValue(value, environment));
+          return values.length > 0 && values.every(value => {
+            const local = value === populated[0].value && !writer.definition.params.every(parameter => environment.has(bindingOf(parameter))) ? bindCall(writer.definition, writerCalls[0], environment) : environment;
+            return Boolean(local) && primitiveGetterValue(projectMember(value, fields.slice(1)), new Set(seen).add(binding), local);
+          });
+        }
+        const dataFactory = importedDataFactory(called);
+        return Boolean(dataFactory?.nativeBlob && binding === awaitedCallResultBinding(target, [definition], symbols) && ["blob", "blob.size", "fileName"].includes(fields.join(".")) ||
+          dataFactory === true && (binding === awaitedCallResultBinding(target, [definition], symbols) || confinedDataBinding(binding)) ||
+          dataFactory?.stateFields && confinedDataBinding(binding) && dataFactory.stateFields.has(fields[0]) && !dataFactory.getterFields.has(fields[0]) ||
+          frameworkImport(called, "vue-router", "useRoute") && confinedDataBinding(binding) ||
+          symbols.vueComputedImportBindings.has(called) && rawDataRefConfined(binding) && initializer.arguments.length === 1 && initializer.arguments[0]?.type === "ArrowFunctionExpression" && !initializer.arguments[0].async &&
+          primitiveGetterValue(initializer.arguments[0].body, new Set(seen).add(binding), environment) && purePredicate(initializer.arguments[0], environment) ||
+          initializer.callee.type === "Identifier" && initializer.callee.name === "defineProps" && confinedDataBinding(binding) && unshadowedRuntimeGlobal(initializer.callee, new Set(["defineProps"]), symbols.scopeBindings));
+      }
+      return ["Identifier", "MemberExpression"].includes(initializer.type) && primitiveGetterValue(projectMember(initializer, fields), new Set(seen).add(binding), environment);
+    }
+    if (value.type === "LogicalExpression" || value.type === "BinaryExpression") return primitiveGetterValue(value.left, seen, environment) && primitiveGetterValue(value.right, seen, environment);
+    if (value.type === "UnaryExpression") return ["!", "typeof"].includes(value.operator) || ["+", "-"].includes(value.operator) && primitiveGetterValue(value.argument, seen, environment);
+    return false;
+  };
+  const readonlyGetterBody = callable => {
+    if (callable.async || callable.generator) return false;
+    if (callable.body?.type !== "BlockStatement") return Boolean(callable.body && !["FunctionExpression", "ArrowFunctionExpression"].includes(callable.body.type));
+    const statements = callable.body.body;
+    if (!statements.length || statements.at(-1).type !== "ReturnStatement") return false;
+    return statements.every(statement => {
+      if (statement.type === "ReturnStatement") return true;
+      if (statement.type === "VariableDeclaration") return statement.kind === "const" && statement.declarations.every(declaration =>
+        declaration.id.type === "Identifier" && primitiveGetterValue(declaration.init) && (symbols.writesByBinding.get(bindingOf(declaration.id)) ?? []).length === 0);
+      if (statement.type !== "IfStatement" || statement.alternate) return false;
+      const stop = statement.consequent?.type === "BlockStatement" && statement.consequent.body.length === 1 ? statement.consequent.body[0] : statement.consequent;
+      return stop?.type === "ReturnStatement" && unwrapValueExpression(stop.argument)?.type === "Literal";
+    });
+  };
+  const readonlyRegexpCall = (current, environment = new Map()) => {
+    if (member(current.callee) !== "test" || current.arguments.length !== 1 || current.callee.object.type !== "Identifier" || !primitiveGetterValue(current.arguments[0], new Set(), environment)) return false;
+    const binding = bindingOf(current.callee.object), declaration = binding ? unwrapValueExpression(uniqueIndexedNode(symbols.declarationsByBinding, binding)) : null;
+    if (!declaration?.regex || /[gy]/u.test(declaration.regex.flags) || (symbols.writesByBinding.get(binding) ?? []).length > 0) return false;
+    const declarationAncestors = astAncestorChain(symbols.ast, declaration);
+    if (declarationAncestors?.at(-2)?.type !== "VariableDeclarator" || declarationAncestors?.at(-3)?.kind !== "const") return false;
+    let safe = true;
+    walkEstree(symbols.ast, node => {
+      if (node.type !== "Identifier" || bindingOf(node) !== binding || !symbols.scopeReferenceIdentifiers.has(node)) return;
+      const ancestors = astAncestorChain(symbols.ast, node), parent = ancestors?.at(-2), call = ancestors?.at(-3);
+      if (parent?.type === "VariableDeclarator" && parent.id === node && parent.init === declaration) return;
+      if (parent?.type !== "MemberExpression" || parent.object !== node || member(parent) !== "test" || call?.type !== "CallExpression" || call.callee !== parent) safe = false;
+    });
+    return safe;
+  };
+  const readonlyIntrinsicCall = (current, environment) => {
+    const pureRecord = frozen(current);
+    if (pureRecord?.type === "ObjectExpression" && pureRecord.properties.every(property => property.type === "Property" && property.kind === "init" && !property.method && !property.computed && primitiveGetterValue(property.value, new Set(), environment))) return true;
+    return readonlyRegexpCall(current, environment) || globalCall(current, "JSON", "stringify") && current.arguments.length === 1 &&
+      unwrapValueExpression(current.arguments[0])?.type === "ArrayExpression" && current.arguments[0].elements.every(element =>
+        element && element.type !== "SpreadElement" && primitiveGetterValue(element, new Set(), environment));
+  };
+  // This proof supports the present read/display call graph, not arbitrary JS.
+  // Any new executable syntax must first obtain its own bounded proof.
+  const limitedNodes = new Set([
+    "FunctionDeclaration", "FunctionExpression", "ArrowFunctionExpression", "Identifier", "Literal", "BlockStatement",
+    "VariableDeclaration", "VariableDeclarator", "ExpressionStatement", "IfStatement", "ReturnStatement", "ThrowStatement",
+    "TryStatement", "CatchClause", "AwaitExpression", "CallExpression", "MemberExpression", "ChainExpression",
+    "LogicalExpression", "BinaryExpression", "UnaryExpression", "AssignmentExpression", "UpdateExpression", "ConditionalExpression",
+    "ObjectExpression", "Property", "ArrayExpression", "SpreadElement", "NewExpression", "TemplateLiteral", "TemplateElement",
+    "TSTypeAnnotation", "TSTypeReference", "TSStringKeyword", "TSNumberKeyword", "TSBooleanKeyword", "TSUnknownKeyword", "TSVoidKeyword",
+    "TSNullKeyword", "TSUnionType", "TSLiteralType", "TSTypeQuery", "TSIndexedAccessType", "TSTypeOperator", "TSArrayType",
+    "TSQualifiedName", "TSTypeParameterInstantiation", "TSAsExpression", "TSNonNullExpression", "TSTypePredicate"
+  ]);
+  const limitedSyntax = node => (limitedNodes.has(node.type) || approvedFileLoops.has(node)) &&
+    (node.type !== "UnaryExpression" || ["!", "typeof", "void"].includes(node.operator)) &&
+    (node.type !== "BinaryExpression" || ["===", "!==", ">", ">=", "<", "<=", "instanceof"].includes(node.operator) ||
+      ["==", "!="].includes(node.operator) && [node.left, node.right].some(value => value.type === "Literal" && value.value === null)) &&
+    (node.type !== "LogicalExpression" || ["&&", "||", "??"].includes(node.operator)) &&
+    (node.type !== "Property" || node.kind === "init" && !node.method && !node.computed && !["FunctionExpression", "ArrowFunctionExpression"].includes(node.value?.type));
+  const primitiveOperation = (node, environment, additionalPrimitive = () => false) => {
+    const primitive = value => primitiveGetterValue(value, new Set(), environment) || additionalPrimitive(value);
+    if (node.type === "TemplateLiteral") return node.expressions.every(primitive);
+    if (node.type !== "BinaryExpression") return true;
+    if (["<", "<=", ">", ">="].includes(node.operator)) return primitive(node.left) && primitive(node.right);
+    if (node.operator === "instanceof") return node.right.type === "Identifier" && node.right.name === "Error" &&
+      unshadowedRuntimeGlobal(node.right, new Set(["Error"]), symbols.scopeBindings);
+    return true;
+  };
+  const purePredicate = (node, environment = new Map(), seen = new Set()) => {
+    if (["FunctionDeclaration", "FunctionExpression", "ArrowFunctionExpression"].includes(node?.type) && (node.async || node.generator)) return false;
+    let pure = true;
+    directCallableNodes(node, current => {
+      if (!pure) return;
+      if (!limitedSyntax(current) || !primitiveOperation(current, environment)) { pure = false; return; }
+      if (current.type === "SpreadElement" && fieldOrigin(current.argument, environment, { definition, limit: target.range[0] })?.kind !== "read") { pure = false; return; }
+      if (["AwaitExpression", "AssignmentExpression", "UpdateExpression", "YieldExpression", "NewExpression", "TaggedTemplateExpression"].includes(current.type)) { pure = false; return; }
+      if (current.type !== "CallExpression") return;
+      if (globalCall(current, "Boolean") || (globalCall(current, "Array", "isArray") && current.arguments.length === 1)) return;
+      if (readonlyIntrinsicCall(current, environment)) return;
+      if (member(current.callee) === "includes" && path(current.callee.object, environment) === `${cap}.${actionField}`) {
+        trustedIncludes.add(path(current.callee.object, environment));
+        return;
+      }
+      const binding = bindingOf(current.callee);
+      const callable = binding ? uniqueIndexedNode(symbols.definitionsByBinding, binding) : null;
+      if (!callable || (symbols.writesByBinding.get(binding) ?? []).length > 0 || seen.has(binding) || callable.params.length !== current.arguments.length || callable.params.some(parameter => parameter.type !== "Identifier") ||
+          !readonlyGetterBody(callable)) { pure = false; return; }
+      const local = new Map(environment);
+      callable.params.forEach((parameter, index) => local.set(bindingOf(parameter), { node: current.arguments[index], environment }));
+      if (!purePredicate(callable.body, local, new Set(seen).add(binding))) pure = false;
+    });
+    return pure;
+  };
+  const predicateAtoms = (node, environment, seen = new Set()) => {
+    const value = unwrapValueExpression(node);
+    if (value?.type === "LogicalExpression" && value.operator === "&&") {
+      return [...predicateAtoms(value.left, environment, seen), ...predicateAtoms(value.right, environment, seen)];
+    }
+    if (globalCall(value, "Boolean") && value.arguments.length === 1) return predicateAtoms(value.arguments[0], environment, seen);
+    if (value?.type === "CallExpression" && value.callee.type === "Identifier") {
+      const binding = bindingOf(value.callee), callable = binding ? uniqueIndexedNode(symbols.definitionsByBinding, binding) : null;
+      if (!callable || callable.async || callable.generator || (symbols.writesByBinding.get(binding) ?? []).length > 0 || seen.has(binding) || callable.params.length !== value.arguments.length || callable.params.some(parameter => parameter.type !== "Identifier") ||
+          callable.body?.type !== "BlockStatement" || callable.body.body.length !== 1 || callable.body.body[0].type !== "ReturnStatement") return [];
+      purePredicates.add(binding);
+      const local = new Map(environment);
+      callable.params.forEach((parameter, index) => local.set(bindingOf(parameter), { node: value.arguments[index], environment }));
+      return predicateAtoms(callable.body.body[0].argument, local, new Set(seen).add(binding));
+    }
+    if (value?.type === "BinaryExpression" && value.operator === "===") {
+      const left = path(value.left, environment), right = path(value.right, environment);
+      if (left && right) return [equal(left, right)];
+      if (value.left.type === "UnaryExpression" && value.left.operator === "typeof" && literalString(value.right) === "string") {
+        const field = path(value.left.argument, environment);
+        return field ? [`typeof:${field}:string`] : [];
+      }
+      const literal = unwrapValueExpression(value.right);
+      return left && literal?.type === "Literal" && ["string", "boolean"].includes(typeof literal.value) ? [`literal:${left}:${JSON.stringify(literal.value)}`] : [];
+    }
+    if (value?.type === "CallExpression" && member(value.callee) === "includes" && value.arguments.length === 1 && literalString(value.arguments[0]) === action.capability.key) {
+      return [`includes:${path(value.callee.object, environment)}:${action.capability.key}`];
+    }
+    const truthy = ["Identifier", "MemberExpression"].includes(value?.type) ? path(value, environment) : null;
+    return truthy ? [`truthy:${truthy}`] : [];
+  };
+  const currentFileSearch = () => {
+    const nullReturn = statement => statement?.type === "ReturnStatement" && unwrapValueExpression(statement.argument)?.type === "Literal" && unwrapValueExpression(statement.argument).value === null;
+    const single = statement => statement?.type === "BlockStatement" && statement.body.length === 1 ? statement.body[0] : statement;
+    const memberOf = (object, name) => ({ type: "MemberExpression", object, property: { type: "Identifier", name }, computed: false, optional: false });
+    const candidates = [];
+    for (const statement of attempt.block.body ?? []) {
+      if (statement.range[0] >= writerCalls[0].range[0]) break;
+      const test = unwrapValueExpression(statement.test), waited = test?.argument, call = waited?.argument;
+      const stop = statement.consequent?.type === "BlockStatement" ? statement.consequent.body.at(-1) : statement.consequent;
+      if (statement.type !== "IfStatement" || statement.alternate || test?.type !== "UnaryExpression" || test.operator !== "!" ||
+          waited?.type !== "AwaitExpression" || call?.type !== "CallExpression" || call.callee.type !== "Identifier" ||
+          !["ReturnStatement", "ThrowStatement"].includes(stop?.type) || bindingOf(call.callee) === writer.binding ||
+          call.arguments.length !== 2 || path(call.arguments[0]) !== actualOwner || path(call.arguments[1]) !== actualPdf || !awaitedBefore(call, writerCalls[0].range[0])) continue;
+      candidates.push(call);
+    }
+    if (candidates.length !== 1) return false;
+    const call = candidates[0], searchBinding = bindingOf(call.callee), search = uniqueIndexedNode(symbols.definitionsByBinding, searchBinding);
+    if (!search || (symbols.writesByBinding.get(searchBinding) ?? []).length || search.params.length !== 2 || search.body?.type !== "BlockStatement" || search.body.body.length !== 4) return false;
+    const environment = bindCall(search, call);
+    if (!environment) return false;
+    const [readStatement, absent, loop, final] = search.body.body;
+    const state = readStatement?.type === "VariableDeclaration" && readStatement.kind === "const" && readStatement.declarations.length === 1 ? readStatement.declarations[0] : null;
+    const read = state?.init?.type === "AwaitExpression" ? state.init.argument : null;
+    if (state?.id.type !== "Identifier" || read?.type !== "CallExpression" || read.callee.type !== "Identifier" || read.arguments.length !== 1 ||
+        path(read.arguments[0], environment) !== actualOwner || !nullReturn(final) || loop?.type !== "ForOfStatement" || loop.await) return false;
+    const statePath = path(state.id, environment), absentTest = unwrapValueExpression(absent.test);
+    if (absent.type !== "IfStatement" || absent.alternate || absentTest?.type !== "UnaryExpression" || absentTest.operator !== "!" ||
+        path(absentTest.argument, environment) !== statePath || !nullReturn(single(absent.consequent))) return false;
+    const sourceFrame = { definition: search, limit: loop.range[0] };
+    const fingerprint = fieldOrigin(memberOf(state.id, "fingerprint"), environment, sourceFrame);
+    const documents = fieldOrigin(memberOf(state.id, "documents"), environment, sourceFrame);
+    const fresh = origin => origin?.kind === "read" && origin.coordinate === `${actualOwner}.context.contractVersionId` && origin.trail.length === 1 && origin.trail[0] === read &&
+      origin.read.range[0] > origin.frame.definition.range[0] && origin.read.range[1] < origin.frame.definition.range[1] && awaitedBefore(origin.read, origin.frame.limit);
+    if (!fresh(fingerprint) || fingerprint.fields.join(".") !== "version.documentContentFingerprint" || !fresh(documents) || documents.fields.length ||
+        !readHasIdentity(fingerprint, "version.id", "version.draftRevision", actualOwner, [["contract.id", "routeContractId"], ["version.layoutTemplateVersionId", "context.layoutTemplateVersionId"], ["version.documentContentRevision", "context.documentContentRevision"]])) return false;
+    const iteration = loop.left?.type === "VariableDeclaration" && loop.left.kind === "const" && loop.left.declarations.length === 1 ? loop.left.declarations[0] : null;
+    const matchingCall = unwrapValueExpression(loop.right), matchingBinding = matchingCall?.type === "CallExpression" ? bindingOf(matchingCall.callee) : null;
+    const matching = matchingBinding ? uniqueIndexedNode(symbols.definitionsByBinding, matchingBinding) : null;
+    if (iteration?.id.type !== "Identifier" || iteration.init || !matching || (symbols.writesByBinding.get(matchingBinding) ?? []).length || matching.params.length !== 2 ||
+        matching.body?.type !== "BlockStatement" || matching.body.body.length !== 1 || matching.body.body[0].type !== "ReturnStatement" || matchingCall.arguments.length !== 2 ||
+        path(matchingCall.arguments[0], environment) !== actualOwner || path(matchingCall.arguments[1], environment) !== statePath) return false;
+    const matchingEnvironment = bindCall(matching, matchingCall, environment), filter = unwrapValueExpression(matching.body.body[0].argument);
+    const predicate = filter?.arguments?.[0];
+    if (!matchingEnvironment || filter?.type !== "CallExpression" || member(filter.callee) !== "filter" || filter.arguments.length !== 1 ||
+        path(filter.callee.object, matchingEnvironment) !== `${statePath}.documents` || predicate?.type !== "ArrowFunctionExpression" || predicate.async || predicate.params.length !== 1 || predicate.params[0].type !== "Identifier" || !purePredicate(predicate, matchingEnvironment)) return false;
+    const item = path(predicate.params[0], matchingEnvironment), filterFacts = new Set(predicateAtoms(predicate.body, matchingEnvironment));
+    const filterRequired = [`typeof:${item}.id:string`, `truthy:${item}.id`, `literal:${item}.purpose:"draft"`,
+      equal(`${item}.layoutTemplateVersionId`, `${actualOwner}.context.layoutTemplateVersionId`),
+      equal(`${item}.documentContentRevision`, `${actualOwner}.context.documentContentRevision`),
+      equal(`${item}.documentContentFingerprint`, `${statePath}.fingerprint`),
+      equal(`${item}.inputSnapshot.bodyDocument.sourceSha256`, `${actualOwner}.context.sourceSha256`)];
+    if (!filterRequired.every(fact => filterFacts.has(fact)) || loop.body?.type !== "BlockStatement" || loop.body.body.length !== 2) return false;
+    const [projectStatement, matchStatement] = loop.body.body;
+    const projection = projectStatement.type === "VariableDeclaration" && projectStatement.kind === "const" && projectStatement.declarations.length === 1 ? projectStatement.declarations[0] : null;
+    const projectCall = unwrapValueExpression(projection?.init), projectBinding = projectCall?.type === "CallExpression" ? bindingOf(projectCall.callee) : null;
+    const project = projectBinding ? uniqueIndexedNode(symbols.definitionsByBinding, projectBinding) : null;
+    const iterationPath = path(iteration.id, environment);
+    if (projection?.id.type !== "Identifier" || !project || (symbols.writesByBinding.get(projectBinding) ?? []).length || project.params.length !== 3 || project.body?.type !== "BlockStatement" || project.body.body.length !== 2 || projectCall.arguments.length !== 3 ||
+        path(projectCall.arguments[0], environment) !== actualOwner || path(projectCall.arguments[1], environment) !== statePath || path(projectCall.arguments[2], environment) !== iterationPath) return false;
+    const projectEnvironment = bindCall(project, projectCall, environment), [reject, returned] = project.body.body;
+    const output = returned.type === "ReturnStatement" ? frozen(returned.argument) : null;
+    if (!projectEnvironment || reject.type !== "IfStatement" || reject.alternate || !nullReturn(single(reject.consequent)) || output?.type !== "ObjectExpression" || output.properties.length !== 6 ||
+        output.properties.some(property => property.type !== "Property" || property.computed || property.method || property.kind !== "init")) return false;
+    const outputFields = new Map(output.properties.map(property => [property.key.name ?? property.key.value, property.value]));
+    const expectedFields = { documentId: `${iterationPath}.id`, fileId: `${iterationPath}.pdfFileId`, contentRevision: `${actualOwner}.context.documentContentRevision`,
+      fingerprint: `${statePath}.fingerprint`, layoutId: `${actualOwner}.context.layoutTemplateVersionId`, sourceSha256: `${actualOwner}.context.sourceSha256` };
+    if (!Object.entries(expectedFields).every(([field, expected]) => path(outputFields.get(field), projectEnvironment) === expected)) return false;
+    const failures = node => {
+      const value = unwrapValueExpression(node);
+      if (value?.type === "LogicalExpression" && value.operator === "||") return [...failures(value.left), ...failures(value.right)];
+      if (value?.type === "UnaryExpression" && value.operator === "!") return [`truthy:${path(value.argument, projectEnvironment)}`];
+      if (value?.type !== "BinaryExpression" || value.operator !== "!==") return [];
+      if (value.left.type === "UnaryExpression" && value.left.operator === "typeof" && literalString(value.right) === "string") return [`typeof:${path(value.left.argument, projectEnvironment)}:string`];
+      return value.right.type === "Literal" ? [`literal:${path(value.left, projectEnvironment)}:${JSON.stringify(value.right.value)}`] : [];
+    };
+    const rejected = new Set(failures(reject.test));
+    if (![ `literal:${iterationPath}.status:"success"`, `typeof:${iterationPath}.id:string`, `typeof:${iterationPath}.pdfFileId:string`, `truthy:${iterationPath}.pdfFileId` ].every(fact => rejected.has(fact))) return false;
+    const projected = path(projection.id, environment), expected = path(search.params[1], environment), match = unwrapValueExpression(matchStatement.test);
+    const either = unwrapValueExpression(match?.right), noExpected = unwrapValueExpression(either?.left);
+    if (matchStatement.type !== "IfStatement" || matchStatement.alternate || matchStatement.consequent.type !== "ReturnStatement" || path(matchStatement.consequent.argument, environment) !== projected ||
+        match?.type !== "LogicalExpression" || match.operator !== "&&" || path(match.left, environment) !== projected || either?.type !== "LogicalExpression" || either.operator !== "||" ||
+        noExpected?.type !== "UnaryExpression" || noExpected.operator !== "!" || path(noExpected.argument, environment) !== expected) return false;
+    const matched = new Set(predicateAtoms(either.right, environment));
+    if (!["documentId", "fileId", "fingerprint"].every(field => matched.has(equal(`${projected}.${field}`, `${expected}.${field}`)))) return false;
+    const rejectsMissingPdf = node => {
+      const value = unwrapValueExpression(node);
+      return value?.type === "LogicalExpression" && value.operator === "||" ? rejectsMissingPdf(value.left) || rejectsMissingPdf(value.right) :
+        value?.type === "UnaryExpression" && value.operator === "!" && path(value.argument) === actualPdf;
+    };
+    if (!(definition.body.body ?? []).some(statement => statement.range[0] < attempt.range[0] && statement.type === "IfStatement" && !statement.alternate &&
+      ["ReturnStatement", "ThrowStatement"].includes(single(statement.consequent)?.type) && rejectsMissingPdf(statement.test))) return false;
+    approvedFileLoops.add(loop);
+    return true;
+  };
+  let dominating = false;
+  for (const statement of attempt.block.body ?? []) {
+    if (statement.range[0] >= target.range[0]) break;
+    if (statement.range[0] <= writerCalls[0].range[1] || !capturedAfterRead(statement.test)) continue;
+    const test = unwrapValueExpression(statement.test);
+    if (statement.type !== "IfStatement" || statement.alternate || !terminates(statement.consequent)) continue;
+    // Reaching the transport after an OR-of-failures requires each failure
+    // to be false. A negated predicate therefore contributes its positive
+    // facts; AND-of-failures and positive predicates contribute no authority.
+    const successAtoms = node => {
+      const value = unwrapValueExpression(node);
+      if (value?.type === "LogicalExpression" && value.operator === "||") return [...successAtoms(value.left), ...successAtoms(value.right)];
+      return value?.type === "UnaryExpression" && value.operator === "!" ? predicateAtoms(value.argument, new Map()) : [];
+    };
+    if (!purePredicate(test)) continue;
+    const atoms = new Set(successAtoms(test));
+    const required = [equal(`${cap}.ownerKey`, `${actualOwner}.ownerKey`), equal(`${cap}.readGeneration`, `${actualOwner}.generation`), `includes:${cap}.${actionField}:${action.capability.key}`,
+      ...(fileGrant ? [equal(`${cap}.fileId`, `${actualPdf}.fileId`), equal(`${cap}.documentId`, `${actualPdf}.documentId`), `literal:${cap}.serverAction.key:${JSON.stringify(action.capability.key)}`, `literal:${cap}.serverAction.enabled:true`] : [equal(`${cap}.sourceRevision`, `${actualOwner}.context.draftRevision`)])];
+    if (required.every(atom => atoms.has(atom))) dominating = true;
+  }
+  if (!dominating) return null;
+  if (fileGrant && !currentFileSearch()) return null;
+  const readDerivedCollection = (node, environment, seen = new Set()) => {
+    const value = unwrapValueExpression(node);
+    if (!value || seen.size > 16) return false;
+    if (value.type === "ArrayExpression" && value.elements.every(element => element?.type === "Literal" && typeof element.value === "string")) return true;
+    const refArray = (node, local, fields = [], visited = new Set()) => {
+      const selected = unwrapValueExpression(node);
+      if (!selected || visited.size > 16) return false;
+      if (selected.type === "MemberExpression" && member(selected)) return refArray(selected.object, local, [member(selected), ...fields], visited);
+      if (selected.type !== "Identifier") return false;
+      const binding = bindingOf(selected);
+      if (!binding || visited.has(binding)) return false;
+      const next = new Set(visited).add(binding), bound = local.get(binding);
+      if (bound) return refArray(bound.node, bound.environment, fields, next);
+      const initial = uniqueIndexedNode(symbols.declarationsByBinding, binding);
+      if (!expressionIsEmptyVueRef(initial, symbols)) return initial && !(symbols.writesByBinding.get(binding) ?? []).length ? refArray(initial, local, fields, next) : false;
+      const writes = symbols.writesByBinding.get(binding) ?? [], populated = writes.filter(write => !expressionIsEmptyCapabilityState(write.value));
+      if (fields.length !== 2 || fields[0] !== "value" || populated.length !== 1 || !writes.every(write => write.kind === "assignment" && write.operator === "=" && write.path === `${binding.name}.value`)) return false;
+      const record = frozen(populated[0].value);
+      const properties = record?.type === "ObjectExpression" ? record.properties.filter(property => property.type === "Property" && !property.computed && !property.method && property.kind === "init" && (property.key.name ?? property.key.value) === fields[1]) : [];
+      const origin = properties.length === 1 ? fieldOrigin(properties[0].value, local, { definition, limit: target.range[0] }) : null;
+      return origin?.kind === "read" && origin.immutableArray;
+    };
+    if (refArray(value, environment)) return true;
+    if (fieldOrigin(value, environment, { definition, limit: target.range[0] })?.kind === "read") return true;
+    if (value.type === "Identifier") {
+      const binding = bindingOf(value);
+      if (!binding || seen.has(binding) || (symbols.writesByBinding.get(binding) ?? []).length) return false;
+      const bound = environment.get(binding), initializer = bound?.node ?? uniqueIndexedNode(symbols.declarationsByBinding, binding);
+      return initializer ? readDerivedCollection(initializer, bound?.environment ?? environment, new Set(seen).add(binding)) : false;
+    }
+    if (value.type !== "CallExpression") return false;
+    if (member(value.callee) === "filter" && value.arguments.length === 1 && value.arguments[0].type === "ArrowFunctionExpression" && purePredicate(value.arguments[0], environment)) return readDerivedCollection(value.callee.object, environment, seen);
+    const binding = bindingOf(value.callee), callable = binding ? uniqueIndexedNode(symbols.definitionsByBinding, binding) : null;
+    if (!callable || (symbols.writesByBinding.get(binding) ?? []).length > 0 || seen.has(binding) || callable.body?.type !== "BlockStatement" || callable.body.body.length !== 1 || callable.body.body[0].type !== "ReturnStatement") return false;
+    const local = bindCall(callable, value, environment);
+    return local ? readDerivedCollection(callable.body.body[0].argument, local, new Set(seen).add(binding)) : false;
+  };
+  const readDerivedValue = (node, environment, seen = new Set()) => {
+    const value = unwrapValueExpression(node);
+    if (!value || seen.size > 16) return false;
+    if (fieldOrigin(value, environment, { definition, limit: target.range[0] })?.kind === "read") return true;
+    if (value.type === "MemberExpression" && member(value)) return readDerivedValue(value.object, environment, seen);
+    if (value.type === "ConditionalExpression") return readDerivedValue(value.consequent, environment, seen) && readDerivedValue(value.alternate, environment, seen);
+    if (value.type === "LogicalExpression" && value.operator === "??") return readDerivedValue(value.left, environment, seen) && readDerivedValue(value.right, environment, seen);
+    if (value.type === "Identifier") {
+      const binding = bindingOf(value), bound = environment.get(binding);
+      if (!binding || seen.has(binding) || (symbols.writesByBinding.get(binding) ?? []).length) return false;
+      const initializer = bound?.node ?? uniqueIndexedNode(symbols.declarationsByBinding, binding);
+      return initializer ? readDerivedValue(initializer, bound?.environment ?? environment, new Set(seen).add(binding)) : false;
+    }
+    return value.type === "CallExpression" && member(value.callee) === "find" && value.arguments.length === 1 &&
+      value.arguments[0].type === "ArrowFunctionExpression" && purePredicate(value.arguments[0], environment) && readDerivedCollection(value.callee.object, environment);
+  };
+  derivedCollectionsReady = true;
+  const pureImportedStrings = new Map();
+  const importedStringCall = (call, environment = new Map()) => {
+    const imported = importedCallMetadata(call, symbols);
+    if (!imported?.importedName || imported.kind !== "named") return false;
+    const ast = context.asts.get(imported.sourceFile);
+    if (!ast || !ast.body.every(statement => statement.type === "FunctionDeclaration" ||
+        statement.type === "ExportNamedDeclaration" && statement.declaration?.type === "FunctionDeclaration") ||
+        !ast.body.some(statement => statement.type === "ExportNamedDeclaration" && statement.declaration?.id?.name === imported.importedName)) return false;
+    const local = buildSymbolContext(ast, imported.sourceFile, context.sourceFileSet);
+    const roots = topLevelScopeVariables(local.scopeManager, imported.importedName);
+    if (roots.length !== 1) return false;
+    const root = roots[0], rootDefinition = uniqueIndexedNode(local.definitionsByBinding, root);
+    if (!rootDefinition || rootDefinition.async || rootDefinition.generator || rootDefinition.params.length !== call.arguments.length || call.arguments.some(argument => argument.type === "SpreadElement") || rootDefinition.params.some((parameter, index) =>
+      ["TSStringKeyword", "TSNumberKeyword", "TSBooleanKeyword"].includes(parameter.typeAnnotation?.typeAnnotation?.type) && !primitiveGetterValue(call.arguments[index], new Set(), environment))) return false;
+    const binding = node => local.scopeBindings.get(unwrapValueExpression(node));
+    const cache = new Map(), active = new Set();
+    const annotated = (variable, type) => variable?.identifiers?.some(identifier => identifier.typeAnnotation?.typeAnnotation?.type === type);
+    const numberValue = (node, seen = new Set()) => {
+      const value = unwrapValueExpression(node);
+      if (!value || seen.size > 16) return false;
+      if (value.type === "Literal") return typeof value.value === "number";
+      if (value.type !== "Identifier") return false;
+      const variable = binding(value);
+      if (!variable || seen.has(variable) || (local.writesByBinding.get(variable) ?? []).length) return false;
+      const initializer = uniqueIndexedNode(local.declarationsByBinding, variable);
+      return initializer ? numberValue(initializer, new Set(seen).add(variable)) : annotated(variable, "TSNumberKeyword");
+    };
+    const stringValue = (node, seen = new Set()) => {
+      const value = unwrapValueExpression(node);
+      if (!value || seen.size > 16) return false;
+      if (value.type === "Literal") return typeof value.value === "string";
+      if (value.type === "Identifier") {
+        const variable = binding(value);
+        if (!variable || seen.has(variable) || (local.writesByBinding.get(variable) ?? []).length) return false;
+        const initializer = uniqueIndexedNode(local.declarationsByBinding, variable);
+        // Local annotations cannot replace initializer provenance. Parameter
+        // annotations are usable only after every incoming call checks its actuals.
+        return initializer ? stringValue(initializer, new Set(seen).add(variable)) : annotated(variable, "TSStringKeyword");
+      }
+      if (value.type === "TemplateLiteral") return value.expressions.every(expression => stringValue(expression, seen) || numberValue(expression, seen));
+      if (value.type !== "CallExpression") return false;
+      if (member(value.callee) === "trim" && value.arguments.length === 0) return stringValue(value.callee.object, seen);
+      const definition = value.callee.type === "Identifier" ? uniqueIndexedNode(local.definitionsByBinding, binding(value.callee)) : null;
+      return definition && qualifiedLocalArguments(definition, value.arguments) && summary(binding(value.callee));
+    };
+    const qualifiedLocalArguments = (definition, args) => definition.params.length === args.length && args.every(argument => argument.type !== "SpreadElement") &&
+      definition.params.every((parameter, index) => {
+        const type = parameter.typeAnnotation?.typeAnnotation?.type;
+        if (type === "TSStringKeyword") return stringValue(args[index]);
+        if (type === "TSNumberKeyword") return numberValue(args[index]);
+        if (type === "TSBooleanKeyword") { const value = unwrapValueExpression(args[index]); return value?.type === "Literal" && typeof value.value === "boolean"; }
+        return true;
+      });
+    const summary = variable => {
+      if (!variable || active.has(variable)) return false;
+      if (cache.has(variable)) return cache.get(variable);
+      const callable = uniqueIndexedNode(local.definitionsByBinding, variable);
+      if (!callable || callable.async || callable.generator || callable.params.some(parameter => parameter.type !== "Identifier")) return false;
+      active.add(variable);
+      let valid = true, returns = 0;
+      directCallableNodes(callable, (current, parent) => {
+        if (!valid) return;
+        if (!limitedSyntax(current)) { valid = false; return; }
+        // This imported string-only subset has no opaque property reads or
+        // implicit numeric/string coercion of unknown objects, even if unused.
+        if (current.type === "UnaryExpression" && !["!", "typeof", "void"].includes(current.operator) ||
+            current.type === "BinaryExpression" && !["===", "!==", "<", "<=", ">", ">="].includes(current.operator)) { valid = false; return; }
+        if (current.type === "MemberExpression") {
+          const receiver = unwrapValueExpression(current.object);
+          const nativeCall = !current.computed && !current.optional && parent?.type === "CallExpression" && parent.callee === current &&
+            (member(current) === "trim" && parent.arguments.length === 0 && stringValue(receiver) ||
+              member(current) === "test" && receiver?.regex && !/[gy]/u.test(receiver.regex.flags) && parent.arguments.length === 1 && stringValue(parent.arguments[0]));
+          if (!nativeCall) { valid = false; return; }
+        }
+        if (["AssignmentExpression", "UpdateExpression", "AwaitExpression", "YieldExpression", "NewExpression", "TaggedTemplateExpression", "TryStatement", "ObjectExpression", "ArrayExpression", "SpreadElement", "ThrowStatement"].includes(current.type)) { valid = false; return; }
+        if (current.type === "TemplateLiteral" && !stringValue(current)) { valid = false; return; }
+        if (current.type === "BinaryExpression" && ["<", "<=", ">", ">="].includes(current.operator) && ![current.left, current.right].every(value =>
+            value.type === "Literal" && ["number", "string", "boolean"].includes(typeof value.value) ||
+            numberValue(value) || stringValue(value))) { valid = false; return; }
+        if (current.type === "VariableDeclaration" && current.kind !== "const") { valid = false; return; }
+        if (current.type === "ReturnStatement") { returns += 1; if (!stringValue(current.argument)) valid = false; }
+        if (current.type !== "CallExpression") return;
+        const regex = unwrapValueExpression(current.callee?.object);
+        if (member(current.callee) === "test" && regex?.regex && !/[gy]/u.test(regex.regex.flags) && current.arguments.length === 1 && stringValue(current.arguments[0])) return;
+        if (member(current.callee) === "trim" && current.arguments.length === 0 && stringValue(current.callee.object)) return;
+        if (current.callee.type === "Identifier") {
+          const target = binding(current.callee), definition = target ? uniqueIndexedNode(local.definitionsByBinding, target) : null;
+          if (definition && qualifiedLocalArguments(definition, current.arguments) && summary(target)) return;
+        }
+        valid = false;
+      });
+      active.delete(variable); cache.set(variable, valid && returns > 0);
+      return valid && returns > 0;
+    };
+    const key = `${imported.sourceFile}:${imported.importedName}`;
+    if (!pureImportedStrings.has(key)) pureImportedStrings.set(key, summary(root));
+    return pureImportedStrings.get(key);
+  };
+  const privateStringRef = node => {
+    const value = unwrapValueExpression(node);
+    if (value?.type !== "MemberExpression" || value.computed || value.optional || member(value) !== "value" || value.object.type !== "Identifier") return false;
+    const binding = bindingOf(value.object), initial = binding ? unwrapValueExpression(uniqueIndexedNode(symbols.declarationsByBinding, binding)) : null;
+    if (initial?.type !== "CallExpression" || !symbols.vueRefImportBindings.has(bindingOf(initial.callee)) || initial.arguments.length !== 1 ||
+        unwrapValueExpression(initial.arguments[0])?.type !== "Literal" || typeof unwrapValueExpression(initial.arguments[0]).value !== "string") return false;
+    if ((symbols.writesByBinding.get(binding) ?? []).some(write => write.kind !== "assignment" || write.operator !== "=" || write.path !== `${binding.name}.value` ||
+        unwrapValueExpression(write.value)?.type !== "Literal" || typeof unwrapValueExpression(write.value).value !== "string")) return false;
+    let confined = true;
+    walkEstree(symbols.ast, candidate => {
+      if (candidate.type !== "Identifier" || bindingOf(candidate) !== binding || !symbols.scopeReferenceIdentifiers.has(candidate)) return;
+      const parent = astAncestorChain(symbols.ast, candidate)?.at(-2);
+      if (parent?.type === "VariableDeclarator" && parent.id === candidate && parent.init === initial) return;
+      if (parent?.type !== "MemberExpression" || parent.object !== candidate || parent.computed || parent.optional || member(parent) !== "value") confined = false;
+    });
+    return confined;
+  };
+  const previewObjectUrls = new Set();
+  if (fileGrant) {
+    const result = awaitedCallResultBinding(target, [definition], symbols);
+    const awaited = astAncestorChain(symbols.ast, target)?.at(-2);
+    const creations = [];
+    if (result && !(symbols.writesByBinding.get(result) ?? []).length && awaited?.type === "AwaitExpression") walkEstree(definition, node => {
+      if (node.type !== "AssignmentExpression" || node.operator !== "=" || node.left.type !== "MemberExpression" || member(node.left) !== "value" || node.left.object.type !== "Identifier") return;
+      const create = unwrapValueExpression(node.right), binding = bindingOf(node.left.object), initial = binding ? unwrapValueExpression(uniqueIndexedNode(symbols.declarationsByBinding, binding)) : null;
+      if (!globalCall(create, "URL", "createObjectURL") || create.arguments.length !== 1 || path(create.arguments[0]) !== `${identity(result)}.blob` ||
+          create.range[0] <= target.range[1] || initial?.type !== "CallExpression" || !symbols.vueRefImportBindings.has(bindingOf(initial.callee)) ||
+          unwrapValueExpression(initial.arguments[0])?.type !== "Literal" || typeof unwrapValueExpression(initial.arguments[0]).value !== "string") return;
+      if ((symbols.writesByBinding.get(binding) ?? []).some(write => write.kind !== "assignment" || write.operator !== "=" || write.path !== `${binding.name}.value` ||
+          write.value !== create && !(unwrapValueExpression(write.value)?.type === "Literal" && typeof unwrapValueExpression(write.value).value === "string"))) return;
+      let confined = true;
+      walkEstree(symbols.ast, reference => {
+        if (reference.type !== "Identifier" || bindingOf(reference) !== binding || !symbols.scopeReferenceIdentifiers.has(reference)) return;
+        const parent = astAncestorChain(symbols.ast, reference)?.at(-2);
+        if (parent?.type === "VariableDeclarator" && parent.id === reference && parent.init === initial) return;
+        if (parent?.type !== "MemberExpression" || parent.object !== reference || parent.computed || parent.optional || member(parent) !== "value") confined = false;
+      });
+      if (confined) creations.push({ create, binding });
+    });
+    if (creations.length === 1) {
+      const { create, binding } = creations[0]; previewObjectUrls.add(create);
+      walkEstree(symbols.ast, node => {
+        if (globalCall(node, "URL", "revokeObjectURL") && node.arguments.length === 1 && path(node.arguments[0]) === `${identity(binding)}.value`) previewObjectUrls.add(node);
+      });
+    }
+  }
+  const guardedStringTrim = (call, environment) => {
+    if (member(call.callee) !== "trim" || call.arguments.length !== 0) return false;
+    if (privateStringRef(call.callee.object)) return true;
+    const receiver = path(call.callee.object, environment);
+    if (!receiver) return false;
+    const rejectsNonString = node => {
+      const value = unwrapValueExpression(node);
+      if (value?.type === "LogicalExpression" && value.operator === "||") return rejectsNonString(value.left) || rejectsNonString(value.right);
+      return value?.type === "BinaryExpression" && value.operator === "!==" && literalString(value.right) === "string" &&
+        value.left.type === "UnaryExpression" && value.left.operator === "typeof" && path(value.left.argument, environment) === receiver;
+    };
+    const ancestors = astAncestorChain(symbols.ast, call) ?? [];
+    return ancestors.some((ancestor, index) => ancestor.type === "LogicalExpression" && ancestor.operator === "||" &&
+      ancestor.right === ancestors[index + 1] && rejectsNonString(ancestor.left));
+  };
+  const privateScalar = binding => {
+    const initial = binding ? unwrapValueExpression(uniqueIndexedNode(symbols.declarationsByBinding, binding)) : null;
+    if (initial?.type !== "Literal" || !["number", "boolean", "string"].includes(typeof initial.value)) return false;
+    return (symbols.writesByBinding.get(binding) ?? []).every(write => {
+      if (write.path !== binding.name) return false;
+      if (write.kind === "update") return typeof initial.value === "number" && ["++", "--"].includes(write.operator);
+      const value = unwrapValueExpression(write.value);
+      return write.kind === "assignment" && ["=", "+=", "-="].includes(write.operator) &&
+        (write.operator === "=" || typeof initial.value === "number") && value?.type === "Literal" && typeof value.value === typeof initial.value;
+    });
+  };
+  const privateTimers = new Map();
+  const privateTimer = binding => {
+    if (privateTimers.has(binding)) return privateTimers.get(binding);
+    privateTimers.set(binding, false);
+    const initial = binding ? unwrapValueExpression(uniqueIndexedNode(symbols.declarationsByBinding, binding)) : null;
+    if (initial?.type !== "Literal" || initial.value !== null) return false;
+    const writes = symbols.writesByBinding.get(binding) ?? [], callbacks = [];
+    if (!writes.length || writes.some(write => {
+      const value = unwrapValueExpression(write.value);
+      if (write.kind !== "assignment" || write.operator !== "=" || write.path !== binding.name) return true;
+      if (value?.type === "Literal" && value.value === null) return false;
+      const callback = unwrapValueExpression(value?.arguments?.[0]), delay = unwrapValueExpression(value?.arguments?.[1]);
+      if (!globalCall(value, "setTimeout") || value.arguments.length !== 2 || callback?.type !== "ArrowFunctionExpression" ||
+          callback.async || callback.params.length || delay?.type !== "Literal" || typeof delay.value !== "number" || delay.value <= 0 || delay.value > 60_000) return true;
+      callbacks.push(callback); return false;
+    })) return false;
+    let privateHandle = true;
+    walkEstree(symbols.ast, node => {
+      if (node.type !== "Identifier" || bindingOf(node) !== binding || !symbols.scopeReferenceIdentifiers.has(node)) return;
+      const parent = astAncestorChain(symbols.ast, node)?.at(-2);
+      if (parent?.type === "VariableDeclarator" && parent.id === node && parent.init === initial) return;
+      if (parent?.type === "AssignmentExpression" && parent.left === node && parent.operator === "=") return;
+      if (parent?.type === "CallExpression" && globalCall(parent, "clearTimeout") && parent.arguments.length === 1 && parent.arguments[0] === node) return;
+      if (parent?.type === "BinaryExpression" && ["===", "!=="].includes(parent.operator)) {
+        const other = unwrapValueExpression(parent.left === node ? parent.right : parent.left);
+        if (other?.type === "Literal" && other.value === null) return;
+      }
+      privateHandle = false;
+    });
+    if (!privateHandle) return false;
+    privateTimers.set(binding, true);
+    // The cache qualifies only the private timer handle's source structure.
+    // Callback effects are checked at each setTimeout with its bound frame.
+    return true;
+  };
+  const readonlyFrameCoordinate = (node, environment, depth = 0) => {
+    if (depth > 8) return null;
+    const origin = fieldOrigin(node, environment, { definition, limit: target.range[0] });
+    if (origin?.kind === "read" && origin.coordinate) return JSON.stringify(["json", origin.sourceIdentity, origin.coordinate, origin.fields, Boolean(origin.immutableArray), Boolean(origin.immutableRecord)]);
+    if (origin?.kind !== "record") return null;
+    const fields = [...origin.fields].map(([key, value]) => [key, readonlyFrameCoordinate(value, origin.environment, depth + 1)]);
+    return fields.length && fields.every(([, value]) => value) ? JSON.stringify(["record", fields]) : null;
+  };
+  // These additional data producers are available only after their original
+  // source/target proofs finish. Unknown writes still have no witness.
+  scalarRefProducer = (node, environment) => importedStringCall(unwrapValueExpression(node), environment) || previewObjectUrls.has(unwrapValueExpression(node));
+  qualifiedRefValue = node => basicRefValue(node);
+  rawDataRefs.clear();
+  const safeCalls = (node, allowTarget = false, finalizer = false, checked = new Map(), environment = new Map()) => {
+    let valid = true;
+    directCallableNodes(node, current => {
+      if (!valid) return;
+      if (!limitedSyntax(current) || !primitiveOperation(current, environment, value => value?.type === "Identifier" && privateScalar(bindingOf(value)))) { valid = false; return; }
+      if (current.type === "Identifier" && symbols.scopeReferenceIdentifiers.has(current) && symbols.definitionsByBinding.has(bindingOf(current))) {
+        const parent = astAncestorChain(symbols.ast, current)?.at(-2);
+        if (!(parent?.type === "CallExpression" && parent.callee === current) && !(parent?.type === "VariableDeclarator" && parent.id === current)) { valid = false; return; }
+      }
+      if (current.type === "MemberExpression") {
+        const parent = astAncestorChain(symbols.ast, current)?.at(-2);
+        // Method execution is qualified by the call checker below. A bare
+        // property read must itself have a data origin: it may invoke a getter.
+        const callee = parent?.type === "CallExpression" && parent.callee === current;
+        const receiver = fieldOrigin(current.object, environment, { definition, limit: target.range[0] });
+        const recordField = receiver?.kind === "record" && member(current) && receiver.fields.has(member(current));
+        if (!callee && !recordField && !ownDataMember(current, [], environment) && !primitiveGetterValue(current, new Set(), environment) && !readDerivedValue(current, environment)) { valid = false; return; }
+      }
+      if (current.type === "SpreadElement" && !readDerivedCollection(current.argument, environment) &&
+          fieldOrigin(current.argument, environment, { definition, limit: target.range[0] })?.kind !== "read") { valid = false; return; }
+      if (current.type === "CallExpression") {
+        if (current === target && allowTarget) return;
+        if (readonlyIntrinsicCall(current, environment) || (current.callee.type === "Identifier" && projectedIdentityRead(bindingOf(current.callee)) && current.arguments.length === 1 && primitiveGetterValue(current.arguments[0], new Set(), environment)) || importedStringCall(current, environment) || guardedStringTrim(current, environment) || !finalizer && previewObjectUrls.has(current)) return;
+        if (globalCall(current, "Array", "isArray") && current.arguments.length === 1) return;
+        if (globalCall(current, "String") && current.arguments.length === 1 && readDerivedValue(current.arguments[0], environment)) return;
+        if (member(current.callee) === "includes" && current.arguments.length === 1 && readDerivedCollection(current.callee.object, environment)) return;
+        if (["filter", "some", "find", "every"].includes(member(current.callee)) && current.arguments.length === 1 &&
+            current.arguments[0].type === "ArrowFunctionExpression" && !current.arguments[0].async &&
+            purePredicate(current.arguments[0], environment) && readDerivedCollection(current.callee.object, environment)) return;
+        if (globalCall(current, "clearTimeout") && !finalizer && current.arguments.length === 1 && current.arguments[0].type === "Identifier" && privateTimer(bindingOf(current.arguments[0]))) return;
+        if (globalCall(current, "setTimeout") && !finalizer) {
+          const parent = astAncestorChain(symbols.ast, current)?.at(-2);
+          if (parent?.type === "AssignmentExpression" && parent.right === current && parent.left.type === "Identifier" && privateTimer(bindingOf(parent.left)) &&
+              safeCalls(current.arguments[0], false, false, checked, environment)) return;
+        }
+        if (globalCall(current, "Object", "freeze") || globalCall(current, "Boolean")) return;
+        const binding = bindingOf(current.callee);
+        if (binding && context.serverReadImports.has(binding)) return;
+        const callable = binding ? uniqueIndexedNode(symbols.definitionsByBinding, binding) : null;
+        if (callable) {
+          if ((symbols.writesByBinding.get(binding) ?? []).length > 0) { valid = false; return; }
+          if (callable === definition) { valid = false; return; }
+          const local = bindCall(callable, current, environment);
+          if (!local) { valid = false; return; }
+          const frame = callable.params.map(parameter => readonlyFrameCoordinate(parameter, local) ?? path(parameter, local));
+          if (checked.has(binding)) {
+            const prior = checked.get(binding);
+            // Only an identical lexical argument frame may close a recursive
+            // read-only cycle. An unfinished frame proves no sibling call.
+            if (frame.some((value, index) => !value || value !== prior[index])) valid = false;
+          } else {
+            const stack = new Map(checked); stack.set(binding, frame);
+            if (!safeCalls(callable, false, finalizer, stack, local)) valid = false;
+          }
+          return;
+        }
+        if (member(current.callee) === "includes" && current.arguments.length === 1 && trustedIncludes.has(path(current.callee.object, environment))) return;
+        valid = false;
+      }
+      if (current.type === "AssignmentExpression") {
+        if (!finalizer && current.left.type === "Identifier" && (privateTimer(bindingOf(current.left)) || privateScalar(bindingOf(current.left)))) return;
+        const destination = path(current.left);
+        if (finalizer) {
+          const left = unwrapValueExpression(current.left);
+          const scalarBinding = left?.type === "MemberExpression" && member(left) === "value" && left.object.type === "Identifier" ? bindingOf(left.object) : null;
+          const scalar = scalarBinding ? unwrapValueExpression(uniqueIndexedNode(symbols.declarationsByBinding, scalarBinding)) : null;
+          const initial = unwrapValueExpression(scalar?.arguments?.[0]), assigned = unwrapValueExpression(current.right);
+          if (!scalar || scalar.type !== "CallExpression" || !symbols.vueRefImportBindings.has(bindingOf(scalar.callee)) ||
+              initial?.type !== "Literal" || !["boolean", "string"].includes(typeof initial.value) ||
+              assigned?.type !== "Literal" || typeof assigned.value !== typeof initial.value) { valid = false; return; }
+        }
+        if (!destination || current.operator !== "=" || !destination.endsWith(".value")) { valid = false; return; }
+        if (destination === cap) {
+          if (!expressionIsEmptyCapabilityState(current.right) && current.right !== populated[0].value) valid = false;
+        } else if (unwrapValueExpression(current.right)?.type !== "Literal") {
+          const left = unwrapValueExpression(current.left), uiBinding = left?.type === "MemberExpression" && member(left) === "value" && left.object.type === "Identifier" ? bindingOf(left.object) : null;
+          const ui = uiBinding ? unwrapValueExpression(uniqueIndexedNode(symbols.declarationsByBinding, uiBinding)) : null;
+          const initial = unwrapValueExpression(ui?.arguments?.[0]);
+          // A component-owned nullable Vue ref only receives display/read data;
+          // every nested call is still checked independently for writes.
+          const literalNotice = (node, depth = 0) => {
+            const value = unwrapValueExpression(node);
+            return depth < 8 && (value?.type === "Literal" && typeof value.value === "string" || value?.type === "ConditionalExpression" && literalNotice(value.consequent, depth + 1) && literalNotice(value.alternate, depth + 1));
+          };
+          if (finalizer || ui?.type !== "CallExpression" || !symbols.vueRefImportBindings.has(bindingOf(ui.callee)) || initial?.type !== "Literal" ||
+              !(initial.value === null || typeof initial.value === "string" && (literalNotice(current.right) || importedStringCall(unwrapValueExpression(current.right), environment) || previewObjectUrls.has(unwrapValueExpression(current.right))))) valid = false;
+        }
+      }
+      if (["UpdateExpression", "YieldExpression", "TaggedTemplateExpression", "NewExpression"].includes(current.type)) {
+        if (!finalizer && current.type === "UpdateExpression" && current.argument.type === "Identifier" && privateScalar(bindingOf(current.argument))) return;
+        if (current.type !== "NewExpression" || current.callee.type !== "Identifier" || current.callee.name !== "Error" || !unshadowedRuntimeGlobal(current.callee, new Set(["Error"]), symbols.scopeBindings) ||
+            current.arguments.length > 1 || current.arguments.some(argument => unwrapValueExpression(argument)?.type !== "Literal" || typeof unwrapValueExpression(argument).value !== "string")) valid = false;
+      }
+    });
+    return valid;
+  };
+  if (!safeCalls(definition, true)) return null;
+  if (attempt.handler && !safeCalls(attempt.handler.body)) return null;
+  if (attempt.finalizer && !safeCalls(attempt.finalizer, false, true)) return null;
+  // Cap state/aliases cannot be passed to an unknown callable or mutated deeply.
+  let escaped = false;
+  walkEstree(symbols.ast, node => {
+    if (node.type === "Identifier" && bindingOf(node) === rootBinding && symbols.scopeReferenceIdentifiers.has(node)) {
+      const parent = astAncestorChain(symbols.ast, node)?.at(-2);
+      const declaration = parent?.type === "VariableDeclarator" && parent.id === node && parent.init === rootDeclaration;
+      const valueAccess = parent?.type === "MemberExpression" && !parent.optional && !parent.computed && parent.object === node && member(parent) === "value";
+      // The mutable ref itself never enters a container, argument or return.
+      // Only its frozen value may participate in the proven capability chain.
+      if (!declaration && !valueAccess) escaped = true;
+    }
+    if (node.type === "AssignmentExpression" || node.type === "UpdateExpression") {
+      const destination = path(node.left ?? node.argument);
+      if (destination?.startsWith(`${cap}.`)) escaped = true;
+    }
+    if (node.type !== "CallExpression" || node === target) return;
+    for (const argument of node.arguments ?? []) {
+      const value = path(argument);
+      if (value === identity(rootBinding) || (value && (value === cap || value.startsWith(`${cap}.`)) && !purePredicates.has(bindingOf(node.callee)) && !readonlyIntrinsicCall(node, new Map()))) escaped = true;
+    }
+  });
+  if (escaped) return null;
+  return { verified: true, kind: "frozen_server_grant", capabilityWitness: true, capabilitySources: new Set([sourceIdentity]) };
+}
+
+const REGISTERED_PAYMENT_PANEL = `${WEB_SOURCE_ROOT}/pages/payments/RegisteredPaymentExecutionPanel.vue`;
+const REGISTERED_PAYMENT_API = `${WEB_SOURCE_ROOT}/api/registered-payment-execution.api.ts`;
+const PAYMENT_LOOKUP_ACTION = "registered-payment.lookup-original";
+const PAYMENT_RECOVERY_ROUTE = "POST /payment-executions/:param/recovery-proof";
+
+export async function proveReadOnlyPaymentRecovery(root) {
+  const modules = [
+    ["payment/registered-payment-execution.controller.ts", {
+      recoveryProof: ["this.executions.recoveryProof"]
+    }],
+    ["payment/registered-payment-execution.service.ts", {
+      recoveryProof: ["this.prisma.$transaction", "this.canRegister", "tx.paymentExecution.findUnique", "input.idempotencyKey.trim().toLowerCase", "input.idempotencyKey.trim", "currentRegisteredPaymentDomain", "tx.registeredPaymentFunding.findUnique", "registeredPaymentFingerprint", "readRegisteredProjectAdvanceStatus", "new ForbiddenException"],
+      canRegister: ["this.roles.resolveActiveRoleScopesInTransaction", "roles.some", "[].includes"]
+    }],
+    ["payment/registered-payment-domain.ts", {
+      currentRegisteredPaymentDomain: ["tx.paymentRequest.findUnique", "[].includes", "tx.contractVersion.findUnique", "tx.paymentExecution.findMany", "registeredExecutionIsWageLinked"],
+      registeredExecutionIsWageLinked: ["tx.paymentExecutionWagePayableBinding.findFirst", "Boolean", "tx.historicalWageSummaryPaymentExecutionLink.findFirst"]
+    }],
+    ["auth/company-role-resolver.service.ts", {
+      resolveActiveRoleScopesInTransaction: ["this.resolveWithClient"],
+      resolveWithClient: ["client.user.findUnique", "new Error", "new Error", "client.userPosition.findMany", "new Error", "Array.from", "new Set", "assignments.map", "new Error", "client.position.findMany", "new Error", "new Map", "positions.map", "new Error", "positionIds.map", "positionsById.get", "roleKeys.some", "supportedRoleKeys.includes", "new Error", "Array.from().sort", "Array.from", "new Set"]
+    }],
+    ["payment/registered-payment-funding.ts", {
+      registeredPaymentFingerprint: ["createHash().update().digest", "createHash().update", "createHash", "JSON.stringify", "input.openingReason.trim", "input.openingEvidence.trim", "[].sort", "a.sourceBatchId.localeCompare", "input.contractHistoryConfirmation.reason.trim", "input.contractHistoryConfirmation.evidence.trim", "confirmedProjectAdvancePayload"],
+      readRegisteredProjectAdvanceStatus: ["tx.registeredPaymentProjectAdvance.findUnique", "registeredProjectAdvanceReceiptStatus"]
+    }],
+    ["payment/registered-payment-project-advance.ts", {
+      confirmedProjectAdvancePayload: ["input.sourceAllocations.map().sort", "input.sourceAllocations.map", "left.sourceBatchId.localeCompare", "input.reason.trim", "input.evidence.trim"],
+      registeredProjectAdvanceReceiptStatus: ["confirmedProjectAdvancePayload", "receipt.amountCents.toString", "Array.isArray", "new Map", "receipt.companyAllocations.filter().map", "receipt.companyAllocations.filter", "Boolean", "expected.sourceAllocations.every", "stored.get"]
+    }]
+  ];
+  const callPath = node => {
+    const value = unwrapValueExpression(node);
+    if (value?.type === "ThisExpression") return "this";
+    if (value?.type === "Identifier") return value.name;
+    if (value?.type === "ArrayExpression") return "[]";
+    if (value?.type === "CallExpression") return callPath(value.callee) + "()";
+    if (value?.type === "MemberExpression" && !value.computed && value.property.type === "Identifier") {
+      return callPath(value.object) + "." + value.property.name;
+    }
+    return "?";
+  };
+  for (const [relative, expected] of modules) {
+    const file = `services/api/src/${relative}`;
+    let ast;
+    try { ast = parseSource(file, await readFile(resolve(root, file), "utf8")); }
+    catch { return false; }
+    const definitions = new Map();
+    walkEstree(ast, node => {
+      const name = node.type === "FunctionDeclaration" ? node.id?.name :
+        node.type === "MethodDefinition" && !node.computed ? node.key.name : null;
+      if (name && Object.hasOwn(expected, name)) {
+        const bodies = definitions.get(name) ?? [];
+        bodies.push(node.body ?? node.value.body);
+        definitions.set(name, bodies);
+      }
+    });
+    for (const [name, allowed] of Object.entries(expected)) {
+      if (definitions.get(name)?.length !== 1) return false;
+      const calls = [];
+      let safe = true;
+      walkEstree(definitions.get(name)[0], node => {
+        if (node.type === "CallExpression" || node.type === "NewExpression") {
+          calls.push((node.type === "NewExpression" ? "new " : "") + callPath(node.callee));
+        }
+        if (["ImportExpression", "TaggedTemplateExpression", "UpdateExpression"].includes(node.type) ||
+            node.type === "AssignmentExpression" && (relative !== "auth/company-role-resolver.service.ts" ||
+              node.left.type !== "Identifier" || !["user", "assignments", "positions"].includes(node.left.name))) safe = false;
+      });
+      if (!safe || JSON.stringify(calls.sort()) !== JSON.stringify(allowed.sort())) return false;
+    }
+  }
+  return true;
+}
+
+function proveRegisteredPaymentPageAction({ action, wrapper, context, handler }) {
+  if (action.sourceFile !== REGISTERED_PAYMENT_PANEL || wrapper.apiFile !== REGISTERED_PAYMENT_API || handler.definitions.length !== 1) return null;
+  const source = context.source;
+  const definition = handler.definition;
+  const statements = definition.body?.body ?? [];
+  const syntax = node => node?.range ? normalizedSource(source.slice(...node.range)) : "";
+  const calls = importedWrapperCalls([definition], wrapper, context);
+  if (calls.length !== 1) return null;
+  const keys = normalizedMainRequests(wrapper).map(request => request.normalizedKey);
+  if (action.id === "registered-payment.register" && action.trigger.handler === "submit" && wrapper.name === "recordRegisteredPayment" &&
+      keys.length === 1 && keys[0] === "POST /payment-executions/:param/registrations") {
+    const direct = statements.find(statement =>
+      statement.type === "VariableDeclaration" && statement.kind === "const" &&
+      statement.declarations.some(declaration => declaration.init === calls[0]));
+    const within = statements.filter(statement => statement.range[1] <= (direct?.range[0] ?? 0));
+    const declarations = within.flatMap(statement => statement.type === "VariableDeclaration" && statement.kind === "const" ? statement.declarations : []);
+    const captured = (name, value) => declarations.some(declaration => declaration.id.name === name && syntax(declaration.init) === value);
+    const guard = (condition) => within.find(statement => statement.type === "IfStatement" && !statement.alternate &&
+      syntax(statement.test) === condition &&
+      (statement.consequent.type === "ReturnStatement" || statement.consequent.body?.at(-1)?.type === "ReturnStatement"));
+    const wait = within.find(statement => statement.type === "ExpressionStatement" && syntax(statement.expression) === "await draftQueue");
+    const persistence = within.find(statement => statement.type === "TryStatement" && statement.block.body.length === 1 &&
+      statement.handler?.body?.body?.at(-1)?.type === "ReturnStatement" &&
+      statement.block.body[0].type === "ExpressionStatement" &&
+      syntax(statement.block.body[0].expression) === 'saved=await withPaymentStorage(owner,storage=>writePendingPaymentAttempt(pointer,()=>storage,pendingAttempt.value?.phase === "prepared" ? pendingAttempt.value : undefined))');
+    const permission = guard("!allowed || !sameCommand"), actor = guard("!sameActor"), saved = guard("!saved.saved"), owner = guard("auth.user?.id!==owner || !paymentPanelActive");
+    if (!direct || !captured("command", "frozenCommand.value") || !captured("paymentId", "commandPaymentId.value") ||
+        !captured("allowed", "registrationAllowed.value") || !captured("owner", "commandUserId.value") ||
+        syntax(calls[0]) !== "recordRegisteredPayment(paymentId,command)" ||
+        ![permission, actor, wait, persistence, saved, owner].every((statement, index, ordered) =>
+          statement && (!index || ordered[index - 1].range[0] < statement.range[0]))) return null;
+    return { verified: true };
+  }
+  if (action.id !== PAYMENT_LOOKUP_ACTION || action.trigger.handler !== "queryOriginal" || !context.paymentRecoveryReadOnly || keys.length !== 1 ||
+      !["fetchRegisteredPaymentResult", "verifyRegisteredPaymentRecovery"].includes(wrapper.name) ||
+      keys[0] !== (wrapper.name === "verifyRegisteredPaymentRecovery" ? PAYMENT_RECOVERY_ROUTE : "GET /payment-executions/results/:param")) return null;
+  const full = source.slice(...definition.range);
+  if (!containsOrderedSourceFragments(full, [
+    "if (!frozenCommand.value || saving.value) return;", "if (auth.user?.id !== commandUserId.value)",
+    "await fetchRegisteredPaymentResult(frozenCommand.value.idempotencyKey)",
+    'if (result.status === "recorded")',
+    "result.execution.paymentId !== commandPaymentId.value",
+    "await verifyRegisteredPaymentRecovery(commandPaymentId.value,transportCommand(frozenCommand.value))"
+  ])) return null;
+  const attempt = statements.find(statement => statement.type === "TryStatement");
+  const bindingIsDirect = block => block?.body?.some(statement =>
+    statement.type === "VariableDeclaration" && statement.kind === "const" &&
+    statement.declarations.some(declaration => declaration.init?.type === "AwaitExpression" && declaration.init.argument === calls[0]));
+  const recorded = attempt?.block?.body?.find(statement => statement.type === "IfStatement" &&
+    staticMemberPath(statement.test?.left) === "result.status" && literalString(statement.test.right) === "recorded" && statement.test.operator === "===");
+  if (!bindingIsDirect(wrapper.name === "verifyRegisteredPaymentRecovery" ? recorded?.consequent : attempt?.block)) return null;
+  return { verified: true, readOnlyWitness: true };
+}
+
+const FUND_TRANSFER_PAGE = `${WEB_SOURCE_ROOT}/pages/funds/FundAccountTransfers.vue`;
+const FUND_TRANSFER_COMMAND = `${WEB_SOURCE_ROOT}/pages/funds/fund-transfer-command.ts`;
+const FUND_TRANSFER_API = `${WEB_SOURCE_ROOT}/api/fund-account-transfer.api.ts`;
+const FUND_TRANSFER_ACTIONS = new Map([
+  ["fund-transfer.register", ["submitRegistration", "registerAllowed", ["registerFundAccountTransfer"]]],
+  ["fund-transfer.act", ["submitAction", "actionAllowed", ["actOnFundAccountTransfer"]]],
+  ["fund-transfer.recover-original", ["retryPending", "recoveryAllowed", ["registerFundAccountTransfer", "actOnFundAccountTransfer"]]]
+]);
+
+// A retry can be the first committed write. Prove the same current server
+// permission and the same persisted command, including the lock callback.
+function proveFundTransferPageAction({ action, wrapper, context }) {
+  const rule = FUND_TRANSFER_ACTIONS.get(action.id);
+  if (!rule || action.sourceFile !== FUND_TRANSFER_PAGE || wrapper.apiFile !== FUND_TRANSFER_API ||
+      !rule[2].includes(wrapper.name) || normalizedMainRequests(wrapper).length !== 1 ||
+      normalizedMainRequests(wrapper)[0].normalizedKey !== (wrapper.name === "registerFundAccountTransfer"
+        ? "POST /fund-account-transfers" : "POST /fund-account-transfers/:param/actions") ||
+      action.trigger.handler !== rule[0] || action.capability.kind !== "server_boolean" ||
+      action.capability.source !== rule[1]) return null;
+  const page = context.symbols;
+  const commandAst = context.asts.get(FUND_TRANSFER_COMMAND);
+  if (!commandAst) return null;
+  const transport = buildSymbolContext(commandAst, FUND_TRANSFER_COMMAND, context.sourceFileSet);
+  const definition = (scope, name) => {
+    const bindings = topLevelScopeVariables(scope.scopeManager, name);
+    return bindings.length === 1 && !bindings[0].references.some(reference => reference.isWrite() && !reference.init)
+      ? uniqueIndexedNode(scope.declarationsByBinding, bindings[0]) : null;
+  };
+  const actionHandler = definition(page, rule[0]);
+  const pageSubmit = definition(page, "submit");
+  const load = definition(page, "load");
+  const model = definition(page, "model");
+  const saved = definition(transport, "submitFundTransferCommand");
+  const storageKey = definition(transport, "storageKey");
+  const stored = definition(transport, "readFundTransferCommand");
+  const mainRead = { name: "fetchFundAccountTransfers", apiFile: FUND_TRANSFER_API };
+  const readIdentity = wrapperIdentity(FUND_TRANSFER_API, mainRead.name);
+  const read = context.wrapperIndex.get(readIdentity);
+  if (!read || normalizedMainRequests(read).length !== 1 ||
+      normalizedMainRequests(read)[0].normalizedKey !== "GET /fund-account-transfers" ||
+      !actionHandler || !pageSubmit || !load || !model || !saved || !storageKey || !stored ||
+      importedWrapperCalls([load], mainRead, context).length !== 1 ||
+      importedWrapperCalls([saved], wrapper, { symbols: transport }).length !== 1) return null;
+  const dispatch = directRegistrationCalls(pageSubmit, node => node.callee.type === "Identifier" &&
+    node.callee.name === "submitFundTransferCommand");
+  if (dispatch.length !== 1 || !callExpressionMatchesWrapper(dispatch[0],
+    { name: "submitFundTransferCommand", apiFile: FUND_TRANSFER_COMMAND }, page) ||
+    !directRegistrationMatches({ type: "ExpressionStatement", expression: dispatch[0] },
+      "submitFundTransferCommand(actor, proposal, isCurrent, expectedPending);")) return null;
+  const guard = actionHandler.body.body.find(node => node.type === "IfStatement");
+  const expectedGuard = {
+    submitRegistration: "if (!registerAllowed.value || !from?.currentRegistrationId || !to || !canDraft.value) return;",
+    submitAction: "if (!actionAllowed.value || !selectedAction.value || !canDraft.value) return;",
+    retryPending: "if (!recoveryAllowed.value) return;"
+  }[rule[0]];
+  const submitCalls = directRegistrationCalls(actionHandler, node => node.callee.type === "Identifier" && node.callee.name === "submit");
+  if (!directRegistrationMatches(guard, expectedGuard) || submitCalls.length !== 1 ||
+      !directRegistrationLocalCall(submitCalls[0], { binding: topLevelScopeVariables(page.scopeManager, "submit")[0] }, page) ||
+      guard.range[1] >= submitCalls[0].range[0]) return null;
+  const dispatchByHandler = {
+    submitRegistration: `submit({ type: "register", input: {
+      sourceScopeKey: from.scopeKey, destinationScopeKey: to.scopeKey, expectedRegistrationId: from.currentRegistrationId,
+      idempotencyKey: crypto.randomUUID(), transferredOn: date.value, evidenceReference: reference.value.trim(), lines
+    } });`,
+    submitAction: `submit({ type: "action", transferId: transfer.id, input: {
+      idempotencyKey: crypto.randomUUID(), expectedRevision: transfer.revision, action, evidenceReference: reference.value.trim()
+    } });`,
+    retryPending: "submit(null);"
+  };
+  if (!directRegistrationMatches({ type: "ExpressionStatement", expression: submitCalls[0] }, dispatchByHandler[rule[0]])) return null;
+  return fundTransferAuthorityAndStorageProof({ action, wrapper, context, page, definition, pageSubmit, load, model,
+    transport, saved, storageKey, stored, readIdentity });
+}
+
+const FUND_TRANSFER_WITNESSES = {
+  authority: `const canTransferFrom = (scopeKey: string) => scopeKey === "public_cash"
+  ? model.value?.canRegisterCash === true
+  : model.value?.canRegisterCompany === true;
+const registerAllowed = computed(() => Boolean(origin.value && canTransferFrom(origin.value.scopeKey)));
+const actionAllowed = computed(() => {
+  const selected = selectedAction.value;
+  if (!selected) return false;
+  const transfer = model.value?.transfers.find(row => row.id === selected.transfer.id && row.revision === selected.transfer.revision);
+  return (selected.action === "resubmit" || selected.action === "return" ? transfer?.canResolveRejection : transfer?.canReceive) === true;
+});
+const recoveryAllowed = computed(() => {
+  const command = pending.value;
+  if (!command) return false;
+  if (command.type === "register") return canTransferFrom(command.input.sourceScopeKey);
+  const transfer = model.value?.transfers.find(row => row.id === command.transferId);
+  if (!transfer) return false;
+  const fromOrigin = command.input.action === "resubmit" || command.input.action === "return";
+  return canTransferFrom(fromOrigin ? transfer.sourceScopeKey : transfer.destinationScopeKey);
+});`,
+  load: `async function load() {
+  const actor = actorId.value;
+  const request = ++viewRevision;
+  loading.value = true;
+  error.value = "";
+  try {
+    const response = await fetchFundAccountTransfers();
+    if (viewRevision === request && actorId.value === actor) model.value = response;
+  } catch (failure) {
+    if (viewRevision === request && actorId.value === actor) {
+      model.value = null;
+      error.value = formatUnknownApiError(failure, "转款记录读取失败，请刷新后重试");
+    }
+  } finally {
+    if (viewRevision === request) loading.value = false;
+  }
+}`,
+  dispatch: `async function submit(proposal: FundTransferCommand | null) {
+  if (busy.value || !storageReady.value) return;
+  const actor = actorId.value;
+  const openedView = viewRevision;
+  const expectedPending = proposal ? null : pending.value;
+  const isCurrent = () => actorId.value === actor && openedView === viewRevision;
+  busy.value = true;
+  error.value = "";
+  notice.value = "";
+  try {
+    const result = await submitFundTransferCommand(actor, proposal, isCurrent, expectedPending);
+    if (!isCurrent()) return;
+    if (result.kind === "rejected") {
+      error.value = formatUnknownApiError(result.error, "转款未提交，请核对原资料");
+      return;
+    }
+    direction.value = null;
+    selectedAction.value = null;
+    if (result.kind === "unknown" || result.kind === "pending") {
+      pending.value = result.command;
+      return;
+    }
+    pending.value = null;
+    if (result.kind === "saved") notice.value = statusLabel[result.receipt.status];
+    emit("refreshAccounts");
+    await load();
+    if (result.kind === "superseded" && actorId.value === actor && viewRevision === openedView + 1 && !error.value) {
+      error.value = formatUnknownApiError(result.error, "转款已更新，请刷新后核对");
+    }
+  } catch (failure) {
+    if (isCurrent()) error.value = formatUnknownApiError(failure, "原转款凭据尚未确认，请刷新后核对");
+  } finally {
+    busy.value = false;
+  }
+}`,
+  saved: `async function submitFundTransferCommand(
+  actorId: string,
+  proposal: FundTransferCommand | null,
+  isCurrent: () => boolean,
+  expectedPending: FundTransferCommand | null = null
+) {
+  if (!actorId || !navigator.locks) throw new Error("当前浏览器无法安全保存转款凭据");
+  const key = storageKey(actorId);
+  return navigator.locks.request(key, { mode: "exclusive" }, async () => {
+    if (!isCurrent()) throw new Error("当前账号已变化，请重新核对");
+    const pending = readFundTransferCommand(actorId);
+    if (pending && (proposal || JSON.stringify(pending) !== JSON.stringify(expectedPending))) {
+      return { kind: "pending", command: pending } as const;
+    }
+    const command = pending ?? proposal;
+    if (!command) return { kind: "missing" } as const;
+    if (!pending) localStorage.setItem(key, JSON.stringify(command));
+    try {
+      const receipt = command.type === "register"
+        ? await registerFundAccountTransfer(command.input)
+        : await actOnFundAccountTransfer(command.transferId, command.input);
+      localStorage.removeItem(key);
+      return { kind: "saved", receipt } as const;
+    } catch (error) {
+      if (error instanceof FundTransferApiError && error.isSupersededCommand) {
+        localStorage.removeItem(key);
+        return { kind: "superseded", error } as const;
+      }
+      if (!pending && error instanceof FundTransferApiError && error.isDefinitiveRejection) {
+        localStorage.removeItem(key);
+        return { kind: "rejected", error } as const;
+      }
+      return { kind: "unknown", command } as const;
+    }
+  });
+}`,
+  stored: `function readFundTransferCommand(actorId: string): FundTransferCommand | null {
+  const saved = localStorage.getItem(storageKey(actorId));
+  if (saved === null) return null;
+  const command = JSON.parse(saved) as FundTransferCommand;
+  if ((command.type !== "register" && command.type !== "action") ||
+    typeof command.input?.idempotencyKey !== "string" || !command.input.idempotencyKey ||
+    (command.type === "action" && typeof command.transferId !== "string")) {
+    throw new Error("原转款凭据无法读取，请保留浏览器记录");
+  }
+  return command;
+}`
+};
+
+function fundTransferAuthorityAndStorageProof({ context, page, definition, pageSubmit, load, model,
+  transport, saved, storageKey, stored, readIdentity }) {
+  const reference = (symbols, name) => topLevelScopeVariables(symbols.scopeManager, name)[0];
+  const ownsImport = (symbols, name, file, importedName = name) => {
+    const resolved = symbols.importsByBinding.get(reference(symbols, name));
+    return resolved?.sourceFile === file && resolved.importedName === importedName;
+  };
+  const authority = parseSource("fund-transfer-proof.ts", FUND_TRANSFER_WITNESSES.authority);
+  if (!page.vueRefImportBindings.has(reference(page, "ref")) ||
+      !page.vueComputedImportBindings.has(reference(page, "computed")) ||
+      !authority.body.every(node => {
+    const { id, init } = node.declarations[0];
+    return directRegistrationAstShape(definition(page, id.name)) === directRegistrationAstShape(init);
+  }) ||
+      !directRegistrationExpression(model, "ref<FundTransferReadModel | null>(null)") ||
+      !directRegistrationMatches(load, FUND_TRANSFER_WITNESSES.load) ||
+      !directRegistrationMatches(pageSubmit, FUND_TRANSFER_WITNESSES.dispatch) ||
+      !directRegistrationMatches(saved, FUND_TRANSFER_WITNESSES.saved) ||
+      !directRegistrationMatches(stored, FUND_TRANSFER_WITNESSES.stored) ||
+      !directRegistrationExpression(storageKey, '(actorId: string) => \`jiangkong-fund-transfer:v1:${actorId}\`') ||
+      !ownsImport(transport, "FundTransferApiError", FUND_TRANSFER_API)) return null;
+  const globals = new Set(["navigator", "localStorage", "JSON", "Error"]);
+  let intrinsicReferencesTrusted = true;
+  for (const callable of [saved, stored]) walkEstree(callable, node => {
+    if (node.type === "Identifier" && globals.has(node.name) &&
+        !unshadowedRuntimeGlobal(node, globals, transport.scopeBindings)) intrinsicReferencesTrusted = false;
+  });
+  if (!intrinsicReferencesTrusted) return null;
+  const modelBinding = reference(page, "model");
+  const modelAssignments = [];
+  walkEstree(context.asts.get(FUND_TRANSFER_PAGE), node => {
+    if (node.type === "AssignmentExpression" && node.left.type === "MemberExpression" &&
+        page.scopeBindings.get(node.left.object) === modelBinding) modelAssignments.push(node);
+  });
+  if (modelAssignments.length !== 3 || modelAssignments.some(node =>
+    !directRegistrationMatches({ type: "ExpressionStatement", expression: node }, "model.value = null;") &&
+    (!directRegistrationMatches({ type: "ExpressionStatement", expression: node }, "model.value = response;") ||
+      node.range[0] < load.range[0] || node.range[1] > load.range[1]))) return null;
+  return { verified: true, capabilityWitness: true,
+    capabilitySources: new Set([readIdentity]), capabilitySourceFile: FUND_TRANSFER_PAGE };
+}
+
+const FUND_ADVANCE_PAGE = `${WEB_SOURCE_ROOT}/pages/funds/FundAccountAdvanceReceipt.vue`;
+const FUND_ADVANCE_PARENT = `${WEB_SOURCE_ROOT}/pages/funds/FundAccountsPage.vue`;
+const FUND_ADVANCE_API = `${WEB_SOURCE_ROOT}/api/fund-account-advance.api.ts`;
+const FUND_ADVANCE_ACTIONS = new Map([
+  ["fund-advance.register", ["submitRegistration", "registrationAllowed", false]],
+  ["fund-advance.recover-original", ["retryPending", "recoveryAllowed", true]]
+]);
+const FUND_ADVANCE_WRITES = new Map([
+  ["registerFundAdvance", "POST /fund-account-advance-receipts"],
+  ["registerCompanyOwnedFund", "POST /fund-account-advance-receipts/company-owned"]
+]);
+
+function fundAdvanceNode(symbols, name) {
+  const bindings = topLevelScopeVariables(symbols.scopeManager, name);
+  return bindings.length === 1 && !bindings[0].references.some(reference => reference.isWrite() && !reference.init)
+    ? uniqueIndexedNode(symbols.declarationsByBinding, bindings[0]) : null;
+}
+
+function proveFundAdvancePageAction({ action, wrapper, context }) {
+  const rule = FUND_ADVANCE_ACTIONS.get(action.id);
+  const route = FUND_ADVANCE_WRITES.get(wrapper.name);
+  const requests = normalizedMainRequests(wrapper);
+  if (!rule || action.sourceFile !== FUND_ADVANCE_PAGE || wrapper.apiFile !== FUND_ADVANCE_API ||
+      !route || requests.length !== 1 || requests[0].normalizedKey !== route ||
+      action.trigger.handler !== rule[0] || action.capability.kind !== "server_boolean" ||
+      action.capability.source !== rule[1]) return null;
+
+  const page = context.symbols;
+  const handler = fundAdvanceNode(page, rule[0]);
+  const submit = fundAdvanceNode(page, "submit");
+  const readPending = fundAdvanceNode(page, "readPending");
+  const canRegister = fundAdvanceNode(page, "canRegister");
+  const canRecover = fundAdvanceNode(page, "canRecover");
+  const registration = fundAdvanceNode(page, "registrationAllowed");
+  const recovery = fundAdvanceNode(page, "recoveryAllowed");
+  const props = fundAdvanceNode(page, "props");
+  if (!directRegistrationMatches(handler, `function ${rule[0]}() {
+    if (${rule[1]}.value) return submit(${rule[2]});
+  }`) || !submit || !registration || !recovery || !props || !readPending || !canRegister || !canRecover) return null;
+  const submitCalls = directRegistrationCalls(handler, node => node.callee.type === "Identifier" && node.callee.name === "submit");
+  if (submitCalls.length !== 1 ||
+      !directRegistrationLocalCall(submitCalls[0], { binding: topLevelScopeVariables(page.scopeManager, "submit")[0] }, page) ||
+      !directRegistrationExpression(props, `defineProps<{ accounts: FundAccount[]; projects: Array<{ id: string; name: string }>; projectId?: string }>()`) ||
+      !directRegistrationExpression(registration, `computed(() => props.accounts.some(row =>
+        row.scopeKey === form.scopeKey && (mode.value === "company_owned" ? row.canRegisterCompanyOwned : row.canRegisterAdvance)))`) ||
+      !directRegistrationExpression(recovery, "computed(() => pending.value !== null && canRecover(pending.value))") ||
+      !directRegistrationMatches(canRegister, `function canRegister(command: AdvanceCommand) {
+        return props.accounts.some(row => row.scopeKey === command.scopeKey &&
+          ("observationReference" in command ? row.canRegisterCompanyOwned : row.canRegisterAdvance));
+      }`) ||
+      !directRegistrationMatches(canRecover, `function canRecover(command: AdvanceCommand) {
+        return props.accounts.some(row => row.scopeKey === command.scopeKey &&
+          ("observationReference" in command ? row.canRecoverCompanyOwned : row.canRecoverAdvance));
+      }`)) return null;
+
+  // An original-key retry can be the first committed write. Require the same
+  // actor, persisted payload and current account permission inside the lock.
+  const actualCalls = importedWrapperCalls([submit], wrapper, context);
+  const lockCalls = directRegistrationCalls(submit, node => staticMemberPath(node.callee) === "navigator.locks.request");
+  if (actualCalls.length !== 1 || lockCalls.length !== 1) return null;
+  const callback = lockCalls[0].arguments[1];
+  const statements = callback?.body?.body;
+  if (callback?.type !== "ArrowFunctionExpression" || callback.async !== true || !statements ||
+      !astAncestorChain(callback, actualCalls[0])?.includes(callback)) return null;
+  const guard = statements.findIndex(node => directRegistrationMatches(node, "if (stored ? !canRecover(command) : !canRegister(command)) return;"));
+  const save = statements.findIndex(node => directRegistrationMatches(node, "if (!stored) localStorage.setItem(key, JSON.stringify(command));"));
+  const operation = statements.findIndex(node => node.type === "TryStatement" &&
+      directRegistrationMatches(node.block.body[0], 'if ("observationReference" in command) await registerCompanyOwnedFund(command); else await registerFundAdvance(command);') &&
+      astAncestorChain(node, actualCalls[0])?.includes(node));
+  if (guard < 0 || save !== guard + 1 || operation !== save + 1 ||
+      !directRegistrationMatches(statements[0], "if (actorId.value !== actor) return;") ||
+      !directRegistrationMatches(statements[1], "const stored = readPending(actor);") ||
+      !directRegistrationMatches(statements[2], `if (stored && (proposal || JSON.stringify(stored) !== JSON.stringify(original))) {
+        pending.value = stored; visible.value = false; return;
+      }`) || !directRegistrationMatches(statements[3], "const command = stored ?? proposal;") ||
+      !directRegistrationMatches(submit.body.body[0], "if (replay ? !recoveryAllowed.value : !registrationAllowed.value) return;")) return null;
+  const source = context.source;
+  if (!containsOrderedSourceFragments(source.slice(...submit.range), [
+    "const actor = actorId.value;", "const key = storageKey(actor);", "const original = pending.value;",
+    "if (!replay && mode.value ===", "if (!replay && mode.value ===", "await navigator.locks.request(key, async () =>"
+  ]) || !containsOrderedSourceFragments(source.slice(...readPending.range), [
+    "localStorage.getItem(storageKey(actor))", "JSON.parse(saved)", "return input;"
+  ])) return null;
+
+  const parentAst = context.asts.get(FUND_ADVANCE_PARENT);
+  const parentSource = context.sources.get(FUND_ADVANCE_PARENT);
+  if (!parentAst || !parentSource) return null;
+  const parent = buildSymbolContext(parentAst, FUND_ADVANCE_PARENT, context.sourceFileSet);
+  const load = fundAdvanceNode(parent, "load");
+  const childBindings = topLevelScopeVariables(parent.scopeManager, "FundAccountAdvanceReceipt");
+  const childImport = childBindings.length === 1 && parent.importsByBinding.get(childBindings[0]);
+  const childInstances = [];
+  walkEstree(parentAst.templateBody, node => {
+    if (node.type === "VElement" && node.rawName === "FundAccountAdvanceReceipt") childInstances.push(node);
+  });
+  if (childImport?.kind !== "default" || childImport.sourceFile !== FUND_ADVANCE_PAGE ||
+      childInstances.length !== 1 ||
+      !directRegistrationExpression(directiveExpression(elementDirective(childInstances[0], "if")), "!isTargetReview") ||
+      !directRegistrationExpression(directiveExpression(elementDirective(childInstances[0], "bind", "accounts")), "data.accounts")) return null;
+  const read = { apiFile: `${WEB_SOURCE_ROOT}/api/fund-account.api.ts`, name: "fetchFundAccounts" };
+  const readIdentity = wrapperIdentity(read.apiFile, read.name);
+  const readWrapper = context.wrapperIndex.get(readIdentity);
+  if (!load || !readWrapper || normalizedMainRequests(readWrapper).map(entry => entry.normalizedKey).join() !== "GET /fund-accounts" ||
+      importedWrapperCalls([load], read, { symbols: parent }).length !== 1 ||
+      !containsOrderedSourceFragments(parentSource.slice(...load.range), [
+        "const response = await fetchFundAccounts();",
+        "if (ownLoad === loadRevision && !isTargetReview.value) data.value = response;"
+      ])) return null;
+
+  return { verified: true, capabilityWitness: true, capabilitySources: new Set([readIdentity]),
+    capabilitySourceFile: FUND_ADVANCE_PARENT };
+}
+
+const PRINCIPAL_RETURN_PAGE = `${WEB_SOURCE_ROOT}/pages/funds/FundPrincipalReturns.vue`;
+const PRINCIPAL_RETURN_COMMAND = `${WEB_SOURCE_ROOT}/pages/funds/principal-return-command.ts`;
+const PRINCIPAL_RETURN_API = `${WEB_SOURCE_ROOT}/api/fund-principal-return.api.ts`;
+const PRINCIPAL_RETURN_ACTIONS = new Map([
+  ["fund-principal-return.submit", "submit"],
+  ["fund-principal-return.recover-original", "retryOriginal"],
+  ["fund-principal-return.lookup-original", "checkOriginal"]
+]);
+const PRINCIPAL_RETURN_WRITES = new Map([
+  ["applyPrincipalReturn", "POST /fund-accounts/principal-returns/applications"],
+  ["actOnPrincipalReturn", "POST /fund-accounts/principal-returns/applications/:param/actions"],
+  ["payPrincipalReturn", "POST /fund-accounts/principal-returns/applications/:param/payments"]
+]);
+
+export async function proveReadOnlyPrincipalReturnResult(root) {
+  const service = "services/api/src/fund-account/fund-principal-return.service.ts";
+  const controller = "services/api/src/fund-account/fund-principal-return.controller.ts";
+  const expected = [
+    [controller, "result", "{ return this.returns.result(actor.id,key); }"],
+    [service, "result", `{
+      return this.prisma.$transaction(async tx=>{
+        const user = await tx.user.findUnique({where:{id:actor},select:{isActive:true}});
+        if (!user?.isActive) throw new ForbiddenException("当前账号不可查询归还结果");
+        const prior = await tx.registeredPrincipalReturnCommand.findUnique({where:{idempotencyKey}});
+        if (!prior || prior.actorUserId !== actor) return {status:"unconfirmed",idempotencyKey};
+        return this.receipt(prior);
+      });
+    }`],
+    [service, "receipt", `{
+      return {status:"recorded",idempotencyKey:row.idempotencyKey,applicationId:row.applicationId,...(row.paymentId ? {paymentId:row.paymentId} : {})};
+    }`]
+  ];
+  for (const [file, name, block] of expected) {
+    let ast;
+    try { ast = parseSource(file, await readFile(resolve(root, file), "utf8")); }
+    catch { return false; }
+    const methods = [];
+    walkEstree(ast, node => {
+      if (node.type === "MethodDefinition" && !node.computed && node.key.name === name) methods.push(node.value.body);
+    });
+    if (methods.length !== 1 || !directRegistrationMatches(methods[0], block)) return false;
+  }
+  return true;
+}
+
+function provePrincipalReturnPageAction({ action, wrapper, context }) {
+  const handlerName = PRINCIPAL_RETURN_ACTIONS.get(action.id);
+  const lookup = handlerName === "checkOriginal";
+  const route = lookup ? "GET /fund-accounts/principal-returns/results/:param" : PRINCIPAL_RETURN_WRITES.get(wrapper.name);
+  if (!handlerName || action.sourceFile !== PRINCIPAL_RETURN_PAGE || action.trigger.handler !== handlerName ||
+      wrapper.apiFile !== PRINCIPAL_RETURN_API || !route || normalizedMainRequests(wrapper).map(entry => entry.normalizedKey).join() !== route ||
+      (lookup ? wrapper.name !== "fetchPrincipalReturnResult" || action.capability.kind !== "none" || action.capability.source !== "pending.idempotencyKey" || !context.principalReturnReadOnly
+        : action.capability.kind !== "server_boolean" || action.capability.source !== "canWritePrincipalReturn")) return null;
+
+  const page = context.symbols;
+  const handler = fundAdvanceNode(page, handlerName);
+  const recover = fundAdvanceNode(page, "recover");
+  const run = fundAdvanceNode(page, "run");
+  const dispatch = { apiFile: PRINCIPAL_RETURN_COMMAND, name: "runPrincipalReturnCommand" };
+  if (!handler || !run || importedWrapperCalls([run], dispatch, context).length !== 1) return null;
+  const usesRun = (node, expression) => {
+    const calls = directRegistrationCalls(node, candidate => directRegistrationExpression(candidate, expression));
+    return calls.length === 1 && directRegistrationLocalCall(calls[0], { binding: topLevelScopeVariables(page.scopeManager, "run")[0] }, page);
+  };
+  if (handlerName === "submit" ? !usesRun(handler, 'run(command, "new", password)') :
+      !recover || !usesRun(recover, "run(pending.value, mode, password)") ||
+      !directRegistrationMatches(handler, `function ${handlerName}() { recover("${lookup ? "check" : "retry"}"); }`)) return null;
+
+  const commandAst = context.asts.get(PRINCIPAL_RETURN_COMMAND);
+  if (!commandAst) return null;
+  const symbols = buildSymbolContext(commandAst, PRINCIPAL_RETURN_COMMAND, context.sourceFileSet);
+  const pipeline = fundAdvanceNode(symbols, "runPrincipalReturnCommand");
+  const gate = fundAdvanceNode(symbols, "canWritePrincipalReturn");
+  if (!pipeline || !gate) return null;
+  const locks = directRegistrationCalls(pipeline, node => staticMemberPath(node.callee) === "navigator.locks.request");
+  const callback = locks[0]?.arguments[2];
+  const statements = callback?.body?.body ?? [];
+  const operation = statements[4];
+  if (locks.length !== 1 || !unshadowedRuntimeGlobal(locks[0].callee.object.object, new Set(["navigator"]), symbols.scopeBindings) ||
+      !directRegistrationExpression(locks[0].arguments[1], '{ mode: "exclusive" }') ||
+      !directRegistrationMatches(statements[0], 'if (!isCurrent()) throw new Error("当前账号已变化，请重新核对");') ||
+      !directRegistrationMatches(statements[1], "const saved = readPrincipalReturnCommand(actor);") ||
+      !directRegistrationMatches(statements[2], `if (saved && (mode === "new" || JSON.stringify(saved) !== JSON.stringify(command))) {
+        return { kind: "pending", command: saved } as const;
+      }`) ||
+      !directRegistrationMatches(statements[3], 'if (!saved && mode !== "new") return { kind: "missing" } as const;') ||
+      statements.length !== 6 || operation?.type !== "TryStatement" ||
+      !directRegistrationMatches(statements[5], 'return { kind: "pending", command } as const;')) return null;
+  const work = operation.block.body;
+  const calls = importedWrapperCalls([pipeline], wrapper, { symbols });
+  if (calls.length !== 1 || !directRegistrationMatches(work[0], `if (saved) {
+      const receipt = await fetchPrincipalReturnResult(command.idempotencyKey, isCurrent);
+      if (isRecordedReceipt(receipt, command)) {
+        localStorage.removeItem(key);
+        return { kind: "recorded" } as const;
+      }
+      if (mode === "check" || receipt?.status !== "unconfirmed" ||
+        receipt.idempotencyKey !== command.idempotencyKey) return { kind: "pending", command } as const;
+    }`)) return null;
+  if (lookup) return astAncestorChain(work[0], calls[0]) ? { verified: true, readOnlyWitness: true } : null;
+  const read = { apiFile: PRINCIPAL_RETURN_API, name: "fetchPrincipalReturns" };
+  const readIdentity = wrapperIdentity(read.apiFile, read.name);
+  const readWrapper = context.wrapperIndex.get(readIdentity);
+  const readCalls = importedWrapperCalls([work[1]], read, { symbols });
+  if (!readWrapper || normalizedMainRequests(readWrapper).map(entry => entry.normalizedKey).join() !== "GET /fund-accounts/principal-returns" ||
+      readCalls.length !== 1 || !directRegistrationMatches(work[1], "const model = await fetchPrincipalReturns(isCurrent);") ||
+      !directRegistrationMatches(work[2], 'if (!isCurrent()) return { kind: "pending", command } as const;') ||
+      !directRegistrationMatches(work[3], `if (!canWritePrincipalReturn(model, command)) {
+        const error = new Error("办理权限或原记录状态已变化，请刷新后核对");
+        return saved ? { kind: "pending", command } as const : { kind: "rejected", error } as const;
+      }`) ||
+      !directRegistrationLocalCall(work[3].test.argument, { binding: topLevelScopeVariables(symbols.scopeManager, "canWritePrincipalReturn")[0] }, symbols) ||
+      !directRegistrationMatches(work[4], "if (!saved) localStorage.setItem(key, JSON.stringify(command));") ||
+      !directRegistrationMatches(work[5], `const receipt = command.kind === "apply"
+        ? await applyPrincipalReturn(command, isCurrent)
+        : command.kind === "act"
+          ? await actOnPrincipalReturn(command, password, isCurrent)
+          : await payPrincipalReturn(command, password, isCurrent);`) ||
+      !astAncestorChain(work[5], calls[0]) ||
+      !directRegistrationMatches(gate, `function canWritePrincipalReturn(model: PrincipalReturnReadModel, command: PrincipalReturnCommand) {
+        if (command.kind === "apply") {
+          return model.items.some(source => source.sourceKind === command.input.sourceKind &&
+            source.sourceId === command.input.sourceId && source.canApply);
+        }
+        const application = model.items.flatMap(source => source.applications).find(row => row.id === command.applicationId);
+        if (!application || application.revision !== command.input.expectedRevision) return false;
+        if (command.kind === "pay") return application.canPay && model.payableScopeKeys.includes(command.input.scopeKey);
+        if (command.input.action === "withdraw") return application.canWithdraw;
+        if (command.input.action === "reduce") return application.canReduce;
+        return application.approvalDuties.some(duty => duty.nodeIndex === command.input.nodeIndex);
+      }`)) return null;
+  return { verified: true, capabilityWitness: true, capabilitySources: new Set([readIdentity]),
+    capabilitySourceFile: PRINCIPAL_RETURN_COMMAND };
+}
+
+const DUTY_SMS_PANEL = `${WEB_SOURCE_ROOT}/components/DutySmsStatusPanel.vue`;
+const DUTY_SMS_API = `${WEB_SOURCE_ROOT}/api/duty-sms.api.ts`;
+const DUTY_SMS_ACTION = "duty-sms.retry";
+const APPROVAL_PROGRESS_PANEL = `${WEB_SOURCE_ROOT}/components/ApprovalProgressPanel.vue`;
+const APPROVAL_PROGRESS_SMS_CONTROLLER = "services/api/src/approval/approval-progress.controller.ts";
+const APPROVAL_PROGRESS_SMS_SERVICE = "services/api/src/approval/approval-transition-notification.service.ts";
+const APPROVAL_PROGRESS_SERVICE = "services/api/src/approval/approval-progress.service.ts";
+const EXPENSE_APPROVAL_SMS_CONTROLLER = "services/api/src/expense-claim/expense-claim.controller.ts";
+const EXPENSE_APPROVAL_SMS_SERVICE = "services/api/src/expense-claim/expense-claim-funding-notification.service.ts";
+const APPROVAL_SMS_AUTHORITIES = {
+  "approval-progress": [APPROVAL_PROGRESS_SMS_CONTROLLER, "ApprovalProgressController", "dutySmsStatus", "retryDutySms"],
+  "expense-claim-approvals": [EXPENSE_APPROVAL_SMS_CONTROLLER, "ExpenseClaimController", "approvalDutySmsStatus", "retryApprovalDutySms"]
+};
+const DUTY_SMS_DOMAINS = [
+  ["approval-progress"],
+  ["contract-bank-verifications", "components/ContractBankVerificationPanel.vue", "r.id"],
+  ["contract-economic-reviews", "components/ContractEconomicReviewPanel.vue", "r.id"],
+  ["contract-proxy-executions", "components/ContractProxyExecutionPanel.vue", "entry.id"],
+  ["expense-claim-approvals"],
+  ["expense-claims", "pages/expense-claims/ExpenseClaimDetailPage.vue", "detail.id"],
+  ["fund-account-transfers", "pages/funds/FundAccountTransfers.vue", "transfer.id"],
+  ["fund-accounts/principal-returns", "pages/funds/FundPrincipalReturns.vue", "application.id"],
+  ["fund-accounts/registrations", "pages/funds/FundAccountsPage.vue", "review.id", "/review"],
+  ["payment-executions", "pages/payments/RegisteredPaymentExecutionPanel.vue", "selected.paymentId"],
+  ["payments", "pages/payments/PaymentDetailPage.vue", "paymentDetail.id", "/approval"],
+  ["settlements", "pages/settlements/SettlementDetailPage.vue", "settlementDetail.settlementId"],
+  ["spot-procurement-payments", "pages/spot-procurement/SpotProcurementPaymentDetailPage.vue", "payment.id"],
+  ["upward-contract-amount-revisions", "components/UpwardContractAmountPanel.vue", "row.id"],
+  ["upward-receipt-matches", "components/UpwardReceiptMatchPanel.vue", "row.id"]
+];
+
+const PAYMENT_SMS_CONTROLLER = "services/api/src/payment/registered-payment-execution.controller.ts";
+const PAYMENT_SMS_SERVICE = "services/api/src/payment/registered-payment-notification.service.ts";
+
+async function dutySmsMethods(root, file, { definitions = false } = {}) {
+  const ast = parseSource(file, await readFile(resolve(root, file), "utf8"));
+  const methods = new Map();
+  walkEstree(ast, node => {
+    const name = node.type === "MethodDefinition" && !node.computed && node.key.type === "Identifier" ? node.key.name :
+      node.type === "FunctionDeclaration" ? node.id?.name : null;
+    if (name) methods.set(name, methods.has(name) ? null : definitions ? node : (node.value ?? node).body);
+  });
+  return methods;
+}
+
+async function registeredPaymentSmsAuthorityIsProven(root) {
+  try {
+    const [controller, service] = await Promise.all([dutySmsMethods(root, PAYMENT_SMS_CONTROLLER), dutySmsMethods(root, PAYMENT_SMS_SERVICE)]);
+    if (!directRegistrationMatches(controller.get("dutySmsStatus"), "{ return {notice:await this.notifications.notificationStatus(paymentId,actor.id)}; }") ||
+        !directRegistrationMatches(controller.get("retryDutySms"), "{ return this.notifications.retry(paymentId,actor.id,input.attemptId); }") ||
+        !directRegistrationMatches(service.get("notificationStatus"), `{
+          return this.prisma.$transaction(async tx=>{
+            const current=await this.currentNotice(tx,paymentId,actorId);
+            return current ? {attemptId:current.attempt.id,status:current.status,canRetry:current.status==="failed" && this.sms.available()}:null;
+          },{isolationLevel:Prisma.TransactionIsolationLevel.Serializable});
+        }`)) return false;
+    if (!directRegistrationMatches(service.get("mayReadPaymentDuty"), `{
+      return (await new ProjectVisibilityService(tx as PrismaService).visibleProjectIdsInTransaction(tx,actorId)).includes(projectId) &&
+        await sensitiveBusinessReadAllowed(tx,"payment_request",paymentId,actorId,roles);
+    }`)) return false;
+    const authority = service.get("currentNotice")?.body ?? [];
+    const guarded = [
+      "const roles=await assertRegisteredPaymentActor(tx,actorId);",
+      "const round=await currentRegisteredPaymentApproval(tx,paymentId);",
+      "if(!round)return null;",
+      "const origin=rows.get(originKey(paymentId,round.id,actorId));",
+      "const source=origin ? await notificationPayment(tx,origin,actorId):null;",
+      "if(!origin || !source || !await mayReadPaymentDuty(tx,actorId,paymentId,source.payment.projectId,roles))return null;",
+      "return {...this.currentAttempt(rows,origin),rows,origin};"
+    ];
+    const positions = guarded.map(statement => authority.findIndex(node => directRegistrationMatches(node, statement)));
+    if (positions[0] !== 0 || !positions.every((position, i) => position >= 0 && (!i || position > positions[i - 1]))) return false;
+    const attempt = service.get("retry")?.body?.[0]?.declarations?.[0]?.init?.argument;
+    const retry = attempt?.arguments?.[0]?.body?.body ?? [];
+    if (!directRegistrationExpression(attempt?.callee, "this.prisma.$transaction") ||
+        !directRegistrationMatches(retry[0], "await assertRegisteredPaymentActor(tx,actorId);") ||
+        !directRegistrationMatches(retry[2], "const current=await this.currentNotice(tx,paymentId,actorId);") ||
+        !directRegistrationMatches(retry[3], 'if(!current)throw new ConflictException("当前待办或短信记录已变化，请刷新");')) return false;
+    const guard = retry.findIndex(node => directRegistrationMatches(node, 'if(!status.canRetry)throw new ConflictException("仅确认发送失败的短信可以重试");'));
+    const write = retry.findIndex(node => staticMemberPath(node.declarations?.[0]?.init?.argument?.callee) === "tx.approvalActionLog.createMany");
+    return guard > 3 && write === guard + 1;
+  } catch {
+    return false;
+  }
+}
+
+const FUND_TRANSFER_SMS_CONTROLLER = "services/api/src/fund-account/fund-account-transfer.controller.ts";
+const FUND_TRANSFER_SMS_SERVICE = "services/api/src/fund-account/fund-account-transfer-notification.service.ts";
+const AUDIT_SMS_DELIVERY = "services/api/src/approval/audit-duty-notification-delivery.ts";
+const FUND_TRANSFER_SMS_POSITIONS = ["comprehensive_director", "finance_director", "finance_staff"];
+
+async function fundTransferSmsAuthorityIsProven(root) {
+  try {
+    const [controller, service, delivery] = await Promise.all(
+      [FUND_TRANSFER_SMS_CONTROLLER, FUND_TRANSFER_SMS_SERVICE, AUDIT_SMS_DELIVERY].map(file => dutySmsMethods(root, file))
+    );
+    if (!directRegistrationMatches(controller.get("dutySmsStatus"), "{ return { notice: await this.notifications?.notificationStatus(id, actor.id) ?? null }; }") ||
+        !directRegistrationMatches(controller.get("retryDutySms"), `{
+          if (!this.notifications) throw new BadRequestException("短信通知暂不可用");
+          return this.notifications.retry(id, actor.id, input.attemptId);
+        }`) ||
+        !directRegistrationMatches(service.get("notificationStatus"), "{ return auditDutyNoticeStatus(this.noticeAccess(), id, actorId); }") ||
+        !directRegistrationMatches(service.get("noticeAccess"), `{
+          return { prisma: this.prisma, sms: this.sms, kind,
+            lockDuty: (tx: Prisma.TransactionClient, id: string) => this.lockDuty(tx, id),
+            currentMessage: (tx: Prisma.TransactionClient, intent: AuditLog) => this.currentMessage(tx, intent) };
+        }`) ||
+        !directRegistrationMatches(service.get("currentDuty"), `{
+          const roles = await currentFundCompanyRoles(tx, recipientId);
+          const cashId = row.sourceAccount.kind === "public_cash" ? row.sourceAccount.id : row.destinationAccount.id;
+          const cash = await fundTransferCashAccess(tx, recipientId, cashId);
+          return currentFundTransferDuty(row, recipientId, roles, cash);
+        }`)) return false;
+    const message = service.get("currentMessage")?.body ?? [];
+    if (!directRegistrationMatches(message[3], "if (!row || row.revision !== revision) return null;") ||
+        !directRegistrationMatches(message[4], "const duty = await this.currentDuty(tx, row, recipientId);") ||
+        !directRegistrationMatches(message[5], "if (!duty) return null;")) return false;
+    const retryBody = service.get("retry")?.body ?? [];
+    const retry = retryBody[1]?.declarations?.[0]?.init?.argument;
+    const check = retry?.arguments?.[0]?.properties?.[1]?.value?.body?.body ?? [];
+    return directRegistrationMatches(retryBody[0], "const access = this.noticeAccess();") &&
+      directRegistrationExpression(retry?.callee, "retryFailedAuditDutyNotice") &&
+      retry?.arguments?.slice(1).map(arg => arg.name).join() === "id,actorId,attemptId" &&
+      directRegistrationMatches(check[0], `if (current.id !== attemptId) {
+          const expected = await tx.auditLog.findUnique({ where: { id: attemptId } });
+          const previous = expected?.metadata as Prisma.JsonObject | null | undefined;
+          const latest = current.metadata as Prisma.JsonObject | null;
+          if (expected?.businessType !== kind || expected.businessId !== id || expected.action !== "queued" ||
+              previous?.recipientId !== actorId || previous.revision !== latest?.revision) return null;
+        }`) &&
+      directRegistrationMatches(check[1], "return access.currentMessage(tx, current);") &&
+      auditDutyDeliveryAuthorityIsProven(delivery);
+  } catch {
+    return false;
+  }
+}
+
+const BANK_SMS_CONTROLLER = "services/api/src/contract-ledger/contract-bank-verification.controller.ts";
+const BANK_SMS_SERVICE = "services/api/src/contract-ledger/contract-bank-verification-notification.service.ts";
+const BANK_SMS_ACCESS = "services/api/src/contract-ledger/contract-bank-verification-access.ts";
+
+function auditDutyDeliveryAuthorityIsProven(delivery) {
+  return directRegistrationMatches(delivery.get("canAccessNotice"), `{
+      return access.canAccess ? access.canAccess(tx,intent) : access.currentMessage(tx,intent);
+    }`) &&
+    directRegistrationMatches(delivery.get("auditDutyNoticeStatus"), `{
+      return access.prisma.$transaction(async tx => {
+        const attempt = await currentAuditDutyAttempt(tx, access, businessId, actorId);
+        return attempt && await canAccessNotice(access, tx, attempt)
+          ? readAuditDutyStatus(tx, access.kind, attempt, access.sms.available()) : null;
+      });
+    }`) &&
+    delivery.get("retryFailedAuditDutyNotice")?.body?.[0]?.argument?.arguments?.[0]?.body?.body?.some(
+      statement => directRegistrationMatches(statement, `if (!attempt || !await canAccessNotice(access, tx, attempt)) {
+        throw new ConflictException("当前待办或短信记录已变化，请刷新");
+      }`));
+}
+
+async function bankDutySmsAuthorityIsProven(root) {
+  try {
+    const [controller, service, access, delivery] = await Promise.all(
+      [BANK_SMS_CONTROLLER, BANK_SMS_SERVICE, BANK_SMS_ACCESS, AUDIT_SMS_DELIVERY].map(file => dutySmsMethods(root, file))
+    );
+    if (!auditDutyDeliveryAuthorityIsProven(delivery) ||
+        !directRegistrationMatches(controller.get("dutySmsStatus"), "{ return {notice:await this.notifications?.notificationStatus(id,actor.id)??null}; }") ||
+        !directRegistrationMatches(controller.get("retryDutySms"), `{
+          if(!this.notifications)throw new BadRequestException("短信通知暂不可用");
+          return this.notifications.retry(id,actor.id,input.attemptId);
+        }`) ||
+        !directRegistrationMatches(service.get("notificationStatus"), `{
+          const scope = await this.prisma.contractBankVerificationRequest.findUnique({where:{id},select:{projectId:true,status:true}});
+          if (scope?.status !== "pending_confirm") return null;
+          return auditDutyNoticeStatus(this.noticeAccess(scope.projectId===null ? ownedKind : projectKind),id,actorId);
+        }`) ||
+        !directRegistrationMatches(service.get("noticeAccess"), `{
+          return { prisma: this.prisma, sms: this.sms, kind,
+            lockDuty: (tx: Prisma.TransactionClient, id: string) => this.lockDuty(tx, id),
+            currentMessage: (tx: Prisma.TransactionClient, intent: AuditLog) => this.currentMessage(tx, intent, kind),
+            canAccess: async (tx: Prisma.TransactionClient, intent: AuditLog) => {
+              if (!intent.businessId) return false;
+              const row=await tx.contractBankVerificationRequest.findUnique({where:{id:intent.businessId},select:{
+                id:true,projectId:true,status:true,recordedByUserId:true
+              }});
+              return this.authorized(tx,intent,kind,row);
+            } };
+        }`) ||
+        !directRegistrationMatches(service.get("authorized"), `{
+          const {recipientId,projectId}=(intent.metadata??{}) as Prisma.JsonObject;
+          return Boolean(row && intent.businessType===kind && row.id===intent.businessId && typeof recipientId==="string" &&
+            (kind===ownedKind ? row.projectId===null : !!row.projectId && row.projectId===projectId) &&
+            await canReviewPendingBankVerification(tx,this.visibility,recipientId,row));
+        }`) ||
+        !directRegistrationMatches(access.get("canReviewPendingBankVerification"), `{
+          if (row.status !== "pending_confirm" || row.recordedByUserId === recipientId ||
+              !(await companyTransferRoles(tx,recipientId)).includes("finance_director")) return false;
+          if (!row.projectId) return true;
+          try { await assertBankVerificationProjectFinance(tx,visibility,recipientId,row.projectId); return true; }
+          catch(error) { if (error instanceof ForbiddenException) return false; throw error; }
+        }`)) return false;
+    const retry = service.get("retry")?.body ?? [];
+    return directRegistrationMatches(retry[3], `if ((kind!==ownedKind && kind!==projectKind) || attempt?.businessId!==id || attempt.action!=="queued" ||
+        data.recipientId!==actorId) throw new ConflictException("当前待办或短信记录已变化，请刷新");`) &&
+      directRegistrationMatches(retry[4], "const result=await retryFailedAuditDutyNotice(this.noticeAccess(kind),id,actorId,attemptId);");
+  } catch {
+    return false;
+  }
+}
+
+const BALANCE_SMS_CONTROLLER = "services/api/src/fund-account/fund-account.controller.ts";
+const BALANCE_SMS_SERVICE = "services/api/src/fund-account/fund-balance-review-notification.service.ts";
+const INDEPENDENT_SMS_SERVICE = "services/api/src/contract-ledger/independent-ledger-duty-sms.ts";
+const LEDGER_SMS_AUTHORITIES = {
+  "contract-economic-reviews": ["contract-economic-review", "ContractEconomicReviewController", "economic-finance",
+    "canReviewEconomicFinance", true, "auth.user?.id && data?.canReview && r.canFinanceReview"],
+  "contract-proxy-executions": ["contract-proxy-execution", "ContractProxyExecutionController", "contract-proxy",
+    "canConfirmProxyPending", false, "auth.user?.id && data?.canReview && entry.canConfirm"],
+  "upward-contract-amount-revisions": ["upward-contract-amount", "UpwardContractAmountController", "upward-amount",
+    "canReviewUpwardAmount", false, "auth.user?.id && data?.canReview && row.canConfirm"],
+  "upward-receipt-matches": ["upward-receipt-match", "UpwardReceiptMatchController", "upward-receipt-match",
+    "canConfirmUpwardReceipt", false, "auth.user?.id && data?.canReview && row.canConfirm"]
+};
+const ledgerSmsController = name => `services/api/src/contract-ledger/${name}.controller.ts`;
+
+async function ledgerDutySmsAuthorityIsProven(root) {
+  try {
+    const [shared, delivery] = await Promise.all(
+      [INDEPENDENT_SMS_SERVICE, AUDIT_SMS_DELIVERY].map(file => dutySmsMethods(root, file))
+    );
+    const retry = shared.get("retryLedgerDutySms")?.body ?? [];
+    if (!auditDutyDeliveryAuthorityIsProven(delivery) ||
+        !directRegistrationMatches(shared.get("scopedAccess"), `{
+          return {
+            ...access,
+            canAccess: async (tx, attempt) => await matchesOriginal(access, tx, attempt, expected)
+              && Boolean(await access.currentMessage(tx, attempt))
+          };
+        }`) ||
+        !directRegistrationMatches(shared.get("ledgerDutySmsStatus"), `{
+          return { notice: await auditDutyNoticeStatus(scopedAccess(access), id, actorId) };
+        }`) ||
+        !directRegistrationMatches(retry[0], "const result = await retryFailedAuditDutyNotice(scopedAccess(access, attemptId), id, actorId, attemptId);")) return false;
+    return (await Promise.all(Object.values(LEDGER_SMS_AUTHORITIES).map(async ([name, , serviceName, guard, revision]) => {
+      const [controller, service] = await Promise.all([
+        ledgerSmsController(name), `services/api/src/contract-ledger/${serviceName}-notification.service.ts`
+      ].map(file => dutySmsMethods(root, file)));
+      const authority = service.get("currentMessage")?.body ?? [];
+      const noticeAccess = service.get("noticeAccess")?.body?.[0]?.argument;
+      const binding = noticeAccess?.properties?.find(property => property.key?.name === "currentMessage");
+      return directRegistrationMatches(controller.get("dutySms"), `{
+          if (!this.notifications) throw new ServiceUnavailableException("待办短信状态暂不可用");
+          return this.notifications.status(id, user.id);
+        }`) &&
+        directRegistrationMatches(controller.get("retryDutySms"), `{
+          if (!this.notifications) throw new ServiceUnavailableException("待办短信状态暂不可用");
+          return this.notifications.retry(id, user.id, body.attemptId);
+        }`) &&
+        directRegistrationMatches(service.get("status"), "{ return ledgerDutySmsStatus(this.noticeAccess(), id, actorId); }") &&
+        directRegistrationMatches(service.get("retry"), "{ return retryLedgerDutySms(this.noticeAccess(), () => this.afterCommit(), id, actorId, attemptId); }") &&
+        directRegistrationExpression(binding?.value, "(tx: Prisma.TransactionClient, attempt: AuditLog) => this.currentMessage(tx, attempt)") &&
+        authority.some(statement => directRegistrationMatches(statement, `if(!row || row.projectId!==projectId ||
+          ${revision ? "row.revision!==revision ||" : ""} !await ${guard}(tx,this.visibility,recipientId,row))return null;`));
+    }))).every(Boolean);
+  } catch {
+    return false;
+  }
+}
+
+function balanceDutySmsControlledAuthorityIsProven(service, retry, notice) {
+  const returnDuty = service.get("currentDuty")?.body?.[0]?.block?.body?.[0];
+  return directRegistrationMatches(retry[0], `const result = await retryFailedAuditDutyNotice(
+    this.noticeAccess({ attemptId, expectedRoundId, actorId }), registrationId, actorId, attemptId);`) &&
+    directRegistrationMatches(service.get("noticeAccess"), `{
+      return {
+        prisma: this.prisma, sms: { available: () => Boolean(this.worker.client) && this.sms.available() }, kind,
+        lockDuty: async (tx: Prisma.TransactionClient, registrationId: string) => {
+          if (retry && !await fundBalanceNoticeLocks(tx, "retry", registrationId, retry.expectedRoundId,
+            retry.attemptId, retry.actorId)("round")) {
+            throw new ConflictException("当前待办或短信记录已变化，请刷新");
+          }
+        },
+        prepareAudit: prepareFundBalanceNoticeAudit,
+        canAccess: async (tx: Prisma.TransactionClient, intent: AuditLog) =>
+          (retry === undefined || metadata(intent).roundId === retry.expectedRoundId) &&
+          Boolean(await this.currentNoticeDuty(tx, intent, retry ? "retry" : "status")),
+        currentMessage: (tx: Prisma.TransactionClient, intent: AuditLog) => this.currentMessage(tx, intent)
+      };
+    }`) &&
+    directRegistrationMatches(service.get("locks"), `{
+      const { recipientId, roundId } = metadata(intent);
+      if (typeof recipientId !== "string" || typeof roundId !== "string") return null;
+      return fundBalanceNoticeLocks(tx, operation, registrationId, roundId, intent.id, recipientId);
+    }`) &&
+    directRegistrationMatches(notice[0], "const { recipientId, roundId } = metadata(intent);") &&
+    directRegistrationMatches(notice[1], 'if (!intent.businessId || typeof recipientId !== "string" || typeof roundId !== "string") return null;') &&
+    directRegistrationMatches(notice[2], "const lock = this.locks(tx, operation, intent.businessId, intent);") &&
+    directRegistrationMatches(notice[3], "if (!lock) return null;") &&
+    directRegistrationMatches(notice[4], "const duty = await this.currentDuty(tx, intent.businessId, roundId, recipientId, false, lock);") &&
+    directRegistrationMatches(notice[5], "if (!duty || duty.round.id !== roundId) return null;") &&
+    returnDuty?.type === "ReturnStatement" && returnDuty.argument?.type === "AwaitExpression" &&
+    directRegistrationExpression(returnDuty.argument.argument, `freshControlledRound
+      ? resolveFreshCorrectionRecipient(tx, registrationId, roundId, recipientId)
+      : noticeLock
+        ? resolveFundReviewIdentity(tx, registrationId, recipientId, roundId, false, noticeLock)
+        : resolveFundReviewIdentity(tx, registrationId, recipientId, roundId)`);
+}
+
+async function balanceDutySmsAuthorityIsProven(root) {
+  try {
+    const [controller, service, delivery] = await Promise.all(
+      [BALANCE_SMS_CONTROLLER, BALANCE_SMS_SERVICE, AUDIT_SMS_DELIVERY].map(file => dutySmsMethods(root, file))
+    );
+    const retry = service.get("retry")?.body ?? [];
+    const notice = service.get("currentNoticeDuty")?.body ?? [];
+    return auditDutyDeliveryAuthorityIsProven(delivery) &&
+      directRegistrationMatches(controller.get("reviewDutySms"), `{
+        if (!this.balanceNotifications) throw new ServiceUnavailableException("资金复核短信状态暂不可用");
+        return this.balanceNotifications.status(id, actor.id);
+      }`) &&
+      directRegistrationMatches(controller.get("retryReviewDutySms"), `{
+        if (!this.balanceNotifications) throw new ServiceUnavailableException("资金复核短信状态暂不可用");
+        return this.balanceNotifications.retry(id, actor.id, body.attemptId, body.expectedApprovalInstanceId);
+      }`) &&
+      directRegistrationMatches(service.get("status"), "{ return { notice: await auditDutyNoticeStatus(this.noticeAccess(), registrationId, actorId) }; }") &&
+      balanceDutySmsControlledAuthorityIsProven(service, retry, notice);
+  } catch {
+    return false;
+  }
+}
+
+const PAYMENT_APPROVAL_SMS_CONTROLLER = "services/api/src/payment/payment.controller.ts";
+const PAYMENT_APPROVAL_SMS_SERVICE = "services/api/src/payment/payment-approval-notification.service.ts";
+
+async function paymentApprovalSmsAuthorityIsProven(root) {
+  try {
+    const [controller, service] = await Promise.all(
+      [PAYMENT_APPROVAL_SMS_CONTROLLER, PAYMENT_APPROVAL_SMS_SERVICE].map(file => dutySmsMethods(root, file))
+    );
+    if (!directRegistrationMatches(controller.get("approvalDutySms"), `{
+      if (!this.approvalNotifications) throw new ServiceUnavailableException("付款审批短信状态暂不可用");
+      return this.approvalNotifications.status(id, user.id);
+    }`) ||
+        !directRegistrationMatches(controller.get("retryApprovalDutySms"), `{
+          if (!this.approvalNotifications) throw new ServiceUnavailableException("付款审批短信状态暂不可用");
+          return this.approvalNotifications.retry(id, user.id, body.attemptId);
+        }`) ||
+        !directRegistrationMatches(service.get("status"), `{
+          return this.prisma.$transaction(async tx => ({
+            notice: (await this.currentNotice(tx, paymentId, actorId))?.status ?? null
+          }));
+        }`) ||
+        !directRegistrationMatches(service.get("currentNotice"), `{
+    const active = await this.inProgressNotice(tx, paymentId, actorId);
+    return active ?? this.correctionNotice(tx, paymentId, actorId);
+  }`) ||
+        !directRegistrationMatches(service.get("correctionNotice")?.body?.find(statement => statement.type === "ForOfStatement")?.body?.body?.[1],
+          'if (data?.phase !== "correction" || data.recipientId !== actorId || data.paymentId !== paymentId || data.retryOf !== undefined) continue;')) return false;
+    const loop = service.get("inProgressNotice")?.body?.find(statement => statement.type === "ForOfStatement");
+    const context = service.get("currentContext")?.body ?? [];
+    const recipient = service.get("currentRecipient")?.body ?? [];
+    if (!directRegistrationExpression(loop?.right, "byDuty") ||
+        !service.get("inProgressNotice")?.body?.some(statement => directRegistrationMatches(statement, `const byDuty = isOrdinaryPaymentParallelRound(rounds[0].frozenNodes)
+          ? [...entries].sort((left, right) => Number((left.metadata as Prisma.JsonObject | null)?.nodeIndex) -
+              Number((right.metadata as Prisma.JsonObject | null)?.nodeIndex)) : entries;`)) ||
+        !directRegistrationMatches(loop.body.body[1], "if (data?.recipientId !== actorId || data.paymentId !== paymentId || !this.isBaseAttempt(original)) continue;") ||
+        !directRegistrationMatches(loop.body.body[2], "const context = await this.currentContext(tx, original);") ||
+        !directRegistrationMatches(loop.body.body[3], "if (!context) continue;") ||
+        !context.some(statement => directRegistrationMatches(statement, "const nodeIndex = data.nodeIndex;")) ||
+        !context.some(statement => directRegistrationMatches(statement, `const delegationActionId = data.anchorId.startsWith("delegation:") ? data.anchorId.slice("delegation:".length) : undefined;`)) ||
+        !context.some(statement => directRegistrationMatches(statement, `if (!round || !node || !payment || !user?.isActive || payment.status !== "approval_pending" ||
+          round.businessId !== payment.id || payment.projectId !== data.projectId || round.applicantUserId !== intent.actorUserId ||
+          !await this.currentRecipient(tx, payment, round, node, data.recipientId, nodeIndex, delegationActionId)) {
+          return null;
+        }`)) ||
+        !context.some(statement => directRegistrationMatches(statement, `if (isOrdinaryPaymentParallelRound(round.frozenNodes)) {
+          if (!activeApprovalNodeIndexes(round.frozenNodes, round.currentNodeIndex).includes(nodeIndex)) return null;
+          if (data.anchorId === \`parallel:\${round.id}\`) return { node, payment, round };
+          if (delegationActionId) return { node, payment, round };
+          const legacyRevision = round.frozenNodes[nodeIndex].legacyPaymentNoticeRevision;
+          if (typeof legacyRevision !== "string" || legacyRevision !== data.roundRevision) return null;
+        } else if (round.currentNodeIndex !== nodeIndex || round.updatedAt.toISOString() !== data.roundRevision) {
+          return null;
+        }`)) ||
+        !recipient.some(statement => directRegistrationMatches(statement, `const delegationPrincipals = parallel
+          ? await loadOrdinaryPaymentDelegationPrincipals(tx, round.frozenNodes, actorId, payment.projectId,
+            async id => (await getRoles(id)).roleScopes, { dutyIndex: nodeIndex }) : undefined;`)) ||
+        !recipient.some(statement => directRegistrationMatches(statement, `const identity = parallel
+          ? resolveOrdinaryPaymentDuty(round.frozenNodes, nodeIndex, { actorUserId: actorId, actorRoleKeys, actorRoleScopes, activeDelegators, delegationPrincipals })
+          : resolveApprovalReviewIdentity({ node, actorUserId: actorId, actorRoleKeys,
+            activeDelegators: activeDelegators.map(({ userId, roleKeys }) => ({ userId, roleKeys })) });`)) ||
+        !recipient.some(statement => directRegistrationMatches(statement, "if (!identity) return false;")) ||
+        !recipient.some(statement => directRegistrationMatches(statement, `const delegationActionId = "ordinaryPaymentDelegationActionId" in identity ? identity.ordinaryPaymentDelegationActionId : undefined;`)) ||
+        !recipient.some(statement => directRegistrationMatches(statement, "if (expectedDelegationActionId !== undefined) return delegationActionId === expectedDelegationActionId;")) ||
+        !recipient.some(statement => directRegistrationMatches(statement, "if (parallel && delegationActionId) return true;")) ||
+        !directRegistrationMatches(recipient.at(-1), `return (await this.visibility.visibleRequestedProjectIdsInTransaction(tx, actorId, [payment.projectId])).includes(payment.projectId)
+          && await sensitiveBusinessReadAllowed(tx, "payment_request", payment.id, actorId, actorRoleKeys);`)) return false;
+    const attempt = service.get("retry")?.body?.[0]?.declarations?.[0]?.init?.argument;
+    const retry = attempt?.arguments?.[0]?.body?.body ?? [];
+    return directRegistrationExpression(attempt?.callee, "this.prisma.$transaction") &&
+      directRegistrationMatches(retry[2], `if (!requested || data?.kind !== KIND || data.event !== "queued" || data.paymentId !== paymentId || data.recipientId !== actorId) {
+        throw new ConflictException("当前待办或短信记录已变化，请刷新");
+      }`) &&
+      directRegistrationMatches(retry[3], "await this.lockRound(tx, requested.approvalInstanceId);") &&
+      directRegistrationMatches(retry[4], "const current = await this.currentNotice(tx, paymentId, actorId);") &&
+      directRegistrationMatches(retry[5], 'if (!current || !current.chain.includes(attemptId)) throw new ConflictException("当前待办或短信记录已变化，请刷新");') &&
+      directRegistrationMatches(retry[6], 'if (current.attempt.id !== attemptId) return { kind: "replay", status: current.status } as const;') &&
+      directRegistrationMatches(retry[7], 'if (!current.status.canRetry) throw new ConflictException("仅确认发送失败的短信可以重试");') &&
+      staticMemberPath(retry[9]?.declarations?.[0]?.init?.argument?.callee) === "tx.approvalActionLog.createMany";
+  } catch {
+    return false;
+  }
+}
+
+const PRINCIPAL_SMS_DOMAIN = "fund-accounts/principal-returns";
+const PRINCIPAL_SMS_CONTROLLER = "services/api/src/fund-account/fund-principal-return.controller.ts";
+const PRINCIPAL_SMS_SERVICE = "services/api/src/fund-account/fund-principal-return-notification.service.ts";
+
+function dutySmsRoute(method, [domain, , , scope = ""], suffix = "") {
+  const path = domain === PRINCIPAL_SMS_DOMAIN
+    ? "/fund-accounts/principal-returns/applications/:param/duty-sms/:param"
+    : domain === "expense-claim-approvals" ? "/expense-claims/:param/approval-duty-sms"
+      : `/${domain}/:param${scope}/duty-sms`;
+  return `${method} ${path}${suffix}`;
+}
+
+async function principalDutySmsAuthorityIsProven(root) {
+  try {
+    const [controller, service] = await Promise.all([PRINCIPAL_SMS_CONTROLLER, PRINCIPAL_SMS_SERVICE].map(file => dutySmsMethods(root, file)));
+    const retry = service.get("retry")?.body ?? [];
+    const resolve = service.get("readCurrentDuty")?.body ?? [];
+    const current = service.get("currentDuty")?.body ?? [];
+    const access = service.get("noticeAccess")?.body?.[0]?.argument?.properties ?? [];
+    const checked = (body, statement) => body.some(node => directRegistrationMatches(node, statement));
+    return directRegistrationMatches(controller.get("dutySms"), "{ return this.notices.status(id, actor.id, dutyKey); }") &&
+      directRegistrationMatches(controller.get("retryDutySms"), "{ return this.notices.retry(id, actor.id, dutyKey, input.attemptId); }") &&
+      directRegistrationMatches(service.get("status"), "{ return {notice: await auditDutyNoticeStatus(this.noticeAccess(this.parseDuty(key)), applicationId, actorId)}; }") &&
+      directRegistrationMatches(service.get("parseDuty"), `{
+        if (key === "pay") return {kind: "pay"};
+        const node = /^review-([0-3])$/u.exec(key);
+        if (!node) throw new BadRequestException("短信职责无法核对");
+        return {kind: "review", nodeIndex: Number(node[1])};
+      }`) &&
+      access.some(item => item.type === "SpreadElement" &&
+        directRegistrationExpression(item.argument, "duty ? {scope: {...duty}} : {}")) &&
+      directRegistrationMatches(retry[0], "const access = this.noticeAccess(this.parseDuty(key));") &&
+      directRegistrationMatches(retry[2], "const result = await retryFailedAuditDutyNotice(access, applicationId, actorId, attemptId);") &&
+      directRegistrationExpression(access.find(item => item.key?.name === "canAccess")?.value,
+        "async (tx: Tx, intent: AuditLog) => Boolean(await this.readCurrentDuty(tx, intent))") &&
+      checked(resolve, `if (!row || row.approvalInstanceId !== roundId || !round || round.businessId !== row.id ||
+        round.businessType !== PRINCIPAL_RETURN_BUSINESS_TYPE) return null;`) &&
+      checked(resolve, "const dutyName = await this.currentDuty(tx, row, round, duty, recipientId);") &&
+      checked(resolve, "if (!dutyName) return null;") &&
+      checked(current, `if (duty.kind === "pay") {
+        return round.status === "approved" && ["approved", "partially_paid"].includes(row.status) &&
+          row.approvedYuan?.gt(row.paidYuan) && (await principalReturnPayableScopeKeys(tx, recipientId)).length > 0
+          ? "登记实际归还" : null;
+      }`) &&
+      checked(current, `if (row.status !== "pending" || round.status !== "approval_pending" || !isParallelApprovalRound(round.frozenNodes) ||
+        !activeApprovalNodeIndexes(round.frozenNodes, round.currentNodeIndex).includes(duty.nodeIndex)) return null;`) &&
+      checked(current, "const review = await resolvePrincipalReturnReviewIdentity(tx, recipientId, row.projectId, round.id, duty.nodeIndex, node);") &&
+      checked(current, "if (!review || (row.createdByUserId === recipientId && review.identity.viaAssignment)) return null;");
+  } catch { return false; }
+}
+
+function proveApprovalProgressSmsConsumers(context) {
+  const ast = context.asts.get(APPROVAL_PROGRESS_PANEL);
+  if (!ast) return false;
+  const symbols = buildSymbolContext(ast, APPROVAL_PROGRESS_PANEL, context.sourceFileSet);
+  const bindings = topLevelScopeVariables(symbols.scopeManager, "DutySmsStatusPanel");
+  const imported = bindings.length === 1 && symbols.importsByBinding.get(bindings[0]);
+  if (imported?.kind !== "default" || imported.sourceFile !== DUTY_SMS_PANEL ||
+      !directRegistrationExpression(fundAdvanceNode(symbols, "transitionSmsTypes"), `new Set([
+        "project_expense_request", "project_financing_quota", "project_settlement_exception_quota", "fund_execution_case"
+      ])`) ||
+      !directRegistrationExpression(fundAdvanceNode(symbols, "correctionStatuses"), 'new Set(["rejected", "returned", "returned_to_applicant"])') ||
+      !directRegistrationExpression(fundAdvanceNode(symbols, "auth"), "useAuthStore()") ||
+      !directRegistrationMatches(fundAdvanceNode(symbols, "isOwnPendingDuty"), `function isOwnPendingDuty(flow: ApprovalProgress, node: ApprovalProgress["nodes"][number]) {
+        return !flow.viewerOnly && flow.canHandle && node.pending.some(person => person.id === auth.user?.id);
+      }`) ||
+      !directRegistrationMatches(fundAdvanceNode(symbols, "isOwnCorrection"), `function isOwnCorrection(flow: ApprovalProgress) {
+        return !flow.viewerOnly && correctionStatuses.has(flow.status) && flow.applicant.id === auth.user?.id;
+      }`)) return false;
+  const instances = [];
+  walkEstree(ast.templateBody, (node) => {
+    if (node.type === "VElement" && node.rawName === "DutySmsStatusPanel") instances.push(node);
+  });
+  const expected = [
+    ["expense-claim-approvals", "flow.businessId", "flow.id", "String(index)", "flow.businessType === 'expense_claim' && isOwnPendingDuty(flow, node)", true],
+    ["approval-progress", "flow.id", null, null, "transitionSmsTypes.has(flow.businessType) && index === flow.currentNodeIndex && isOwnPendingDuty(flow, node)", true],
+    ["expense-claim-approvals", "flow.businessId", "flow.id", null, "flow.businessType === 'expense_claim' && isOwnCorrection(flow)", false],
+    ["approval-progress", "flow.id", null, null, "transitionSmsTypes.has(flow.businessType) && isOwnCorrection(flow)", false]
+  ];
+  return instances.length === expected.length && expected.every(([domain, id, round, duty, guard, insideNode], i) => {
+    const instance = instances[i];
+    const attrs = instance.startTag.attributes;
+    const matchesBinding = (name, expression) => {
+      const bound = directiveExpression(elementDirective(instance, "bind", name));
+      return !attrs.some(attr => !attr.directive && attr.key.name === name) &&
+        (expression ? directRegistrationExpression(bound, expression) : !bound);
+    };
+    const loops = [];
+    for (let parent = instance.parent; parent; parent = parent.parent) {
+      const expression = directiveExpression(elementDirective(parent, "for"));
+      if (expression?.type === "VForExpression") loops.push(expression);
+    }
+    const flow = loops.at(-1);
+    const node = insideNode ? loops[0] : null;
+    return attrs.find(attr => !attr.directive && attr.key.name === "domain")?.value?.value === domain &&
+      !elementDirective(instance, "bind", "domain") &&
+      directRegistrationExpression(directiveExpression(elementDirective(instance, "if")), guard) &&
+      matchesBinding("business-id", id) && matchesBinding("expected-approval-instance-id", round) &&
+      matchesBinding("duty-key", duty) &&
+      loops.length === (insideNode ? 2 : 1) && flow.left.map(binding => binding.name).join() === "flow" &&
+      directRegistrationExpression(flow.right, "flows") &&
+      (!insideNode || (node.left.map(binding => binding.name).join() === "node,index" &&
+        directRegistrationExpression(node.right, "flow.nodes")));
+  });
+}
+
+async function approvalSmsAuthorityIsProven(root) {
+  try {
+    const [approvalController, expenseController, transition, expense, progress, delivery] = await Promise.all([
+      dutySmsMethods(root, APPROVAL_PROGRESS_SMS_CONTROLLER, { definitions: true }),
+      dutySmsMethods(root, EXPENSE_APPROVAL_SMS_CONTROLLER, { definitions: true }),
+      ...[APPROVAL_PROGRESS_SMS_SERVICE, EXPENSE_APPROVAL_SMS_SERVICE, APPROVAL_PROGRESS_SERVICE, AUDIT_SMS_DELIVERY]
+        .map(file => dutySmsMethods(root, file))
+    ]);
+    const handlersMatch = (controller, source) => {
+      const handlers = parseSource("approval-sms-proof.ts", `class Proof { ${source} }`).body[0].body.body;
+      return handlers.every(handler => directRegistrationAstShape(controller.get(handler.key.name)) === directRegistrationAstShape(handler));
+    };
+    if (!handlersMatch(approvalController, `
+      @Get(":instanceId/duty-sms")
+      async dutySmsStatus(@Param("instanceId") id: string, @CurrentUser() user: AuthenticatedUser) {
+        return { notice: await this.notifications?.status(id, user.id) ?? null };
+      }
+      @Post(":instanceId/duty-sms/retry")
+      retryDutySms(@Param("instanceId") id: string, @CurrentUser() user: AuthenticatedUser, @Body() input: RetryDutyNotificationDto) {
+        if (!this.notifications) throw new BadRequestException("短信通知暂不可用");
+        return this.notifications.retry(id, user.id, input.attemptId);
+      }
+    `) || !handlersMatch(expenseController, `
+      @Get(":claimId/approval-duty-sms")
+      async approvalDutySmsStatus(
+        @Param("claimId") id: string, @CurrentUser() user: AuthenticatedUser,
+        @Query("approvalDutyIndex", approvalDutyIndexPipe) approvalDutyIndex?: number,
+        @Query("approvalInstanceId") approvalInstanceId?: string
+      ) {
+        this.assertApprovalSmsCoordinates(approvalDutyIndex, approvalInstanceId);
+        return { notice: await this.dutyNotifications?.approvalStatus(id, user.id, approvalDutyIndex, approvalInstanceId) ?? null };
+      }
+      @Post(":claimId/approval-duty-sms/retry")
+      retryApprovalDutySms(
+        @Param("claimId") id: string, @CurrentUser() user: AuthenticatedUser,
+        @Body() body: RetryDutyNotificationDto,
+        @Query("approvalDutyIndex", approvalDutyIndexPipe) approvalDutyIndex?: number,
+        @Query("approvalInstanceId") approvalInstanceId?: string
+      ) {
+        if (!this.dutyNotifications) throw new BadRequestException("短信通知暂不可用");
+        this.assertApprovalSmsCoordinates(approvalDutyIndex, approvalInstanceId);
+        return this.dutyNotifications.retryApproval(id, user.id, body.attemptId, approvalDutyIndex, approvalInstanceId);
+      }
+    `) ||
+        !auditDutyDeliveryAuthorityIsProven(delivery) ||
+        !directRegistrationMatches(transition.get("status"), "{ return auditDutyNoticeStatus(this.noticeAccess(), roundId, actorId); }") ||
+        !directRegistrationMatches(transition.get("retry"), `{
+          const result = await retryFailedAuditDutyNotice(this.noticeAccess(), roundId, actorId, attemptId);
+          if (result.enqueued) await this.afterCommit();
+          return (await this.status(roundId, actorId)) ?? result.status;
+        }`) ||
+        !directRegistrationMatches(transition.get("noticeAccess"), `{
+          return {
+            prisma: this.prisma, sms: this.sms, kind,
+            lockDuty: (tx: Prisma.TransactionClient, id: string) => this.lockRound(tx, id),
+            currentMessage: (tx: Prisma.TransactionClient, intent: AuditLog) => this.currentMessage(tx, intent)
+          };
+        }`) ||
+        !directRegistrationMatches(transition.get("currentMessage"), `{
+          const data = intent.metadata as Prisma.JsonObject | null;
+          if (!intent.businessId || typeof data?.recipientId !== "string" ||
+              (data.duty !== "correction" && typeof data.duty !== "number")) return null;
+          const duties = await this.progress.transitionSmsDuties(tx, intent.businessId, data.duty === "correction");
+          const user = duties.find(row => row.duty === data.duty)?.recipients.find(row => row.id === data.recipientId);
+          return user ? { phone: user.phone ?? "" } : null;
+        }`) ||
+        !directRegistrationMatches(expense.get("approvalStatus"), `{
+          return auditDutyNoticeStatus(this.approvalNoticeAccess(approvalDutyIndex, approvalInstanceId), id, actorId);
+        }`) ||
+        !directRegistrationMatches(expense.get("retryApproval"), `{
+          const result = await retryFailedAuditDutyNotice(this.approvalNoticeAccess(approvalDutyIndex, approvalInstanceId), id, actorId, attemptId);
+          if (result.enqueued) await this.afterCommit();
+          return (await this.approvalStatus(id, actorId, approvalDutyIndex, approvalInstanceId)) ?? result.status;
+        }`) ||
+        !directRegistrationMatches(expense.get("approvalNoticeAccess"), `{
+          const scope: Record<string, string | number> = {};
+          if (approvalInstanceId !== undefined) scope.approvalInstanceId = approvalInstanceId;
+          if (approvalDutyIndex !== undefined) scope.approvalDutyIndex = approvalDutyIndex;
+          else if (approvalInstanceId !== undefined) scope.duty = "correction";
+          return {
+            prisma: this.prisma, sms: this.sms, kind: approvalKind, scope,
+            lockDuty: (tx: Prisma.TransactionClient, id: string) => this.lockDuty(tx, id),
+            currentMessage: (tx: Prisma.TransactionClient, intent: AuditLog) => this.currentApprovalMessage(tx, intent)
+          };
+        }`)) return false;
+    const statementsMatch = (body, expected) => {
+      let position = -1;
+      return expected.every(statement => {
+        position = body.findIndex((node, index) => index > position && directRegistrationMatches(node, statement));
+        return position >= 0;
+      });
+    };
+    const resolveExpense = expense.get("currentApprovalMessage")?.body ?? [];
+    const correction = resolveExpense.find(node => node.type === "IfStatement" &&
+      directRegistrationExpression(node.test, 'data?.duty === "correction"'))?.consequent?.body ?? [];
+    const retry = delivery.get("retryFailedAuditDutyNotice")?.body?.[0]?.argument?.arguments?.[0]?.body?.body ?? [];
+    return directRegistrationMatches(delivery.get("currentAuditDutyAttempt"), `{
+      const {kind, scope} = access;
+      const rows = await tx.$queryRaw<AuditLog[]>(Prisma.sql\`
+    SELECT queued.* FROM "AuditLog" queued
+    WHERE queued."businessType" = \${kind} AND queued."businessId" = \${businessId}
+      AND queued."action" = 'queued' AND queued."metadata"->>'recipientId' = \${actorId}
+      \${scope ? Prisma.sql\`AND queued."metadata" @> \${JSON.stringify(scope)}::jsonb\` : Prisma.empty}
+      AND NOT EXISTS (SELECT 1 FROM "AuditLog" retry
+        WHERE retry."businessType" = queued."businessType" AND retry."businessId" = queued."businessId"
+          AND retry."action" = 'queued' AND retry."metadata"->>'retryOf' = queued."id")
+    ORDER BY queued."createdAt" DESC, queued."id" DESC LIMIT 1
+  \`);
+      return rows[0];
+    }`) &&
+      statementsMatch(delivery.get("readAuditDutyStatus")?.body ?? [], [
+        'const status = outcome === "failed" || outcome === "unknown" || outcome === "accepted" || outcome === "cancelled" ? outcome : events.length ? "unknown" : "queued";',
+        'return { attemptId: attempt.id, status, canRetry: available && status === "failed" };'
+      ]) &&
+      staticMemberPath(retry[8]?.declarations?.[0]?.init?.argument?.callee) === "tx.auditLog.createMany" &&
+      statementsMatch(retry.slice(0, 8), [
+        "await access.lockDuty(tx, businessId);",
+        "const attempt = await currentAuditDutyAttempt(tx, access, businessId, actorId);",
+        `if (!attempt || !await canAccessNotice(access, tx, attempt)) {
+          throw new ConflictException("当前待办或短信记录已变化，请刷新");
+        }`,
+        "const status = await readAuditDutyStatus(tx, access.kind, attempt, access.sms.available());",
+        'if (!status.canRetry) throw new ConflictException("仅确认发送失败的短信可以重试");'
+      ]) &&
+      statementsMatch(progress.get("transitionSmsDuties")?.body ?? [], [
+        'if (!round || !Object.hasOwn(flowTypes, round.businessType) || flowTypes[round.businessType] !== round.flowType) return [];',
+        'if (latest?.id !== id) return [];',
+        'if (ctx.retiredReminderReason || !("status" in ctx.business) || (ctx.business.projectId && !ctx.project?.isActive)) return [];',
+        `if (correction) {
+          const action = fundExecution ? "return_to_applicant" : "reject";
+          if (!ctx.logs.some(log => log.action === action)) return [];
+          const applicant = ctx.byId.get(round.applicantUserId);
+          return applicant?.isActive ? [{ duty: "correction", recipients: [applicant] }] : [];
+        }`,
+        `return activeApprovalNodeIndexes(round.frozenNodes, round.currentNodeIndex).map(duty => ({
+          duty, recipients: ctx.currentPendingByDuty?.[duty] ?? ctx.pending.filter(user => ctx.nodeIds[duty]?.includes(user.id))
+        }));`
+      ]) &&
+      statementsMatch(correction, [
+        'if (!claim || claim.claimType === "loan" || claim.voidedAt || !["draft", "rejected"].includes(claim.status)) return null;',
+        `if (round?.id !== instanceId || round.applicantUserId !== recipientId ||
+          round.status !== (claim.status === "draft" ? "returned" : "rejected")) return null;`,
+        'return user?.isActive ? { phone: user.phone ?? "" } : null;'
+      ]) &&
+      statementsMatch(resolveExpense, [
+        `if (!claim || !supportsExpenseParallelApproval(claim) || claim.voidedAt ||
+          claim.status !== "approval_pending" || claim.approvalInstanceId !== instanceId) return null;`,
+        `if (round?.status !== "in_progress" || round.businessId !== claim.id || round.businessType !== "expense_claim" ||
+          round.flowType !== "expense_claim.approve" || !isParallelApprovalRound(nodes) ||
+          !activeApprovalNodeIndexes(nodes, 0).includes(nodeIndex)) return null;`,
+        "if (!user?.isActive) return null;",
+        "const roleScopes = await loadExpenseApprovalRoleScopes(tx, recipientId, claim.projectId);",
+        "const identity = resolveExpenseParallelDutyIdentity({ node, actorUserId: recipientId, actorRoleScopes: roleScopes });",
+        "if (!identity) return null;",
+        "if (claim.projectId && !project?.isActive) return null;"
+      ]);
+  } catch {
+    return false;
+  }
+}
+
+function proveDutySmsRetry({ action, wrapper, context }) {
+  const keys = (method, suffix) => DUTY_SMS_DOMAINS.map(row => dutySmsRoute(method, row, suffix));
+  if (action.id !== DUTY_SMS_ACTION || action.sourceFile !== DUTY_SMS_PANEL ||
+      action.trigger.handler !== "retry" || action.capability.kind !== "server_boolean" ||
+      action.capability.source !== "notice.canRetry" ||
+      wrapper.apiFile !== DUTY_SMS_API || wrapper.name !== "retryDutySms" ||
+      normalizedMainRequests(wrapper).map(request => request.normalizedKey).sort().join() !== keys("POST", "/retry").join()) return null;
+  const page = context.symbols;
+  const retry = fundAdvanceNode(page, "retry");
+  const refresh = fundAdvanceNode(page, "refresh");
+  const notice = fundAdvanceNode(page, "notice");
+  if (!directRegistrationExpression(notice, "ref<DutySmsStatus | null>(null)") ||
+      !directRegistrationMatches(retry, `async function retry() {
+        if (!notice.value?.canRetry || notice.value.status !== "failed" || busy.value) return;
+        const request = generation;
+        busy.value = true;
+        message.value = "";
+        try {
+          const next = await retryDutySms(props.domain, props.businessId, notice.value.attemptId, props.expectedApprovalInstanceId, props.dutyKey);
+          if (request === generation) notice.value = next;
+        } catch (error) {
+          if (request === generation) message.value = formatUnknownApiError(error, "重试申请未能确认，请刷新状态");
+        } finally {
+          busy.value = false;
+        }
+      }`) ||
+      !directRegistrationMatches(refresh, `async function refresh() {
+        const request = ++generation;
+        const next = await fetchDutySms(props.domain, props.businessId, props.dutyKey, props.expectedApprovalInstanceId).catch(() => null);
+        if (request === generation) notice.value = next;
+      }`) ||
+      importedWrapperCalls([retry], wrapper, context).length !== 1) return null;
+  const previousCoordinateReset = [];
+  walkEstree(page.ast, node => {
+    if (node.type === "ExpressionStatement" && directRegistrationMatches(node, `watch(() => [props.domain, props.businessId, props.expectedApprovalInstanceId, props.dutyKey], () => {
+      notice.value = null;
+      message.value = "";
+      void refresh();
+    }, { immediate: true });`)) previousCoordinateReset.push(node);
+  });
+  if (previousCoordinateReset.length !== 1) return null;
+  const read = { apiFile: DUTY_SMS_API, name: "fetchDutySms" };
+  const readIdentity = wrapperIdentity(read.apiFile, read.name);
+  const readWrapper = context.wrapperIndex.get(readIdentity);
+  if (!readWrapper || normalizedMainRequests(readWrapper).map(request => request.normalizedKey).sort().join() !== keys("GET", "").join() ||
+      importedWrapperCalls([refresh], read, context).length !== 1) return null;
+  const readerAst = context.asts.get(DUTY_SMS_API);
+  if (!readerAst) return null;
+  const apiSymbols = buildSymbolContext(readerAst, DUTY_SMS_API, context.sourceFileSet);
+  const reader = fundAdvanceNode(apiSymbols, "fetchDutySms");
+  if (!directRegistrationMatches(reader, `async function fetchDutySms(domain: DutySmsDomain, id: string, dutyKey?: string, expectedApprovalInstanceId?: string): Promise<DutySmsStatus | null> {
+    const response = await apiFetch(domain === "expense-claim-approvals"
+      ? \`/expense-claims/\${encodeURIComponent(id)}/approval-duty-sms?\${expenseApprovalScope(expectedApprovalInstanceId, dutyKey)}\`
+      : path(domain, id, dutyKey));
+    if (!response.ok) return null;
+    return ((await response.json()) as { notice: DutySmsStatus | null }).notice;
+  }`) ||
+      !directRegistrationMatches(fundAdvanceNode(apiSymbols, "expenseApprovalScope"), `function expenseApprovalScope(expectedApprovalInstanceId?: string, dutyKey?: string) {
+        if (!expectedApprovalInstanceId) throw new Error("当前费用审批轮次无法确认，请刷新状态");
+        const scope = new URLSearchParams({ approvalInstanceId: expectedApprovalInstanceId });
+        if (dutyKey !== undefined) scope.set("approvalDutyIndex", dutyKey);
+        return scope.toString();
+      }`)) return null;
+  const writer = fundAdvanceNode(apiSymbols, "retryDutySms");
+  if (!directRegistrationMatches(writer?.body?.body?.[0], `if (domain === "fund-accounts/registrations" && !expectedApprovalInstanceId) {
+        throw new Error("当前余额复核轮次无法确认，请刷新状态");
+      }`) ||
+      !directRegistrationMatches(writer?.body?.body?.[1], 'const body = domain === "fund-accounts/registrations" ? { attemptId, expectedApprovalInstanceId } : { attemptId };') ||
+      !directRegistrationMatches(writer?.body?.body?.[2], `const response = await apiFetch(domain === "expense-claim-approvals"
+        ? \`/expense-claims/\${encodeURIComponent(id)}/approval-duty-sms/retry?\${expenseApprovalScope(expectedApprovalInstanceId, dutyKey)}\`
+        : \`\${path(domain, id, dutyKey)}/retry\`, {
+        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body)
+      });`) || !proveApprovalProgressSmsConsumers(context)) return null;
+  for (const [domain, relativeFile, id] of DUTY_SMS_DOMAINS) {
+    if (APPROVAL_SMS_AUTHORITIES[domain]) continue;
+    const file = `${WEB_SOURCE_ROOT}/${relativeFile}`;
+    const ast = context.asts.get(file);
+    if (!ast) return null;
+    const parent = buildSymbolContext(ast, file, context.sourceFileSet);
+    const bindings = topLevelScopeVariables(parent.scopeManager, "DutySmsStatusPanel");
+    const actualImport = bindings.length === 1 && parent.importsByBinding.get(bindings[0]);
+    const instances = [];
+    walkEstree(ast.templateBody, node => {
+      if (node.type === "VElement" && node.rawName === "DutySmsStatusPanel") instances.push(node);
+    });
+    const domainAttribute = instances[0]?.startTag?.attributes?.find(attr => !attr.directive && attr.key.name === "domain");
+    if (domain === PRINCIPAL_SMS_DOMAIN) {
+      const [review, payment] = instances;
+      const attribute = (node, name) => node?.startTag?.attributes?.find(attr => !attr.directive && attr.key.name === name)?.value?.value;
+      if (actualImport?.kind !== "default" || actualImport.sourceFile !== DUTY_SMS_PANEL || instances.length !== 2 ||
+          !instances.every(node => attribute(node, "domain") === domain && directRegistrationExpression(
+            directiveExpression(elementDirective(node, "bind", "business-id")), id)) ||
+          !directRegistrationExpression(directiveExpression(elementDirective(review, "if")), "actorId") ||
+          !directRegistrationExpression(directiveExpression(elementDirective(review, "bind", "duty-key")), '`review-${duty.nodeIndex}`') ||
+          !directRegistrationExpression(directiveExpression(elementDirective(payment, "if")), "actorId && application.canPay") ||
+          attribute(payment, "duty-key") !== "pay") return null;
+      continue;
+    }
+    const ledgerGate = LEDGER_SMS_AUTHORITIES[domain]?.[5];
+    if (ledgerGate && !directRegistrationExpression(directiveExpression(elementDirective(instances[0], "if")), ledgerGate)) return null;
+    if (domain === "fund-accounts/registrations" &&
+        (!directRegistrationExpression(directiveExpression(elementDirective(instances[0], "if")), "auth.user?.id && review?.canConfirm && review.approvalInstanceId") ||
+         !directRegistrationExpression(directiveExpression(elementDirective(instances[0], "bind", "expected-approval-instance-id")), "review.approvalInstanceId"))) return null;
+    if (domain === "contract-bank-verifications" && !directRegistrationExpression(
+      directiveExpression(elementDirective(instances[0], "if")), 'auth.user?.id && data?.canReview && r.canConfirm && r.status === "pending_confirm"')) return null;
+    if (domain === "fund-account-transfers" && !directRegistrationExpression(
+      directiveExpression(elementDirective(instances[0], "if")), "actorId && (transfer.canReceive || transfer.canResolveRejection)")) return null;
+    if (domain === "payments" &&
+        (!directRegistrationExpression(directiveExpression(elementDirective(instances[0], "if")), "auth.user?.id && paymentReviewEnabled") ||
+         !directRegistrationExpression(fundAdvanceNode(parent, "paymentReviewEnabled"), `computed(() => {
+            const coordinates = paymentApprovalCapability.value?.reviewApprovalContext;
+            return (
+              paymentDetail.value?.id === paymentApprovalCapability.value?.id &&
+              Boolean(paymentApprovalCapability.value?.lifecycleUpdatedAt) &&
+              paymentApprovalCapability.value?.lifecycleUpdatedAt === coordinates?.expectedPaymentUpdatedAt &&
+              Boolean(coordinates?.expectedApprovalInstanceId) &&
+              Number.isInteger(coordinates?.expectedNodeIndex) &&
+              (coordinates?.expectedNodeIndex ?? -1) >= 0 &&
+              Boolean(coordinates?.expectedApprovalUpdatedAt) &&
+              paymentReviewActionEnabled("review_approval")
+            );
+         })`))) return null;
+    if (domain === "payment-executions" &&
+        (!directRegistrationExpression(directiveExpression(elementDirective(instances[0], "if")), "registrationAllowed") ||
+         !directRegistrationExpression(fundAdvanceNode(parent, "registrationAllowed"), `computed(() =>
+            registrationPermission.value?.canRegisterPayment === true && registrationPermissionOwner.value === auth.user?.id &&
+            registrationPermissionRoute.value === route.fullPath && registrationPermission.value.paymentId === selected.value?.paymentId)`))) return null;
+    if (actualImport?.kind !== "default" || actualImport.sourceFile !== DUTY_SMS_PANEL || instances.length !== 1 ||
+        domainAttribute?.value?.value !== domain ||
+        !directRegistrationExpression(directiveExpression(elementDirective(instances[0], "bind", "business-id")), id)) return null;
+  }
+  return { verified: true, kind: "duty_sms_retry", capabilityWitness: true, capabilitySources: new Set([readIdentity]), capabilitySourceFile: DUTY_SMS_PANEL };
+}
+
+function dutySmsReadAndWriteAuthoritiesMatch({ mutationBindings, webManifest, nestManifest, registeredPaymentSmsAuthority, fundTransferSmsAuthority, bankDutySmsAuthority, ledgerDutySmsAuthority, balanceDutySmsAuthority, paymentApprovalSmsAuthority, principalDutySmsAuthority, approvalSmsAuthority }) {
+  const readKeys = DUTY_SMS_DOMAINS.map(row => dutySmsRoute("GET", row));
+  const association = { apiFile: DUTY_SMS_API, wrapper: "fetchDutySms", normalizedKeys: readKeys,
+    productionConsumers: [DUTY_SMS_PANEL] };
+  const wrapper = trustedWebWrapperForAssociation({ manifest: webManifest, association });
+  if (!wrapper || mutationBindings.length !== readKeys.length ||
+      normalizedMainRequests(wrapper).map(request => request.normalizedKey).sort().join() !== readKeys.join()) return false;
+  const index = buildNestRouteIndex(nestManifest.routes);
+  const requiredProjectAction = {
+    "expense-claims": "expense_claim.payment.execute",
+    "settlements": "settlement.archive.confirm",
+    "spot-procurement-payments": "spot_procurement.payment.execute"
+  };
+  return readKeys.every((key, i) => {
+    const binding = mutationBindings.find(row => row.normalizedKey === key.replace("GET ", "POST ") + "/retry");
+    const read = index.get(key);
+    const write = binding && index.get(binding.normalizedKey);
+    const [domain] = DUTY_SMS_DOMAINS[i];
+    const approval = APPROVAL_SMS_AUTHORITIES[domain];
+    if (approval) {
+      const [file, controller, readHandler, writeHandler] = approval;
+      return approvalSmsAuthority && binding?.causalVerified && [key, binding.normalizedKey].every(
+        routeKey => nestRouteAssociationIsTrusted(nestManifest, routeKey)) &&
+        [[read, readHandler], [write, writeHandler]].every(([route, handler]) =>
+          route?.sourceFile === file && route.handler === handler &&
+          route.controller === controller && route.authentication === "authenticated" && !route.isPublic &&
+          route.guardAuthorization === "authenticated_only" && route.requiredProjectAction === null &&
+          route.authorizationCombination === null && !route.requiredPositions.length);
+    }
+    const ledger = LEDGER_SMS_AUTHORITIES[domain];
+    if (ledger) {
+      const [file, controller] = ledger;
+      return ledgerDutySmsAuthority && binding?.causalVerified && nestRouteAssociationIsTrusted(nestManifest, key) &&
+        [[read, "dutySms"], [write, "retryDutySms"]].every(([route, handler]) =>
+          route?.sourceFile === ledgerSmsController(file) && route.handler === handler &&
+          route.controller === controller && route.authentication === "authenticated" && !route.isPublic &&
+          route.guardAuthorization === "authenticated_only" && route.requiredProjectAction === null &&
+          route.authorizationCombination === null && !route.requiredPositions.length);
+    }
+    if (domain === PRINCIPAL_SMS_DOMAIN) {
+      return principalDutySmsAuthority && binding?.causalVerified && nestRouteAssociationIsTrusted(nestManifest, key) &&
+        [[read, "dutySms"], [write, "retryDutySms"]].every(([route, handler]) =>
+          route?.sourceFile === PRINCIPAL_SMS_CONTROLLER && route.handler === handler &&
+          route.controller === "FundPrincipalReturnController" && route.authentication === "authenticated" && !route.isPublic &&
+          route.guardAuthorization === "authenticated_only" && route.requiredProjectAction === null &&
+          route.authorizationCombination === null && !route.requiredPositions.length);
+    }
+    if (domain === "fund-accounts/registrations") {
+      return balanceDutySmsAuthority && binding?.causalVerified && nestRouteAssociationIsTrusted(nestManifest, key) &&
+        [[read, "reviewDutySms"], [write, "retryReviewDutySms"]].every(([route, handler]) =>
+          route?.sourceFile === BALANCE_SMS_CONTROLLER && route.handler === handler &&
+          route.controller === "FundAccountController" && route.authentication === "authenticated" && !route.isPublic &&
+          route.guardAuthorization === "project_action" && route.requiredProjectAction === "fund_account.balance.review" &&
+          route.authorizationCombination === null && !route.requiredPositions.length);
+    }
+    if (key === "GET /contract-bank-verifications/:param/duty-sms") {
+      return bankDutySmsAuthority && binding?.causalVerified && nestRouteAssociationIsTrusted(nestManifest, key) &&
+        [[read, "dutySmsStatus"], [write, "retryDutySms"]].every(([route, handler]) =>
+          route?.sourceFile === BANK_SMS_CONTROLLER && route.handler === handler &&
+          route.controller === "ContractBankVerificationController" && route.authentication === "authenticated" && !route.isPublic &&
+          route.guardAuthorization === "authenticated_only" && route.requiredProjectAction === null &&
+          route.authorizationCombination === null && !route.requiredPositions.length);
+    }
+    if (key === "GET /fund-account-transfers/:param/duty-sms") {
+      return fundTransferSmsAuthority && binding?.causalVerified && nestRouteAssociationIsTrusted(nestManifest, key) &&
+        [[read, "dutySmsStatus"], [write, "retryDutySms"]].every(([route, handler]) =>
+          route?.sourceFile === FUND_TRANSFER_SMS_CONTROLLER && route.handler === handler &&
+          route.controller === "FundAccountTransferController" && route.authentication === "authenticated" && !route.isPublic &&
+          route.guardAuthorization === "positions" && route.requiredProjectAction === null && route.authorizationCombination === null &&
+          [...route.requiredPositions].sort().join() === FUND_TRANSFER_SMS_POSITIONS.join());
+    }
+    if (domain === "payments") {
+      return paymentApprovalSmsAuthority && binding?.causalVerified && nestRouteAssociationIsTrusted(nestManifest, key) &&
+        [[read, "approvalDutySms"], [write, "retryApprovalDutySms"]].every(([route, handler]) =>
+          route?.sourceFile === PAYMENT_APPROVAL_SMS_CONTROLLER && route.handler === handler &&
+          route.controller === "PaymentController" && route.authentication === "authenticated" && !route.isPublic &&
+          route.guardAuthorization === "authenticated_only" && route.requiredProjectAction === null &&
+          route.authorizationCombination === null && !route.requiredPositions.length);
+    }
+    if (domain === "payment-executions") {
+      return registeredPaymentSmsAuthority && binding?.causalVerified && nestRouteAssociationIsTrusted(nestManifest, key) &&
+        [[read, "dutySmsStatus"], [write, "retryDutySms"]].every(([route, handler]) =>
+          route?.sourceFile === PAYMENT_SMS_CONTROLLER && route.handler === handler &&
+          route.controller === "RegisteredPaymentExecutionController" && route.authentication === "authenticated" && !route.isPublic &&
+          route.guardAuthorization === "authenticated_only" && route.requiredProjectAction === null &&
+          route.authorizationCombination === null && !route.requiredPositions.length);
+    }
+    return binding?.causalVerified && nestRouteAssociationIsTrusted(nestManifest, key) &&
+      [read, write].every(route => route?.authentication === "authenticated" && !route.isPublic &&
+        route.guardAuthorization === "project_action" && route.requiredProjectAction === requiredProjectAction[domain] &&
+        route.authorizationCombination === null && !route.requiredPositions.length);
+  });
+}
+
+const MULTI_SMS_ACTION = "multi-duty-sms.retry";
+const MULTI_SMS_PANEL = `${WEB_SOURCE_ROOT}/components/MultiDutySmsStatusPanel.vue`;
+const MULTI_SMS_API = `${WEB_SOURCE_ROOT}/api/multi-duty-sms.api.ts`;
+const CONTRACT_SMS_CONTROLLER = "services/api/src/contract/contract.controller.ts";
+const CONTRACT_SMS_SERVICE = "services/api/src/contract/contract-duty-notification.service.ts";
+const CONTRACT_WORK_COMPLETION_SMS_SERVICE = "services/api/src/contract/contract-work-completion-notification.service.ts";
+const COMPANY_SMS_CONTROLLER = "services/api/src/company-transfer/company-transfer.controller.ts";
+const COMPANY_SMS_SERVICE = "services/api/src/company-transfer/company-transfer-notification.service.ts";
+const GENERAL_PROCUREMENT_SMS_CONTROLLER = "services/api/src/general-procurement/general-procurement.controller.ts";
+const GENERAL_PROCUREMENT_SMS_SERVICE = "services/api/src/general-procurement/general-procurement-request-notification.service.ts";
+const SPOT_REQUEST_SMS_CONTROLLER = "services/api/src/spot-procurement/spot-procurement.controller.ts";
+const SPOT_REQUEST_SMS_SERVICE = "services/api/src/spot-procurement/spot-procurement-approval-notification.service.ts";
+const MULTI_SMS_DOMAINS = [
+  ["company-transfers", `${WEB_SOURCE_ROOT}/pages/fund-movements/CompanyTransferPage.vue`,
+    "r.id", "auth.user?.id && (r.canApprove || r.canExecute)", COMPANY_SMS_CONTROLLER, "CompanyTransferController"],
+  ["contracts", `${WEB_SOURCE_ROOT}/pages/contracts/ContractDetailPage.vue`,
+    "contractDetail.contractVersionId", "auth.user?.id && !contractDetail.historyReadOnly", CONTRACT_SMS_CONTROLLER, "ContractController"],
+  ["general-procurements", `${WEB_SOURCE_ROOT}/pages/general-procurement/GeneralProcurementDetailPage.vue`,
+    "detail.id", 'auth.user?.id && detail.id === route.params.procurementId && detail.requestProtocolVersion === 2 && (detail.canReview || detail.canProcure || (detail.status === "returned" && detail.canEdit))',
+    GENERAL_PROCUREMENT_SMS_CONTROLLER, "GeneralProcurementController", "dutySms"],
+  ["spot-procurements", `${WEB_SOURCE_ROOT}/pages/spot-procurement/SpotProcurementDetailPage.vue`,
+    "detail.procurement.id", 'auth.user?.id && detail.procurement.id === procurementId && detail.currentVersion.requestProtocolVersion === 2 && (actionEnabled("review_approval") || detail.purchaseTask?.canHandle || (detail.procurement.status === "draft" && detail.currentVersion.versionNo > 1 && actionEnabled("edit_draft")))',
+    SPOT_REQUEST_SMS_CONTROLLER, "SpotProcurementController", "dutySms"]
+];
+const multiSmsKeys = (method, suffix = "") =>
+  MULTI_SMS_DOMAINS.map(([domain]) => `${method} /${domain}/:param/duty-sms${suffix}`);
+
+async function companyDutySmsAuthorityIsProven(root) {
+  try {
+    const [controller, service] = await Promise.all(
+      [COMPANY_SMS_CONTROLLER, COMPANY_SMS_SERVICE].map(file => dutySmsMethods(root, file))
+    );
+    if (!directRegistrationMatches(controller.get("dutySmsStatus"), "{ return {notices:await this.notifications?.notificationStatus(id,actor.id)??[]}; }") ||
+        !directRegistrationMatches(controller.get("retryDutySms"), `{
+          if(!this.notifications)throw new BadRequestException("短信通知暂不可用");
+          return this.notifications.retry(id,actor.id,input.attemptId);
+        }`) ||
+        !directRegistrationMatches(service.get("notificationStatus"), `{
+          return this.prisma.$transaction(async tx=>(await this.currentNotices(tx,id,actorId)).map(row=>row.notice));
+        }`) ||
+        !directRegistrationMatches(service.get("currentTarget"), `{
+          if (row.businessType === correctionKind) return this.currentCorrectionMessage(tx,row);
+          if (row.businessType !== finalReviewKind) return this.currentCashMessage(tx,row);
+          return noticeMetadata(row).nodeIndex === undefined ? this.currentMessage(tx,row) : this.currentParallelMessage(tx,row);
+        }`) ||
+        !directRegistrationMatches(service.get("canHandleCash"), `{
+          return companyTransferCashAccess(tx,this.visibility,recipientId,[transfer.sourceProjectId,transfer.destinationProjectId],
+            await companyTransferRoles(tx,recipientId));
+        }`)) return false;
+    const has = (name, statement) => (service.get(name)?.body ?? []).some(node => directRegistrationMatches(node, statement));
+    if (!has("currentMessage", "if (!transfer || transfer.requiresParallelRepaymentApproval || !companyTransferFinalReviewer(transfer,round,recipientId,await companyTransferRoles(tx,recipientId))) return null;") ||
+        !has("currentCashMessage", 'if (!transfer || transfer.status !== "approved" || !await this.canHandleCashDuty(tx,transfer,recipientId,key)) return null;') ||
+        !has("currentCashMessage", "const duty=currentCompanyTransferCashDuties(transfer,events,recipientId).find(item=>item.key===key);") ||
+        !has("currentCashMessage", "if (!duty) return null;") ||
+        !directRegistrationMatches(service.get("canHandleCashDuty"), `{
+          if (await this.canHandleCash(tx,transfer,recipientId)) return true;
+          return key==="outgoing" && transfer.requiresParallelRepaymentApproval && !!transfer.sourceProjectId &&
+            (await companyTransferRoles(tx,recipientId)).includes("comprehensive_director") &&
+            (await this.visibility.visibleProjectIdsInTransaction(tx,recipientId)).includes(transfer.sourceProjectId);
+        }`) ||
+        !has("currentParallelMessage", "if (!transfer || !this.isCurrentParallelRound(transfer,round)) return null;") ||
+        !has("currentParallelMessage", `const eligible = await companyRepaymentApprovals(tx,this.visibility,recipientId,transfer.sourceProjectId!,
+          transfer.applicantUserId,round.frozenNodes,round.currentNodeIndex);`) ||
+        !has("currentParallelMessage", "if (!eligible.some(duty=>duty.nodeIndex===nodeIndex)) return null;") ||
+        !has("currentCorrectionMessage", `if (!intent.businessId || typeof recipientId!=="string" || typeof key!=="string" ||
+          !(await companyTransferRoles(tx,recipientId)).includes("finance_director")) return null;`) ||
+        !has("currentCorrectionMessage", "const duty = transfer && await this.correctionDuty(tx,transfer,key);") ||
+        !has("currentCorrectionMessage", "if (!transfer || !duty) return null;")) return false;
+    const current = service.get("currentNotices")?.body ?? [];
+    if (!directRegistrationMatches(current[0], `const rows=await tx.$queryRaw<AuditLog[]>(Prisma.sql\`
+      SELECT queued.* FROM "AuditLog" queued
+      WHERE queued."businessType" IN (\${finalReviewKind},\${cashDutyKind},\${correctionKind}) AND queued."businessId"=\${id}
+        AND queued."action"='queued' AND queued."metadata"->>'recipientId'=\${actorId}
+      ORDER BY queued."createdAt",queued."id"
+    \`);`)) return false;
+    const loop = current.find(statement => statement.type === "ForOfStatement");
+    if (!directRegistrationExpression(loop?.right, "rows") ||
+        !directRegistrationMatches(loop.body.body[1], "if(!noticeKind(kind) || originalNoticeId(origin)!==origin.id)continue;") ||
+        !directRegistrationMatches(loop.body.body[2], "const message=await this.currentTarget(tx,origin);") ||
+        !directRegistrationMatches(loop.body.body[3], "if(!message)continue;")) return false;
+    const attempt = service.get("retry")?.body?.[0]?.declarations?.[0]?.init?.argument;
+    const retry = attempt?.arguments?.[0]?.body?.body ?? [];
+    return directRegistrationExpression(attempt?.callee, "this.prisma.$transaction") &&
+      directRegistrationMatches(retry[1], `if(!previous || !noticeKind(previous.businessType) || previous.action!=="queued" || previous.businessId!==id ||
+        noticeMetadata(previous).recipientId!==actorId)throw new ConflictException("当前待办或短信记录已变化，请刷新");`) &&
+      directRegistrationMatches(retry[2], "await lockCompanyTransfers(tx);") &&
+      directRegistrationMatches(retry[3], "const current=(await this.currentNotices(tx,id,actorId)).find(row=>row.chain.includes(attemptId));") &&
+      directRegistrationMatches(retry[4], 'if(!current)throw new ConflictException("当前待办或短信记录已变化，请刷新");') &&
+      directRegistrationMatches(retry[5], "if(current.notice.attemptId!==attemptId)return {notice:current.notice,enqueued:false};") &&
+      directRegistrationMatches(retry[6], 'if(!current.notice.canRetry)throw new ConflictException("仅确认发送失败的短信可以重试");') &&
+      staticMemberPath(retry[8]?.declarations?.[0]?.init?.argument?.callee) === "tx.auditLog.createMany";
+  } catch {
+    return false;
+  }
+}
+
+async function generalProcurementDutySmsAuthorityIsProven(root) {
+  try {
+    const [controller, service] = await Promise.all([GENERAL_PROCUREMENT_SMS_CONTROLLER, GENERAL_PROCUREMENT_SMS_SERVICE]
+      .map(file => dutySmsMethods(root, file)));
+    if (!directRegistrationMatches(controller.get("dutySms"), "{ return this.notifications.status(id, user.id); }") ||
+        !directRegistrationMatches(controller.get("retryDutySms"), "{ return this.notifications.retry(id, user.id, body.attemptId); }") ||
+        !directRegistrationMatches(service.get("status"), `{
+          return this.prisma.$transaction(async tx => ({
+            notices: (await this.currentNotices(tx, id, actorId)).map(notice => notice.status)
+          }));
+        }`) ||
+        !directRegistrationMatches(service.get("canHandleIntent"), `{
+          if (row.requestProtocolVersion !== 2 || row.approvalInstanceId !== round.id || round.businessType !== "general_procurement" || round.businessId !== row.id
+            || typeof data.recipientId !== "string" || typeof data.nodeIndex !== "number") return false;
+          if (data.stage === "approval") {
+            return row.status === "approval_pending" && round.status === "in_progress"
+              && Boolean(await generalRequestDutyIdentity(tx, this.visibility, row, round, data.nodeIndex, data.recipientId));
+          }
+          if (!Array.isArray(round.frozenNodes) || data.nodeIndex !== round.frozenNodes.length) return false;
+          if (data.stage === "procurement") {
+            return row.status === "approved_pending_procurement" && round.status === "approved"
+              && (await generalRequestActor(tx, this.visibility, data.recipientId, null)).globalRoleKeys.includes("comprehensive_director");
+          }
+          return data.stage === "correction" && row.status === "returned" && round.status === "returned" && data.recipientId === row.applicantUserId
+            && (!row.projectId || (await this.visibility.visibleRequestedProjectIdsInTransaction(tx, row.applicantUserId, [row.projectId])).includes(row.projectId));
+        }`)) return false;
+    const current = service.get("currentNotices")?.body ?? [];
+    const loop = current.find(statement => statement.type === "ForOfStatement");
+    if (!directRegistrationMatches(current[3], 'if (!round || round.businessType !== "general_procurement" || round.businessId !== id) return [];') ||
+        !directRegistrationMatches(current[5], "if (!user?.isActive) return [];") ||
+        !directRegistrationMatches(current[6], `const events = await tx.approvalActionLog.findMany({ where: {
+          approvalInstanceId: round.id, action: "system_notification", AND: [
+            { metadata: { path: ["kind"], equals: KIND } },
+            { metadata: { path: ["recipientId"], equals: actorId } }
+          ]
+        } });`) ||
+        !directRegistrationExpression(loop?.right, "events") ||
+        !directRegistrationMatches(loop.body.body[1], "if (!this.isOriginal(original) || !await this.canHandleIntent(tx, row, round, data)) continue;")) return false;
+    const attempt = service.get("retry")?.body?.[0]?.declarations?.[0]?.init?.argument;
+    const retry = attempt?.arguments?.[0]?.body?.body ?? [];
+    return directRegistrationExpression(attempt?.callee, "this.prisma.$transaction") &&
+      directRegistrationMatches(retry[0], `await tx.$queryRaw(Prisma.sql\`SELECT "id" FROM "GeneralProcurement" WHERE "id" = \${id} FOR UPDATE\`);`) &&
+      directRegistrationMatches(retry[1], "const notice = (await this.currentNotices(tx, id, actorId)).find(item => item.chain.includes(attemptId));") &&
+      directRegistrationMatches(retry[2], 'if (!notice) throw new ConflictException("当前没有可重试的采购待办短信");') &&
+      directRegistrationMatches(retry[3], 'if (notice.attempt.id !== attemptId) return { kind: "replay", status: notice.status } as const;') &&
+      directRegistrationMatches(retry[4], 'if (!notice.status.canRetry) throw new ConflictException("仅可重试明确发送失败的采购待办短信");') &&
+      staticMemberPath(retry[6]?.expression?.argument?.callee) === "tx.approvalActionLog.createMany";
+  } catch {
+    return false;
+  }
+}
+
+async function spotProcurementDutySmsAuthorityIsProven(root) {
+  try {
+    const [controller, service] = await Promise.all([SPOT_REQUEST_SMS_CONTROLLER, SPOT_REQUEST_SMS_SERVICE]
+      .map(file => dutySmsMethods(root, file)));
+    if (!directRegistrationMatches(controller.get("dutySms"), `{
+          if (!this.approvalNotifications) throw new ServiceUnavailableException("零采短信状态暂不可用");
+          return this.approvalNotifications.status(id, user.id);
+        }`) ||
+        !directRegistrationMatches(controller.get("retryDutySms"), `{
+          if (!this.approvalNotifications) throw new ServiceUnavailableException("零采短信状态暂不可用");
+          return this.approvalNotifications.retry(id, user.id, body.attemptId);
+        }`) ||
+        !directRegistrationMatches(service.get("status"), `{
+          return this.prisma.$transaction(async tx => ({
+            notices: (await this.currentNotices(tx, id, actorId)).map(notice => notice.status)
+          }));
+        }`)) return false;
+    const current = service.get("currentNotices")?.body ?? [];
+    const loop = current.find(statement => statement.type === "ForOfStatement");
+    const recipient = service.get("currentRecipient")?.body ?? [];
+    const correction = service.get("currentCorrection")?.body ?? [];
+    if (!directRegistrationExpression(loop?.right, "events") ||
+        !directRegistrationMatches(loop.body.body[1], "if (original.approvalInstanceId !== round.id || data.recipientId !== actorId || !this.isOriginal(original)) continue;") ||
+        !directRegistrationMatches(loop.body.body[2], "const current = await this.currentRecipient(tx, round, data);") ||
+        !directRegistrationMatches(loop.body.body[3], "if (current?.business.id !== id) continue;") ||
+        !recipient.some(node => directRegistrationMatches(node, `const snapshot = correction
+          ? await this.currentCorrection(tx, round, data) : await this.currentBusiness(tx, round, purchase);`)) ||
+        !recipient.some(node => directRegistrationMatches(node, `const assignments = eligible ? purchase
+          ? await loadProjectApprovalAssignments(tx, business.projectId, roles, String(data.recipientId))
+          : await loadEffectiveProjectApprovalAssignments(tx, business.projectId, roles, String(data.recipientId)) : [];`)) ||
+        !recipient.some(node => directRegistrationMatches(node, "const direct = assignments.some(row => row.userIsActive && row.userId === data.recipientId && roles.includes(row.roleKey) && (!purchase || row.projectId === business.projectId));")) ||
+        !recipient.some(node => directRegistrationMatches(node, `const delegated = !purchase && !direct && eligible ? await delegatedSpotApprovalIdentity(tx, {instanceId: round.id, nodeIndex: index,
+          actorUserId: String(data.recipientId), projectId: business.projectId, pendingRoleKeys: node!.roleKeys as RoleKey[]}) : null;`)) ||
+        !directRegistrationMatches(recipient.at(-2), `const user = correction || direct || delegated
+          ? await tx.user.findUnique({ where: { id: data.recipientId }, select: { isActive: true } }) : null;`) ||
+        !directRegistrationMatches(recipient.at(-1), "return user?.isActive ? snapshot : null;") ||
+        !directRegistrationMatches(correction[0], `if (round.businessType !== "spot_procurement_version" || !["rejected", "returned_to_applicant"].includes(round.status)
+          || data.recipientId !== round.applicantUserId || typeof data.draftVersionId !== "string") return null;`)) return false;
+    const attempt = service.get("retry")?.body?.[0]?.declarations?.[0]?.init?.argument;
+    const retry = attempt?.arguments?.[0]?.body?.body ?? [];
+    return directRegistrationExpression(attempt?.callee, "this.prisma.$transaction") &&
+      directRegistrationMatches(retry[1], `if (!requested || metadata(requested.metadata).recipientId !== actorId) {
+        throw new ConflictException("当前没有可重试的零采待办短信");
+      }`) &&
+      directRegistrationMatches(retry[2], `await tx.$queryRaw(Prisma.sql\`SELECT "id" FROM "ApprovalInstance" WHERE "id" = \${requested.approvalInstanceId} FOR UPDATE\`);`) &&
+      directRegistrationMatches(retry[3], "const notice = (await this.currentNotices(tx, id, actorId)).find(item => item.chain.includes(attemptId));") &&
+      directRegistrationMatches(retry[4], 'if (!notice) throw new ConflictException("当前没有可重试的零采待办短信");') &&
+      directRegistrationMatches(retry[5], 'if (notice.attempt.id !== attemptId) return { kind: "replay", status: notice.status } as const;') &&
+      directRegistrationMatches(retry[6], 'if (!notice.status.canRetry) throw new ConflictException("仅可重试明确发送失败的零采待办短信");') &&
+      staticMemberPath(retry[8]?.expression?.argument?.callee) === "tx.approvalActionLog.createMany";
+  } catch {
+    return false;
+  }
+}
+
+async function contractDutySmsAuthorityIsProven(root) {
+  try {
+    const [controller, service, completion] = await Promise.all([
+      dutySmsMethods(root, CONTRACT_SMS_CONTROLLER), dutySmsMethods(root, CONTRACT_SMS_SERVICE),
+      dutySmsMethods(root, CONTRACT_WORK_COMPLETION_SMS_SERVICE)
+    ]);
+    if (!directRegistrationMatches(controller.get("dutySmsStatus"), `{
+    const [versionNotices,completionNotices]=await Promise.all([
+      this.dutyNotifications?.notificationStatus(versionId,user.id)??[],
+      this.workCompletionNotifications?.notificationStatusForVersion(versionId,user.id)??[]
+    ]);
+    return {notices:[...versionNotices,...completionNotices]};
+  }`) ||
+        !directRegistrationMatches(controller.get("retryDutySms"), `{
+    const completionNotice=await this.workCompletionNotifications?.retry(versionId,user.id,input.attemptId);
+    if(completionNotice)return completionNotice;
+    if(!this.dutyNotifications)throw new BadRequestException("短信通知暂不可用");
+    return this.dutyNotifications.retry(versionId,user.id,input.attemptId);
+  }`) ||
+        !directRegistrationMatches(completion.get("notificationStatusForVersion")?.body?.[0], `const rows = await this.prisma.$queryRaw<Array<{ businessId: string }>>(Prisma.sql\`
+      SELECT DISTINCT ON (queued."businessId") queued."businessId"
+      FROM "AuditLog" queued
+      WHERE queued."businessType" = \${KIND} AND queued."action" = 'queued'
+        AND queued."metadata"->>'contractVersionId' = \${versionId}
+        AND queued."metadata"->>'recipientId' = \${actorId}
+      ORDER BY queued."businessId", queued."createdAt" DESC, queued."id" DESC
+    \`)`) ||
+        !directRegistrationMatches(completion.get("retry")?.body?.[1], `const data = object(intent?.metadata);`) ||
+        !directRegistrationMatches(completion.get("retry")?.body?.[2], `if (!intent || intent.businessType !== KIND || intent.action !== "queued" || !intent.businessId ||
+      !data || data.kind !== KIND || data.contractVersionId !== versionId || data.recipientId !== actorId) return null;`) ||
+        !directRegistrationMatches(service.get("notificationStatus"), `{
+          return this.prisma.$transaction(async tx=>(await this.currentNoticeAttempts(tx,versionId,actor)).notices.map(row=>row.status));
+        }`) ||
+        !directRegistrationMatches(service.get("authorized"), `{
+          if (stage === "approval") return Boolean(await contractParallelDutyIdentity(tx, round, contract.projectId, actor, index, false));
+          if (stage === "seal") return hasActiveContractGlobalRole(tx, actor, "comprehensive_director");
+          if (stage === "correction") return actor === round.applicantUserId && contract.ownerUserId === round.applicantUserId;
+          return actor === contract.ownerUserId && (await resolveGovernedFinalArchiveAccess(tx, {
+            actorUserId: actor, projectId: contract.projectId, handlerUserId: round.applicantUserId
+          })).canUpload;
+        }`)) return false;
+    const message = service.get("currentMessage")?.body ?? [];
+    if (!message.some(statement => directRegistrationMatches(statement,
+      "if(!project?.isActive || !await this.authorized(tx,contract,round,stage,index,actor))return null;"))) return false;
+    const current = service.get("currentNoticeAttempts")?.body ?? [];
+    const loop = current.find(statement => statement.type === "ForOfStatement");
+    if (!directRegistrationExpression(loop?.right, "rows") ||
+        !directRegistrationMatches(loop.body.body[1], `if(!data || data.retryOf!==undefined || data.contractVersionId!==versionId || data.recipientId!==actor ||
+          origin.id!==digest(origin.businessId,data.stage,data.nodeIndex,actor) || !await this.currentMessage(tx,origin,true))continue;`) ||
+        !directRegistrationMatches(loop.body.body.at(-1), "notices.push({origin,status});")) return false;
+    const attempt = service.get("retry")?.body?.[0]?.declarations?.[0]?.init?.argument;
+    const retry = attempt?.arguments?.[0]?.body?.body ?? [];
+    return directRegistrationExpression(attempt?.callee, "this.prisma.$transaction") &&
+      directRegistrationMatches(retry[0], "await this.lockVersion(tx,versionId);") &&
+      directRegistrationMatches(retry[1], "const {notices,byId}=await this.currentNoticeAttempts(tx,versionId,actor);") &&
+      directRegistrationMatches(retry[4], `const current=notices.find(item=>item.status.attemptId===attemptId ||
+          (previous && this.matchesRetry(previous,item.origin,attemptId)));`) &&
+      directRegistrationMatches(retry[5], 'if(!current)throw new ConflictException("当前待办或短信记录已变化，请刷新");') &&
+      directRegistrationMatches(retry[6], "if(current.status.attemptId!==attemptId)return {status:current.status,enqueued:false};") &&
+      directRegistrationMatches(retry[7], 'if(!current.status.canRetry)throw new ConflictException("仅确认发送失败的短信可以重试");') &&
+      staticMemberPath(retry[8]?.declarations?.[0]?.init?.argument?.callee) === "tx.auditLog.createMany";
+  } catch {
+    return false;
+  }
+}
+
+function proveMultiDutySmsRetry({ action, wrapper, context }) {
+  if (action.id !== MULTI_SMS_ACTION || action.sourceFile !== MULTI_SMS_PANEL ||
+      action.trigger.handler !== "retry" || action.capability.kind !== "server_boolean" ||
+      action.capability.source !== "notice.canRetry" || wrapper.apiFile !== MULTI_SMS_API ||
+      wrapper.name !== "retryMultiDutySms" ||
+      normalizedMainRequests(wrapper).map(request => request.normalizedKey).sort().join() !== multiSmsKeys("POST", "/retry").join()) return null;
+  const page = context.symbols;
+  const retry = fundAdvanceNode(page, "retry");
+  const refresh = fundAdvanceNode(page, "refresh");
+  if (!directRegistrationExpression(fundAdvanceNode(page, "notices"), "ref<MultiDutySmsNotice[]>([])") ||
+      !directRegistrationMatches(retry, `async function retry(attemptId: string) {
+        const notice = notices.value.find(row => row.attemptId === attemptId);
+        if (!notice?.canRetry || notice.status !== "failed" || busy.value) return;
+        busy.value = true;
+        message.value = "";
+        try {
+          const next = await retryMultiDutySms(props.domain, props.businessId, notice.attemptId);
+          notices.value = notices.value.map(row => row.attemptId === notice.attemptId ? next : row);
+        } catch (error) {
+          message.value = formatUnknownApiError(error, "重试申请未能确认，请刷新状态");
+        } finally {
+          busy.value = false;
+        }
+      }`) ||
+      !directRegistrationMatches(refresh, `async function refresh() {
+        if (busy.value) return;
+        busy.value = true;
+        message.value = "";
+        try {
+          notices.value = await fetchMultiDutySms(props.domain, props.businessId);
+        } catch (error) {
+          message.value = formatUnknownApiError(error, "未能刷新短信状态");
+        } finally {
+          busy.value = false;
+        }
+      }`)) return null;
+  const read = { apiFile: MULTI_SMS_API, name: "fetchMultiDutySms" };
+  if (importedWrapperCalls([retry], wrapper, context).length !== 1 ||
+      importedWrapperCalls([refresh], read, context).length !== 1) return null;
+  const readIdentity = wrapperIdentity(read.apiFile, read.name);
+  const reader = context.wrapperIndex.get(readIdentity);
+  if (!reader || normalizedMainRequests(reader).map(request => request.normalizedKey).sort().join() !== multiSmsKeys("GET").join()) return null;
+  const readerAst = context.asts.get(MULTI_SMS_API);
+  if (!readerAst || !directRegistrationMatches(
+    fundAdvanceNode(buildSymbolContext(readerAst, MULTI_SMS_API, context.sourceFileSet), "fetchMultiDutySms"),
+    `async function fetchMultiDutySms(domain: MultiDutySmsDomain, businessId: string): Promise<MultiDutySmsNotice[]> {
+      const response = await apiFetch(path(domain, businessId));
+      if (!response.ok) return [];
+      return ((await response.json()) as { notices: MultiDutySmsNotice[] }).notices;
+    }`)) return null;
+  const buttons = [];
+  walkEstree(page.ast.templateBody, node => {
+    if (node.type === "VElement" && node.rawName === "t-button" &&
+        directRegistrationExpression(variantEventCall(directiveExpression(elementDirective(node, "on", "click")), "retry"), "retry(notice.attemptId)")) buttons.push(node);
+  });
+  if (buttons.length !== 1 || !directRegistrationExpression(
+    directiveExpression(elementDirective(buttons[0], "if")), 'notice.canRetry && notice.status === "failed"')) return null;
+  for (const [domain, file, businessId, gate] of MULTI_SMS_DOMAINS) {
+    const parentAst = context.asts.get(file);
+    if (!parentAst) return null;
+    const parent = buildSymbolContext(parentAst, file, context.sourceFileSet);
+    const bindings = topLevelScopeVariables(parent.scopeManager, "MultiDutySmsStatusPanel");
+    const actualImport = bindings.length === 1 && parent.importsByBinding.get(bindings[0]);
+    const instances = [];
+    walkEstree(parentAst.templateBody, node => {
+      if (node.type === "VElement" && node.rawName === "MultiDutySmsStatusPanel") instances.push(node);
+    });
+    const [instance] = instances;
+    const domainAttribute = instance?.startTag?.attributes?.find(attr => !attr.directive && attr.key.name === "domain");
+    if (actualImport?.kind !== "default" || actualImport.sourceFile !== MULTI_SMS_PANEL || instances.length !== 1 ||
+        domainAttribute?.value?.value !== domain ||
+        !directRegistrationExpression(directiveExpression(elementDirective(instance, "if")), gate) ||
+        !directRegistrationExpression(directiveExpression(elementDirective(instance, "bind", "business-id")), businessId)) return null;
+  }
+  return { verified: true, kind: "multi_duty_sms_retry", capabilityWitness: true, capabilitySources: new Set([readIdentity]), capabilitySourceFile: MULTI_SMS_PANEL };
+}
+
+function multiDutySmsReadAndWriteAuthoritiesMatch({ mutationBindings, webManifest, nestManifest, contractDutySmsAuthority, companyDutySmsAuthority, generalProcurementDutySmsAuthority, spotProcurementDutySmsAuthority }) {
+  const readKeys = multiSmsKeys("GET");
+  if (!contractDutySmsAuthority || !companyDutySmsAuthority || !generalProcurementDutySmsAuthority || !spotProcurementDutySmsAuthority || mutationBindings.length !== readKeys.length ||
+      !trustedWebWrapperForAssociation({ manifest: webManifest, association: {
+        apiFile: MULTI_SMS_API, wrapper: "fetchMultiDutySms",
+        normalizedKeys: readKeys, productionConsumers: [MULTI_SMS_PANEL]
+      } })) return false;
+  const index = buildNestRouteIndex(nestManifest.routes);
+  return MULTI_SMS_DOMAINS.every(([domain, , , , controllerFile, controllerName, readHandler = "dutySmsStatus"]) => {
+    const read = `GET /${domain}/:param/duty-sms`;
+    const write = `POST /${domain}/:param/duty-sms/retry`;
+    if (!mutationBindings.some(binding => binding.normalizedKey === write && binding.causalVerified) ||
+        !nestRouteAssociationIsTrusted(nestManifest, read)) return false;
+    return [[read, readHandler], [write, "retryDutySms"]].every(([key, handler]) => {
+      const route = index.get(key);
+      return route?.sourceFile === controllerFile && route.handler === handler &&
+        route.controller === controllerName && route.authentication === "authenticated" && !route.isPublic &&
+        route.guardAuthorization === "authenticated_only" && route.requiredProjectAction === null &&
+        route.authorizationCombination === null && !route.requiredPositions.length;
+    });
+  });
+}
+
 function proveBusinessActionPipeline({ action, wrapper, context }) {
+  if (action.id === DUTY_SMS_ACTION) return proveDutySmsRetry({ action, wrapper, context });
+  if (action.id === MULTI_SMS_ACTION) return proveMultiDutySmsRetry({ action, wrapper, context });
+  if (PRINCIPAL_RETURN_ACTIONS.has(action.id)) return provePrincipalReturnPageAction({ action, wrapper, context });
+  if (FUND_ADVANCE_ACTIONS.has(action.id)) return proveFundAdvancePageAction({ action, wrapper, context });
+  if (FUND_TRANSFER_ACTIONS.has(action.id)) return proveFundTransferPageAction({ action, wrapper, context });
+  const specializedProof = ACTUAL_PURCHASE_BATCH_PAGE_ACTION_IDS.has(action.id) ? proveActualPurchaseBatchPageAction :
+    COST_ATTRIBUTION_PAGE_ACTION_IDS.has(action.id) ? proveCostAttributionPageAction :
+    HISTORY_EXPENSE_PAGE_ACTION_IDS.has(action.id) ? proveHistoryExpensePageAction :
+    PUBLIC_CASH_HANDOVER_ACTIONS.has(action.id) ? provePublicCashHandoverPageAction :
+    SEAL_ACTION_IDS.has(action.id) ? proveContractSealPageAction :
+    GENERATED_ARCHIVE_ACTIONS.has(action.id) ? proveGeneratedArchivePageAction :
+    SIGNED_PAGE_ACTION_IDS.has(action.id) ? proveSignedPageAction : null;
+  if (specializedProof) {
+    return specializedProof({ action, wrapper, context, syntax: {
+      astAncestorChain,
+      buildSymbolContext,
+      callExpressionMatchesWrapper,
+      elementDirective,
+      importedWrapperCalls,
+      localCallable: directRegistrationCallable,
+      matches: directRegistrationMatches,
+      normalizedMainRequests,
+      referenceRootIdentifier,
+      sameExpression: directRegistrationExpression,
+      topLevelScopeVariables,
+      uniqueIndexedNode,
+      unshadowedRuntimeGlobal,
+      walkEstree,
+      wrapperIdentity
+    } });
+  }
+  if (isContractDraftCreationCapability(action.capability, context)) return null;
   const handler = pipelineHandlerSource(action.trigger.handler, wrapper, context);
   if (!handler) return null;
   const targetCalls = importedWrapperCallCount(
@@ -14860,6 +18673,12 @@ function proveBusinessActionPipeline({ action, wrapper, context }) {
     context
   );
   if (targetCalls !== 1) return null;
+
+  const paymentProof = proveRegisteredPaymentPageAction({ action, wrapper, context, handler });
+  if (paymentProof) return paymentProof;
+
+  const frozenGrantProof = frozenServerGrantPipelineProof({ action, wrapper, handler, context });
+  if (frozenGrantProof) return frozenGrantProof;
 
   const projectDefinitionProof = projectDefinitionPipelineProof({
     action,
@@ -14896,6 +18715,9 @@ function wrapperCausalProof(
     capabilityContext = null
   } = {}
 ) {
+  if (SEAL_ACTION_IDS.has(capabilityContext?.actionId) || GENERATED_ARCHIVE_ACTIONS.has(capabilityContext?.actionId)) {
+    return { verified: false, localCallChain: [handler] };
+  }
   const handlerBindings = topLevelScopeVariables(
     symbols.scopeManager,
     handler
@@ -14911,6 +18733,25 @@ function wrapperCausalProof(
     symbols.definitionsByBinding,
     handlerBinding
   );
+  // The draft proof binds both the awaited receipt and the sole write.
+  // Reuse it for the exact wrapper without bypassing variant analysis.
+  const draftOperation = !variant && candidate?.kind === "background_call" &&
+    capability && capabilityContext?.sourceFile === CONTRACT_DRAFT_COMPOSABLE_PATH && handlerDefinition
+    ? delegatedBackgroundCapabilityPreflight(
+        { kind: "background_call", expression: handlerDefinition },
+        capability,
+        capabilityContext
+      )
+    : null;
+  if (draftOperation?.writeIdentity === wrapperIdentity(wrapper.apiFile, wrapper.name)) {
+    return {
+      verified: true,
+      localCallChain: [handler, draftOperation.writeName]
+    };
+  }
+  if (isContractDraftCreationCapability(capability, capabilityContext)) {
+    return { verified: false, localCallChain: [handler] };
+  }
   const eventCall = variantEventCall(
     candidate?.expression,
     handler
@@ -16343,6 +20184,1596 @@ function serverReadImportNames(symbols, wrapperIndex, sourceFile) {
   return bindings;
 }
 
+const DIRECT_REGISTRATION_MODULE = `${WEB_SOURCE_ROOT}/pages/contracts/workbench/use-direct-contract-registration.ts`;
+const DIRECT_REGISTRATION_API = `${WEB_SOURCE_ROOT}/api/core-flow-read.api.ts`;
+const DIRECT_REGISTRATION_ACTIONS = new Set([
+  "contract-direct-registration.lookup-original", "contract-direct-registration.resume-original", "contract-direct-registration.confirm"
+]);
+
+function directRegistrationEvent(expression) {
+  const statement = expression?.type === "VOnExpression" && expression.body.length === 1
+    ? expression.body[0]
+    : null;
+  const call = statement?.type === "ExpressionStatement" ? statement.expression : expression;
+  if (call?.type !== "CallExpression" || call.optional ||
+      staticMemberPath(call.callee) !== "directRegistration.query" || call.callee.optional) return null;
+  if (call.arguments.length === 0) return { call, variant: "lookup-original" };
+  if (call.arguments.length === 1 && call.arguments[0]?.type === "Literal" && call.arguments[0].value === true) {
+    return { call, variant: "resume-original" };
+  }
+  return null;
+}
+
+function directRegistrationAstShape(node) {
+  return JSON.stringify(node, (key, value) =>
+    ["parent", "loc", "range", "raw", "comments", "tokens"].includes(key) ? undefined : value);
+}
+
+function directRegistrationMatches(node, statement) {
+  return Boolean(node && directRegistrationAstShape(node) ===
+    directRegistrationAstShape(parseSource("direct-registration-proof.ts", statement).body[0]));
+}
+
+function directRegistrationFactory(symbols) {
+  const bindings = topLevelScopeVariables(symbols.scopeManager, "useDirectContractRegistration");
+  if (bindings.length !== 1 || bindings[0].references.some(reference => reference.isWrite() && !reference.init)) return null;
+  const definition = uniqueIndexedNode(symbols.definitionsByBinding, bindings[0]);
+  return definition?.type === "FunctionDeclaration" && definition.body?.type === "BlockStatement" &&
+    symbols.ast.body.some(node => node.type === "ExportNamedDeclaration" && node.declaration === definition) &&
+    definition.params.length === 1 && definition.params[0]?.type === "Identifier"
+    ? definition
+    : null;
+}
+
+function directRegistrationCallable(factory, name, symbols, returned = false) {
+  const matches = factory.body.body.filter(node => node.type === "FunctionDeclaration" && node.id?.name === name);
+  if (matches.length !== 1) return null;
+  const [definition] = matches;
+  const binding = symbols.scopeBindings.get(definition.id);
+  if (!binding || binding.references.some(reference => reference.isWrite())) return null;
+  if (!returned) return { definition, binding };
+  const result = factory.body.body.at(-1);
+  const reference = result?.type === "ReturnStatement" && objectPropertyValue(result.argument, name);
+  return reference?.type === "Identifier" && symbols.scopeBindings.get(reference) === binding &&
+    result.argument.properties.every(property => property.type === "Property" && !property.computed)
+    ? { definition, binding } : null;
+}
+
+function directRegistrationPageFactory(context) {
+  const { symbols } = context;
+  const bindings = topLevelScopeVariables(symbols.scopeManager, "directRegistration");
+  if (bindings.length !== 1) return null;
+  const [binding] = bindings;
+  const invocation = uniqueIndexedNode(symbols.declarationsByBinding, binding);
+  if (!callExpressionMatchesWrapper(invocation, {
+    apiFile: DIRECT_REGISTRATION_MODULE, name: "useDirectContractRegistration"
+  }, symbols) || invocation.arguments.length !== 1 ||
+    binding.references.some(reference => reference.isWrite() && !reference.init)) return null;
+  return { binding, options: invocation.arguments[0] };
+}
+
+function directRegistrationReadEffects(factory, read, keyBinding, getCall, page, symbols, pageSymbols) {
+  const completed = objectPropertyValue(page.options, "completed");
+  const completedStatement = completed?.body?.body?.[0];
+  if (completed?.type !== "ArrowFunctionExpression" || completed.body?.body?.length !== 1 ||
+      !directRegistrationMatches(completedStatement,
+        'void router.replace({ path: `/contracts/${encodeURIComponent(id)}`, query: { versionId } });')) return false;
+  const router = completedStatement.expression.argument.callee.object;
+  const routerBinding = pageSymbols.scopeBindings.get(router);
+  const routerSource = routerBinding && uniqueIndexedNode(pageSymbols.declarationsByBinding, routerBinding);
+  const routerFactory = routerSource?.type === "CallExpression" && pageSymbols.scopeBindings.get(routerSource.callee);
+  if (!routerFactory || !(routerFactory.defs ?? []).some(definition =>
+    definition.type === "ImportBinding" && definition.parent?.source?.value === "vue-router" &&
+    definition.node?.imported?.name === "useRouter")) return false;
+
+  const allowedLocals = new Set(["cancelledKey", "reconcileCancelledUnderLock", "removeStored", "sameBody",
+    "sameFiles", "sameStoredIntent", "validBody", "wasCancelled"]);
+  const allowedMembers = new Set(["Array.isArray", "JSON.parse", "Number.isSafeInteger", "localStorage.getItem",
+    "localStorage.setItem", "localStorage.removeItem"]);
+  const body = factory.body;
+  const seen = new Set();
+  let valid = true;
+  const bindingOf = node => symbols.scopeBindings.get(node);
+  const check = definition => {
+    if (!definition || seen.has(definition)) return;
+    seen.add(definition);
+    walkEstree(definition.body, node => {
+      if (!valid || node === getCall) return;
+      if (node.type === "TaggedTemplateExpression" || node.type === "ImportExpression") { valid = false; return; }
+      if (node.type === "NewExpression") {
+        if (!unshadowedRuntimeGlobal(node.callee, new Set(["Set"]), symbols.scopeBindings)) valid = false;
+        return;
+      }
+      if (node.type !== "CallExpression") return;
+      const { callee } = node;
+      const path = staticMemberPath(callee);
+      const root = referenceRootIdentifier(callee);
+      if (allowedMembers.has(path) && unshadowedRuntimeGlobal(root, new Set([path.split(".")[0]]), symbols.scopeBindings)) return;
+      if (callee.type === "Identifier") {
+        if (unshadowedRuntimeGlobal(callee, new Set(["encodeURIComponent"]), symbols.scopeBindings)) return;
+        const local = bindingOf(callee);
+        if (!local || !allowedLocals.has(local.name) || local.references.some(ref => ref.isWrite() && !ref.init)) { valid = false; return; }
+        check(uniqueIndexedNode(symbols.definitionsByBinding, local));
+        if (!seen.has(uniqueIndexedNode(symbols.definitionsByBinding, local))) valid = false;
+        return;
+      }
+      if (path === "input.completed" && bindingOf(root) === bindingOf(factory.params[0])) return;
+      if (path === "locks.request") {
+        const locked = bindingOf(root);
+        const value = locked && uniqueIndexedNode(symbols.declarationsByBinding, locked);
+        const expected = parseSource("direct-registration-proof.ts", "const locks = globalThis.navigator?.locks;").body[0].declarations[0].init;
+        if (value && directRegistrationAstShape(value) === directRegistrationAstShape(expected) &&
+            unshadowedRuntimeGlobal(referenceRootIdentifier(value), new Set(["globalThis"]), symbols.scopeBindings) &&
+            !locked.references.some(ref => ref.isWrite() && !ref.init)) return;
+      }
+      if (path === "uuid.test" || path === "sha.test") {
+        const value = uniqueIndexedNode(symbols.declarationsByBinding, bindingOf(root));
+        if (value?.type === "Literal" && value.regex && !bindingOf(root).references.some(ref => ref.isWrite() && !ref.init)) return;
+      }
+      if (["left.every", "body.fileIds.every"].includes(path) &&
+          ["sameFiles", "validBody"].includes(definition.id?.name) &&
+          bindingOf(root) === bindingOf(definition.params[0]?.left ?? definition.params[0])) return;
+      valid = false;
+    });
+  };
+  const keyDefinition = keyBinding && uniqueIndexedNode(symbols.definitionsByBinding, keyBinding);
+  if (!keyDefinition || !body.body.some(statement => statement.type === "VariableDeclaration" &&
+      statement.declarations.some(declaration => declaration.init === keyDefinition))) return false;
+  check(keyDefinition);
+  check(read.definition);
+  return valid;
+}
+
+const DIRECT_REGISTRATION_COORDINATES = `${WEB_SOURCE_ROOT}/pages/contracts/workbench/direct-pending-draft.ts`;
+const DIRECT_REGISTRATION_WORKBENCH_READ = { apiFile: CONTRACT_WORKBENCH_API_PATH, name: "fetchContractDraftWorkbench" };
+const DIRECT_REGISTRATION_POST = { apiFile: DIRECT_REGISTRATION_API, name: "archiveSignedContractV2" };
+const DIRECT_REGISTRATION_GET = { apiFile: DIRECT_REGISTRATION_API, name: "fetchDirectSignedContractResult" };
+
+function directRegistrationBlock(node, statements) {
+  return directRegistrationMatches(node, `{${statements}}`);
+}
+
+function directRegistrationCalls(node, predicate) {
+  const matches = [];
+  walkEstree(node, candidate => {
+    if (candidate.type === "CallExpression" && predicate(candidate)) matches.push(candidate);
+  });
+  return matches;
+}
+
+function directRegistrationLocalCall(node, target, symbols) {
+  return node?.type === "CallExpression" && node.callee.type === "Identifier" &&
+    symbols.scopeBindings.get(node.callee) === target?.binding;
+}
+
+function directRegistrationCoordinateProof(call, symbols, context) {
+  if (!callExpressionMatchesWrapper(call, {
+    apiFile: DIRECT_REGISTRATION_COORDINATES, name: "directRegistrationCoordinates"
+  }, symbols)) return false;
+  const ast = context.asts.get(DIRECT_REGISTRATION_COORDINATES);
+  if (!ast) return false;
+  const target = buildSymbolContext(ast, DIRECT_REGISTRATION_COORDINATES, context.sourceFileSet);
+  const stableBinding = name => {
+    const bindings = topLevelScopeVariables(target.scopeManager, name);
+    return bindings.length === 1 && !bindings[0].references.some(reference => reference.isWrite() && !reference.init)
+      ? bindings[0] : null;
+  };
+  const definition = name => {
+    const binding = stableBinding(name);
+    return binding && uniqueIndexedNode(target.definitionsByBinding, binding);
+  };
+  // Prove both saved-source protocols all the way to the shared coordinate guard.
+  // Checking only the final state test would allow an early success or a substituted parser.
+  const validators = {
+    isDirectSignedDay: `
+      function isDirectSignedDay(value: string): boolean {
+        if (!/^\\d{4}-\\d{2}-\\d{2}$/u.test(value) || value.length !== 10) return false;
+        const year = Number(value.slice(0, 4));
+        const month = Number(value.slice(5, 7));
+        const day = Number(value.slice(8, 10));
+        if (year < 1 || month < 1 || month > 12 || day < 1) return false;
+        const leapYear = year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0);
+        const monthLengths = [31, leapYear ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+        return day <= monthLengths[month - 1]!;
+      }
+    `,
+    record: `
+      function record(value: unknown): Record<string, unknown> | null {
+        return value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : null;
+      }
+    `,
+    isLocator: `
+      function isLocator(value: unknown): value is DirectPartyLocator | null {
+        if (value === null) return true;
+        const locator = record(value);
+        return Boolean(locator && Object.keys(locator).length === 2 && typeof locator.roleKey === "string" &&
+          roleKeys.includes(locator.roleKey) && Number.isSafeInteger(locator.displayOrder) && Number(locator.displayOrder) >= 0);
+      }
+    `,
+    directSigningMarker: `
+      function directSigningMarker(value: unknown): DirectSigningMarker | null {
+        const marker = record(value);
+        if (!marker || Object.keys(marker).length !== 7 || marker.protocolVersion !== 1 ||
+          marker.source !== "direct_signed" || marker.relationship !== "outside" ||
+          !(marker.signedOn === null || typeof marker.signedOn === "string") ||
+          !isLocator(marker.enterpriseParty) || !isLocator(marker.counterpartyParty) ||
+          !(marker.fixedPaymentTermsVersionId === null || typeof marker.fixedPaymentTermsVersionId === "string" && marker.fixedPaymentTermsVersionId.length > 0)) return null;
+        return marker as unknown as DirectSigningMarker;
+      }
+    `,
+    nonempty: `
+      function nonempty(value: unknown): value is string {
+        return typeof value === "string" && value.trim().length > 0;
+      }
+    `,
+    upwardPosition: `
+      function upwardPosition(value: unknown): value is NonNullable<UpwardSigningMarker["companyParty"]> {
+        const position = record(value);
+        return Boolean(position && Object.keys(position).length === 2 && position.displayOrder === 0 &&
+          (position.roleKey === "party_a" || position.roleKey === "party_b"));
+      }
+    `,
+    upwardSigningMarker: `
+      function upwardSigningMarker(value: unknown): UpwardSigningMarker | null {
+        const marker = record(value);
+        if (!marker || Object.keys(marker).length !== 8 || marker.protocolVersion !== 2 || marker.source !== "direct_signed" ||
+          marker.relationship !== "upward" || !(marker.signedOn === null || typeof marker.signedOn === "string") ||
+          !((marker.enterpriseParty === null && marker.companyParty === null) ||
+            (upwardPosition(marker.enterpriseParty) && upwardPosition(marker.companyParty) && marker.enterpriseParty.roleKey !== marker.companyParty.roleKey)) ||
+          !(marker.companyParticipationId === null || nonempty(marker.companyParticipationId)) ||
+          !(marker.fixedPaymentTermsVersionId === null || nonempty(marker.fixedPaymentTermsVersionId))) return null;
+        return marker as unknown as UpwardSigningMarker;
+      }
+    `,
+    upwardInputDetails: `
+      function upwardInputDetails(input: unknown) {
+        const q = record(record(input)?.Q);
+        const subjects = record(q?.subjects);
+        const enterprise = record(subjects?.enterprise);
+        const company = record(subjects?.company);
+        return { q, enterprise, company };
+      }
+    `,
+    upwardInputState: `
+      function upwardInputState(source: Record<string, unknown>, contractId: string, versionId: string, revision: number, projectId: string): DirectInputState | null {
+        if (source.protocolVersion !== 2 || source.sourceKind !== "upward_direct_signed_pending") return null;
+        if (source.state === "unavailable") return source.sourceRevision === null && source.Q === null && source.inputSha256 === null ? "unavailable" : null;
+        if (source.sourceRevision !== revision || !Number.isSafeInteger(revision) || revision < 1) return null;
+        if (source.state === "incomplete") return source.Q === null && source.inputSha256 === null ? "incomplete" : null;
+        const { q, enterprise, company } = upwardInputDetails(source);
+        const locator = record(q?.locator);
+        const kind = record(q?.source);
+        const number = record(q?.contract)?.originalSignedNumber;
+        if (source.state !== "complete" || typeof source.inputSha256 !== "string" || !/^[a-f0-9]{64}$/u.test(source.inputSha256) ||
+          q?.inputProtocolVersion !== 2 || kind?.kind !== "direct_signed" || kind.relationship !== "upward" ||
+          locator?.contractId !== contractId || locator.contractVersionId !== versionId || locator.projectId !== projectId ||
+          locator.draftRevision !== revision || locator.changeType !== "original" || locator.versionNo !== 1 ||
+          !enterprise || enterprise.projectId !== projectId || !upwardPosition(enterprise.position) || !nonempty(enterprise.cpsId) ||
+          !nonempty(enterprise.assignmentId) || !nonempty(enterprise.businessPartyId) || !nonempty(enterprise.businessPartyVersionId) ||
+          !company || company.projectId !== projectId || !upwardPosition(company.position) || !nonempty(company.participationId) ||
+          !nonempty(company.companyEntityId) || !nonempty(company.companyEntityVersionId) || !nonempty(company.joinedCompanyEntityVersionId) ||
+          enterprise.position.roleKey === company.position.roleKey || !(number === null || typeof number === "string" && number.length > 0) ||
+          !Array.isArray(q.signedFiles) || q.signedFiles.length === 0 || q.signedFiles.length > 20) return null;
+        const files = new Set<string>();
+        for (const [index, item] of q.signedFiles.entries()) {
+          const file = record(item);
+          if (!file || !nonempty(file.fileId) || files.has(file.fileId) || file.displayOrder !== index ||
+            !["application/pdf", "image/jpeg", "image/png"].includes(String(file.mimeType)) || !Number.isSafeInteger(file.sizeBytes) ||
+            Number(file.sizeBytes) <= 0 || typeof file.contentSha256 !== "string" || !/^[a-f0-9]{64}$/u.test(file.contentSha256)) return null;
+          files.add(file.fileId);
+        }
+        return "complete";
+      }
+    `,
+    directInputState: `
+      function directInputState(
+        input: unknown,
+        contractId: string,
+        versionId: string,
+        revision: number,
+        projectId: string,
+        relationship: PendingSigningMarker["relationship"] = "outside"
+      ): DirectInputState | null {
+        const source = record(input);
+        if (relationship === "upward") return source ? upwardInputState(source, contractId, versionId, revision, projectId) : null;
+        if (!source || source.protocolVersion !== 1 || source.sourceKind !== "direct_signed_pending") return null;
+        if (source.state === "unavailable") {
+          return source.sourceRevision === null && source.Q === null && source.inputSha256 === null ? "unavailable" : null;
+        }
+        if (source.sourceRevision !== revision || !Number.isSafeInteger(revision) || revision < 1) return null;
+        if (source.state === "incomplete" || source.state === "invalid") {
+          return source.Q === null && source.inputSha256 === null ? source.state : null;
+        }
+        const q = record(source.Q);
+        const locator = record(q?.locator);
+        const kind = record(q?.source);
+        if (source.state !== "complete" || typeof source.inputSha256 !== "string" || !/^[a-f0-9]{64}$/u.test(source.inputSha256) ||
+          q?.inputProtocolVersion !== 1 || kind?.kind !== "direct_signed" || kind.relationship !== "outside" ||
+          locator?.contractId !== contractId || locator.contractVersionId !== versionId || locator.projectId !== projectId ||
+          locator.draftRevision !== revision || locator.changeType !== "original" ||
+          !Array.isArray(q.signedFiles) || q.signedFiles.length === 0) return null;
+        return "complete";
+      }
+    `,
+    samePartyPosition: `
+      function samePartyPosition(left: DirectPartyLocator | null, right: DirectPartyLocator | null): boolean {
+        return left?.roleKey === right?.roleKey && left?.displayOrder === right?.displayOrder;
+      }
+    `,
+    upwardWorkbenchState: `
+      function upwardWorkbenchState(workbench: ContractDraftWorkbenchReadModel): DirectInputState {
+        const { version, contract } = workbench;
+        const marker = upwardSigningMarker(version.draftData?.directSigningInput);
+        const aggregateMarker = upwardSigningMarker(workbench.draft?.directSigningInput);
+        const caps = record(workbench.directPendingCapabilities);
+        const source = workbench.directPendingInput;
+        const state = directInputState(source, contract.id, version.id, version.draftRevision, contract.projectId, "upward");
+        const { q, enterprise, company } = upwardInputDetails(source);
+        const files = q?.signedFiles;
+        if (!marker || !aggregateMarker || marker.signedOn !== aggregateMarker.signedOn ||
+          (marker.signedOn !== null && !isDirectSignedDay(marker.signedOn)) || marker.companyParticipationId !== aggregateMarker.companyParticipationId ||
+          marker.fixedPaymentTermsVersionId !== aggregateMarker.fixedPaymentTermsVersionId ||
+          !samePartyPosition(marker.enterpriseParty, aggregateMarker.enterpriseParty) || !samePartyPosition(marker.companyParty, aggregateMarker.companyParty) ||
+          version.contractId !== contract.id || version.versionNo !== 1 || version.status !== "draft" || version.numericProtocolVersion !== 2 ||
+          !("changeType" in version) || version.changeType !== "original" || version.documentContentRevision !== null || version.documentContentFingerprint !== null ||
+          typeof caps?.registrationEnabled !== "boolean" || caps.copyEnabled !== false || caps.purgeEnabled !== false || !state ||
+          (marker.fixedPaymentTermsVersionId === null ? workbench.paymentTerms !== null :
+            typeof workbench.paymentTerms?.originalText !== "string" || !Array.isArray(workbench.paymentTerms.stages) || workbench.paymentTerms.stages.length !== 0) ||
+          (state === "complete" ? version.originalSignedNumberState !== "available" ||
+            version.originalSignedNumber !== record(q?.contract)?.originalSignedNumber ||
+            !upwardPosition(enterprise?.position) || !upwardPosition(company?.position) ||
+            !samePartyPosition(marker.enterpriseParty, enterprise.position) || !samePartyPosition(marker.companyParty, company.position) ||
+            company.participationId !== marker.companyParticipationId || !Array.isArray(files) || files.length !== workbench.attachments.length ||
+            files.some((file, index) => workbench.attachments[index]?.slotKey !== directOriginalSlot ||
+              workbench.attachments[index]?.fileId !== record(file)?.fileId || workbench.attachments[index]?.displayOrder !== index)
+            : version.originalSignedNumberState !== "unavailable" || version.originalSignedNumber !== null)) {
+          throw new Error("对上已签合同资料暂时无法核对，请刷新后再试");
+        }
+        return state;
+      }
+    `,
+    directWorkbenchState: `
+      function directWorkbenchState(workbench: ContractDraftWorkbenchReadModel): DirectInputState | null {
+        const { version, contract } = workbench;
+        const direct = Object.hasOwn(version.draftData ?? {}, "directSigningInput") ||
+          Object.hasOwn(workbench.draft ?? {}, "directSigningInput") || Object.hasOwn(workbench, "directPendingInput") ||
+          Object.hasOwn(workbench, "directPendingCapabilities");
+        if (!direct) return null;
+        if (record(version.draftData?.directSigningInput)?.relationship === "upward" || record(workbench.draft?.directSigningInput)?.relationship === "upward" ||
+          record(workbench.directPendingInput)?.sourceKind === "upward_direct_signed_pending") return upwardWorkbenchState(workbench);
+        const marker = directSigningMarker(version.draftData?.directSigningInput);
+        const aggregateMarker = directSigningMarker(workbench.draft?.directSigningInput);
+        const caps = record(workbench.directPendingCapabilities);
+        const state = directInputState(workbench.directPendingInput, contract.id, version.id, version.draftRevision, contract.projectId);
+        if (!marker || !aggregateMarker || marker.signedOn !== aggregateMarker.signedOn ||
+          (marker.signedOn !== null && !isDirectSignedDay(marker.signedOn)) ||
+          marker.fixedPaymentTermsVersionId !== aggregateMarker.fixedPaymentTermsVersionId ||
+          !samePartyPosition(marker.enterpriseParty, aggregateMarker.enterpriseParty) ||
+          !samePartyPosition(marker.counterpartyParty, aggregateMarker.counterpartyParty) ||
+          version.numericProtocolVersion !== 2 || !("changeType" in version) || version.changeType !== "original" ||
+          version.documentContentRevision !== null || version.documentContentFingerprint !== null ||
+          (caps?.registrationEnabled !== false && !(caps?.registrationEnabled === true && state === "complete" &&
+            version.status === "draft" && version.versionNo === 1 && version.contractId === contract.id)) ||
+          caps?.copyEnabled !== false || caps.purgeEnabled !== false ||
+          !state || (state === "unavailable" ? version.originalSignedNumberState !== "unavailable" :
+            version.originalSignedNumberState !== "available" || (version.originalSignedNumber !== null &&
+              (typeof version.originalSignedNumber !== "string" || version.originalSignedNumber === ""))) ||
+          (marker.fixedPaymentTermsVersionId === null ? workbench.paymentTerms !== null :
+            typeof workbench.paymentTerms?.originalText !== "string" || !Array.isArray(workbench.paymentTerms.stages) || workbench.paymentTerms.stages.length !== 0)) {
+          throw new Error("已签合同资料暂时无法核对，请刷新后再试");
+        }
+        return state;
+      }
+    `,
+  };
+  for (const [name, source] of Object.entries(validators)) {
+    if (!directRegistrationMatches(definition(name), source)) return false;
+  }
+  const coordinates = definition("directRegistrationCoordinates");
+  if (!coordinates) return false;
+  const provenDefinitions = [coordinates, ...Object.keys(validators).map(definition)];
+  const literals = {
+    directOriginalSlot: '"direct_signed_originals_v1"',
+    archiveFileUuid: '/^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/iu',
+    roleKeys: '["party_a", "party_b", "party_c", "guarantor", "consortium_member", "other"]'
+  };
+  for (const [name, expression] of Object.entries(literals)) {
+    const binding = stableBinding(name);
+    if (!binding || !directRegistrationExpression(uniqueIndexedNode(target.declarationsByBinding, binding), expression) ||
+        binding.references.some(reference => !reference.init && !provenDefinitions.some(({ body }) =>
+          body.range[0] <= reference.identifier.range[0] && reference.identifier.range[1] <= body.range[1]))) return false;
+  }
+  const guard = coordinates.body.body[0];
+  const parse = coordinates.body.body[1];
+  if (!directRegistrationMatches(guard,
+    'if (!workbench || !actor || workbench.contract.ownerUserId !== actor || record(workbench.directPendingCapabilities)?.registrationEnabled !== true || !(directSigningMarker(workbench.draft?.directSigningInput) || upwardSigningMarker(workbench.draft?.directSigningInput))) return null;') ||
+    coordinates.body.body.length !== 2 || parse?.type !== "TryStatement" ||
+    !directRegistrationBlock(parse.block, `
+      if (directWorkbenchState(workbench) !== "complete") return null;
+      const source = record(workbench.directPendingInput);
+      const files = record(source?.Q)?.signedFiles;
+      if (typeof source?.inputSha256 !== "string" || !Array.isArray(files) || files.length < 1 || files.length > 20 ||
+        files.length !== workbench.attachments.length) return null;
+      const fileIds: string[] = [];
+      for (const [index, raw] of files.entries()) {
+        const file = record(raw), attachment = workbench.attachments[index];
+        if (typeof file?.fileId !== "string" || !archiveFileUuid.test(file.fileId) || fileIds.includes(file.fileId)
+          || !["application/pdf", "image/jpeg", "image/png"].includes(String(file.mimeType)) || file.displayOrder !== index || attachment?.slotKey !== directOriginalSlot ||
+          attachment.fileId !== file.fileId || attachment.displayOrder !== index) return null;
+        fileIds.push(file.fileId);
+      }
+      return { contractId: workbench.contract.id, versionId: workbench.version.id, draftRevision: workbench.version.draftRevision,
+        inputSha256: source.inputSha256, fileIds };
+    `) || !directRegistrationBlock(parse.handler?.body, "return null;") || parse.finalizer) return false;
+  const known = new Set([...Object.keys(validators), ...Object.keys(literals)]);
+  const intrinsic = new Set(["Array", "Boolean", "Number", "Object", "Set", "String"]);
+  for (const current of provenDefinitions) {
+    let trusted = true;
+    walkEstree(current.body, node => {
+      if (node.type !== "CallExpression" && node.type !== "NewExpression") return;
+      const root = referenceRootIdentifier(node.callee);
+      const name = root?.name;
+      if ((known.has(name) && target.scopeBindings.get(root) !== stableBinding(name)) ||
+          (intrinsic.has(name) && topLevelScopeVariables(target.scopeManager, name).length > 0)) trusted = false;
+    });
+    if (!trusted) return false;
+  }
+  return true;
+}
+
+function directRegistrationExpression(node, source) {
+  const expected = parseSource("direct-registration-proof.ts", `const witness = ${source};`).body[0].declarations[0].init;
+  return Boolean(node && directRegistrationAstShape(node) === directRegistrationAstShape(expected));
+}
+
+function directRegistrationDeclared(symbols, name, moduleScope = false) {
+  const binding = moduleScope ? topLevelScopeVariables(symbols.scopeManager, name)[0] : uniqueScopeVariable(symbols.scopeManager, name);
+  return binding && !binding.references.some(reference => reference.isWrite() && !reference.init)
+    ? uniqueIndexedNode(symbols.declarationsByBinding, binding)
+    : null;
+}
+
+function directRegistrationInputBindings(page, symbols) {
+  const expressions = {
+    actor: "computed(() => authStore.user?.id)",
+    routeContract: 'computed(() => contractId.value ?? "")',
+    routeVersion: "computed(() => queryText(route.query.versionId).trim())",
+    workbench: "computed(() => (authoritySnapshot.value?.workbench as ContractDraftWorkbenchReadModel | undefined) ?? null)",
+    blocked: 'computed(() => Boolean(isDirty.value || pendingSaveResult.value || pendingLocalRecovery.value || saveState.value === "saving" || authoritySnapshot.value?.refreshRequired))'
+  };
+  if (page.options.type !== "ObjectExpression" || page.options.properties.length !== 7 ||
+      page.options.properties.some(property => property.type !== "Property" || property.computed || property.method) ||
+      !directRegistrationExpression(objectPropertyValue(page.options, "online"), "online")) return false;
+  for (const [name, expression] of Object.entries(expressions)) {
+    const value = objectPropertyValue(page.options, name);
+    if (!directRegistrationExpression(value, expression) || !symbols.vueComputedImportBindings.has(symbols.scopeBindings.get(value.callee))) return false;
+  }
+  const auth = directRegistrationDeclared(symbols, "authStore", true);
+  const route = directRegistrationDeclared(symbols, "route", true);
+  const routeBinding = route?.type === "CallExpression" && symbols.scopeBindings.get(route.callee);
+  const id = directRegistrationDeclared(symbols, "contractId", true);
+  return Boolean(callExpressionMatchesWrapper(auth, {
+    apiFile: `${WEB_SOURCE_ROOT}/auth/auth.store.ts`, name: "useAuthStore"
+  }, symbols) && auth.arguments.length === 0 &&
+    routeBinding?.defs.some(definition => definition.type === "ImportBinding" &&
+      definition.parent?.source?.value === "vue-router" && definition.node?.imported?.name === "useRoute") &&
+    route.arguments.length === 0 &&
+    directRegistrationExpression(id, `computed(() => {
+      const value = route.params.contractId;
+      return typeof value === "string" ? value : Array.isArray(value) ? value[0] : "";
+    })`) && symbols.vueComputedImportBindings.has(symbols.scopeBindings.get(id.callee)));
+}
+
+function directRegistrationContextBindings(factory, symbols) {
+  const expressions = {
+    context: "computed(() => directRegistrationCoordinates(input.workbench.value, input.actor.value))",
+    version: 'computed(() => input.routeVersion.value || input.workbench.value?.version.id || "")',
+    scope: "computed(() => JSON.stringify([input.actor.value, input.routeContract.value, version.value]))",
+    available: "computed(() => context.value?.contractId === input.routeContract.value && context.value.versionId === version.value)"
+  };
+  for (const [name, expression] of Object.entries(expressions)) {
+    const declaration = directRegistrationDeclared(symbols, name);
+    if (!directRegistrationExpression(declaration, expression) ||
+        !symbols.vueComputedImportBindings.has(symbols.scopeBindings.get(declaration.callee))) return false;
+  }
+  const ctx = directRegistrationDeclared(symbols, "context");
+  if (!callExpressionMatchesWrapper(ctx.arguments[0].body, {
+    apiFile: DIRECT_REGISTRATION_COORDINATES, name: "directRegistrationCoordinates"
+  }, symbols)) return false;
+  const watches = directRegistrationCalls(factory.body, node => node.callee.name === "watch");
+  const watch = watches[0];
+  const watchBinding = symbols.scopeBindings.get(watch?.callee);
+  return watches.length === 1 && watch.arguments.length === 3 &&
+    watchBinding?.defs.some(definition => definition.type === "ImportBinding" &&
+      definition.parent?.source?.value === "vue" && definition.node?.imported?.name === "watch") &&
+    directRegistrationExpression(watch.arguments[0], "scope") &&
+    directRegistrationExpression(watch.arguments[2], "{ immediate: true, flush: \"sync\" }") &&
+    directRegistrationMatches(watch.arguments[1]?.body?.body?.[0], "const started = ++epoch;");
+}
+
+function directRegistrationTransportProof(context) {
+  const ast = context.asts.get(DIRECT_REGISTRATION_API);
+  if (!ast) return false;
+  const symbols = buildSymbolContext(ast, DIRECT_REGISTRATION_API, context.sourceFileSet);
+  const definitions = ast.body.filter(node =>
+    node.type === "ExportNamedDeclaration" && node.declaration?.type === "FunctionDeclaration" &&
+    node.declaration.id?.name === DIRECT_REGISTRATION_POST.name);
+  const command = definitions.length === 1 ? definitions[0].declaration : null;
+  const post = topLevelScopeVariables(symbols.scopeManager, "postJson");
+  const helper = post.length === 1 && uniqueIndexedNode(symbols.definitionsByBinding, post[0]);
+  if (!directRegistrationBlock(command?.body, `
+    const options = { retryUnauthorized: false, responseIsCurrent };
+    return postJson<ContractSignedArchiveV2Result>(\`/contracts/\${encodeURIComponent(versionId)}/signed-archive\`, body, options);
+  `) ||
+    !directRegistrationBlock(helper?.body, `
+      const response = await apiFetch(path, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body ?? {}),
+        ...options
+      });
+      await ensureOk(response, "提交失败");
+      return response.json() as Promise<TResponse>;
+    `)) return false;
+  return symbols.scopeBindings.get(command.body.body[1].argument.callee) === post[0] &&
+    callExpressionMatchesWrapper(helper.body.body[0].declarations[0].init.argument, {
+      apiFile: `${WEB_SOURCE_ROOT}/api/api-fetch.ts`, name: "apiFetch"
+    }, symbols);
+}
+
+function directRegistrationLockProof(factory, symbols) {
+  const same = directRegistrationCallable(factory, "sameStoredIntent", symbols);
+  const reconcile = directRegistrationCallable(factory, "reconcileCancelledUnderLock", symbols);
+  const cancelled = directRegistrationDeclared(symbols, "wasCancelled");
+  return Boolean(same && reconcile && cancelled &&
+    directRegistrationBlock(same.definition.body, `
+      const saved = raw ? JSON.parse(raw) as StoredIntent : null;
+      return saved && saved.actor === intent.actor && saved.contractId === intent.contractId && saved.versionId === intent.versionId &&
+        saved.requestSha256 === intent.requestSha256 && sameBody(saved.body, intent.body) ? saved : null;
+    `) &&
+    directRegistrationBlock(reconcile.definition.body, `
+      const saved = sameStoredIntent(raw, intent);
+      if ((saved && saved.phase !== "preparing") || !wasCancelled(intent, storageKey)) return false;
+      if (saved) localStorage.removeItem(storageKey);
+      return true;
+    `) &&
+    directRegistrationExpression(cancelled, `(intent: Intent, storageKey: string) =>
+      localStorage.getItem(cancelledKey(intent, storageKey)) === intent.body.idempotencyKey`));
+}
+
+function directRegistrationWriteProof({ action, wrapper, candidate, context, page, factory, symbols, query, read, attempt }) {
+  const confirmMode = action.id === "contract-direct-registration.confirm";
+  const readbackMode = action.id === "contract-direct-registration.resume-original";
+  if ((!confirmMode && !readbackMode) || action.capability.kind !== "server_boolean" ||
+      action.capability.source !== "directPendingCapabilities.registrationEnabled" ||
+      wrapper.name !== DIRECT_REGISTRATION_POST.name || wrapper.apiFile !== DIRECT_REGISTRATION_POST.apiFile ||
+      normalizedMainRequests(wrapper).length !== 1 ||
+      normalizedMainRequests(wrapper)[0].normalizedKey !== "POST /contracts/:param/signed-archive") return null;
+
+  const send = directRegistrationCallable(factory, "send", symbols);
+  const refresh = directRegistrationCallable(factory, "refreshCoordinates", symbols);
+  const confirm = directRegistrationCallable(factory, "confirm", symbols, true);
+  if (!directRegistrationInputBindings(page, context.symbols) ||
+      !directRegistrationContextBindings(factory, symbols) ||
+      !directRegistrationLockProof(factory, symbols) || !directRegistrationTransportProof(context)) return null;
+  const sameCoordinates = topLevelScopeVariables(symbols.scopeManager, "sameCoordinates")[0];
+  const sameFiles = topLevelScopeVariables(symbols.scopeManager, "sameFiles")[0];
+  const order = sameFiles && uniqueIndexedNode(symbols.definitionsByBinding, sameFiles);
+  const compare = sameCoordinates && uniqueIndexedNode(symbols.definitionsByBinding, sameCoordinates);
+  const current = uniqueScopeVariable(symbols.scopeManager, "sendCurrent");
+  const currentDefinition = current && uniqueIndexedNode(symbols.definitionsByBinding, current);
+  if (!send || !refresh || !confirm || !compare || !currentDefinition || !order ||
+      !directRegistrationBlock(order.body, "return left.length === right.length && left.every((id, index) => id === right[index]);") ||
+      !directRegistrationCalls(compare, node => directRegistrationLocalCall(node, { binding: sameFiles }, symbols)).length ||
+      !directRegistrationBlock(compare.body, `
+        return !!left && left.contractId === right.contractId && left.versionId === right.versionId &&
+          left.draftRevision === right.draftRevision && left.inputSha256 === right.inputSha256 && sameFiles(left.fileIds, right.fileIds);
+      `) ||
+      !directRegistrationMatches({ type: "ExpressionStatement", expression: currentDefinition.body },
+        "started === epoch && available.value && input.online.value && !input.blocked.value && sameCoordinates(context.value, captured);")) return null;
+
+  if (!directRegistrationBlock(refresh.definition.body, `
+    const fresh = await fetchContractDraftWorkbench(captured.versionId, { retryUnauthorized: false, responseIsCurrent: () => started === epoch });
+    return sendCurrent(captured, started) && sameCoordinates(directRegistrationCoordinates(fresh, input.actor.value), captured);
+  `) || !directRegistrationBlock(send.definition.body, `
+    const locks = globalThis.navigator?.locks;
+    if (!locks) return;
+    const admission = await locks.request(storageKey, () => {
+      const saved = sameStoredIntent(localStorage.getItem(storageKey), intent);
+      if (!saved || (!resume && saved.phase !== "preparing") || wasCancelled(intent, storageKey) || !sendCurrent(captured, started)) return;
+      localStorage.setItem(storageKey, JSON.stringify({ ...intent, phase: "sent" }));
+      const response = archiveSignedContractV2(intent.versionId, intent.body, () => started === epoch).catch(() => {});
+      return { response };
+    });
+    if (!admission) return;
+    await admission.response;
+    if (started === epoch) await read(intent, started, storageKey);
+  `)) return null;
+
+  const [fresh] = directRegistrationCalls(refresh.definition, node => callExpressionMatchesWrapper(node, DIRECT_REGISTRATION_WORKBENCH_READ, symbols));
+  const [coordinateCall] = directRegistrationCalls(refresh.definition, node => node.callee.name === "directRegistrationCoordinates");
+  const postCalls = directRegistrationCalls(factory, node => callExpressionMatchesWrapper(node, DIRECT_REGISTRATION_POST, symbols));
+  if (!fresh || !directRegistrationCoordinateProof(coordinateCall, symbols, context) || postCalls.length !== 1 ||
+      !directRegistrationCalls(send.definition, node => node === postCalls[0]).length ||
+      !directRegistrationCalls(send.definition, node => directRegistrationLocalCall(node, read, symbols)).length ||
+      !directRegistrationCalls(send.definition, node => directRegistrationLocalCall(node, { binding: current }, symbols)).length ||
+      !directRegistrationCalls(refresh.definition, node => directRegistrationLocalCall(node, { binding: sameCoordinates }, symbols)).length ||
+      !directRegistrationCalls(refresh.definition, node => directRegistrationLocalCall(node, { binding: current }, symbols)).length ||
+      !directRegistrationCalls(currentDefinition, node => directRegistrationLocalCall(node, { binding: sameCoordinates }, symbols)).length) return null;
+
+  let caller;
+  if (confirmMode) {
+    const bindings = topLevelScopeVariables(context.symbols.scopeManager, "confirmDirectRegistration");
+    const handler = bindings.length === 1 && uniqueIndexedNode(context.symbols.definitionsByBinding, bindings[0]);
+    const pageCall = handler?.body?.body?.[1]?.expression?.argument;
+    if (candidate.element !== "t-dialog" || candidate.event !== "confirm" || candidate.handler !== "confirmDirectRegistration" ||
+        !directRegistrationBlock(handler?.body, "directRegistrationConfirmVisible.value = false; void directRegistration.confirm();") ||
+        context.symbols.scopeBindings.get(referenceRootIdentifier(pageCall?.callee)) !== page.binding) return null;
+    const body = confirm.definition.body.body;
+    const first = body.at(-1);
+    if (body.length !== 6 ||
+        !directRegistrationMatches(body[0], "const captured = context.value, actor = input.actor.value, locks = globalThis.navigator?.locks;") ||
+        !directRegistrationMatches(body[1], "if (!canConfirm.value || !captured || !actor || !locks) return;") ||
+        !directRegistrationMatches(body[2], "const started = epoch, storageKey = key();") ||
+        !directRegistrationMatches(body[3], "let claimed: Intent | undefined;") ||
+        !directRegistrationMatches(body[4], "busy.value = true;") ||
+        !directRegistrationBlock(first?.handler?.body, `
+          if (started === epoch) message.value = pending.value ? "正式登记结果待核对，请查询原请求。" : "暂时无法核对正式登记资料。";
+        `) ||
+        !directRegistrationBlock(first?.finalizer, `
+          if (claimed && await removeStored(claimed, storageKey, true).catch(() => false) && started === epoch) pending.value = null;
+          if (started === epoch) busy.value = false;
+        `) ||
+        !directRegistrationBlock(first?.block, `
+          const body: ContractDirectRegistrationPayload = { archiveProtocolVersion: 2, archiveSource: "direct_signed",
+            idempotencyKey: crypto.randomUUID(), expectedDraftRevision: captured.draftRevision, expectedInputSha256: captured.inputSha256,
+            fileIds: captured.fileIds, confirmedMatchingSignedDocument: true };
+          const coordinates = { actor, contractId: captured.contractId, versionId: captured.versionId, body };
+          const intent = { ...coordinates, requestSha256: await requestSha(coordinates) };
+          const observedRaw = localStorage.getItem(storageKey);
+          const observed = await validatedIntent(observedRaw);
+          const claim = await locks.request(storageKey, () => {
+            if (!sendCurrent(captured, started)) return;
+            const raw = localStorage.getItem(storageKey);
+            if (raw !== null && (raw !== observedRaw || observed?.phase !== "preparing" ||
+              !reconcileCancelledUnderLock(observed, storageKey, raw))) return { raw };
+            localStorage.setItem(storageKey, JSON.stringify({ ...intent, phase: "preparing" }));
+            claimed = intent;
+            return { raw: null };
+          });
+          if (!claim || started !== epoch) return;
+          if (claim.raw !== null) {
+            const saved = await validatedIntent(claim.raw);
+            if (saved && started === epoch) keepPending(saved);
+            return;
+          }
+          keepPending(intent);
+          if (!await refreshCoordinates(captured, started)) {
+            if (started === epoch) message.value = "合同资料或权限已变化，请刷新并核对保存的原件。";
+            return;
+          }
+          await send(intent, captured, started, storageKey, false);
+        `)) return null;
+    caller = confirm.definition;
+  } else {
+    if (candidate.element !== "t-button" || candidate.event !== "click" ||
+        directRegistrationEvent(candidate.expression)?.variant !== "resume-original") return null;
+    const remaining = { ...attempt.block, body: attempt.block.body.slice(1) };
+    if (!directRegistrationBlock(remaining, `
+      const captured = { contractId: intent.contractId, versionId: intent.versionId,
+        draftRevision: intent.body.expectedDraftRevision, inputSha256: intent.body.expectedInputSha256, fileIds: intent.body.fileIds };
+      if (!sendCurrent(captured, started) || !await refreshCoordinates(captured, started)) {
+        if (started === epoch) message.value = "当前资料或权限已变化，请继续查询原登记结果。";
+        return;
+      }
+      await send(intent, captured, started, storageKey, true);
+    `)) return null;
+    caller = query.definition;
+  }
+  if (directRegistrationCalls(caller, node => directRegistrationLocalCall(node, send, symbols)).length !== 1 ||
+      directRegistrationCalls(caller, node => directRegistrationLocalCall(node, refresh, symbols)).length !== 1) return null;
+  return { verified: true, localCallChain: [action.trigger.handler, confirmMode ? "confirm" : "query(true)",
+    "refreshCoordinates", "send", wrapper.name], capabilityWitness: true,
+    capabilitySources: new Set([wrapperIdentity(DIRECT_REGISTRATION_WORKBENCH_READ.apiFile, DIRECT_REGISTRATION_WORKBENCH_READ.name)]) };
+}
+
+function directRegistrationCausalProof({ action, wrapper, candidate, context }) {
+  if (!candidate || action.sourceFile !== CONTRACT_WORKBENCH_PAGE_PATH ||
+      !DIRECT_REGISTRATION_ACTIONS.has(action.id)) return null;
+  const lookup = action.id === "contract-direct-registration.lookup-original";
+  const confirmed = action.id === "contract-direct-registration.confirm";
+  const variant = lookup ? "lookup-original" : "resume-original";
+  const event = directRegistrationEvent(candidate.expression);
+  const page = directRegistrationPageFactory(context);
+  const composableAst = context.asts.get(DIRECT_REGISTRATION_MODULE);
+  if (!page || !composableAst || candidate.elementNode.variables?.length ||
+      astAncestorChain(context.symbols.ast.templateBody, candidate.elementNode)?.some(node => node.variables?.length)) return null;
+  if (confirmed) {
+    if (candidate.expression?.type !== "Identifier" || candidate.expression.name !== "confirmDirectRegistration") return null;
+  } else if (candidate.element !== "t-button" || candidate.event !== "click" || candidate.handler !== "directRegistration" ||
+      action.trigger.variant !== variant || event?.variant !== variant) return null;
+  if (lookup && (wrapper.apiFile !== DIRECT_REGISTRATION_GET.apiFile || wrapper.name !== DIRECT_REGISTRATION_GET.name ||
+    normalizedMainRequests(wrapper).length !== 1 ||
+    normalizedMainRequests(wrapper)[0].normalizedKey !== "GET /contracts/:param/archive-requests/:param")) return null;
+  const symbols = buildSymbolContext(composableAst, DIRECT_REGISTRATION_MODULE, context.sourceFileSet);
+  const factory = directRegistrationFactory(symbols);
+  const query = factory && directRegistrationCallable(factory, "query", symbols, true);
+  const read = factory && directRegistrationCallable(factory, "read", symbols);
+  if (!query || !read) return null;
+
+  const { definition } = query;
+  const [mode] = definition.params;
+  if (definition.params.length !== 1 || mode?.type !== "AssignmentPattern" ||
+      mode.left.type !== "Identifier" || mode.left.name !== "continueOriginal" ||
+      mode.right.type !== "Literal" || mode.right.value !== false) return null;
+  const modeBinding = symbols.scopeBindings.get(mode.left);
+  if (!modeBinding || modeBinding.references.some(reference => reference.isWrite() && !reference.init)) return null;
+
+  const statements = definition.body.body;
+  const [intent, permission, captured, busy, attempt] = statements;
+  if (statements.length !== 5 ||
+      !directRegistrationMatches(intent, "const intent = pending.value;") ||
+      !directRegistrationMatches(permission, "if (!intent || !(continueOriginal ? canContinue.value : canQuery.value)) return;") ||
+      !directRegistrationMatches(captured, "const started = epoch, storageKey = key();") ||
+      !directRegistrationMatches(busy, "busy.value = true;") || attempt?.type !== "TryStatement") return null;
+  const readGate = attempt.block.body[0];
+  if (!directRegistrationMatches(readGate,
+    'if (await read(intent, started, storageKey) !== "unknown" || !continueOriginal || started !== epoch) return;')) return null;
+  const readCall = readGate.test.left.left.left.argument;
+  if (symbols.scopeBindings.get(readCall?.callee) !== read.binding) return null;
+  const readStatement = read.definition.body.body[0];
+  if (!directRegistrationMatches(readStatement,
+    "const result = await fetchDirectSignedContractResult(intent.versionId, intent.body.idempotencyKey, () => started === epoch);") ||
+    !callExpressionMatchesWrapper(readStatement.declarations[0].init.argument, DIRECT_REGISTRATION_GET, symbols)) return null;
+  if (!directRegistrationBlock(read.definition.body, `
+    const result = await fetchDirectSignedContractResult(intent.versionId, intent.body.idempotencyKey, () => started === epoch);
+    if (started !== epoch) return "stale";
+    if (result?.status === "unknown") {
+      const locks = globalThis.navigator?.locks;
+      const cancelled = locks && await locks.request(storageKey, () =>
+        reconcileCancelledUnderLock(intent, storageKey, localStorage.getItem(storageKey)));
+      if (started !== epoch) return "stale";
+      if (cancelled) {
+        if (pending.value?.requestSha256 === intent.requestSha256) pending.value = null;
+        message.value = "上次登记未发出。请核对已保存原件后重新确认。";
+        return "cancelled";
+      }
+      message.value = "尚未查到正式登记结果。请继续查询，或核对资料后按原请求继续。";
+      return "unknown";
+    }
+    if (result?.status !== "archived" || result.requestSha256 !== intent.requestSha256 || !sameBody(result.intent, intent.body) ||
+      !uuid.test(result.result?.archiveId) || result.result?.contractVersionId !== intent.versionId ||
+      result.result.status !== "effective" || !Array.isArray(result.result.fileIds) || !sameFiles(result.result.fileIds, intent.body.fileIds)) {
+      message.value = "返回结果与原登记请求不一致，请保留原请求并查询。";
+      return "mismatch";
+    }
+    await removeStored(intent, storageKey, false);
+    if (started !== epoch) return "stale";
+    pending.value = null;
+    done.value = true;
+    message.value = "正式登记完成，合同已生效。";
+    input.completed(intent.contractId, intent.versionId);
+    return "archived";
+  `)) return null;
+  const keyBinding = symbols.scopeBindings.get(captured.declarations[1].init.callee);
+  const saved = directRegistrationCallable(factory, "validatedIntent", symbols);
+  const kept = directRegistrationCallable(factory, "keepPending", symbols);
+  const pending = symbols.scopeBindings.get(intent.declarations[0].init.object);
+  if (!saved || !kept || !pending ||
+      !directRegistrationExpression(uniqueIndexedNode(symbols.declarationsByBinding, keyBinding),
+        '() => `jg:direct-contract-registration:v1:${encodeURIComponent(input.actor.value ?? "")}:${encodeURIComponent(version.value)}`') ||
+      !directRegistrationBlock(saved.definition.body, `
+        if (raw === null) return null;
+        if (raw.length > 8192) throw new Error();
+        const saved = JSON.parse(raw) as StoredIntent;
+        if (saved.actor !== input.actor.value || saved.versionId !== version.value || saved.contractId !== input.routeContract.value ||
+          (saved.phase !== undefined && saved.phase !== "preparing" && saved.phase !== "sent") ||
+          !validBody(saved.body) || !sha.test(saved.requestSha256) || await requestSha(saved) !== saved.requestSha256) throw new Error();
+        return saved;
+      `) ||
+      !directRegistrationBlock(kept.definition.body, `
+        pending.value = intent;
+        message.value = "正式登记结果待核对，请保留原请求并查询。";
+      `)) return null;
+  const setPending = kept.definition.body.body[0].expression;
+  let substitutedIntent = false;
+  walkEstree(factory.body, node => {
+    if (node.type === "AssignmentExpression" && staticMemberPath(node.left) === "pending.value" &&
+        symbols.scopeBindings.get(referenceRootIdentifier(node.left)) === pending &&
+        node !== setPending && (node.operator !== "=" || node.right.type !== "Literal" || node.right.value !== null)) substitutedIntent = true;
+  });
+  if (substitutedIntent || !directRegistrationReadEffects(factory, read, keyBinding,
+    readStatement.declarations[0].init.argument, page, symbols, context.symbols)) return null;
+  // The non-continuation returns from the try before the write branch. Its
+  // failure and cleanup code must stay display-only.
+  for (const block of [attempt.handler?.body, attempt.finalizer]) {
+    let callable = false;
+    walkEstree(block, node => { if (["CallExpression", "NewExpression", "TaggedTemplateExpression"].includes(node.type)) callable = true; });
+    if (!block || callable) return null;
+  }
+  if (!lookup) return directRegistrationWriteProof({ action, wrapper, candidate, context, page, factory, symbols, query, read, attempt });
+  return { verified: true, localCallChain: ["directRegistration.query()", "query", "read", wrapper.name] };
+}
+
+const CONTRACT_APPROVAL_PAGE = `${WEB_SOURCE_ROOT}/pages/contracts/ContractDetailPage.vue`;
+const CONTRACT_APPROVAL_API = `${WEB_SOURCE_ROOT}/api/core-flow-read.api.ts`;
+const CONTRACT_APPROVAL_READ = "fetchContractDetail";
+const CONTRACT_APPROVAL_COORDINATES = [
+  "expectedContractUpdatedAt", "expectedApprovalInstanceId", "expectedNodeIndex", "expectedApprovalUpdatedAt"
+];
+const CONTRACT_APPROVAL_ACTIONS = new Map([
+  ["contract-approval.review-approve", { decision: "approve", handler: "confirmContractReviewApprove", dialog: "approvalApprove" }],
+  ["contract-approval.review-reject", { decision: "reject", handler: "confirmContractReviewReject", dialog: "approvalReject" }],
+  ["contract-approval.withdraw", { decision: null, handler: "confirmContractWithdrawal", dialog: "withdrawal" }]
+]);
+
+function approvalAstShape(node) {
+  return JSON.stringify(node, (key, value) =>
+    ["parent", "loc", "range", "raw", "comments", "tokens"].includes(key) ? undefined : value);
+}
+
+function approvalStatements(node, source) {
+  const expected = parseSource("contract-approval-proof.ts", `{${source}}`).body[0];
+  return Boolean(node && approvalAstShape(node) === approvalAstShape(expected));
+}
+
+function approvalStatement(node, source) {
+  return approvalStatements({ type: "BlockStatement", body: [node] }, source);
+}
+
+function approvalExpression(node, source) {
+  return approvalStatement({ type: "ExpressionStatement", expression: node }, `${source};`);
+}
+
+function approvalFunction(symbols, name) {
+  const bindings = topLevelScopeVariables(symbols.scopeManager, name);
+  if (bindings.length !== 1 || bindings[0].references.some(reference => reference.isWrite() && !reference.init)) return null;
+  const definition = uniqueIndexedNode(symbols.definitionsByBinding, bindings[0]);
+  return definition?.type === "FunctionDeclaration" ? { definition, binding: bindings[0] } : null;
+}
+
+function approvalCalls(node, predicate) {
+  const matches = [];
+  walkEstree(node, candidate => {
+    if (candidate.type === "CallExpression" && predicate(candidate)) matches.push(candidate);
+  });
+  return matches;
+}
+
+function approvalBoundCall(node, name, symbols) {
+  const target = approvalFunction(symbols, name);
+  return Boolean(target && approvalCalls(node, candidate => candidate.callee.type === "Identifier" &&
+    symbols.scopeBindings.get(candidate.callee) === target.binding).length === 1);
+}
+
+function approvalParamNames(definition, ...names) {
+  return definition.params.length === names.length && definition.params.every((param, index) =>
+    param.type === "Identifier" && param.name === names[index]);
+}
+
+function approvalFreezeObject(statement, symbols) {
+  const call = statement?.type === "ReturnStatement" && statement.argument;
+  return call?.type === "CallExpression" && staticMemberPath(call.callee) === "Object.freeze" &&
+    unshadowedRuntimeGlobal(referenceRootIdentifier(call.callee), new Set(["Object"]), symbols.scopeBindings) &&
+    call.arguments.length === 1 && call.arguments[0]?.type === "ObjectExpression" ? call.arguments[0] : null;
+}
+
+function approvalFields(object, mapping) {
+  return Object.entries(mapping).every(([key, value]) => approvalExpression(objectPropertyValue(object, key), value));
+}
+
+function approvalNoUnexpectedReturns(definition) {
+  const last = definition.body.body.at(-1);
+  let safe = true;
+  directCallableNodes(definition, node => {
+    if (node.type === "ReturnStatement" && node !== last &&
+        (node.argument?.type !== "Literal" || node.argument.value !== null)) safe = false;
+  });
+  return safe;
+}
+
+function approvalKnownCoordinateMap(fields, source) {
+  return Object.fromEntries(fields.map(field => [field, `${source}.${field}`]));
+}
+
+function contractApprovalCaptureSource(spec, captured, current, owner, returnObject, context) {
+  const { symbols } = context;
+  const review = Boolean(spec.decision);
+  const mode = review ? "Review" : "Withdrawal";
+  const dialogName = review ? "currentContractReviewDialogContext" : "currentContractWithdrawalCoordinates";
+  const dialog = approvalFunction(symbols, dialogName);
+  const route = approvalFunction(symbols, "routeContractId");
+  const ownerScope = approvalFunction(symbols, `contract${mode}OwnerScope`);
+  if (!dialog || !route || !ownerScope ||
+      !approvalStatements(route.definition.body, `
+        const value = route.params.contractId;
+        return typeof value === "string" ? value : Array.isArray(value) ? String(value[0] ?? "") : "";
+      `) ||
+      !approvalStatements(ownerScope.definition.body, `
+        return [context.routeContractId, context.contractVersionId, context.expectedApprovalInstanceId].join("\\u0000");
+      `) ||
+      !approvalBoundCall(owner.definition, "routeContractId", symbols) ||
+      !approvalBoundCall(owner.definition, `contract${mode}OwnerScope`, symbols) ||
+      !approvalBoundCall(captured.definition, `contract${mode}OwnerScope`, symbols) ||
+      !approvalBoundCall(dialog.definition, "routeContractId", symbols) ||
+      (!review && !approvalBoundCall(current.definition, dialogName, symbols))) return false;
+  const [routeBinding] = topLevelScopeVariables(symbols.scopeManager, "route");
+  const routeSource = uniqueIndexedNode(symbols.declarationsByBinding, routeBinding);
+  const routeImport = routeSource?.type === "CallExpression" && symbols.scopeBindings.get(routeSource.callee);
+  if (!routeImport || routeSource.arguments.length !== 0 || !routeImport.defs.some(definition =>
+    definition.type === "ImportBinding" && definition.parent?.source?.value === "vue-router" &&
+    definition.node?.imported?.name === "useRoute")) return false;
+
+  const constructed = approvalFreezeObject(dialog.definition.body.body.at(-1), symbols);
+  const [capability, coordinates] = dialog.definition.body.body;
+  const coordinateName = review ? "reviewApprovalContext" : "withdrawApprovalContext";
+  if (!constructed || !approvalNoUnexpectedReturns(dialog.definition) ||
+      !approvalStatement(capability, "const capability = contractReviewCapability.value;") ||
+      !approvalStatement(coordinates, `const coordinates = capability?.${coordinateName};`) ||
+      constructed.properties.some(property => property.type !== "Property" || property.computed) ||
+      !approvalFields(constructed, {
+        routeContractId: review ? "routeId" : "currentRouteContractId",
+        contractId: "capability.id", contractVersionId: "capability.contractVersionId",
+        ...approvalKnownCoordinateMap(CONTRACT_APPROVAL_COORDINATES, "coordinates"),
+        ...(review ? { expectedParallelApprovalEpoch: "coordinates.expectedParallelApprovalEpoch" } : {})
+      })) return false;
+  const dialogBody = dialog.definition.body.body;
+  const routeVariable = review ? "routeId" : "currentRouteContractId";
+  const routeDeclaration = dialogBody[review ? 2 : 3];
+  const gate = dialogBody[review ? 3 : 4];
+  if (dialogBody.length !== (review ? 5 : 6) ||
+      !approvalStatement(routeDeclaration, `const ${routeVariable} = routeContractId();`) ||
+      gate?.type !== "IfStatement" || gate.alternate ||
+      !approvalStatements(gate.consequent, "return null;")) return false;
+  if (review) {
+    if (!approvalExpression(gate.test, `!capability || !coordinates || !routeId || !contractReviewActionEnabled() ||
+      capability.id !== routeId || capability.lifecycleUpdatedAt !== coordinates.expectedContractUpdatedAt`) ||
+      !approvalBoundCall(dialog.definition, "contractReviewActionEnabled", symbols)) return false;
+  } else if (!approvalStatement(dialogBody[2],
+      'const enabledActions = capability?.availableActions.filter((action) => action.key === "withdraw_approval" && action.enabled) ?? [];') ||
+      !approvalExpression(gate.test, `!capability || !coordinates || enabledActions.length !== 1 ||
+        !contractWithdrawalActionEnabled() || !currentRouteContractId || capability.id !== currentRouteContractId ||
+        !capability.contractVersionId || capability.lifecycleUpdatedAt !== coordinates.expectedContractUpdatedAt ||
+        !coordinates.expectedContractUpdatedAt || !coordinates.expectedApprovalInstanceId ||
+        !Number.isInteger(coordinates.expectedNodeIndex) || coordinates.expectedNodeIndex < 0 ||
+        !coordinates.expectedApprovalUpdatedAt`) ||
+      !approvalBoundCall(dialog.definition, "contractWithdrawalActionEnabled", symbols)) return false;
+  const shared = {
+    ownerScope: `contract${mode}OwnerScope(dialog)`, operationId: "operationId",
+    routeGeneration: review ? "detailRequestId" : "dialog.routeGeneration",
+    detailEpoch: review ? "detailRequestId" : "dialog.detailEpoch",
+    dialogGeneration: review ? "contractReviewDialogGeneration" : "dialog.dialogGeneration"
+  };
+  if (!approvalFields(returnObject, {
+    ...shared, ...(review ? { decision: "decision", requiresSelfReviewConfirmation: "requiresContractSelfReviewConfirmation.value" } : { action: '"withdraw"' })
+  }) || returnObject.properties.some(property => property.type === "Property" && property.computed)) return false;
+  const spreads = returnObject.properties.filter(property => property.type === "SpreadElement");
+  if (!review) return spreads.length === 0;
+  if (spreads.length !== 2 ||
+      !approvalExpression(spreads[0].argument, "comment ? { comment } : {}") ||
+      !approvalExpression(spreads[1].argument, "selfReviewPayload")) return false;
+  // The self-review helper may contribute only comment/password fields, never coordinates.
+  const helperPath = `${WEB_SOURCE_ROOT}/components/approval-self-review.config.ts`;
+  const calls = approvalCalls(captured.definition, node => callExpressionMatchesWrapper(node, {
+    apiFile: helperPath, name: "buildApprovalSelfReviewPayload"
+  }, symbols));
+  const ast = context.asts.get(helperPath);
+  if (calls.length !== 1 || !ast || !approvalExpression(calls[0],
+    "buildApprovalSelfReviewPayload(requiresContractSelfReviewConfirmation.value, { selfReviewReason: contractArchiveForm.selfReviewReason, confirmationPassword: password })")) return false;
+  const helperSymbols = buildSymbolContext(ast, helperPath, context.sourceFileSet);
+  const helper = approvalFunction(helperSymbols, "buildApprovalSelfReviewPayload");
+  if (!helper) return false;
+  const returns = [];
+  directCallableNodes(helper.definition, node => { if (node.type === "ReturnStatement") returns.push(node); });
+  return returns.length === 2 && approvalExpression(returns[0].argument, "({})") &&
+    approvalExpression(returns[1].argument, "({ selfReviewReason, confirmationPassword: form.confirmationPassword })");
+}
+
+function contractApprovalPageEvidence(spec, candidate, context) {
+  const { symbols } = context;
+  const mode = spec.decision ? "Review" : "Withdrawal";
+  const captured = approvalFunction(symbols, `captureContract${mode}Context`);
+  const current = approvalFunction(symbols, `contract${mode}SubmissionIsCurrent`);
+  const owner = approvalFunction(symbols, `ownsContract${mode}Submission`);
+  const handler = approvalFunction(symbols, spec.handler);
+  if (!captured || !current || !owner || !handler ||
+      candidate.element !== "sensitive-action-dialog" || candidate.event !== "confirm" ||
+      candidate.expression?.type !== "Identifier" || candidate.expression.name !== spec.handler ||
+      candidate.elementNode.variables?.length ||
+      astAncestorChain(symbols.ast.templateBody, candidate.elementNode)?.some(node => node.variables?.length)) return false;
+  const dialogImports = topLevelScopeVariables(symbols.scopeManager, "SensitiveActionDialog");
+  const dialogImport = dialogImports.length === 1 && symbols.importsByBinding.get(dialogImports[0]);
+  if (dialogImport?.kind !== "default" ||
+      dialogImport.sourceFile !== `${WEB_SOURCE_ROOT}/components/SensitiveActionDialog.vue`) return false;
+  const capture = spec.decision
+    ? `() => captureContractReviewContext("${spec.decision}", values.password)`
+    : "captureContractWithdrawalContext";
+  const modeProperty = spec.decision ? `decision: "${spec.decision}"` : 'action: "withdraw"';
+  const command = `executeContractApproval${mode}Action`;
+  const prepare = `prepareContractApproval${mode}Action`;
+  if (!approvalParamNames(handler.definition, ...(spec.decision ? ["values"] : [])) ||
+      !approvalStatements(handler.definition.body, `
+        if (contract${mode}InFlight) return contract${mode}InFlight;
+        const execution = ${command}({
+          ${modeProperty},
+          capture: ${capture},
+          preflight: (context) => ${prepare}({
+            ...context,
+            isCurrent: contract${mode}SubmissionIsCurrent
+          }),
+          current: contract${mode}SubmissionIsCurrent,
+          stale: staleContract${mode},
+          complete: completeContract${mode},
+          fail: failContract${mode},
+          finish: finishContract${mode}
+        }).then((result) => result.status === "completed");
+        contract${mode}InFlight = execution;
+        void execution.finally(() => {
+          if (contract${mode}InFlight === execution) { contract${mode}InFlight = null; }
+        });
+        return execution;
+      `)) return false;
+  const [execute] = approvalCalls(handler.definition, node => callExpressionMatchesWrapper(node, {
+    apiFile: CONTRACT_APPROVAL_API, name: command
+  }, symbols));
+  const options = execute?.arguments[0];
+  const preflight = objectPropertyValue(options, "preflight");
+  const captureNode = objectPropertyValue(options, "capture");
+  if (!options || !callExpressionMatchesWrapper(preflight?.body, { apiFile: CONTRACT_APPROVAL_API, name: prepare }, symbols) ||
+      symbols.scopeBindings.get(objectPropertyValue(options, "current")) !== current.binding ||
+      symbols.scopeBindings.get(objectPropertyValue(preflight.body.arguments[0], "isCurrent")) !== current.binding ||
+      (spec.decision ? !approvalBoundCall(captureNode, "captureContractReviewContext", symbols)
+        : symbols.scopeBindings.get(captureNode) !== captured.binding)) return false;
+
+  if (!approvalParamNames(current.definition, "context") || !approvalParamNames(owner.definition, "context") ||
+      !approvalStatements(owner.definition.body, `
+        return context.operationId === contract${mode}SubmissionToken &&
+          context.ownerScope === contract${mode}OwnerScope(context) &&
+          routeContractId() === context.routeContractId;
+      `) || !approvalBoundCall(current.definition, `ownsContract${mode}Submission`, symbols)) return false;
+  const currentChecks = `
+    ownsContract${mode}Submission(context) &&
+      context.routeGeneration === detailRequestId &&
+      context.detailEpoch === detailRequestId &&
+      context.dialogGeneration === contract${mode}DialogGeneration &&
+      sensitiveAction.visible &&
+  `;
+  if (spec.decision) {
+    if (!approvalStatements(current.definition.body, `
+      const expectedKind = context.decision === "approve" ? "approvalApprove" : "approvalReject";
+      return (${currentChecks} sensitiveAction.kind === expectedKind);
+    `)) return false;
+  } else if (!approvalStatements(current.definition.body, `
+      const current = currentContractWithdrawalCoordinates();
+      return (${currentChecks} sensitiveAction.kind === "withdrawal" &&
+        Boolean(current) &&
+        current?.contractId === context.contractId &&
+        current.contractVersionId === context.contractVersionId &&
+        ${CONTRACT_APPROVAL_COORDINATES.map(field => `current.${field} === context.${field}`).join(" && ")});
+    `)) return false;
+
+  const fields = ["routeContractId", "contractId", "contractVersionId", ...CONTRACT_APPROVAL_COORDINATES,
+    ...(spec.decision ? ["expectedParallelApprovalEpoch"] : [])];
+  const result = captured.definition.body.body.at(-1);
+  const returnObject = spec.decision
+    ? result?.type === "ReturnStatement" && result.argument
+    : approvalFreezeObject(result, symbols);
+  if (!approvalNoUnexpectedReturns(captured.definition) || !returnObject ||
+      !approvalFields(returnObject, Object.fromEntries(fields.map(field => [field, `dialog.${field}`])))) return false;
+  const [dialog, fresh, guard] = captured.definition.body.body;
+  if (!approvalStatement(dialog, `const dialog = contract${mode}DialogContext;`) || guard?.type !== "IfStatement" ||
+      !approvalStatements(guard.consequent, "return null;")) return false;
+  if (spec.decision) {
+    if (!approvalStatement(fresh, "const freshDialog = currentContractReviewDialogContext(decision);") ||
+        !approvalExpression(guard.test, `!dialog || !freshDialog || dialog.decision !== decision ||
+          dialog.contractId !== freshDialog.contractId || dialog.contractVersionId !== freshDialog.contractVersionId ||
+          (dialog.expectedParallelApprovalEpoch === undefined
+            ? dialog.expectedContractUpdatedAt !== freshDialog.expectedContractUpdatedAt ||
+              dialog.expectedApprovalUpdatedAt !== freshDialog.expectedApprovalUpdatedAt
+            : dialog.expectedParallelApprovalEpoch !== freshDialog.expectedParallelApprovalEpoch) ||
+          dialog.expectedApprovalInstanceId !== freshDialog.expectedApprovalInstanceId ||
+          dialog.expectedNodeIndex !== freshDialog.expectedNodeIndex ||
+          !sameContractReviewOwnerRisk(dialog.ownerContractRisk, freshDialog.ownerContractRisk) ||
+          archiveActionBusy.value || contractReviewResultUnknown`) ||
+        !approvalBoundCall(captured.definition, "currentContractReviewDialogContext", symbols)) return false;
+  } else {
+    const compare = approvalFunction(symbols, "sameContractWithdrawalCoordinates");
+    if (!compare || !approvalParamNames(compare.definition, "expected", "actual") ||
+        !approvalStatements(compare.definition.body, `return ${[
+          "routeGeneration", "detailEpoch", "dialogGeneration", ...fields
+        ].map(field => `expected.${field} === actual.${field}`).join(" && ")};`) ||
+        !approvalStatement(fresh, "const fresh = currentContractWithdrawalCoordinates();") ||
+        !approvalExpression(guard.test, `!dialog || !fresh || !sameContractWithdrawalCoordinates(dialog, fresh) ||
+          archiveActionBusy.value || contractWithdrawalResultUnknown || !sensitiveAction.visible ||
+          sensitiveAction.kind !== "withdrawal"`) ||
+        !approvalBoundCall(captured.definition, "sameContractWithdrawalCoordinates", symbols) ||
+        !approvalBoundCall(captured.definition, "currentContractWithdrawalCoordinates", symbols)) return false;
+  }
+  return contractApprovalCaptureSource(spec, captured, current, owner, returnObject, context);
+}
+
+function contractApprovalFrozenCoordinates(normalizer, comparator, review, symbols) {
+  const plainFields = ["ownerScope", "routeContractId", "contractId", "contractVersionId",
+    "expectedContractUpdatedAt", "expectedApprovalInstanceId", "expectedApprovalUpdatedAt"];
+  const numericFields = ["routeGeneration", "detailEpoch", "dialogGeneration", "operationId", "expectedNodeIndex"];
+  const comparisonFields = [...numericFields.slice(0, 4), ...plainFields.slice(1, 6),
+    "expectedNodeIndex", "expectedApprovalUpdatedAt"];
+  const freeze = approvalFreezeObject(normalizer.definition.body.body.at(-1), symbols);
+  if (!approvalParamNames(normalizer.definition, "input") || !freeze || !approvalNoUnexpectedReturns(normalizer.definition) ||
+      !approvalParamNames(comparator.definition, "expected", "actual")) return false;
+  for (const field of plainFields) {
+    if (!normalizer.definition.body.body.some(statement => approvalStatement(statement, `const ${field} = input.${field}.trim();`))) return false;
+  }
+  if (!approvalFields(freeze, {
+    ...Object.fromEntries(plainFields.map(field => [field, field])),
+    ...Object.fromEntries(numericFields.map(field => [field, `input.${field}`])),
+    ...(review ? { decision: "input.decision" } : { action: '"withdraw"' })
+  }) || freeze.properties.some(property => property.type === "Property" && property.computed)) return false;
+  const directProperties = freeze.properties.filter(property => property.type === "Property");
+  if (new Set(directProperties.map(propertyKey)).size !== directProperties.length) return false;
+  const expectedSpreads = review ? [
+    "...(input.expectedParallelApprovalEpoch !== undefined ? { expectedParallelApprovalEpoch: input.expectedParallelApprovalEpoch } : {})",
+    "...(comment ? { comment } : {})",
+    "...(selfReviewReason ? { selfReviewReason } : {})",
+    "...(confirmationPassword ? { confirmationPassword } : {})"
+  ] : [];
+  const spreads = freeze.properties.filter(property => property.type === "SpreadElement");
+  if (spreads.length !== expectedSpreads.length ||
+      spreads.some((property, index) => !approvalExpression({ type: "ObjectExpression", properties: [property] }, `({ ${expectedSpreads[index]} })`))) return false;
+  let hasWrite = false;
+  directCallableNodes(normalizer.definition, node => {
+    if (node.type === "AssignmentExpression" || node.type === "UpdateExpression") hasWrite = true;
+  });
+  if (hasWrite) return false;
+  if (review) {
+    const gates = normalizer.definition.body.body.filter(node => node.type === "IfStatement");
+    if (gates.length !== 1 || gates[0].alternate ||
+        !approvalStatements(gates[0].consequent, 'throw new Error("合同审批上下文无效，请重新读取当前合同后再操作");')) return false;
+    const disjuncts = node => node.type === "LogicalExpression" && node.operator === "||"
+      ? [...disjuncts(node.left), ...disjuncts(node.right)] : [node];
+    if (disjuncts(gates[0].test).filter(node => approvalExpression(node,
+      'input.expectedParallelApprovalEpoch !== undefined && (typeof input.expectedParallelApprovalEpoch !== "string" || !/^[a-f0-9]{64}$/u.test(input.expectedParallelApprovalEpoch))')).length !== 1) return false;
+  }
+  const fields = [...(review ? [] : ["action"]), "ownerScope", ...comparisonFields,
+    ...(review ? ["expectedParallelApprovalEpoch", "decision", "comment", "requiresSelfReviewConfirmation",
+      "selfReviewReason", "confirmationPassword", "ownerContractRiskConfirmed"] : [])];
+  return approvalStatements(comparator.definition.body, `
+    return ${fields.map(field => `expected.${field} === actual.${field}`).join(" && ")}
+      ${review ? "&& sameContractApprovalOwnerRisk(expected.ownerContractRisk, actual.ownerContractRisk)" : ""};
+  `) && (!review || approvalBoundCall(comparator.definition, "sameContractApprovalOwnerRisk", symbols));
+}
+
+function contractApprovalFreshEvidence(prepare, assertion, review, mode, symbols) {
+  const name = `assertContractApproval${mode}Preflight`;
+  const available = `enabled${mode}Actions`;
+  const capability = review ? "review_approval" : "withdraw_approval";
+  const coordinateMember = review ? "reviewApprovalContext" : "withdrawApprovalContext";
+  return approvalParamNames(prepare.definition, "input") &&
+    approvalStatements(prepare.definition.body, `
+      const context = normalizeContractApproval${mode}Action(input);
+      if (!input.isCurrent(context)) { return { status: "stale", context }; }
+      const preflight = await fetchContractDetail(context.routeContractId) as ContractApproval${mode}PreflightReadModel;
+      if (!input.isCurrent(context)) { return { status: "stale", context }; }
+      ${name}(context, preflight);
+      if (!input.isCurrent(context)) { return { status: "stale", context }; }
+      return { status: "ready", context, preflight };
+    `) &&
+    approvalBoundCall(prepare.definition, "fetchContractDetail", symbols) &&
+    approvalBoundCall(prepare.definition, name, symbols) &&
+    approvalBoundCall(prepare.definition, `normalizeContractApproval${mode}Action`, symbols) &&
+    approvalParamNames(assertion.definition, "context", "preflight") &&
+    approvalStatements(assertion.definition.body, `
+      const ${available} = preflight.availableActions.filter((action) => action.key === "${capability}" && action.enabled);
+      const coordinates = preflight.${coordinateMember};
+      ${review ? `const matchesReviewCoordinates = coordinates &&
+        (context.expectedParallelApprovalEpoch === undefined
+          ? coordinates.expectedContractUpdatedAt === context.expectedContractUpdatedAt &&
+            coordinates.expectedApprovalUpdatedAt === context.expectedApprovalUpdatedAt
+          : coordinates.expectedParallelApprovalEpoch === context.expectedParallelApprovalEpoch);` : ""}
+      if (preflight.id !== context.contractId || preflight.contractVersionId !== context.contractVersionId ||
+          preflight.lifecycleUpdatedAt !== ${review ? "coordinates?.expectedContractUpdatedAt" : "context.expectedContractUpdatedAt"} ||
+          ${available}.length !== 1 ||
+          ${review ? `(enabledReviewActions[0]?.requiresSelfReviewConfirmation === true) !== context.requiresSelfReviewConfirmation ||
+            !coordinates || !matchesReviewCoordinates ||
+            coordinates.expectedApprovalInstanceId !== context.expectedApprovalInstanceId ||
+            coordinates.expectedNodeIndex !== context.expectedNodeIndex` : CONTRACT_APPROVAL_COORDINATES.map((field, index) =>
+            `coordinates${index === 0 ? "?" : ""}.${field} !== context.${field}`).join(" || ")}
+          ${review ? "|| !sameContractApprovalOwnerRisk(context.ownerContractRisk, preflight.ownerContractRisk ?? null)" : ""}) {
+        throw new Error("${review ? "合同审批资格、风险或审批坐标已变化，请重新读取当前合同" : "合同审批撤回资格或审批坐标已变化，请重新读取当前合同"}");
+      }
+    `) && (!review || approvalBoundCall(assertion.definition, "sameContractApprovalOwnerRisk", symbols));
+}
+
+function contractApprovalCommandEvidence(command, review, mode, symbols) {
+  const payloadName = review ? "contractApprovalReviewActionPayload" : "contractApprovalWithdrawalPayload";
+  const payload = approvalFunction(symbols, payloadName);
+  if (!payload || !approvalParamNames(command.definition, "input") ||
+      !approvalParamNames(payload.definition, "context", ...(review ? ["decision"] : [])) ||
+      !approvalNoUnexpectedReturns(payload.definition)) return false;
+  const suffix = review ? "approval" : "approval-withdrawal";
+  const currentAfter = review ? `
+      await input.stale(activeContext);
+      return { status: "stale", context: activeContext };
+    ` : `
+      throw new ContractApprovalWithdrawalResultUnknownError(new Error("合同审批撤回请求已发出，但提交后的页面归属已变化"));
+    `;
+  const post = review ? "payload" : "contractApprovalWithdrawalPayload(activeContext)";
+  if (!approvalStatements(command.definition.body, `
+    const capturedContext = input.capture(input.${review ? "decision" : "action"});
+    if (!capturedContext) return { status: "not_started" };
+    let activeContext = capturedContext;
+    try {
+      const frozenCapturedContext = normalizeContractApproval${mode}Action(capturedContext);
+      activeContext = frozenCapturedContext;
+      const prepared = await input.preflight(frozenCapturedContext);
+      activeContext = prepared.context;
+      if (prepared.status !== "ready" ||
+          !sameContractApproval${mode}Context(frozenCapturedContext, prepared.context) ||
+          !input.current(frozenCapturedContext, prepared)) {
+        await input.stale(frozenCapturedContext);
+        return { status: "stale", context: frozenCapturedContext };
+      }
+      ${review ? "const payload = contractApprovalReviewActionPayload(activeContext, input.decision);" : ""}
+      let response: unknown;
+      try {
+        response = await postJson<unknown>(\`/contracts/\${encodeURIComponent(activeContext.contractVersionId)}/${suffix}\`, ${post});
+      } catch (error) {
+        if (error instanceof CoreFlowApiError && error.status < 500) { throw error; }
+        throw new ContractApproval${mode}ResultUnknownError(error);
+      }
+      if (!input.current(frozenCapturedContext, prepared)) { ${currentAfter} }
+      await input.complete(activeContext, response);
+      return { status: "completed", context: activeContext, response };
+    } catch (error) {
+      await input.fail(activeContext, error);
+      return { status: "failed", context: activeContext, error };
+    } finally {
+      input.finish(activeContext);
+    }
+  `)) return false;
+  const coords = CONTRACT_APPROVAL_COORDINATES.map(field => `${field}: context.${field}`).join(", ");
+  const reviewFields = `
+    decision,
+    ...(context.comment ? { comment: context.comment } : {}),
+    ...(context.requiresSelfReviewConfirmation ? {
+      selfReviewReason: context.selfReviewReason, confirmationPassword: context.confirmationPassword
+    } : {}),
+    ...(decision === "approve" && context.ownerContractRisk?.requiresExplicitConfirmation ? {
+      ownerContractRiskConfirmed: true, expectedOwnerContractRisk: context.ownerContractRisk
+    } : {}),
+  `;
+  const epoch = review ? `, ...(context.expectedParallelApprovalEpoch !== undefined
+    ? { expectedParallelApprovalEpoch: context.expectedParallelApprovalEpoch } : {})` : "";
+  return approvalStatement(payload.definition.body.body.at(-1), `return { ${review ? reviewFields : ""} ${coords}${epoch} };`) &&
+    [`normalizeContractApproval${mode}Action`, `sameContractApproval${mode}Context`, payloadName, "postJson"]
+      .every(name => approvalBoundCall(command.definition, name, symbols));
+}
+
+function contractApprovalPageCausalProof({ action, wrapper, candidate, context, nestRouteIndex }) {
+  const spec = CONTRACT_APPROVAL_ACTIONS.get(action.id);
+  if (!spec || !candidate || action.sourceFile !== CONTRACT_APPROVAL_PAGE ||
+      action.trigger.handler !== spec.handler || action.capability.kind !== "available_action_string" ||
+      action.capability.source !== "contractLifecycleAvailableActionKeys" ||
+      action.capability.key !== (spec.decision ? "review_approval" : "withdraw_approval") ||
+      action.wrappers.length !== 1 || action.wrappers[0].variant !== (spec.decision ?? undefined) ||
+      action.routePaths.length !== 1 || action.routePaths[0] !== "/合同管理/:contractId") return null;
+  const mode = spec.decision ? "Review" : "Withdrawal";
+  const commandName = `executeContractApproval${mode}Action`;
+  const prepareName = `prepareContractApproval${mode}Action`;
+  const request = spec.decision ? "POST /contracts/:param/approval" : "POST /contracts/:param/approval-withdrawal";
+  const writeRequests = normalizedMainRequests(wrapper);
+  const sourceIdentity = wrapperIdentity(CONTRACT_APPROVAL_API, CONTRACT_APPROVAL_READ);
+  const read = context.wrapperIndex.get(sourceIdentity);
+  const readRequests = normalizedMainRequests(read);
+  const readRoute = nestRouteIndex.get("GET /contracts/:param");
+  const writeRoute = nestRouteIndex.get(request);
+  if (readRoute?.authentication !== "authenticated" || readRoute.isPublic !== false ||
+      writeRoute?.authentication !== "authenticated" || writeRoute.isPublic !== false ||
+      wrapper.apiFile !== CONTRACT_APPROVAL_API || wrapper.name !== commandName ||
+      writeRequests.length !== 1 || writeRequests[0].normalizedKey !== request ||
+      read?.returnProvenance !== "transparent_main_response" || readRequests.length !== 1 ||
+      readRequests[0].normalizedKey !== "GET /contracts/:param" ||
+      !contractApprovalPageEvidence(spec, candidate, context)) return null;
+  const ast = context.asts.get(CONTRACT_APPROVAL_API);
+  if (!ast) return null;
+  const symbols = buildSymbolContext(ast, CONTRACT_APPROVAL_API, context.sourceFileSet);
+  const command = approvalFunction(symbols, commandName);
+  const prepare = approvalFunction(symbols, prepareName);
+  const assertion = approvalFunction(symbols, `assertContractApproval${mode}Preflight`);
+  const normalizer = approvalFunction(symbols, `normalizeContractApproval${mode}Action`);
+  const comparator = approvalFunction(symbols, `sameContractApproval${mode}Context`);
+  const reader = approvalFunction(symbols, CONTRACT_APPROVAL_READ);
+  const review = Boolean(spec.decision);
+  if (!command || !prepare || !assertion || !normalizer || !comparator || !reader ||
+      !approvalStatements(reader.definition.body, `
+        const query = options?.versionId ? \`?versionId=\${encodeURIComponent(options.versionId)}\` : "";
+        return readJson<ContractDetailReadModel>(\`/contracts/\${encodeURIComponent(contractId)}\${query}\`,
+          { "x-contract-numeric-protocol": "2" });
+      `) || !approvalBoundCall(reader.definition, "readJson", symbols) ||
+      !contractApprovalFrozenCoordinates(normalizer, comparator, review, symbols) ||
+      !contractApprovalFreshEvidence(prepare, assertion, review, mode, symbols) ||
+      !contractApprovalCommandEvidence(command, review, mode, symbols)) return null;
+  return {
+    verified: true,
+    localCallChain: [spec.handler, prepareName, CONTRACT_APPROVAL_READ, commandName],
+    capabilityWitness: true,
+    capabilitySources: new Set([sourceIdentity])
+  };
+}
+
+const SIGNING_MATERIAL_CHANGE_ACTION = "contract.signing-material-change";
+const SIGNING_MATERIAL_CHANGE_COMMAND = "executeContractSigningMaterialChange";
+const SIGNING_MATERIAL_CHANGE_HANDLER = "confirmSigningMaterialChange";
+const SIGNING_MATERIAL_CHANGE_KEY = "report_signing_material_change";
+
+function requiresContractDetailCausalProof(action) {
+  return CONTRACT_APPROVAL_ACTIONS.has(action.id) || action.id === SIGNING_MATERIAL_CHANGE_ACTION;
+}
+
+function signingMaterialChangePageEvidence(candidate, { symbols }) {
+  const handler = approvalFunction(symbols, SIGNING_MATERIAL_CHANGE_HANDLER);
+  const capture = approvalFunction(symbols, "captureSigningMaterialChangeSubmission");
+  const captureDialog = approvalFunction(symbols, "captureSigningMaterialChangeContext");
+  const open = approvalFunction(symbols, "requestSigningMaterialChange");
+  const current = approvalFunction(symbols, "signingMaterialChangeSubmissionIsCurrent");
+  const owner = approvalFunction(symbols, "ownsSigningMaterialChangeSubmission");
+  const route = approvalFunction(symbols, "routeContractId");
+  const enabled = approvalFunction(symbols, "signingMaterialChangeActionEnabled");
+  if (!handler || !capture || !captureDialog || !open || !current || !owner || !route || !enabled ||
+      candidate.expression?.type !== "Identifier" || candidate.expression.name !== SIGNING_MATERIAL_CHANGE_HANDLER ||
+      candidate.elementNode.variables?.length ||
+      astAncestorChain(symbols.ast.templateBody, candidate.elementNode)?.some(node => node.variables?.length)) return false;
+  const dialogImports = topLevelScopeVariables(symbols.scopeManager, "SensitiveActionDialog");
+  const dialogImport = dialogImports.length === 1 && symbols.importsByBinding.get(dialogImports[0]);
+  const guard = directiveExpression(elementDirective(candidate.elementNode, "if"));
+  const model = directiveExpression(elementDirective(candidate.elementNode, "model"));
+  if (dialogImport?.kind !== "default" ||
+      dialogImport.sourceFile !== `${WEB_SOURCE_ROOT}/components/SensitiveActionDialog.vue` ||
+      !approvalExpression(guard, "signingMaterialChangeActionEnabled()") ||
+      !approvalExpression(model, "signingMaterialChangeDialogVisible")) return false;
+  const openButtons = [];
+  walkEstree(symbols.ast.templateBody, node => {
+    if (node.type !== "VElement") return;
+    const click = directiveExpression(elementDirective(node, "on", "click"));
+    if (click?.type === "Identifier" && click.name === "requestSigningMaterialChange") openButtons.push(node);
+  });
+  if (openButtons.length !== 1 || openButtons[0].name !== "t-button" ||
+      !approvalExpression(directiveExpression(elementDirective(openButtons[0], "if")), "signingMaterialChangeActionEnabled()") ||
+      astAncestorChain(symbols.ast.templateBody, openButtons[0])?.some(node => node.variables?.length)) return false;
+
+  if (!approvalParamNames(handler.definition, "values") ||
+      !approvalStatements(handler.definition.body, `
+        return executeContractSigningMaterialChange({
+          capture: () => captureSigningMaterialChangeSubmission(values),
+          current: signingMaterialChangeSubmissionIsCurrent,
+          stale: () => undefined,
+          reason: (context) => context.reason,
+          complete: completeSigningMaterialChange,
+          fail: failSigningMaterialChange,
+          finish: finishSigningMaterialChange
+        });
+      `)) return false;
+  const call = handler.definition.body.body[0].argument;
+  if (!callExpressionMatchesWrapper(call, { apiFile: CONTRACT_APPROVAL_API, name: SIGNING_MATERIAL_CHANGE_COMMAND }, symbols) ||
+      symbols.scopeBindings.get(objectPropertyValue(call.arguments[0], "current")) !== current.binding ||
+      !approvalBoundCall(objectPropertyValue(call.arguments[0], "capture"), "captureSigningMaterialChangeSubmission", symbols) ||
+      !approvalBoundCall(current.definition, "ownsSigningMaterialChangeSubmission", symbols) ||
+      !approvalBoundCall(owner.definition, "routeContractId", symbols) ||
+      !approvalBoundCall(captureDialog.definition, "routeContractId", symbols) ||
+      !approvalBoundCall(captureDialog.definition, "signingMaterialChangeActionEnabled", symbols) ||
+      !approvalBoundCall(open.definition, "captureSigningMaterialChangeContext", symbols)) return false;
+  const [routeBinding] = topLevelScopeVariables(symbols.scopeManager, "route");
+  const routeSource = uniqueIndexedNode(symbols.declarationsByBinding, routeBinding);
+  const routeImport = routeSource?.type === "CallExpression" && symbols.scopeBindings.get(routeSource.callee);
+  return Boolean(routeImport && routeSource.arguments.length === 0 && routeImport.defs.some(definition =>
+    definition.type === "ImportBinding" && definition.parent?.source?.value === "vue-router" &&
+    definition.node?.imported?.name === "useRoute") &&
+    approvalStatements(route.definition.body, `
+      const value = route.params.contractId;
+      return typeof value === "string" ? value : Array.isArray(value) ? String(value[0] ?? "") : "";
+    `) &&
+    approvalStatements(enabled.definition.body, `
+      if (contractDetail.value?.v2Lifecycle || v2LifecycleLocked.value) return false;
+      return Boolean(contractLifecycleAvailableActionKeys.value?.includes("report_signing_material_change")) &&
+        Boolean(contractReviewCapability.value?.availableActions.some(
+          (action) => action.key === "report_signing_material_change" && action.enabled
+        ));
+    `) &&
+    approvalStatements(captureDialog.definition.body, `
+      const detail = contractReviewCapability.value;
+      const coordinates = detail?.signingMaterialChangeContext;
+      const sealTask = detail?.sealTask;
+      const routeId = routeContractId();
+      if (!detail || !coordinates || !sealTask || !routeId || !signingMaterialChangeActionEnabled() ||
+          detail.draftRevision !== coordinates.expectedRevision || sealTask.id !== coordinates.expectedSealTaskId) {
+        return null;
+      }
+      return {
+        routeContractId: routeId, contractId: detail.id, contractVersionId: detail.contractVersionId, ...coordinates
+      } satisfies ContractSigningMaterialChangeActionContext;
+    `) &&
+    approvalStatements(open.definition.body, `
+      const context = captureSigningMaterialChangeContext();
+      if (!context) {
+        setActionError(new Error("合同签署状态已变化"), "无法申报签署内容实质变化，请刷新后重试。");
+        return;
+      }
+      signingMaterialChangeSubmissionToken += 1;
+      signingMaterialChangeDialogContext.value = context;
+      signingMaterialChangeDialogError.value = "";
+      signingMaterialChangeDialogVisible.value = true;
+    `) &&
+    approvalParamNames(capture.definition, "values") &&
+    approvalStatements(capture.definition.body, `
+      const owner = signingMaterialChangeDialogContext.value;
+      const capability = contractReviewCapability.value;
+      const coordinates = capability?.signingMaterialChangeContext;
+      const actionCount = capability?.availableActions.filter(
+        (action) => action.key === "report_signing_material_change" && action.enabled
+      ).length ?? 0;
+      if (!owner || !capability || !coordinates || actionCount !== 1 ||
+          capability.id !== owner.contractId || capability.contractVersionId !== owner.contractVersionId ||
+          coordinates.expectedRevision !== owner.expectedRevision || coordinates.expectedSealTaskId !== owner.expectedSealTaskId ||
+          coordinates.expectedStatus !== owner.expectedStatus) {
+        signingMaterialChangeDialogError.value = "合同签署状态已变化，请关闭并刷新详情后重试。";
+        return null;
+      }
+      if (archiveActionBusy.value) {
+        signingMaterialChangeDialogError.value = "当前操作正在提交，请等待本次操作完成。";
+        return null;
+      }
+      const reason = values.reason.trim();
+      if (!reason) {
+        signingMaterialChangeDialogError.value = "实质变化原因不能为空。";
+        return null;
+      }
+      archiveActionBusy.value = "signingMaterialChange";
+      archiveActionMessage.value = "";
+      return { ...owner, submissionToken: signingMaterialChangeSubmissionToken, reason };
+    `) &&
+    approvalParamNames(owner.definition, "context") &&
+    approvalStatements(owner.definition.body, `
+      return context.submissionToken === signingMaterialChangeSubmissionToken &&
+        routeContractId() === context.routeContractId;
+    `) &&
+    approvalParamNames(current.definition, "context") &&
+    approvalStatements(current.definition.body, `
+      return ownsSigningMaterialChangeSubmission(context) &&
+        signingMaterialChangeDialogContext.value?.contractVersionId === context.contractVersionId;
+    `));
+}
+
+function signingMaterialChangeApiEvidence(symbols) {
+  const command = approvalFunction(symbols, SIGNING_MATERIAL_CHANGE_COMMAND);
+  const reader = approvalFunction(symbols, CONTRACT_APPROVAL_READ);
+  const assertion = approvalFunction(symbols, "assertContractSigningMaterialChangePreflight");
+  const path = approvalFunction(symbols, "governedContractPath");
+  const readJson = approvalFunction(symbols, "readJson");
+  const postJson = approvalFunction(symbols, "postJson");
+  const fetchWrapper = { apiFile: `${WEB_SOURCE_ROOT}/api/api-fetch.ts`, name: "apiFetch" };
+  if (!command || !reader || !assertion || !path || !readJson || !postJson ||
+      !approvalStatements(readJson.definition.body, `
+        const response = await apiFetch(path, headers || options ? { headers, ...options } : undefined);
+        await ensureOk(response, "读取失败");
+        return response.json() as Promise<T>;
+      `) ||
+      !approvalStatements(postJson.definition.body, `
+        const response = await apiFetch(path, {
+          method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body ?? {}), ...options
+        });
+        await ensureOk(response, "提交失败");
+        return response.json() as Promise<TResponse>;
+      `) ||
+      [readJson, postJson].some(helper =>
+        approvalCalls(helper.definition, call => callExpressionMatchesWrapper(call, fetchWrapper, symbols)).length !== 1) ||
+      !approvalParamNames(command.definition, "input") ||
+      !approvalParamNames(assertion.definition, "context", "fresh") ||
+      !approvalParamNames(path.definition, "contractVersionId", "suffix") ||
+      !approvalStatements(path.definition.body, 'return `/contracts/${encodeURIComponent(contractVersionId)}/${suffix}`;') ||
+      !approvalStatements(reader.definition.body, `
+        const query = options?.versionId ? \`?versionId=\${encodeURIComponent(options.versionId)}\` : "";
+        return readJson<ContractDetailReadModel>(\`/contracts/\${encodeURIComponent(contractId)}\${query}\`,
+          { "x-contract-numeric-protocol": "2" });
+      `) ||
+      !approvalBoundCall(reader.definition, "readJson", symbols) ||
+      !approvalBoundCall(command.definition, CONTRACT_APPROVAL_READ, symbols) ||
+      !approvalBoundCall(command.definition, "assertContractSigningMaterialChangePreflight", symbols) ||
+      !approvalBoundCall(command.definition, "governedContractPath", symbols) ||
+      !approvalBoundCall(command.definition, "postJson", symbols)) return false;
+  const [map] = topLevelScopeVariables(symbols.scopeManager, "MATERIAL_CHANGE_TASK_STATUS_BY_VERSION_STATUS");
+  const statusMap = uniqueIndexedNode(symbols.declarationsByBinding, map);
+  if (!approvalExpression(statusMap, `({
+    approved_pending_seal: "pending_approval",
+    in_seal: "in_seal",
+    seal_approved_pending_archive: "completed",
+    pending_archive_confirm: "completed"
+  })`) || map.references.filter(reference => !reference.init).length !== 1 ||
+      !approvalStatements(assertion.definition.body, `
+        const enabledActions = fresh.availableActions.filter(
+          (action) => action.key === "report_signing_material_change" && action.enabled
+        );
+        const coordinates = fresh.signingMaterialChangeContext;
+        if (fresh.id !== context.contractId || fresh.contractVersionId !== context.contractVersionId ||
+            fresh.draftRevision !== context.expectedRevision || fresh.sealTask?.id !== context.expectedSealTaskId ||
+            fresh.sealTask.status !== MATERIAL_CHANGE_TASK_STATUS_BY_VERSION_STATUS[context.expectedStatus] ||
+            enabledActions.length !== 1 || coordinates?.expectedRevision !== context.expectedRevision ||
+            coordinates.expectedSealTaskId !== context.expectedSealTaskId || coordinates.expectedStatus !== context.expectedStatus) {
+          throw new Error("合同签署状态已变化，未执行实质变化申报，请刷新详情后重试");
+        }
+      `)) return false;
+  const statements = command.definition.body.body;
+  const execution = statements[2];
+  const ordered = execution?.type === "TryStatement" && execution.block.body;
+  const send = ordered?.[7];
+  return statements.length === 3 &&
+    approvalStatements({ type: "BlockStatement", body: statements.slice(0, 2) }, `
+      const context = input.capture();
+      if (!context) return { status: "not_started" };
+    `) &&
+    Boolean(ordered && approvalStatements({ type: "BlockStatement", body: ordered.slice(0, 7) }, `
+      if (!input.current(context)) {
+        await input.stale(context);
+        return { status: "stale", context };
+      }
+      const fresh = await fetchContractDetail(context.routeContractId);
+      if (!input.current(context, fresh)) {
+        await input.stale(context);
+        return { status: "stale", context };
+      }
+      assertContractSigningMaterialChangePreflight(context, fresh);
+      const reason = typeof input.reason === "function" ? input.reason(context) : input.reason;
+      const payload: ContractSigningMaterialChangePayload = {
+        expectedRevision: context.expectedRevision,
+        expectedSealTaskId: context.expectedSealTaskId,
+        expectedStatus: context.expectedStatus,
+        reason
+      };
+      let response: ContractSigningMaterialChangeResponse;
+    `) && send?.type === "TryStatement" &&
+    approvalStatement(send.block.body[0], `
+      const rawResponse = await postJson<unknown>(
+        governedContractPath(context.contractVersionId, "signing/material-change"), payload
+      );
+    `));
+}
+
+function signingMaterialChangeCausalProof({ action, wrapper, candidate, context, nestRouteIndex }) {
+  if (!candidate || action.sourceFile !== CONTRACT_APPROVAL_PAGE ||
+      action.trigger.handler !== SIGNING_MATERIAL_CHANGE_HANDLER ||
+      candidate.element !== "sensitive-action-dialog" || candidate.event !== "confirm" ||
+      action.routePaths.length !== 1 || action.routePaths[0] !== "/合同管理/:contractId" ||
+      action.capability.kind !== "available_action_string" ||
+      action.capability.source !== "contractLifecycleAvailableActionKeys" ||
+      action.capability.key !== SIGNING_MATERIAL_CHANGE_KEY || action.wrappers.length !== 1 ||
+      action.wrappers[0].variant !== undefined || wrapper.apiFile !== CONTRACT_APPROVAL_API ||
+      wrapper.name !== SIGNING_MATERIAL_CHANGE_COMMAND) return null;
+  const get = "GET /contracts/:param";
+  const post = "POST /contracts/:param/signing/material-change";
+  const readIdentity = wrapperIdentity(CONTRACT_APPROVAL_API, CONTRACT_APPROVAL_READ);
+  const read = context.wrapperIndex.get(readIdentity);
+  const readRequests = normalizedMainRequests(read);
+  const requests = normalizedMainRequests(wrapper);
+  if ([get, post].some(key => {
+    const route = nestRouteIndex.get(key);
+    return route?.authentication !== "authenticated" || route.isPublic !== false;
+  }) ||
+      read?.returnProvenance !== "transparent_main_response" ||
+      readRequests.length !== 1 || readRequests[0].normalizedKey !== get ||
+      requests.length !== 2 || !requests.some(request => request.normalizedKey === get && request.bodyKind === "none") ||
+      !requests.some(request => request.normalizedKey === post && request.bodyKind === "json") ||
+      !signingMaterialChangePageEvidence(candidate, context)) return null;
+  const ast = context.asts.get(CONTRACT_APPROVAL_API);
+  if (!ast || !signingMaterialChangeApiEvidence(buildSymbolContext(ast, CONTRACT_APPROVAL_API, context.sourceFileSet))) {
+    return null;
+  }
+  return {
+    verified: true,
+    localCallChain: [SIGNING_MATERIAL_CHANGE_HANDLER, SIGNING_MATERIAL_CHANGE_COMMAND, CONTRACT_APPROVAL_READ, "assertContractSigningMaterialChangePreflight"],
+    capabilityWitness: true,
+    capabilitySources: new Set([readIdentity])
+  };
+}
+
 function wrapperReferencedFromAction({
   wrapper,
   action,
@@ -16369,6 +21800,72 @@ function triggerCandidates(action, templateActions) {
         action.capability.key
       )
   );
+}
+
+function layoutRiskStopProof({ action, wrapper, candidate, context }) {
+  const page = `${WEB_SOURCE_ROOT}/pages/contract-templates/LayoutTemplateEditorPage.vue`;
+  const read = {
+    apiFile: `${WEB_SOURCE_ROOT}/api/contract-template-mapping.api.ts`,
+    name: "getLayoutVersionMaintenanceCapability"
+  };
+  if (action.sourceFile !== page || candidate?.kind !== "background_call" ||
+      action.trigger.handler !== "stopCurrentVersionWithCapability" ||
+      action.capability.kind !== "detail_action" || action.capability.source !== "capability.availableActions" ||
+      action.capability.key !== "risk_stop" || wrapper.apiFile !== CONTRACT_WORKBENCH_API_PATH ||
+      wrapper.name !== "stopLayoutTemplateVersion") return null;
+
+  const { symbols } = context;
+  const handler = candidate.expression;
+  if (handler?.type !== "FunctionDeclaration" || !handler.async || handler.generator ||
+      handler.params.length !== 1 || handler.params[0]?.type !== "Identifier" || handler.params[0].name !== "context" ||
+      !directRegistrationBlock(handler.body, `
+        const capability = await getLayoutVersionMaintenanceCapability(context.versionId);
+        if (!riskStopResultCanWrite(context)) return;
+        const matchesRequestedVersion = capability.versionId === context.versionId;
+        if (!matchesRequestedVersion) throw new Error("版式版本已变化，请刷新后重试");
+        const operationAllowed = capability.availableActions.some(action => action.key === "risk_stop" && action.enabled);
+        if (!operationAllowed) throw new Error("当前版式不允许风险停用");
+        return stopLayoutTemplateVersion(context.versionId);
+      `)) return null;
+  const [load, stale, , versionGuard, , operationGuard, submit] = handler.body.body;
+  if ([versionGuard, operationGuard].some(guard => {
+    const ctor = resolvedReferenceBinding(guard.consequent.argument.callee, symbols);
+    return (ctor?.identifiers?.length ?? 0) !== 0;
+  })) return null;
+  const readCall = load.declarations[0].init.argument;
+  const readSource = importedReadSource(readCall, context.serverReadImports, symbols);
+  if (readSource !== wrapperIdentity(read.apiFile, read.name) ||
+      !callExpressionMatchesWrapper(submit.argument, wrapper, symbols)) return null;
+  const reads = normalizedMainRequests(context.wrapperIndex.get(readSource));
+  const writes = normalizedMainRequests(wrapper);
+  if (reads.length !== 1 || reads[0].normalizedKey !== "GET /contract-layout-template-versions/:param/maintenance-capability" ||
+      writes.length !== 1 || writes[0].normalizedKey !== "POST /contract-layout-template-versions/:param/stop") return null;
+
+  const guard = call => {
+    const binding = resolvedReferenceBinding(call.callee, symbols);
+    if (!binding || binding.references.some(ref => ref.isWrite() && !ref.init)) return null;
+    const definition = uniqueIndexedNode(symbols.definitionsByBinding, binding);
+    return definition?.type === "FunctionDeclaration" && !definition.async && !definition.generator &&
+      definition.params.length === 1 && definition.params[0]?.type === "Identifier" &&
+      definition.params[0].name === "context" ? definition : null;
+  };
+  const canWrite = guard(stale.test.argument);
+  if (!directRegistrationBlock(canWrite?.body, `
+      return riskStopContextIsCurrent(context) && riskStopOperationIsCurrent(context);
+    `)) return null;
+  const { left, right } = canWrite.body.body[0].argument;
+  if (!directRegistrationBlock(guard(left)?.body, `
+      return Boolean(context.templateId && context.versionId) &&
+        context.templateId === layoutTemplateRouteId.value &&
+        context.versionId === riskStopVersionId.value &&
+        context.versionId === selectedVersionId.value &&
+        context.routeGeneration === layoutRouteGeneration;
+    `) || !directRegistrationBlock(guard(right)?.body, `
+      return context.templateId === layoutTemplateRouteId.value &&
+        context.routeGeneration === layoutRouteGeneration &&
+        context.operationId === riskStopOperationId;
+    `) || !preflightExpressionIsPure(stale.test.argument, symbols)) return null;
+  return { verified: true, capabilityWitness: true, capabilitySources: new Set([readSource]) };
 }
 
 function actionBindings({
@@ -16409,11 +21906,11 @@ function actionBindings({
       });
       continue;
     }
-    const relatedConsumers = wrapperReferencedFromAction({
-      wrapper,
-      action,
-      graph
-    });
+    const relatedConsumers = wrapperReferencedFromAction({ wrapper, action, graph })
+      .filter(consumer => !DIRECT_REGISTRATION_ACTIONS.has(action.id) || consumer === DIRECT_REGISTRATION_MODULE)
+      .filter(consumer =>
+        !["contract-final.upload-file", "contract-archive.upload-file"].includes(action.id) || consumer === action.sourceFile
+      );
     if (relatedConsumers.length === 0) {
       blockers.unresolvedWrappers.push({
         code: "WRAPPER_NOT_REFERENCED_BY_ACTION_SOURCE",
@@ -16444,11 +21941,13 @@ function actionBindings({
           verified: false,
           localCallChain: [action.trigger.handler]
         };
-    const pipelineProof = proveBusinessActionPipeline({
-      action,
-      wrapper,
-      context: capabilityContext
-    });
+    const layoutStop = action.id === "layout-template.stop";
+    const pipelineProof = layoutStop
+      ? layoutRiskStopProof({ action, wrapper, candidate, context: capabilityContext })
+      : proveBusinessActionPipeline({ action, wrapper, context: capabilityContext });
+    if (layoutStop && !pipelineProof) {
+      causalProof = { verified: false, localCallChain: [action.trigger.handler] };
+    }
     if (pipelineProof?.verified) {
       causalProof = {
         verified: true,
@@ -16459,6 +21958,29 @@ function actionBindings({
         wrapperIdentity(declared.apiFile, declared.name),
         pipelineProof
       );
+    }
+    const directRegistrationProof = directRegistrationCausalProof({ action, wrapper, candidate, context: capabilityContext });
+    if (DIRECT_REGISTRATION_ACTIONS.has(action.id)) {
+      causalProof = directRegistrationProof ?? { verified: false, localCallChain: [action.trigger.handler] };
+      if (directRegistrationProof?.capabilityWitness) {
+        capabilityContext.pipelineProofs ??= new Map();
+        capabilityContext.pipelineProofs.set(identity, directRegistrationProof);
+      } else if (directRegistrationProof) {
+        capabilityContext.directRegistrationLookupVerified = true;
+      }
+    }
+    if (requiresContractDetailCausalProof(action)) {
+      const prove = action.id === SIGNING_MATERIAL_CHANGE_ACTION
+        ? signingMaterialChangeCausalProof
+        : contractApprovalPageCausalProof;
+      const contractDetailProof = prove({ action, wrapper, candidate, context: capabilityContext, nestRouteIndex });
+      causalProof = contractDetailProof ?? { verified: false, localCallChain: [action.trigger.handler] };
+      if (contractDetailProof) {
+        capabilityContext.pipelineProofs ??= new Map();
+        capabilityContext.pipelineProofs.set(identity, contractDetailProof);
+      } else {
+        capabilityContext.pipelineProofs?.delete(identity);
+      }
     }
     const finalContractProof = finalContractWriteCausalProof({
       action,
@@ -17530,6 +23052,18 @@ function capabilitySourceAuthorizationIsCompatible({
   });
 }
 
+// A consumer with multiple intentional write paths is covered only when every
+// required action has independently passed causal, capability and route checks.
+const PAIRED_WRITE_COVERAGE = new Map([
+  ...[...FUND_ADVANCE_WRITES.keys()].map(name =>
+    [`${wrapperIdentity(FUND_ADVANCE_API, name)}\u0000${FUND_ADVANCE_PAGE}`, new Set(FUND_ADVANCE_ACTIONS.keys())]),
+  [`${wrapperIdentity(FUND_TRANSFER_API, "registerFundAccountTransfer")}\u0000${FUND_TRANSFER_COMMAND}`, new Set(["fund-transfer.register", "fund-transfer.recover-original"])],
+  [`${wrapperIdentity(FUND_TRANSFER_API, "actOnFundAccountTransfer")}\u0000${FUND_TRANSFER_COMMAND}`, new Set(["fund-transfer.act", "fund-transfer.recover-original"])],
+  [`${wrapperIdentity(SEAL_API, SEAL_WRITE)}\u0000${SEAL_COMPOSABLE}`, SEAL_WRITE_ACTION_IDS],
+  [`${wrapperIdentity(GENERATED_ARCHIVE_API, GENERATED_ARCHIVE_WRITE)}\u0000${GENERATED_ARCHIVE_CONSUMER}`, GENERATED_ARCHIVE_ACTIONS],
+  [`${wrapperIdentity(GENERATED_ARCHIVE_API, GENERATED_ARCHIVE_UPLOAD)}\u0000${GENERATED_ARCHIVE_CONSUMER}`, new Set([GENERATED_ARCHIVE_CONFIRM])]
+]);
+
 function emptyBlockers() {
   return {
     upstreamManifestIssues: [],
@@ -17849,6 +23383,7 @@ export async function inspectWholeSitePageActionManifest({
   const manifestActions = [];
   const candidateConsumerPairs = new Set();
   const coveredConsumerPairs = new Set();
+  const pairedConsumerCoverage = new Map();
   const productionMutationConsumerPairs = new Set();
   const authFacadeMutationPairs = new Map();
   const selfProfileFacadeImplementationTrusted =
@@ -17909,6 +23444,32 @@ export async function inspectWholeSitePageActionManifest({
       `${WEB_SOURCE_ROOT}/components/BusinessDraftAction.vue`
     )
   );
+  const paymentRecoveryReadOnly = registryActions.some(action => action.id === PAYMENT_LOOKUP_ACTION) && await proveReadOnlyPaymentRecovery(resolvedRoot);
+  const principalReturnReadOnly = registryActions.some(action => PRINCIPAL_RETURN_ACTIONS.has(action.id)) && await proveReadOnlyPrincipalReturnResult(resolvedRoot);
+  const registeredPaymentSmsAuthority = registryActions.some(action => action.id === DUTY_SMS_ACTION) &&
+    await registeredPaymentSmsAuthorityIsProven(resolvedRoot);
+  const fundTransferSmsAuthority = registryActions.some(action => action.id === DUTY_SMS_ACTION) &&
+    await fundTransferSmsAuthorityIsProven(resolvedRoot);
+  const bankDutySmsAuthority = registryActions.some(action => action.id === DUTY_SMS_ACTION) &&
+    await bankDutySmsAuthorityIsProven(resolvedRoot);
+  const ledgerDutySmsAuthority = registryActions.some(action => action.id === DUTY_SMS_ACTION) &&
+    await ledgerDutySmsAuthorityIsProven(resolvedRoot);
+  const balanceDutySmsAuthority = registryActions.some(action => action.id === DUTY_SMS_ACTION) &&
+    await balanceDutySmsAuthorityIsProven(resolvedRoot);
+  const paymentApprovalSmsAuthority = registryActions.some(action => action.id === DUTY_SMS_ACTION) &&
+    await paymentApprovalSmsAuthorityIsProven(resolvedRoot);
+  const principalDutySmsAuthority = registryActions.some(action => action.id === DUTY_SMS_ACTION) &&
+    await principalDutySmsAuthorityIsProven(resolvedRoot);
+  const approvalSmsAuthority = registryActions.some(action => action.id === DUTY_SMS_ACTION) &&
+    await approvalSmsAuthorityIsProven(resolvedRoot);
+  const contractDutySmsAuthority = registryActions.some(action => action.id === MULTI_SMS_ACTION) &&
+    await contractDutySmsAuthorityIsProven(resolvedRoot);
+  const companyDutySmsAuthority = registryActions.some(action => action.id === MULTI_SMS_ACTION) &&
+    await companyDutySmsAuthorityIsProven(resolvedRoot);
+  const generalProcurementDutySmsAuthority = registryActions.some(action => action.id === MULTI_SMS_ACTION) &&
+    await generalProcurementDutySmsAuthorityIsProven(resolvedRoot);
+  const spotProcurementDutySmsAuthority = registryActions.some(action => action.id === MULTI_SMS_ACTION) &&
+    await spotProcurementDutySmsAuthorityIsProven(resolvedRoot);
   for (const action of registryActions) {
     const source = sources.get(action.sourceFile);
     const ast = asts.get(action.sourceFile);
@@ -18013,12 +23574,18 @@ export async function inspectWholeSitePageActionManifest({
       });
     }
     const capabilityContext = {
+      actionId: action.id,
+      paymentRecoveryReadOnly,
+      principalReturnReadOnly,
+      candidate,
+      nestRouteIndex,
       symbols,
       sourceFile: action.sourceFile,
       source,
       sources,
       asts,
       sourceFileSet,
+      wrapperIndex,
       serverReadImports: serverReadImportNames(
         symbols,
         wrapperIndex,
@@ -18093,7 +23660,7 @@ export async function inspectWholeSitePageActionManifest({
     }
     const mutationBindings = bindings.filter(isMutationRequest);
     capabilityContext.mutationBindings = mutationBindings;
-    const governedPipelineRequired = [...(capabilityContext.pipelineProofs?.values() ?? [])]
+    const governedPipelineRequired = FUND_ADVANCE_ACTIONS.has(action.id) || [...(capabilityContext.pipelineProofs?.values() ?? [])]
       .some((proof) => [
         "project_definition",
         "project_capability",
@@ -18121,9 +23688,10 @@ export async function inspectWholeSitePageActionManifest({
         }
       }
     }
-    const writes = bindings.some((binding) =>
-      isMutationRequest(binding)
-    );
+    const paymentLookupProven = action.id === PAYMENT_LOOKUP_ACTION && bindings.length === 2 &&
+      bindings.some(binding => binding.normalizedKey === PAYMENT_RECOVERY_ROUTE && binding.nestRoute?.authentication === "authenticated") &&
+      bindings.every(binding => capabilityContext.pipelineProofs?.get(wrapperIdentity(binding.apiFile, binding.wrapper))?.readOnlyWitness === true);
+    const writes = !paymentLookupProven && bindings.some(isMutationRequest);
     const pipelineDominates =
       mutationBindings.length > 0 &&
       mutationBindings.every((binding) =>
@@ -18164,38 +23732,46 @@ export async function inspectWholeSitePageActionManifest({
       });
     const dominatesTrigger =
       Boolean(candidate && source) &&
-      (capabilityDominates(
+      (pipelineDominates || (!requiresContractDetailCausalProof(action) && capabilityDominates(
         candidate,
         action.capability,
         capabilityContext
-      ) || pipelineDominates);
+      )));
     const pipelineProvenanceSources =
       action.capability.kind === "server_definition"
         ? pipelineDefinitionSources
         : pipelineCapabilitySources;
     const capabilityProvenance =
-      capabilityServerProvenance(
+      (requiresContractDetailCausalProof(action) ? null : capabilityServerProvenance(
         action.capability,
         capabilityContext
-      ) ??
+      )) ??
       (pipelineDominates && pipelineProvenanceSources.size === 1
         ? {
             sources: pipelineProvenanceSources,
             sourceFiles: new Map(
               [...pipelineProvenanceSources].map((sourceIdentity) => [
                 sourceIdentity,
-                action.sourceFile
+                [...(capabilityContext.pipelineProofs?.values() ?? [])]
+                  .find(proof => proof.capabilitySources?.has(sourceIdentity))?.capabilitySourceFile ??
+                (DIRECT_REGISTRATION_ACTIONS.has(action.id) ? DIRECT_REGISTRATION_MODULE : action.sourceFile)
               ])
             )
           }
         : null);
     const capabilitySources = capabilityProvenance?.sources ?? null;
+    const dutySmsProofs = [...(capabilityContext.pipelineProofs?.values() ?? [])];
+    const provenDutySmsAuthority = (action.id === DUTY_SMS_ACTION &&
+      dutySmsProofs.some(proof => proof.kind === "duty_sms_retry") &&
+      dutySmsReadAndWriteAuthoritiesMatch({ mutationBindings, webManifest, nestManifest, registeredPaymentSmsAuthority, fundTransferSmsAuthority, bankDutySmsAuthority, ledgerDutySmsAuthority, balanceDutySmsAuthority, paymentApprovalSmsAuthority, principalDutySmsAuthority, approvalSmsAuthority })) ||
+      (action.id === MULTI_SMS_ACTION && dutySmsProofs.some(proof => proof.kind === "multi_duty_sms_retry") &&
+      multiDutySmsReadAndWriteAuthoritiesMatch({ mutationBindings, webManifest, nestManifest, contractDutySmsAuthority, companyDutySmsAuthority, generalProcurementDutySmsAuthority, spotProcurementDutySmsAuthority }));
     const capabilityProvenanceTrusted =
       SERVER_CAPABILITY_KINDS.has(
         action.capability.kind
       ) &&
       capabilitySources?.size === 1 &&
-      [...capabilitySources].every((sourceIdentity) =>
+      (provenDutySmsAuthority || [...capabilitySources].every((sourceIdentity) =>
         capabilitySourceUpstreamAssociationIsTrusted({
           sourceIdentity,
           sourceFile:
@@ -18204,7 +23780,7 @@ export async function inspectWholeSitePageActionManifest({
           webManifest,
           nestManifest
         })
-      );
+      ));
     const serverDefinitionFreshReadVerified =
       serverDefinitionHandlerFreshRead({
         action,
@@ -18232,7 +23808,7 @@ export async function inspectWholeSitePageActionManifest({
         rolesByAction: actionRequiredRoles
       });
     const capabilityAuthorizationCompatible =
-      !writes ||
+      !writes || provenDutySmsAuthority ||
       (Boolean(effectiveMutationActors) &&
         capabilityProvenanceTrusted &&
         [...capabilitySources].every((sourceIdentity) =>
@@ -18288,7 +23864,12 @@ export async function inspectWholeSitePageActionManifest({
         sourceFile: action.sourceFile,
         capabilitySource: action.capability.source
       });
-    } else if (action.capability.kind === "none") {
+    } else if (action.capability.kind === "none" && !(
+      (capabilityContext.directRegistrationLookupVerified ||
+        [...(capabilityContext.pipelineProofs?.values() ?? [])].some(proof => proof.readOnlyWitness === true)) &&
+      action.semantic === "read_only" && !writes && (bindings.length === 1 || paymentLookupProven) &&
+      bindings.every(binding => bindingUpstreamAssociationIsTrusted({ binding, webManifest, nestManifest }))
+    )) {
       capabilityAccepted = false;
       blockers.writeWithoutServerCapability.push({
         code: "WRITE_WITHOUT_SERVER_CAPABILITY",
@@ -18396,12 +23977,15 @@ export async function inspectWholeSitePageActionManifest({
           authFacadeMutation
         ) {
           for (const consumer of binding.productionConsumers) {
-            coveredConsumerPairs.add(
-              `${wrapperIdentity(
-                binding.apiFile,
-                binding.wrapper
-              )}\u0000${consumer}`
-            );
+            const pair = `${wrapperIdentity(binding.apiFile, binding.wrapper)}\u0000${consumer}`;
+            const required = PAIRED_WRITE_COVERAGE.get(pair);
+            if (!required) {
+              coveredConsumerPairs.add(pair);
+            } else if (required.has(action.id)) {
+              const proven = pairedConsumerCoverage.get(pair) ?? new Set();
+              proven.add(action.id);
+              pairedConsumerCoverage.set(pair, proven);
+            }
             accepted.push(consumer);
           }
         }
@@ -18431,6 +24015,10 @@ export async function inspectWholeSitePageActionManifest({
     });
   }
 
+  for (const [pair, required] of PAIRED_WRITE_COVERAGE) {
+    const proven = pairedConsumerCoverage.get(pair);
+    if (proven && [...required].every(id => proven.has(id))) coveredConsumerPairs.add(pair);
+  }
   for (const wrapper of webManifest.wrappers) {
     if (!wrapperIsProductionMutation(wrapper)) continue;
     const identity = wrapperIdentity(

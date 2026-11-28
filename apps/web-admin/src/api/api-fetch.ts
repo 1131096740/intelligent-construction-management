@@ -10,7 +10,7 @@ import { createOperatingReadFetch } from "./operating-read-fetch";
  */
 export const apiFetch = createOperatingReadFetch(createApiFetch({
   getAccessToken: () => useAuthStore().accessToken,
-  refresh: () => useAuthStore().refreshTokens(),
+  refresh: () => useAuthStore().refreshTokens({ clearSessionOnFailure: false }),
   onUnauthorized: () => {
     useAuthStore().clearSession();
     const current = router.currentRoute.value;

@@ -1,16 +1,17 @@
 const fs = require("node:fs");
 const path = require("node:path");
 const { randomUUID } = require("node:crypto");
-const ExcelJS = require("exceljs");
 const { PDFDocument } = require("pdf-lib");
 const { coreFlowSeedData } = require("../dist/database/core-flow-seed-data");
 const { PrismaClient } = require("@prisma/client");
+const { signedSettlementVerification } = require("./signed-settlement-verification.cjs");
 
 const env = {
   ...readEnvFile(path.resolve(__dirname, "..", ".env")),
   ...process.env
 };
 const baseUrl = env.API_BASE_URL || "http://127.0.0.1:3000";
+const signedSettlementBaseUrl = env.TRIAL_RUN_SIGNED_SETTLEMENT_API_BASE_URL || baseUrl;
 if (!process.env.DATABASE_URL && env.DATABASE_URL) {
   process.env.DATABASE_URL = env.DATABASE_URL;
 }
@@ -80,13 +81,13 @@ const GOVERNANCE_UAT_CASES = [
   ["contract_authorization_first_only", "仅我方需授权委托书"],
   ["contract_authorization_counterparty_only", "仅乙方需授权委托书"],
   ["contract_authorization_both", "双方均需授权委托书"],
-  ["contract_change_9_99_percent", "累计正增项 9.99% 可提交"],
-  ["contract_change_10_percent", "累计正增项 10% 可提交"],
-  ["contract_change_10_01_percent", "累计正增项 10.01% 必须被阻断并提示新签合同"],
-  ["settlement_material_route", "材料或机械结算的物资员、物资主管路线"],
-  ["settlement_labor_route", "劳务或专业分包结算的工长或施工员、项目总工路线"],
-  ["settlement_single_page_signatures", "单页 A4 横向结算单底部冻结签名"],
-  ["settlement_multi_page_signatures", "多页结算单重复表头与逐页冻结签名"],
+  ["signed_supplement_9_99_percent", "已签补充协议正增 9.99% 经主管复核生效"],
+  ["signed_supplement_10_percent", "已签补充协议正增 10% 经主管复核生效"],
+  ["signed_supplement_10_01_percent", "已签补充协议正增 10.01% 经主管复核生效并保留原金额"],
+  ["signed_settlement_material_confirmation", "材料采购已签结算由合同部主管复核入账"],
+  ["signed_settlement_labor_confirmation", "劳务分包已签结算由合同部主管复核入账"],
+  ["signed_settlement_single_page_original", "核对单页已签结算原件和短时下载"],
+  ["signed_settlement_multi_page_originals", "核对同单多份和多页已签结算原件"],
   ["readonly_cross_domain_positive", "授权财务或综合部岗位跨域只读和下载"],
   ["readonly_cross_domain_negative", "跨域只读岗位不能创建、修改、上传或确认"]
 ];
@@ -120,24 +121,6 @@ const TAKEOVER_EVIDENCE_DENIED_DOWNLOAD_REASON = "UAT 普通员工接管资料�
 const SETTLEMENT_ARCHIVE_DOWNLOAD_REASON = "UAT 合同员结算归档件下载验收";
 const PAYMENT_VOUCHER_DOWNLOAD_REASON = "UAT 出纳付款凭证下载验收";
 const PAYMENT_PDF_ARCHIVE_DOWNLOAD_REASON = "UAT 出纳付款PDF归档下载验收";
-const SETTLEMENT_TEMPLATE_HEADERS = [
-  "清单编码/行号",
-  "清单项名称",
-  "是否本期结算",
-  "合同数量",
-  "合同单价",
-  "前期已结算数量",
-  "本期数量",
-  "累计结算数量",
-  "剩余可结算数量",
-  "本期结算金额(分)",
-  "人工调整金额(分)",
-  "调整原因",
-  "证据说明",
-  "异常说明",
-  "备注"
-];
-
 function readEnvFile(filePath) {
   if (!fs.existsSync(filePath)) {
     return {};
@@ -533,23 +516,13 @@ async function uploadValidPdf(fileName, token) {
   );
 }
 
-async function uploadExistingLocalFile(fileId, fileName, token) {
-  const file = await prisma.fileObject.findUnique({ where: { id: fileId } });
-  assert(file?.storageStatus === "active", `未找到本地冻结文件 ${fileId}`);
-  const privateRoot = path.resolve(env.FILE_STORAGE_ROOT || path.resolve(process.cwd(), "storage", "private"));
-  const absolutePath = path.resolve(privateRoot, file.objectKey);
-  assert(absolutePath.startsWith(`${privateRoot}${path.sep}`), "冻结文件路径越界");
-  return uploadPrivateBuffer(fileName, file.mimeType, fs.readFileSync(absolutePath), token);
-}
-
-async function prepareSettlementSignatures(tokens) {
+async function preparePaymentSignatures(tokens) {
   const signaturePng = Buffer.from(
     "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAAC0lEQVR4nGNgAAIAAAUAAen63NgAAAAASUVORK5CYII=",
     "base64"
   );
   for (const role of [
-    "contractStaff", "materialStaff", "materialDirector", "contractDirector",
-    "projectManager", "financeDirector"
+    "comprehensiveDirector", "projectManager", "financeDirector", "contractDirector", "chairman"
   ]) {
     const userId = await userIdByPhone(role);
     const signature = await uploadCanvasSignature(
@@ -562,120 +535,6 @@ async function prepareSettlementSignatures(tokens) {
       data: { signatureFileId: signature.signatureFileId }
     });
   }
-}
-
-async function prepareGovernedSettlementDraft(input, token) {
-  const fieldReviewerUserId = await userIdByPhone("materialStaff");
-  const draft = await postJson(
-    `/projects/${PROJECT_ID}/settlement-drafts`,
-    {
-      contractVersionId: input.contractVersionId,
-      settlementTemplateVersionId: input.settlementTemplateVersionId,
-      code: input.code,
-      periodLabel: input.periodLabel,
-      fieldReviewerUserId,
-      fieldReviewerRoleKey: "material_staff",
-      settlementLines: input.settlementLines
-    },
-    token,
-    `保存 ${input.code} 结算草稿`
-  );
-  const frozen = await postJson(
-    `/projects/${PROJECT_ID}/settlement-drafts/${draft.id}/frozen-document`,
-    { expectedRevision: draft.revision },
-    token,
-    `冻结 ${input.code} 结算单`
-  );
-  const signedFile = await uploadExistingLocalFile(
-    frozen.fileId,
-    `${input.code}-counterparty-signed.pdf`,
-    token
-  );
-  const signedDocument = await postJson(
-    `/projects/${PROJECT_ID}/settlement-drafts/${draft.id}/counterparty-signed-documents`,
-    {
-      expectedRevision: draft.revision,
-      frozenDocumentId: frozen.id,
-      uploadedFileId: signedFile.id,
-      declaration: {
-        pageOrderMatchesFrozenDocument: true,
-        counterpartySignedAndDated: true,
-        everyPageStamped: true,
-        crossPageSealCompleted: true
-      }
-    },
-    token,
-    `关联 ${input.code} 乙方签章扫描件`
-  );
-  assertEqual(signedDocument.pageCount, frozen.pageCount, `${input.code} 签章扫描件页数`);
-  return draft;
-}
-
-async function createPublishedSettlementTemplate(token) {
-  const workbook = new ExcelJS.Workbook();
-  const worksheet = workbook.addWorksheet("本期结算明细");
-  worksheet.addRow(SETTLEMENT_TEMPLATE_HEADERS);
-  worksheet.addRow([]);
-  worksheet.addRow([]);
-  worksheet.addRow([]);
-  worksheet.addRow([]);
-  worksheet.getCell("A6").value = "经办人签字：";
-  worksheet.getCell("H6").value = "审核人签字：";
-  worksheet.pageSetup.printArea = "A1:O6";
-  const sourceBuffer = Buffer.from(await workbook.xlsx.writeBuffer());
-  const sourceFile = await uploadPrivateBuffer(
-    `JS-UAT-TEMPLATE-${RUN_ID}.xlsx`,
-    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-    sourceBuffer,
-    token
-  );
-  const created = await postJson(
-    "/settlement-template-workbench/templates",
-    {
-      name: `P0-5B UAT 脱敏结算模板 ${RUN_ID}`,
-      code: `JS-UAT-TPL-${RUN_ID}`,
-      xlsxFileId: sourceFile.id,
-      definitionVersion: 2,
-      compatibleContractTypeKeys: ["material_purchase"],
-      compatibleAmountRoles: [],
-      compatiblePricingModes: [],
-      columnSchema: {},
-      printRules: {},
-      evidenceRules: {},
-      anomalyRules: {}
-    },
-    token,
-    "创建 UAT 结算模板"
-  );
-  const versionId = created.version?.id;
-  assert(versionId, "创建 UAT 结算模板未返回版本编号");
-  const inspection = await postJson(
-    `/settlement-template-workbench/versions/${versionId}/inspection`,
-    { expectedRevision: created.version.draftRevision, definitionVersion: 2 },
-    token,
-    "检查 UAT 结算模板"
-  );
-  assertEqual(inspection.blockingErrors?.length, 0, "UAT 结算模板阻断项数量");
-  await postJson(
-    `/settlement-template-workbench/versions/${versionId}/preview-generation`,
-    { expectedRevision: created.version.draftRevision, definitionVersion: 2 },
-    token,
-    "生成 UAT 结算模板脱敏预览"
-  );
-  await postJson(
-    `/settlement-template-workbench/versions/${versionId}/submission`,
-    { expectedRevision: created.version.draftRevision, definitionVersion: 2 },
-    token,
-    "提交 UAT 结算模板"
-  );
-  const published = await postJson(
-    `/settlement-template-workbench/versions/${versionId}/publication`,
-    { expectedRevision: created.version.draftRevision, definitionVersion: 2, changeSummary: "P0-5B UAT 脱敏模板发布验证" },
-    token,
-    "发布 UAT 结算模板"
-  );
-  assertEqual(published.status, "published", "UAT 结算模板发布状态");
-  return versionId;
 }
 
 async function assertSeedDataReady() {
@@ -1276,21 +1135,6 @@ async function assertTakeoverEvidenceVisibleInArchiveLedger(fileId, token) {
   assertEqual(row.canDownload, true, "资料库历史接管资料下载状态");
 }
 
-async function assertSettlementArchiveVisibleInArchiveLedger(fileId, settlementCode, periodLabel, token) {
-  const archiveLedger = await readJson("/archives?limit=200", token, "资料库台账");
-  assert(Array.isArray(archiveLedger.rows), "资料库台账未返回资料行");
-  const row = archiveLedger.rows.find((item) => item.fileId === fileId);
-  assert(row, "资料库台账未展示刚确认的结算签名合成件");
-  assertEqual(row.documentType, "结算我方签名合成件", "资料库结算归档资料类型");
-  assert(
-    String(row.businessRef ?? "").includes(settlementCode) &&
-      String(row.businessRef ?? "").includes(periodLabel),
-    `资料库结算归档关联业务不正确：${row.businessRef}`
-  );
-  assertEqual(row.archiveStatus, "证据已冻结", "资料库结算归档状态");
-  assertEqual(row.canDownload, true, "资料库结算归档下载状态");
-}
-
 async function assertPaymentPdfArchiveVisibleInArchiveLedger(fileId, paymentCode, token) {
   const archiveLedger = await readJson("/archives?limit=200", token, "资料库台账");
   assert(Array.isArray(archiveLedger.rows), "资料库台账未返回资料行");
@@ -1461,160 +1305,42 @@ async function verifyPaymentBlockedBeforeConfirmation(contractVersionId, token) 
   );
 }
 
-async function createAndConfirmSettlement(contractVersionId, tokens) {
-  const settlementTemplateVersionId = await createPublishedSettlementTemplate(
-    tokens.contractDirector
-  );
-  await prepareSettlementSignatures(tokens);
-  const settlementLines = [
-    {
-      sourceType: "manual_adjustment",
-      name: "P0-5B UAT 脱敏本期结算调整",
-      amountCents: "5000000",
-      reason: "P0-5B UAT 脱敏结算依据"
-    }
-  ];
-  const draft = await prepareGovernedSettlementDraft({
-    contractVersionId,
-    settlementTemplateVersionId,
-    code: CODES.settlement,
-    periodLabel: "2026-07",
-    settlementLines
-  }, tokens.contractStaff);
-  let settlement = await postJson(
-    `/projects/${PROJECT_ID}/settlement-drafts/${draft.id}/approval-submission`,
-    { expectedRevision: draft.revision },
-    tokens.contractStaff,
-    "提交 UAT 结算审批"
-  );
-  assertEqual(settlement.status, "approval_pending", "UAT 结算创建状态");
-  assertEqual(settlement.payableAmountCents, "4000000", "UAT 结算可付金额");
+async function createAndConfirmSettlement(takeover, signed, tokens) {
+  const original = await signed.upload(tokens.contractStaff, `${CODES.settlement}-signed.pdf`, 2);
+  const selection = { contractKind: "downstream", contractId: takeover.contractId };
+  const draft = await signed.request("POST", "", tokens.contractStaff, {
+    ...selection, number: CODES.settlement, amountYuan: "50000.0000", fileIds: [original.id]
+  });
+  assertEqual(draft.state, "draft", "UAT 已签结算草稿状态");
+  const submitted = await signed.submit(draft, tokens.contractStaff);
+  const confirmed = await signed.confirm(submitted, tokens.contractDirector);
+  assertEqual(confirmed.confirmedContractSource?.sourceRecordId, takeover.contractVersionId, "UAT 已签结算冻结合同版本");
+  assertEqual(confirmed.amountYuan, "50000.0000", "UAT 本期已签结算金额");
+  const basisPath = `/payment-basis?${new URLSearchParams(selection)}`;
+  const basis = await signed.request("GET", basisPath, tokens.contractStaff);
+  assertEqual(basis.latestConfirmed?.id, confirmed.id, "UAT 最近确认已签结算");
+  assertEqual(basis.confirmedYuan, "62000.0000", "UAT 合同累计含历史起点");
+  assert(BigInt(basis.downstreamCapacity.wholeCentLimit) >= 1000000n, "UAT 已签结算付款容量不足");
+  await signed.verifyOriginal(tokens.contractStaff, confirmed.id, original, SETTLEMENT_ARCHIVE_DOWNLOAD_REASON);
 
-  for (const [role, token] of [
-    ["materialStaff", tokens.materialStaff],
-    ["materialDirector", tokens.materialDirector],
-    ["contractDirector", tokens.contractDirector],
-    ["projectManager", tokens.projectManager],
-    ["financeDirector", tokens.financeDirector]
-  ]) {
-    settlement = await postJson(
-      `/settlements/${settlement.id}/approval`,
-      { decision: "approve", comment: "P0-5B UAT 脱敏审批通过" },
-      token,
-      `${ROLE_LABELS[role]} 审批 UAT 结算`
-    );
-  }
-  assertEqual(settlement.status, "pending_generation", "UAT 结算审批后状态");
-
-  const signedDocument = await postJson(
-    `/settlements/${settlement.id}/signed-document-generation-retry`,
-    {},
-    tokens.contractDirector,
-    "生成 UAT 最终签名合成件"
-  );
-  assert(signedDocument?.id, "UAT 最终签名合成件未返回文档标识");
-  assert(signedDocument?.fileId, "UAT 最终签名合成件未返回文件标识");
-  assertEqual(
-    signedDocument.purpose,
-    "final_internal_signed_copy",
-    "UAT 最终签名合成件用途"
-  );
-  assertEqual(signedDocument.status, "active", "UAT 最终签名合成件状态");
-  assert(
-    /^[a-f0-9]{64}$/.test(signedDocument.contentSha256 || ""),
-    "UAT 最终签名合成件摘要无效"
-  );
-  assert(
-    /^[a-f0-9]{64}$/.test(signedDocument.approvalActionSetHash || ""),
-    "UAT 最终签名合成件未冻结审批动作摘要"
-  );
-  assert(signedDocument.pageCount >= 1, "UAT 最终签名合成件页数无效");
-
-  settlement = await postJson(
-    `/settlements/${settlement.id}/archive-confirmation`,
-    { confirmationPassword: PASSWORD },
-    tokens.contractDirector,
-    "确认 UAT 结算归档"
-  );
-  assertEqual(settlement.status, "effective", "UAT 结算归档确认状态");
-  await assertSettlementArchiveVisibleInArchiveLedger(
-    signedDocument.fileId,
-    settlement.code,
-    settlement.periodLabel,
-    tokens.contractStaff
-  );
-  await downloadPrivateFileWithReason(
-    signedDocument.fileId,
-    tokens.contractStaff,
-    "合同员结算归档件",
-    SETTLEMENT_ARCHIVE_DOWNLOAD_REASON
-  );
-
-  return {
-    ...settlement,
-    archiveFileId: signedDocument.fileId,
-    signedDocumentId: signedDocument.id,
-    uatTemplateVersionId: settlementTemplateVersionId
-  };
+  const duplicateFile = await signed.upload(tokens.contractStaff, `${CODES.settlement}-duplicate-number.pdf`, 1);
+  const duplicate = await signed.request("POST", "", tokens.contractStaff, {
+    ...selection, number: ` ${CODES.settlement} `, amountYuan: "100.0000", fileIds: [duplicateFile.id]
+  });
+  assertEqual(duplicate.duplicateNumber, true, "UAT 同合同同号提示");
+  await signed.submit(duplicate, tokens.contractStaff);
+  const withPending = await signed.request("GET", basisPath, tokens.contractStaff);
+  assertEqual(withPending.confirmedYuan, basis.confirmedYuan, "UAT 待复核同号不进入累计");
+  assertEqual(withPending.latestConfirmed?.id, confirmed.id, "UAT 待复核同号不替换付款依据");
+  return { ...confirmed, archiveFileId: original.id };
 }
 
-async function assertDuplicateSettlementPeriodBlocked(
-  contractVersionId,
-  settlementTemplateVersionId,
-  token
-) {
-  for (const [suffix, periodLabel] of [
-    ["DUP", "2026-07"],
-    ["DUP-SPACES", " 2026-07 "]
-  ]) {
-    const duplicateDraft = await prepareGovernedSettlementDraft({
-      contractVersionId,
-      settlementTemplateVersionId,
-      code: `${CODES.settlement}-${suffix}`,
-      periodLabel,
-      settlementLines: [
-        {
-          sourceType: "manual_adjustment",
-          name: "P0-5B UAT 重复期间校验项",
-          amountCents: "1000000",
-          reason: "验证同期间唯一性"
-        }
-      ]
-    }, token);
-    const failed = await postJsonExpectFailure(
-      `/projects/${PROJECT_ID}/settlement-drafts/${duplicateDraft.id}/approval-submission`,
-      { expectedRevision: duplicateDraft.revision },
-      token,
-      `提交同期间重复 UAT 结算 ${periodLabel}`
-    );
-    assert(
-      failed.status >= 400,
-      `同期间重复结算拦截 HTTP 状态异常：${failed.status}`
-    );
-    assert(
-      String(failed.body ?? "").includes("已存在结算单"),
-      `同期间重复结算未返回中文业务提示：${failed.body}`
-    );
-    await postJson(
-      `/projects/${PROJECT_ID}/settlement-drafts/${duplicateDraft.id}/abandonment`,
-      {
-        expectedRevision: duplicateDraft.revision,
-        action: "abandon_application",
-        reason: "重复期间校验完成，正式作废验证草稿"
-      },
-      token,
-      `作废重复期间校验草稿 ${periodLabel}`
-    );
-  }
-}
-
-async function createAndApprovePayment(contractVersionId, settlementId, tokens) {
+async function createAndApprovePayment(signedSettlementId, tokens) {
   let payment = await postJson(
     "/payments",
     {
-      sourceType: "settlement",
-      settlementId,
-      contractVersionId,
+      sourceType: "signed_settlement",
+      signedSettlementId,
       code: CODES.payment,
       requestedAmountCents: "1000000"
     },
@@ -1626,9 +1352,8 @@ async function createAndApprovePayment(contractVersionId, settlementId, tokens) 
   await postJsonExpectFailure(
     "/payments",
     {
-      sourceType: "settlement",
-      settlementId,
-      contractVersionId,
+      sourceType: "signed_settlement",
+      signedSettlementId,
       code: CODES.overLimitPayment,
       requestedAmountCents: "99999999"
     },
@@ -1640,6 +1365,7 @@ async function createAndApprovePayment(contractVersionId, settlementId, tokens) 
     ["comprehensiveDirector", tokens.comprehensiveDirector],
     ["projectManager", tokens.projectManager],
     ["financeDirector", tokens.financeDirector],
+    ["contractDirector", tokens.contractDirector],
     ["chairman", tokens.chairman]
   ]) {
     const isFinalPaymentApproval = role === "chairman";
@@ -1658,6 +1384,7 @@ async function createAndApprovePayment(contractVersionId, settlementId, tokens) 
         decision: "approve",
         ...detail.reviewApprovalContext,
         ...(isFinalPaymentApproval ? { approvedAmountCents: "1000000" } : {}),
+        confirmationPassword: PASSWORD,
         comment: "P0-5B UAT 脱敏审批通过"
       },
       token,
@@ -1780,9 +1507,9 @@ async function assertAuditActions(input) {
     "file.download",
     "payment.contract_takeover.blocked",
     "payment.request.create",
-    "settlement.approval.approve",
-    "settlement.signed_document.generated",
-    "settlement.archive.confirm",
+    "settlement.signed_draft_saved",
+    "settlement.signed_submitted",
+    "settlement.signed_confirmed",
     "payment.approval.approve",
     "payment.execution.record",
     "payment.finance.record",
@@ -1950,6 +1677,7 @@ async function main() {
     return;
   }
 
+  signedSettlementVerification(signedSettlementBaseUrl, PROJECT_ID);
   const governanceEvidence = loadGovernanceEvidenceManifest();
   assertGovernanceEvidenceManifest(governanceEvidence);
 
@@ -2023,33 +1751,13 @@ async function main() {
     "付款候选合同版本"
   );
 
-  const settlement = await createAndConfirmSettlement(takeoverRecord.contractVersionId, tokens);
-  await assertDuplicateSettlementPeriodBlocked(
-    takeoverRecord.contractVersionId,
-    settlement.uatTemplateVersionId,
-    tokens.contractStaff
-  );
-  const [effectiveInitialSettlement, effectiveCurrentSettlement] = await Promise.all([
-    prisma.settlement.findUnique({ where: { id: initialSettlement.id } }),
-    prisma.settlement.findUnique({ where: { id: settlement.id } })
-  ]);
+  const signed = signedSettlementVerification(signedSettlementBaseUrl, PROJECT_ID);
+  const settlement = await createAndConfirmSettlement(takeoverRecord, signed, tokens);
+  const effectiveInitialSettlement = await prisma.settlement.findUnique({ where: { id: initialSettlement.id } });
   assertEqual(effectiveInitialSettlement?.status, "effective", "历史期初结算付款前状态");
-  assertEqual(effectiveCurrentSettlement?.status, "effective", "本期结算付款前状态");
-  assertEqual(
-    effectiveInitialSettlement?.paidAmountCents?.toString(),
-    HISTORICAL_BALANCE.historicalPaidCents,
-    "历史期初结算已付金额"
-  );
-  assert(
-    BigInt(effectiveCurrentSettlement?.payableAmountCents ?? 0n) >= 1000000n,
-    "本期生效结算可付金额不足以发起 UAT 付款"
-  );
-
-  const payment = await createAndApprovePayment(
-    takeoverRecord.contractVersionId,
-    settlement.id,
-    tokens
-  );
+  assertEqual(effectiveInitialSettlement?.paidAmountCents?.toString(), HISTORICAL_BALANCE.historicalPaidCents, "历史期初结算已付金额");
+  await preparePaymentSignatures(tokens);
+  const payment = await createAndApprovePayment(settlement.id, tokens);
   await assertTakeoverVerification(takeover.id, tokens.contractStaff, {
     label: "新结算和付款后的核验摘要状态",
     statusLabel: "核验中",

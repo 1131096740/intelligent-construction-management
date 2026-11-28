@@ -1,6 +1,7 @@
 import { economicExcludedAt } from "../contract-ledger/contract-economic-coverage";
 import { BadRequestException } from "@nestjs/common";
-import { Prisma } from "@prisma/client";
+import { Prisma, type ProjectOwnerSettlementEntry } from "@prisma/client";
+import { normalizeBusinessAmount } from "@jiangkong/shared-domain";
 
 import {
   frozenAffiliateFromJson,
@@ -23,6 +24,7 @@ import type {
   OperatingSourceSnapshot
 } from "../operating-ledger/operating-source-adapter";
 
+export const PROJECT_OWNER_SETTLEMENT_ENTRY_SOURCE_TYPE = "project_owner_settlement_entry";
 export const PROJECT_UPSTREAM_SETTLEMENT_SOURCE_TYPE =
   "project_upstream_settlement";
 export const PROJECT_PROXY_PAYMENT_SOURCE_TYPE = "project_proxy_payment";
@@ -42,6 +44,7 @@ type ConstructionEnterpriseSourceRow = {
   effectDirection: string;
   amountCents: bigint;
   counterpartyName: string;
+  periodLabel?: string;
   affiliateAssignmentId: string;
   affiliateBusinessPartyVersionId: string;
   affiliateNameSnapshot: string;
@@ -107,7 +110,7 @@ function sourceCore(
   snapshot: OperatingSourceSnapshot,
   source: Record<string, Prisma.InputJsonValue>,
   affiliate: ReturnType<typeof frozenAffiliateFromJson>,
-  input: Pick<AppendOperatingFactInput, "factKind" | "operatingLevel" | "direction" | "amountCents" | "subjects" | "impacts" | "basisSnapshot">,
+  input: Pick<Extract<AppendOperatingFactInput, { amountCents: bigint }>, "factKind" | "operatingLevel" | "direction" | "amountCents" | "subjects" | "impacts" | "basisSnapshot">,
   label: string
 ): AppendOperatingFactInput {
   const occurredAt = requiredJsonDate(source, "occurredAt", label);
@@ -177,6 +180,7 @@ function sourceSnapshot(
       effectDirection: row.effectDirection,
       amountCents: row.amountCents?.toString() ?? null,
       counterpartyName: row.counterpartyName,
+      periodLabel: row.periodLabel,
       description: row.description,
       evidenceFileId: row.evidenceFileId,
       recordedByUserId: row.recordedByUserId,
@@ -1012,6 +1016,128 @@ function settlementCostCategory(contractType: string): "material" | "crew_and_la
   if (contractType === "labor_subcontract") return "crew_and_labor";
   if (contractType === "professional_subcontract") return "professional_subcontract";
   return "other_project_cost";
+}
+
+export class ProjectOwnerSettlementEntryOperatingSourceAdapter implements OperatingSourceAdapter {
+  readonly sourceType = PROJECT_OWNER_SETTLEMENT_ENTRY_SOURCE_TYPE;
+
+  async readProjectSnapshots(
+    tx: Parameters<OperatingSourceAdapter["readProjectSnapshots"]>[0],
+    projectId: string
+  ): Promise<readonly OperatingSourceSnapshot[]> {
+    const entries = await tx.projectOwnerSettlementEntry.findMany({
+      where: { projectId },
+      orderBy: [{ settledAt: "asc" }, { id: "asc" }]
+    });
+    return Promise.all(entries.map(entry => this.snapshot(tx, entry)));
+  }
+
+  async readSourceSnapshot(
+    tx: Parameters<OperatingSourceAdapter["readSourceSnapshot"]>[0],
+    locator: OperatingSourceLocator
+  ): Promise<OperatingSourceSnapshot | null> {
+    const entry = await tx.projectOwnerSettlementEntry.findFirst({
+      where: { projectId: locator.projectId, id: locator.sourceBusinessId }
+    });
+    return entry ? this.snapshot(tx, entry) : null;
+  }
+
+  toOperatingFactInput(snapshot: OperatingSourceSnapshot): OperatingSourceFactInput {
+    const source = requiredJsonRecord(snapshot.sourceSnapshot, "业主结算登记");
+    const sourceAmount = requiredJsonText(source, "signedAmountYuan", "业主结算登记");
+    const signedAmount = normalizeBusinessAmount(sourceAmount, { allowNegative: true });
+    if (!signedAmount || signedAmount === "0.0000") {
+      throw new BadRequestException("业主结算登记缺少有效非零金额");
+    }
+    const isReduction = signedAmount.startsWith("-");
+    const amountYuan = isReduction ? signedAmount.slice(1) : signedAmount;
+    const direction = isReduction ? "decrease" : "increase";
+    const affiliate = frozenAffiliateFromJson(source, "业主结算登记");
+    const creditor = { kind: "construction_enterprise" as const, id: affiliate.businessPartyVersionId };
+    const sourceKey = `${snapshot.sourceType}:${snapshot.sourceBusinessId}`;
+    const impactKinds = ["confirmed_income", isReduction ? "receivable_decrease" : "receivable_increase"] as const;
+
+    return {
+      entryKind: "original",
+      input: {
+        projectId: snapshot.projectId,
+        sourceType: snapshot.sourceType,
+        sourceBusinessId: snapshot.sourceBusinessId,
+        sourceBusinessCode: snapshot.sourceBusinessCode,
+        sourceVersion: snapshot.sourceVersion,
+        idempotencyKey: sourceKey,
+        occurredAt: requiredJsonDate(source, "settledAt", "业主结算登记"),
+        confirmedAt: requiredJsonDate(source, "recordedAt", "业主结算登记"),
+        confirmedByUserId: requiredJsonText(source, "recordedByUserId", "业主结算登记"),
+        factKind: "owner_settlement",
+        operatingLevel: "project",
+        evidenceLevel: "A",
+        numericProtocolVersion: 2,
+        amountCents: null,
+        amountYuan,
+        currencyCode: "CNY",
+        direction: isReduction ? "outflow" : "inflow",
+        isBeforeOperatingLedgerEffectiveDate: false,
+        affiliateAssignmentId: affiliate.assignmentId,
+        affiliateBusinessPartyVersionId: affiliate.businessPartyVersionId,
+        affiliateNameSnapshot: affiliate.name,
+        ...(affiliate.creditCode ? { affiliateCreditCodeSnapshot: affiliate.creditCode } : {}),
+        sourceSnapshot: snapshot.sourceSnapshot,
+        basisSnapshot: sourceJson({
+          voucherFileId: source.voucherFileId,
+          voucherSha256: source.voucherSha256
+        }),
+        subjects: {
+          debtor: { kind: "owner", id: requiredJsonText(source, "ownerSubjectId", "业主结算登记") },
+          creditor
+        },
+        impacts: impactKinds.map(impactKind => ({
+          idempotencyKey: `${sourceKey}:${impactKind}`,
+          sourceImpactKey: impactKind,
+          impactKind,
+          numericProtocolVersion: 2,
+          amountCents: null,
+          amountYuan,
+          direction,
+          subjectRole: "creditor",
+          subject: creditor,
+          description: isReduction ? "负业主结算冲减项目收入与应收" : "正业主结算增加项目收入与应收"
+        }))
+      }
+    };
+  }
+
+  private async snapshot(
+    tx: Parameters<OperatingSourceAdapter["readSourceSnapshot"]>[0],
+    entry: ProjectOwnerSettlementEntry
+  ): Promise<OperatingSourceSnapshot> {
+    const affiliate = await readAffiliateSnapshot(tx, {
+      projectId: entry.projectId,
+      occurredAt: entry.settledAt,
+      assignmentId: entry.affiliateAssignmentId,
+      businessPartyVersionId: entry.affiliateBusinessPartyVersionId
+    });
+    return {
+      projectId: entry.projectId,
+      sourceType: this.sourceType,
+      sourceBusinessId: entry.id,
+      sourceBusinessCode: `业主结算/${entry.id}`,
+      sourceVersion: 1,
+      status: "confirmed",
+      sourceSnapshot: sourceJson({
+        formalStatus: "confirmed",
+        ownerName: entry.ownerName,
+        ownerSubjectId: entry.ownerSubjectId,
+        settledAt: entry.settledAt.toISOString(),
+        recordedAt: entry.recordedAt.toISOString(),
+        recordedByUserId: entry.recordedByUserId,
+        signedAmountYuan: entry.amountYuan.toFixed(4),
+        voucherFileId: entry.voucherFileId,
+        voucherSha256: entry.voucherSha256,
+        affiliate
+      })
+    };
+  }
 }
 
 export class ProjectUpstreamSettlementOperatingSourceAdapter

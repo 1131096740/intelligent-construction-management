@@ -14,8 +14,16 @@ import JgResultState from "../../components/JgResultState.vue";
 import JgStatusTag from "../../components/JgStatusTag.vue";
 import JgWorkbenchShell from "../../components/JgWorkbenchShell.vue";
 import { centsTextToYuanText } from "../../lib/money";
+import { useAuthStore } from "../../auth/auth.store";
 
 const router = useRouter();
+const auth = useAuthStore();
+const canRegisterConstructionPayment = computed(
+  () =>
+    auth.user?.roleKeys.some((role) =>
+      ["comprehensive_director", "finance_staff", "finance_director"].includes(role)
+    ) ?? false
+);
 const view = ref<FundsWorkbenchView>("all");
 const source = ref<FundsWorkbenchSource>("all");
 const loading = ref(false);
@@ -102,6 +110,26 @@ onMounted(() => void loadWorkbench());
     <ContractRelationshipLedger initial-section="payments" />
 
     <template #actions>
+      <t-button
+        v-if="canRegisterConstructionPayment"
+        variant="outline"
+        @click="router.push({ path: '/项目经营', query: { registerConstructionPayment: '1' } })"
+      >
+        登记施工企业付款
+      </t-button>
+      <t-button
+        v-if="canRegisterConstructionPayment"
+        variant="outline"
+        @click="router.push({ path: '/项目经营', query: { registerConstructionDeduction: '1' } })"
+      >
+        登记施工企业扣费
+      </t-button>
+      <t-button
+        variant="outline"
+        @click="router.push('/资金账户')"
+      >
+        资金账户
+      </t-button>
       <t-button
         variant="outline"
         :loading="loading"

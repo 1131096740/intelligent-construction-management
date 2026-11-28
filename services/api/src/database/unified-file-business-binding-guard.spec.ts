@@ -163,6 +163,22 @@ const projectFundDisputeBindingMigration = readFileSync(
   "utf8"
 );
 const procurementBindingMigration = readFileSync(join(process.cwd(), "prisma/migrations/20261015150000_general_procurement/migration.sql"), "utf8");
+const contractArchiveEvidenceMigration = readFileSync(
+  join(process.cwd(), "prisma/migrations/20261108220000_contract_archive_v2_authority/migration.sql"),
+  "utf8"
+);
+const contractReviewRetentionMigration = readFileSync(
+  join(process.cwd(), "prisma/migrations/20261109110000_contract_direct_review_retention_v1/migration.sql"),
+  "utf8"
+);
+const registeredVoucherPreparedSource = readFileSync(
+  join(process.cwd(), "prisma/prepared/task16/registered-voucher.sql"),
+  "utf8"
+);
+const archiveVoucherBindings = [
+  ...contractArchiveEvidenceMigration.matchAll(/UNION ALL VALUES\s*(\('ContractArchiveEvidenceFile','fileId',TRUE\))/gu),
+  ...registeredVoucherPreparedSource.matchAll(/UNION ALL VALUES\s*(\('RegisteredPaymentVoucher','fileId',TRUE\))/gu)
+].map(match => match[1]).join("\n");
 const schema = readFileSync(
   join(process.cwd(), "prisma/schema.prisma"),
   "utf8"
@@ -176,11 +192,21 @@ function schemaFileBindings(): string[] {
     const fields =
       /^\s+([A-Za-z][A-Za-z0-9]*(?:FileId|FileIdSnapshot)|fileId)\s+String\??(?:\s|$)/gmu;
     for (const fieldMatch of body.matchAll(fields)) {
-      bindings.push(`${modelName}.${fieldMatch[1]}`);
+      const binding = `${modelName}.${fieldMatch[1]}`;
+      // The first is an archive parent FK. The second uses the dedicated
+      // physical retention guard so the original file can keep its binding.
+      if (binding === "ContractArchiveEvidenceFile.archiveFileId" ||
+          binding === "ContractEconomicReviewFileReference.fileId") continue;
+      bindings.push(binding);
     }
   }
   return bindings.sort();
 }
+
+const ownerSettlementVoucherBindingMigration = readFileSync(join(process.cwd(),
+  "prisma/migrations/20261118185000_project_owner_settlement_voucher_binding/migration.sql"), "utf8");
+const signedSettlementBindingMigration = readFileSync(join(process.cwd(),
+  "prisma/migrations/20261119007500_signed_change_and_settlement_attachment_file_binding/migration.sql"), "utf8");
 
 const contractLedgerBindings=["20261019210000_contract_proxy_execution","20261019230000_upward_contract_amount_revision","20261020000000_contract_bank_verification_entry","20261020120000_company_transfer"].map(name=>readFileSync(join(process.cwd(),"prisma/migrations",name,"migration.sql"),"utf8")).join("\n");
 function migrationBindings(): Array<{
@@ -188,7 +214,7 @@ function migrationBindings(): Array<{
   exclusive: boolean;
 }> {
   return Array.from(
-      `${affiliateBusinessBindingMigration}\n${affiliateCompanyContractBindingMigration}\n${operatingTakeoverBindingMigration}\n${wageStatementBindingMigration}\n${interEntityRelationshipBindingMigration}\n${payerAttestationBindingMigration}\n${payerAuthorityBindingMigration}\n${fundExecutionBindingMigration}\n${affiliateClearingAuthorityBindingMigration}\n${invoiceLedgerRepairBindingMigration}\n${necessaryExpenseReserveBindingMigration}\n${projectFundDisputeBindingMigration}\n${procurementBindingMigration}\n${contractLedgerBindings}`.matchAll(
+      `${affiliateBusinessBindingMigration}\n${affiliateCompanyContractBindingMigration}\n${operatingTakeoverBindingMigration}\n${wageStatementBindingMigration}\n${interEntityRelationshipBindingMigration}\n${payerAttestationBindingMigration}\n${payerAuthorityBindingMigration}\n${fundExecutionBindingMigration}\n${affiliateClearingAuthorityBindingMigration}\n${invoiceLedgerRepairBindingMigration}\n${necessaryExpenseReserveBindingMigration}\n${projectFundDisputeBindingMigration}\n${procurementBindingMigration}\n${contractLedgerBindings}\n${ownerSettlementVoucherBindingMigration}\n${signedSettlementBindingMigration}\n${archiveVoucherBindings}`.matchAll(
       /\('([^']+)'\s*,\s*'([^']+)'\s*,\s*(TRUE|FALSE)\)/gu
     ),
     (match) => ({
@@ -205,9 +231,9 @@ function migrationBindings(): Array<{
 }
 
 describe("unified file business binding migration", () => {
-  it("registers every current Prisma FileObject reference exactly once", () => {
+  it("accounts for every current registry-bound FileObject reference in migration or prepared source", () => {
     const registered = migrationBindings().map(({ binding }) => binding);
-    expect(registered).toHaveLength(100);
+    expect(registered).toHaveLength(105);
     expect(new Set(registered).size).toBe(registered.length);
     expect(registered.sort()).toEqual(schemaFileBindings());
     expect(contractDraftBindingMigration).toContain(
@@ -260,13 +286,28 @@ describe("unified file business binding migration", () => {
     );
   });
 
+  it("keeps the archive parent FK separate and protects retained review files with their dedicated guard", () => {
+    expect(contractArchiveEvidenceMigration).toContain(
+      'FOREIGN KEY ("archiveFileId", "contractVersionId") REFERENCES public."ContractArchiveFile"'
+    );
+    expect(contractReviewRetentionMigration).toContain(
+      '"fileId" TEXT NOT NULL REFERENCES public."FileObject"("id") ON UPDATE RESTRICT ON DELETE RESTRICT'
+    );
+    expect(contractReviewRetentionMigration).toContain(
+      'CREATE TRIGGER "FileObject_contract_direct_review_retention_v1"\nBEFORE INSERT OR UPDATE OR DELETE ON public."FileObject"'
+    );
+    expect(contractReviewRetentionMigration).toContain('r."fileId"=OLD."id" OR r."objectKey"=OLD."objectKey"');
+  });
+
   it("preserves every existing exclusive spot and invoice fact", () => {
     const exclusive = migrationBindings()
       .filter((entry) => entry.exclusive)
       .map(({ binding }) => binding)
       .sort();
     expect(exclusive).toEqual([
+      "ContractArchiveEvidenceFile.fileId",
       "ContractProxyExecution.evidenceFileId",
+      "ContractSignedChange.appendixFormalFileId",
       "ContractTakeoverExcessEvidence.fileId",
       "ContractTakeoverHistoricalPaymentVoucher.fileId",
       "ContractTakeoverSettlementEvidence.fileId",
@@ -285,7 +326,9 @@ describe("unified file business binding migration", () => {
       "ProjectAffiliateSettlementFact.evidenceFileId",
       "ProjectExpenseExecution.voucherFileId",
       "ProjectFinancingQuota.attachmentFileId",
+      "RegisteredPaymentVoucher.fileId",
       "SettlementRecoveryEntry.evidenceFileId",
+      "SignedContractSettlementAttachment.fileId",
       "SpotProcurementPaymentAttachment.fileId",
       "SpotProcurementPaymentExecution.voucherFileId",
       "SpotProcurementPaymentExecutionVoucher.fileId",
@@ -411,6 +454,50 @@ describe("unified file business binding migration", () => {
     );
     expect(expenseClaimPaymentExecutionBindingMigration).toContain(
       'BEFORE INSERT OR UPDATE OF "voucherFileId" ON "ExpenseClaimPaymentExecution"'
+    );
+  });
+
+  it("keeps owner settlement vouchers within the central database binding guard", () => {
+    expect(ownerSettlementVoucherBindingMigration).toContain("pg_advisory_xact_lock(190731, 13)");
+    expect(ownerSettlementVoucherBindingMigration).toContain("('ProjectOwnerSettlementEntry', 'voucherFileId', FALSE)");
+    expect(ownerSettlementVoucherBindingMigration).toContain('BEFORE INSERT ON public."ProjectOwnerSettlementEntry"');
+    expect(ownerSettlementVoucherBindingMigration).toContain('jg_has_exclusive_file_business_binding(NEW."voucherFileId")');
+    expect(ownerSettlementVoucherBindingMigration).toContain("jg_project_owner_settlement_voucher_bound(candidate_file_id)");
+  });
+
+  it("registers signed-change appendices and signed-settlement attachments as exclusive facts", () => {
+    expect(signedSettlementBindingMigration).toContain("BEGIN;");
+    expect(signedSettlementBindingMigration.trim()).toMatch(/COMMIT;$/u);
+    expect(signedSettlementBindingMigration).toContain("pg_advisory_xact_lock(190731, 13)");
+    expect(signedSettlementBindingMigration).toContain(
+      "('ContractSignedChange', 'appendixFormalFileId', TRUE)"
+    );
+    expect(signedSettlementBindingMigration).toContain(
+      "('SignedContractSettlementAttachment', 'fileId', TRUE)"
+    );
+    expect(signedSettlementBindingMigration).toContain("original_acl aclitem[]");
+    expect(signedSettlementBindingMigration).toContain(
+      "RENAME TO jg_file_business_binding_columns_before_signed_settlement"
+    );
+    expect(signedSettlementBindingMigration).toContain(
+      "GRANT EXECUTE ON FUNCTION public.jg_file_business_binding_columns()"
+    );
+    expect(signedSettlementBindingMigration).toContain(
+      'BEFORE INSERT OR UPDATE OF "appendixFormalFileId" ON public."ContractSignedChange"'
+    );
+    expect(signedSettlementBindingMigration).toContain(
+      "EXECUTE FUNCTION public.jg_enforce_exclusive_file_business_binding(\n  'appendixFormalFileId',\n  'true'\n)"
+    );
+    expect(signedSettlementBindingMigration).toContain(
+      "public.jg_require_contract_direct_upward_source_v2()"
+    );
+    expect(signedSettlementBindingMigration).toContain(
+      "c86b37cc155cb5cf424dd682f9767363da264eed8630a0dee9f02acde0dc3f49"
+    );
+    // The signed-settlement attachment already enforces the same exclusive
+    // binding from its own migration; this one must not stack a second trigger.
+    expect(signedSettlementBindingMigration).not.toContain(
+      'CREATE TRIGGER jg_efb_signed_settlement_attachment'
     );
   });
 

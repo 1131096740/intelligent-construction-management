@@ -1,0 +1,45 @@
+{
+  "runnerSha256": "540543e501ff906d07827bf213215e833157a15b635c25dd7d0627bd4ad4df11",
+  "draft346RunnerSha256": "9ff6b7c01aec19a9c95088fc917d7ff7c27c693350614d7d3e3ede6d12147a80",
+  "draft346FixtureSha256": "c91c2bef2e05bd453824abe7631495b680511331d59412f73fce919ff93b418c",
+  "draft349FixtureSha256": "7d7e6a12173200e8eea481b2b767c7cc44e0a49791e808099d626e39f582fb79",
+  "draft350FixtureSha256": "d3d63cad4a26a5265290c9323a8e878057134c6e059516f93a86fc7b76b970ba",
+  "draft352FixtureSha256": "6de7271fc2405a4be3a579f9de628a99bfeea6fc496c85cf8aa28ae4949449d5",
+  "profiles": {
+    "settlement": {
+      "verifyMode": "--contract-settlement-ci",
+      "count": 2,
+      "specs": [
+        "contract-bill-batch-replace-concurrency.spec.ts",
+        "contract-bill-transition-confirm-concurrency.spec.ts"
+      ]
+    },
+    "template": {
+      "verifyMode": "--contract-template-ci",
+      "count": 7,
+      "specs": [
+        "contract-template-scenario-concurrency.spec.ts"
+      ]
+    },
+    "draft": {
+      "verifyMode": "--settlement-draft-282-ci",
+      "count": 1,
+      "specs": [
+        "settlement-draft-lifecycle-concurrency.spec.ts"
+      ]
+    }
+  },
+  "candidateFixtures334": {
+    "contract-bill-batch-replace-concurrency.spec.ts": "de320c8bcc192a010f61611b70a8de50913daf3b28e6ee46fff4cafe1c98f6c3",
+    "contract-bill-transition-confirm-concurrency.spec.ts": "0b14c6883ab16be0d1777c8d8a24225aae3e4bf6be5cba92b07d8a3a7b933607",
+    "contract-template-scenario-concurrency.spec.ts": "93c99028452994a14d5f2a74767cb6cf2c354e8aa819ee618e19d10fd01eacd0",
+    "settlement-draft-lifecycle-concurrency.spec.ts": "aa2cc248ff7b9becb8653021624e253cae78d282e6b6e64e6e13ab1ed2e019c5"
+  },
+  "fixtures": {
+    "task12-owned-280.test-support.ts": "0653380689b72c974ab8abf63aa19dcd2fda7e8dc48114ccdd7a6d38793d5ba7",
+    "contract-bill-batch-replace-concurrency.spec.ts": "224758ab9e34ec43fba6ecadf30b5b000c94d8305af7c11ec135569b7ae6c375",
+    "contract-bill-transition-confirm-concurrency.spec.ts": "a7ba4396881dbbf7cedd5c6adcafaa6e9570c013ab895b63c598d16fe1dd3b93",
+    "contract-template-scenario-concurrency.spec.ts": "1237f6557bc1505625d0368c23cb68ca41f869afe0b8b61103af20bd9ba9d08a",
+    "settlement-draft-lifecycle-concurrency.spec.ts": "b61fe7baf4ed3459c710b9634585f1f611367256137010bf79dadad5e6ce7685"
+  }
+}

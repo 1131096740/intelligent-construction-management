@@ -1,3 +1,4 @@
+import type { ContractV2LifecycleReadModel } from "@jiangkong/shared-domain";
 import { expect, test, type Page } from "@playwright/test";
 import {
   expectNoDocumentHorizontalOverflow,
@@ -5,6 +6,7 @@ import {
 } from "./helpers/responsive-assertions";
 
 const versionId = "version-governed-1";
+const documentCoordinates = { documentContentRevision: 4, documentContentFingerprint: "d".repeat(64) };
 const governedViewports = [
   { width: 1512, height: 982 },
   { width: 1440, height: 900 },
@@ -41,11 +43,21 @@ test("受治理合同仅按后端动作展示签署归档，并以敏感确认�
       body: JSON.stringify({ id: "private-final-file", originalName: "双方最终版.pdf" })
     });
   });
+  await page.route("**/api/files/approval-file-1/download-ticket-capability", (route) => route.fulfill({
+    json: {
+      availableActions: ["create_private_file_download_ticket"],
+      action: { key: "create_private_file_download_ticket", enabled: true }
+    }
+  }));
+  await page.route("**/api/files/approval-file-1/download?ticket=short-lived", (route) => route.fulfill({
+    contentType: "application/pdf",
+    body: "%PDF-1.7 governed-approval-original"
+  }));
   await page.route("**/api/files/approval-file-1/download-ticket", (route) => {
     approvalOriginalDownloadBody = route.request().postDataJSON() as Record<string, unknown>;
     return route.fulfill({
       contentType: "application/json",
-      body: JSON.stringify({ downloadUrl: "/files/approval-file-1/download?ticket=short-lived" })
+      body: JSON.stringify({ downloadUrl: "/files/approval-file-1/download?ticket=short-lived", fileName: "审批前乙方签章版.pdf" })
     });
   });
   await page.route(`**/api/contracts/${versionId}/formal-files/final`, (route) => {
@@ -56,18 +68,15 @@ test("受治理合同仅按后端动作展示签署归档，并以敏感确认�
     }
     return route.fulfill({ contentType: "application/json", body: JSON.stringify({ id: "formal-final-1" }) });
   });
-  let approveSealBody: Record<string, unknown> | null = null;
-  let completeSealBody: Record<string, unknown> | null = null;
+  const retiredSealWrites: string[] = [];
   let returnFinalBody: Record<string, unknown> | null = null;
   let confirmFinalBody: Record<string, unknown> | null = null;
-  await page.route(`**/api/contracts/${versionId}/seal/approve`, (route) => {
-    approveSealBody = route.request().postDataJSON() as Record<string, unknown>;
-    return route.fulfill({ contentType: "application/json", body: JSON.stringify({ status: "in_seal" }) });
-  });
-  await page.route(`**/api/contracts/${versionId}/seal/complete`, (route) => {
-    completeSealBody = route.request().postDataJSON() as Record<string, unknown>;
-    return route.fulfill({ contentType: "application/json", body: JSON.stringify({ status: "seal_approved_pending_archive" }) });
-  });
+  for (const path of ["seal-approval", "seal/approve", "seal/complete"]) {
+    await page.route(`**/api/contracts/${versionId}/${path}`, (route) => {
+      retiredSealWrites.push(path);
+      return route.fulfill({ status: 410, json: { code: "OLD_WRITE_ENTRY_RETIRED" } });
+    });
+  }
   await page.route(`**/api/contracts/${versionId}/formal-files/final/return`, (route) => {
     returnFinalBody = route.request().postDataJSON() as Record<string, unknown>;
     return route.fulfill({ contentType: "application/json", body: JSON.stringify({ status: "seal_approved_pending_archive" }) });
@@ -82,22 +91,23 @@ test("受治理合同仅按后端动作展示签署归档，并以敏感确认�
   await page.locator(".detail-navigation").getByText("凭证资料", { exact: true }).click();
 
   await expect(page.getByRole("heading", { name: "签署与归档证据" })).toBeVisible();
-  await expect(page.getByText("审批前乙方签章版", { exact: true })).toBeVisible();
-  await expect(page.getByText("双方最终签署版", { exact: true })).toBeVisible();
-  await expect(page.getByText("合同审批单", { exact: true })).toBeVisible();
+  const evidenceCards = page.locator(".formal-evidence-grid");
+  await expect(evidenceCards.getByText("审批前乙方签章版", { exact: true })).toBeVisible();
+  await expect(evidenceCards.getByText("双方最终签署版", { exact: true })).toBeVisible();
+  await expect(evidenceCards.getByText("合同审批单", { exact: true })).toBeVisible();
   const finalUploadGroup = page.locator(".action-group").filter({ hasText: "上传双方最终版" });
   await expect(finalUploadGroup.getByRole("button", { name: "上传双方最终版" })).toBeVisible();
   await expect(page.getByRole("button", { name: "确认归档" })).toHaveCount(0);
-  await page.getByText("审批前乙方签章版", { exact: true }).locator("xpath=ancestor::article")
+  await evidenceCards.getByText("审批前乙方签章版", { exact: true }).locator("xpath=ancestor::article")
     .getByRole("button", { name: "下载文件" }).click();
   await expect(page.getByText("确认下载合同正式文件？", { exact: true })).toBeVisible();
-  await page.getByPlaceholder("说明本次操作原因").fill("归档核验");
-  await page.getByPlaceholder("用于确认当前操作者身份").fill("Governance@2026");
+  const approvalOriginalDownload = page.waitForEvent("download");
   await page.getByRole("button", { name: "确认下载" }).click();
   await expect.poll(() => approvalOriginalDownloadBody).toEqual({
-    confirmationPassword: "Governance@2026",
-    downloadReason: "归档核验"
+    confirmationPassword: "",
+    downloadReason: ""
   });
+  expect((await approvalOriginalDownload).suggestedFilename()).toBe("审批前乙方签章版.pdf");
 
   for (const viewport of governedViewports) {
     await page.setViewportSize(viewport);
@@ -136,38 +146,26 @@ test("受治理合同仅按后端动作展示签署归档，并以敏感确认�
   await expect.poll(() => finalAssociationAttempts).toBe(2);
   await expect.poll(() => privateFinalUploadRequests).toBe(1);
 
-  detail = governedDetail({
-    status: "待同意用章",
-    actions: [action("approve_seal", "同意用章", "primary", true)],
-    primaryAction: "approve_seal",
-    formalFiles: [],
-    sealTask: sealTask()
-  });
-  await page.goto("/contracts/HT-GOVERNED-001");
-  await page.locator(".detail-navigation").getByText("流程办理", { exact: true }).click();
-  const sealActionGroup = page.locator(".action-group").filter({ hasText: "用章与归档文件生成" });
-  await sealActionGroup.getByRole("button", { name: "同意用章" }).click();
-  await expect(page.getByText("确认同意用章？", { exact: true })).toBeVisible();
-  await page.getByPlaceholder("用于确认当前操作者身份").fill("Governance@2026");
-  await page.getByRole("button", { name: "确认同意用章" }).click();
-  await expect.poll(() => approveSealBody).toEqual({ confirmationPassword: "Governance@2026" });
-
-  detail = governedDetail({
-    status: "我方签署盖章中",
-    actions: [action("complete_seal", "确认已完成我方签署与盖章", "primary", true)],
-    primaryAction: "complete_seal",
-    formalFiles: [],
-    sealTask: sealTask()
-  });
-  await page.goto("/contracts/HT-GOVERNED-001");
-  await page.locator(".detail-navigation").getByText("流程办理", { exact: true }).click();
-  const completionCheckboxes = sealActionGroup.locator(".t-checkbox");
-  await expect(completionCheckboxes).toHaveCount(4);
-  for (let index = 0; index < 4; index += 1) await completionCheckboxes.nth(index).click();
-  await sealActionGroup.getByRole("button", { name: "确认已完成我方签署与盖章" }).click();
-  await expect(page.getByText("确认已完成我方签署与盖章？", { exact: true })).toBeVisible();
-  await page.getByRole("button", { name: "确认已完成", exact: true }).click();
-  await expect.poll(() => completeSealBody).toEqual(completionDeclaration());
+  for (const obsolete of [
+    { key: "approve_seal", label: "同意用章", status: "待同意用章" },
+    { key: "complete_seal", label: "确认已完成我方签署与盖章", status: "我方签署盖章中" }
+  ]) {
+    detail = governedDetail({
+      status: obsolete.status,
+      actions: [action(obsolete.key, obsolete.label, "primary", true)],
+      primaryAction: obsolete.key,
+      formalFiles: [approvalOriginal()],
+      disabledReasons: ["旧用章办理已停止，请联系合同部核对原记录"]
+    });
+    await page.goto("/contracts/HT-GOVERNED-001");
+    await page.locator(".detail-navigation").getByText("流程办理", { exact: true }).click();
+    await expect(page.getByText("旧用章办理已停止，请联系合同部核对原记录", { exact: true })).toBeVisible();
+    await expect(page.getByRole("button", { name: obsolete.label, exact: true })).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "确认已盖章", exact: true })).toHaveCount(0);
+    await page.locator(".detail-navigation").getByText("凭证资料", { exact: true }).click();
+    await expect(evidenceCards.getByText("审批前乙方签章版", { exact: true })).toBeVisible();
+  }
+  expect(retiredSealWrites).toEqual([]);
 
   detail = governedDetail({
     status: "待最终版归档确认",
@@ -196,13 +194,80 @@ test("受治理合同仅按后端动作展示签署归档，并以敏感确认�
   for (let index = 0; index < 6; index += 1) await confirmationCheckboxes.nth(index).click();
   await finalReviewGroup.getByRole("button", { name: "确认归档" }).click();
   await expect(page.getByText("确认双方最终版并归档？", { exact: true })).toBeVisible();
-  await page.getByPlaceholder("用于确认当前操作者身份").fill("Governance@2026");
+  await expect(page.getByPlaceholder("用于确认当前操作者身份")).toHaveCount(0);
   await page.getByRole("button", { name: "确认归档" }).last().click();
   await expect.poll(() => confirmFinalBody).toEqual({
     formalFileId: "final-file-1",
-    confirmationPassword: "Governance@2026",
     ...finalDeclaration()
   });
+});
+
+test("综合部主管仅对当前并联审批轮次确认已盖章", async ({ page }) => {
+  const modernVersionId = "11111111-1111-4111-8111-111111111111";
+  await installLoginRoutes(page, ["comprehensive_director"], modernVersionId);
+  const lifecycle: Extract<ContractV2LifecycleReadModel, { status: "ready" }> = {
+    protocolVersion: 2,
+    contractVersionId: modernVersionId,
+    webWriteReleased: true,
+    status: "ready",
+    source: "generated_approval",
+    scope: "inside_original",
+    actorUserId: "governance-user-1",
+    approvalInstanceId: "22222222-2222-4222-8222-222222222222",
+    sealTaskId: "33333333-3333-4333-8333-333333333333",
+    ...documentCoordinates,
+    state: "pending_seal",
+    sealAction: { key: "confirm_seal_v2", eligible: true, enabled: true, reason: null },
+    archiveAction: { key: "archive_signed_v2", eligible: false, enabled: false, reason: null },
+    sealOutcome: { status: "pending", completedAt: null, completedByUserId: null },
+    approvalSource: { status: "references_ready" },
+    signedFilePolicy: { mimeType: "application/pdf", minCount: 1, maxCount: 20, ordered: true }
+  };
+  const sealRequests: unknown[] = [];
+  await page.route((url) => url.pathname === "/api/contracts/HT-GOVERNED-001", (route) => route.fulfill({
+    json: {
+      ...governedDetail({
+        actions: [action("approve_seal", "同意用章", "primary", true)],
+        primaryAction: "approve_seal"
+      }),
+      contractVersionId: modernVersionId,
+      v2Lifecycle: lifecycle
+    }
+  }));
+  await page.route(`**/api/contracts/${modernVersionId}/change-eligibility`, (route) => route.fulfill({
+    json: { eligible: false, reason: "当前版本尚未生效", currentEffective: null, activeChange: null }
+  }));
+  for (const path of ["seal-approval", "seal/approve", "seal/complete"]) {
+    await page.route(`**/api/contracts/${modernVersionId}/${path}`, (route) => {
+      sealRequests.push(path);
+      return route.fulfill({ status: 410, json: { code: "OLD_WRITE_ENTRY_RETIRED" } });
+    });
+  }
+  await page.route(`**/api/contracts/${modernVersionId}/seal-confirmation`, (route) => {
+    sealRequests.push(route.request().postDataJSON());
+    lifecycle.state = "pending_archive";
+    lifecycle.sealAction.enabled = false;
+    lifecycle.sealOutcome = {
+      status: "completed", completedAt: "2026-07-17T01:00:00.000Z", completedByUserId: lifecycle.actorUserId
+    };
+    return route.fulfill({ status: 201, json: {
+      contractVersionId: modernVersionId, approvalInstanceId: lifecycle.approvalInstanceId,
+      sealTaskId: lifecycle.sealTaskId, status: "seal_approved_pending_archive"
+    } });
+  });
+
+  await login(page);
+  await page.goto("/contracts/HT-GOVERNED-001");
+  await expect(page.getByRole("button", { name: "同意用章", exact: true })).toHaveCount(0);
+  await page.getByRole("button", { name: "确认已盖章", exact: true }).click();
+  await page.getByRole("button", { name: "确认办理", exact: true }).click();
+  await expect.poll(() => sealRequests).toEqual([{
+    expectedApprovalInstanceId: lifecycle.approvalInstanceId,
+    expectedSealTaskId: lifecycle.sealTaskId,
+    ...documentCoordinates,
+    confirmed: true
+  }]);
+  await expect(page.getByRole("button", { name: "确认已盖章", exact: true })).toHaveCount(0);
 });
 
 test("合同经办人兼合同部主管仅按服务端自审能力完成合同部节点", async ({ page }) => {
@@ -358,8 +423,17 @@ test("上传返回时切换合同仍保留原合同暂存文件且不关联新�
     body: JSON.stringify({ ...governedDetail(), id: "HT-GOVERNED-B", contractVersionId: "version-governed-b", title: "HT-GOVERNED-B · 合同 B" })
   }));
   let heldUpload: import("@playwright/test").Route | null = null;
+  let uploadRequests = 0;
+  const versionAAssociations: unknown[] = [];
   let versionBAssociations = 0;
-  await page.route("**/api/files", (route) => { heldUpload = route; });
+  await page.route("**/api/files", (route) => {
+    uploadRequests += 1;
+    heldUpload = route;
+  });
+  await page.route(`**/api/contracts/${versionId}/formal-files/final`, (route) => {
+    versionAAssociations.push(route.request().postDataJSON());
+    return route.fulfill({ json: { id: "formal-final-a" } });
+  });
   await page.route("**/api/contracts/version-governed-b/formal-files/final", (route) => {
     versionBAssociations += 1;
     return route.fulfill({ status: 500 });
@@ -374,15 +448,43 @@ test("上传返回时切换合同仍保留原合同暂存文件且不关联新�
   await uploadGroup.getByRole("button", { name: "上传双方最终版" }).click();
   await page.getByRole("button", { name: "确认上传" }).click();
   await expect.poll(() => heldUpload !== null).toBe(true);
-  await page.goto("/contracts/HT-GOVERNED-B");
+  await page.evaluate(() => {
+    history.pushState(history.state, "", "/contracts/HT-GOVERNED-B");
+    window.dispatchEvent(new PopStateEvent("popstate", { state: history.state }));
+  });
+  await expect(page.getByRole("heading", { name: /合同 B/u })).toBeVisible();
   const upload = heldUpload as import("@playwright/test").Route | null;
   if (!upload) throw new Error("未收到私有文件上传请求");
   await upload.fulfill({ contentType: "application/json", body: JSON.stringify({ id: "file-staged-a" }) });
-  await expect.poll(() => versionBAssociations).toBe(0);
-  await expect(page.getByRole("button", { name: "上传双方最终版" })).toHaveCount(1);
+  await expect(page.getByText(/合同已切换，已停止关联暂存文件/u)).toBeVisible();
+  await page.locator(".detail-navigation").getByText("凭证资料", { exact: true }).click();
+  await expect(uploadGroup.getByRole("button", { name: "上传双方最终版" })).toBeVisible();
+  expect(versionBAssociations).toBe(0);
+  expect(versionAAssociations).toEqual([]);
+
+  await page.goBack();
+  await expect(page.getByRole("heading", { name: /受治理材料采购合同/u })).toBeVisible();
+  await page.locator(".detail-navigation").getByText("凭证资料", { exact: true }).click();
+  await uploadGroup.getByRole("button", { name: "上传双方最终版" }).click();
+  await page.getByRole("button", { name: "确认上传" }).click();
+  await expect.poll(() => versionAAssociations).toEqual([
+    { fileId: "file-staged-a", sourceRevision: 7, ...finalDeclaration() }
+  ]);
+  expect(versionBAssociations).toBe(0);
+  expect(uploadRequests).toBe(1);
 });
 
-async function installLoginRoutes(page: Page, roleKeys: string[]) {
+async function installLoginRoutes(page: Page, roleKeys: string[], contractVersionId = "version-governed-*") {
+  for (const path of ["projects", "approval-delegations/user-options", `contracts/${contractVersionId}/work-completions`]) {
+    await page.route(`**/api/${path}`, (route) => route.fulfill({ json: [] }));
+  }
+  await page.route(`**/api/contracts/${contractVersionId}/duty-sms`, (route) => route.fulfill({ json: [] }));
+  await page.route("**/api/approval-forms/contract_seal/seal-task-1/capability", (route) =>
+    route.fulfill({ json: { available: false } })
+  );
+  await page.route(`**/api/approval-progress?businessType=contract_version&businessId=${contractVersionId}`, (route) =>
+    route.fulfill({ json: { items: [], nextCursor: null } })
+  );
   await page.route("**/api/auth/login", (route) => route.fulfill({
     contentType: "application/json",
     body: JSON.stringify({
@@ -417,10 +519,17 @@ function governedDetail(options: {
   primaryAction?: string | null;
   formalFiles?: ReturnType<typeof approvalOriginal>[];
   sealTask?: ReturnType<typeof sealTask>;
+  disabledReasons?: string[];
 } = {}) {
+  const availableActions = options.actions ?? [
+    action("upload_final_contract", "上传双方最终版", "primary", true),
+    action("download_approval_form", "下载审批单", "normal", true)
+  ];
   return {
     id: "HT-GOVERNED-001",
     contractVersionId: versionId,
+    draftRevision: 7,
+    ...documentCoordinates,
     title: "HT-GOVERNED-001 · 受治理材料采购合同",
     meta: [{ label: "当前状态", value: options.status ?? "待上传双方最终版", tone: "warning" }],
     baseInfo: [{ label: "合同金额", value: "¥100,000.00" }],
@@ -432,12 +541,10 @@ function governedDetail(options: {
     formalFiles: options.formalFiles ?? [approvalOriginal()],
     sealTask: options.sealTask ?? sealTask(),
     approvalTimeline: [],
-    availableActions: options.actions ?? [
-      action("upload_final_contract", "上传双方最终版", "primary", true),
-      action("download_approval_form", "下载审批单", "normal", true)
-    ],
+    availableActions,
+    availableActionKeys: availableActions.filter(({ enabled }) => enabled).map(({ key }) => key),
     primaryAction: options.primaryAction ?? "upload_final_contract",
-    disabledReasons: [],
+    disabledReasons: options.disabledReasons ?? [],
     chainLinks: [],
     changeVersions: []
   };
@@ -445,6 +552,7 @@ function governedDetail(options: {
 
 function approvalOriginal() {
   return {
+    ...documentCoordinates,
     formalFileId: "approval-original-1", purpose: "approval_original", fileId: "approval-file-1",
     fileName: "审批前乙方签章版.pdf", pageCount: 12, sourceRevision: 7, status: "active",
     uploadedByUserId: "governance-user-1", confirmedByUserId: null, confirmedAt: null
@@ -453,6 +561,7 @@ function approvalOriginal() {
 
 function mutuallySignedFinal() {
   return {
+    ...documentCoordinates,
     formalFileId: "final-file-1", purpose: "mutually_signed_final", fileId: "final-file-object-1",
     fileName: "双方最终版.pdf", pageCount: 12, sourceRevision: 7, status: "active",
     uploadedByUserId: "handler-user-1", confirmedByUserId: null, confirmedAt: null

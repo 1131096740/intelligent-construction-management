@@ -12,6 +12,7 @@ import { ClearingModule } from "./clearing/clearing.module";
 import { CompanyEntityModule } from "./company-entity/company-entity.module";
 import { ContractBillModule } from "./contract-bill/contract-bill.module";
 import { ContractDocumentModule } from "./contract-document/contract-document.module";
+import { ContractDocumentWorkerModule } from "./contract-document/contract-document-worker.module";
 import { ContractModule } from "./contract/contract.module";
 import { ContractTemplateModule } from "./contract-template/contract-template.module";
 import { ContractTakeoverModule } from "./contract-takeover/contract-takeover.module";
@@ -21,15 +22,19 @@ import { FileModule } from "./file/file.module";
 import { DraftRetentionModule } from "./draft-retention/draft-retention.module";
 import { ContractEndedApplicationRetentionModule } from "./contract-ended-retention/contract-ended-retention.module";
 import { ContractEndedApplicationPurgeModule } from "./contract-ended-purge/contract-ended-application-purge.module";
+import { ActualPurchaseBatchModule } from "./actual-purchase/actual-purchase-batch.module";
 import { GeneralProcurementModule } from "./general-procurement/general-procurement.module";
 import { ExpenseClaimModule } from "./expense-claim/expense-claim.module";
+import { FundAccountModule } from "./fund-account/fund-account.module";
 import { FundsWorkbenchModule } from "./funds-workbench/funds-workbench.module";
 import { FundMovementModule } from "./fund-movement/fund-movement.module";
 import { FundExecutionModule } from "./fund-execution/fund-execution.module";
+import { HistoryExpenseModule } from "./history-expense/history-expense.module";
 import { HealthController } from "./health.controller";
 import { InvoiceLedgerModule } from "./invoice-ledger/invoice-ledger.module";
 import { MeModule } from "./me/me.module";
 import { OrganizationModule } from "./organization/organization.module";
+import { FundFlowModule } from "./fund-flow/fund-flow.module";
 import { OperatingLedgerModule } from "./operating-ledger/operating-ledger.module";
 import { OperatingProjectionModule } from "./operating-projection/operating-projection.module";
 import { OperatingTakeoverModule } from "./operating-takeover/operating-takeover.module";
@@ -55,6 +60,7 @@ import { ProjectFundDisputeModule } from "./project-fund-dispute/project-fund-di
     ContractModule,
     ContractBillModule,
     ContractDocumentModule,
+    ContractDocumentWorkerModule,
     ContractWorkbenchModule,
     ContractTemplateModule,
     ContractTakeoverModule,
@@ -63,6 +69,7 @@ import { ProjectFundDisputeModule } from "./project-fund-dispute/project-fund-di
     ClearingModule,
     CompanyEntityModule,
     OperatingLedgerModule,
+    FundFlowModule,
     OperatingProjectionModule,
     OperatingTakeoverModule,
     PayableRegistryModule,
@@ -71,11 +78,14 @@ import { ProjectFundDisputeModule } from "./project-fund-dispute/project-fund-di
     ProjectExpenseModule,
     ProjectCloseProfitModule,
     ExpenseClaimModule,
+    ActualPurchaseBatchModule,
     GeneralProcurementModule,
     FundsWorkbenchModule,
+    FundAccountModule,
     FundMovementModule,
     CompanyTransferModule,
     FundExecutionModule,
+    HistoryExpenseModule,
     SpotProcurementModule,
     WageStatementModule,
     NecessaryExpenseReserveModule,

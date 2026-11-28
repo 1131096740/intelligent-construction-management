@@ -1,3 +1,4 @@
+import { PAYMENT_TEXT_AGREEMENT_BASIS } from "../payment/payment-text-agreement";
 import {readLegacyTransferDebt,transferRepaymentUsage} from "../company-transfer/company-transfer-legacy";
 import { lockMasterDataRow } from "../master-data/master-data-lifecycle";
 import { createHash, randomUUID } from "node:crypto";
@@ -1239,6 +1240,7 @@ export class FundMovementService {
         contractVersionId: true,
         paymentTermsVersionId: true,
         sourceType: true,
+        contractDueBasis: true,
         status: true,
         paymentSubjectType: true,
         requestedAmountCents: true,
@@ -1511,6 +1513,7 @@ export class FundMovementService {
         sourceRowId: true,
         paymentTermsVersionId: true,
         stageId: true,
+        stageType: true,
         sourcePayableAmountCents: true,
         amountCents: true
       }
@@ -1543,7 +1546,11 @@ export class FundMovementService {
           (row.settlementId !== null && row.settlementId !== request.settlementId && request.settlementId !== null) ||
           (sourceType === "settlement" && row.settlementId !== request.settlementId) ||
           (sourceType === "contract_due" && row.settlementId === null &&
-            (!row.stageId || row.sourceRowId !== `contract:${row.paymentTermsVersionId}:${row.stageId}`)) ||
+            (request.contractDueBasis === PAYMENT_TEXT_AGREEMENT_BASIS
+              ? row.stageId !== null || row.stageType !== null ||
+                row.sourceRowId !== `payment-request:${request.id}` ||
+                row.sourcePayableAmountCents !== request.approvedAmountCents
+              : !row.stageId || row.sourceRowId !== `contract:${row.paymentTermsVersionId}:${row.stageId}`)) ||
           (sourceType === "contract_due" && row.settlementId !== null &&
             !row.sourceRowId.startsWith(`${row.settlementId}:`))
         )

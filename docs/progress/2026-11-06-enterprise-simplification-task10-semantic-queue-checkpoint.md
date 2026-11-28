@@ -1,0 +1,15 @@
+# 任务10文书语义版本与冻结队列局部检查点
+
+本片保留净税生成保护，只用已允许的含税新草稿和合成历史队列/私有文件验证版本隔离，不执行JVM、soffice、真实PG、对象存储或业务交易，不宣称实际DOCX/PDF产物或整票验收完成。
+
+基于干净0d092148阶段，原队列key由内容修订/指纹、模板、用途、附件、引擎和runtime锁组成，未纳入新版金额展示语义。旧key使用该固定历史编码作为合成升级状态，不调用新私有helper推算目标key。公开保存含税1.5340和旧文件授权下载先通过后，同修订preview-generation实际返回旧success任务，reusedLegacy=true，身份断言真实RED。一个显式类型缺失导致的TS编译失败发生于0test/0HTTP，单独保留，不计缓存RED。
+
+修复复用同一持久化口径选择器：仅新明确context得到contract-money-v1，新版本可选追加key；无版本时原tuple完全不变。bodyDocument与受保护renderInput冻结相同版本，同时保留原引擎/runtime锁/source和内容修订/指纹。原公开case首次GREEN：新任务独立、重复请求复用新任务、双份版本相同；旧success快照、引用、授权下载字节和预览指针保持。旧文件为有效但不透明的合成Word/PDF夹具，仅用于不可变性检查，不是实际合同转换/签署质量证明。
+
+随后冻结状态错配公共worker真实RED：只将合成snapshot body版本改unsupported、另一份仍v1，原worker读取Word一次后才在自有missing-manifest运行时前置失败。断言要求非法版本Word读取0而非仅failed，避免把运行时失败当版本守卫通过。最小presence-based校验后Word0/upload0成立，但安全错误白名单吞掉新已知文字，第二真实输出RED保留；只将该固定安全中文加入原exact allowlist，不透传raw异常或扩大通配。最终公开错误明确“合同文书金额口径版本无法核对，请联系管理员处理”。
+
+当前矩阵5种非法状态：单方unsupported、缺body partner、缺values partner、双方同unsupported、双方空串但字段存在；均实际failed/nulloutputs、明确安全版本错误、Word0/upload0、旧success/ref/pointer保留。另有双方字段都不存在的legacy admission控制，只证明放行到Word读取1及实际missing-manifest前置；不把该受控失败计作旧Word/PDF转换或物理内容兼容成功。每案还原环境，均无JVM。
+
+当前源码service SHA301c6b624798351c2a6ae224b98afdcbd012a240b522894cda910c317702c2bc，processor SHAeaa730dfde1e87c5df4bcaf9a0976797e7922f433e7ea4d6536d5dfff7bb18d8，body SHA仍f78c32865429ea5db8e2d9d79ec0a70afab23a1ef0c49669a71fa9bcfd64a25d。一次相关8套171/171、API tsc退出0、全API ESLint退出0且空输出。主日志SHA01b95f99e5791371afb9a5c92153e16df80b101dc7f13b7df0c39a37ebf973a7；精确argv/源hash及分步退出值见本地semantic-current-related-group-asrun.json。原body/renderer/service/processor断言未为本片放宽，旧v2原“—”保留。
+
+仍未完成：旧冻结队列实际Word/PDF和内容物理兼容；未知custom自明双口径公开反例及真实长值版式；正式已采用模板全族真实双格式、自身列数及45行/A4/签署、实际使用字体roles/逐glyph/字面式/段落；完整正文操作UI与最后治理/两轴审。08技术13+7双loop不自动成为正式产品硬门，不自动采纳或广播main。净税queue保护仍在；真实资源、PG/迁移、通知/交易、部署/生产写未执行。

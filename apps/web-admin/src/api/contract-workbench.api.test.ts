@@ -31,6 +31,7 @@ import {
   fetchContractBillTransitionOptions,
   fetchContractBillTransitions,
   fetchContractDraftWorkbench,
+  fetchContractDraftBody,
   fetchContractWorkbench,
   heartbeatContractDraftEditLease,
   setContractAuthorization,
@@ -277,6 +278,40 @@ function contractBillRemainderInput(
 }
 
 describe("contract workbench API client", () => {
+  it.each([undefined,"unexpected-layout"])("rejects an unknown or missing paper layout version %s",async version=>{
+    mockApiFetch.mockReturnValue(makeOkJson({mechanicalContactLayoutVersion:version}));
+    await expect(fetchContractDraftBody("version-1")).rejects.toThrow("正文呈现版本无法核对");
+  });
+  it("preserves the actionable warning for a billing-area layout mapping", async () => {
+    const warning="正文开票资料与当前版式映射冲突，请联系合同管理员处理；合同正文内容已保留。";
+    mockApiFetch.mockReturnValue(makeOkJson({warnings:[warning],mechanicalContactLayoutVersion:null}));
+    expect((await fetchContractDraftBody("version-1")).warnings).toEqual([warning]);
+  });
+  it("preserves the bounded signature review and its actionable warning",async()=>{
+    const warning="请核对内容及甲乙方归属，确认后保存。";
+    const review={digest:"a".repeat(64),confirmed:false,entries:[{role:"party_a",id:"b".repeat(64),text:"虚构原文"}]};
+    mockApiFetch.mockReturnValue(makeOkJson({mechanicalContactLayoutVersion:null,warnings:[warning],signatureSupplementReview:review}));
+    const body=await fetchContractDraftBody("version-1");expect(body.signatureSupplementReview).toEqual(review);expect(body.warnings).toEqual([warning]);
+    mockApiFetch.mockReturnValue(makeOkJson({mechanicalContactLayoutVersion:null,signatureSupplementReview:{...review,digest:"invalid"}}));
+    expect((await fetchContractDraftBody("version-1")).signatureSupplementReview).toBeUndefined();
+  });
+  it("retains the generic company-and-bank review scope and rejects unknown scopes",async()=>{
+    const warning="请核对内容及甲乙方归属，确认后保存。";
+    const review={digest:"a".repeat(64),confirmed:false,scope:"company-and-bank",entries:[{role:"party_a",id:"b".repeat(64),text:"虚构原文"}]};
+    mockApiFetch.mockReturnValue(makeOkJson({mechanicalContactLayoutVersion:null,warnings:[warning],signatureSupplementReview:review}));
+    expect(await fetchContractDraftBody("version-1")).toMatchObject({signatureSupplementReview:review,warnings:[warning]});
+    mockApiFetch.mockReturnValue(makeOkJson({mechanicalContactLayoutVersion:null,signatureSupplementReview:{...review,scope:"unknown"}}));
+    expect((await fetchContractDraftBody("version-1")).signatureSupplementReview).toBeUndefined();
+  });
+  it("retains labor recovery content and review scope for the current response",async()=>{
+    const id="b".repeat(64),review={digest:"a".repeat(64),confirmed:false,scope:"labor-company-and-bank",entries:[{role:"party_a",id,text:"虚构说明"}]};
+    const recovery={entries:[{id,text:"保留原文",kind:"edit"}],groups:[]};
+    const warning="请核对内容及甲乙方归属，确认后保存。";
+    mockApiFetch.mockReturnValue(makeOkJson({mechanicalContactLayoutVersion:null,warnings:[warning],signatureSupplementReview:review,laborSignatureRecovery:recovery}));
+    expect(await fetchContractDraftBody("version-1")).toMatchObject({signatureSupplementReview:review,laborSignatureRecovery:recovery,warnings:[warning]});
+    mockApiFetch.mockReturnValue(makeOkJson({mechanicalContactLayoutVersion:null,laborSignatureRecovery:{...recovery,entries:[{id:"bad",text:"原文",kind:"edit"}]}}));
+    expect((await fetchContractDraftBody("version-1")).laborSignatureRecovery).toBeUndefined();
+  });
   beforeEach(() => {
     setActivePinia(createPinia());
     vi.clearAllMocks();
@@ -317,7 +352,7 @@ describe("contract workbench API client", () => {
 
     await fetchContractWorkbench("contract/1");
 
-    expect(mockApiFetch).toHaveBeenCalledWith("/contract-workbench/contract%2F1");
+    expect(mockApiFetch).toHaveBeenCalledWith("/contract-workbench/contract%2F1", { headers: { "x-contract-numeric-protocol": "2" } });
   });
 
   it("preserves the stable historical-takeover routing code on a workbench read failure", async () => {
@@ -354,7 +389,7 @@ describe("contract workbench API client", () => {
     await takeOverContractDraftEditLease("version/1", {
       currentPassword: "current-password"
     });
-    await saveContractDraftAggregate("version/1", "lease-secret", {
+    const draftPayload: Parameters<typeof saveContractDraftAggregate>[2] = {
       idempotencyKey: "9aeb3ee8-1772-4a79-8d26-684411f91a20",
       saveKind: "manual",
       expectedRevision: 3,
@@ -379,7 +414,8 @@ describe("contract workbench API client", () => {
       negotiationDocuments: {
         referencedGeneratedDocumentIds: []
       }
-    });
+    };
+    await saveContractDraftAggregate("version/1", "lease-secret", draftPayload);
     await queueContractDraftPreview("version/1", 4);
     await submitContractDraft("version/1", "lease-secret", {
       expectedRevision: 4,
@@ -391,7 +427,8 @@ describe("contract workbench API client", () => {
 
     expect(mockApiFetch).toHaveBeenNthCalledWith(
       1,
-      "/contract-drafts/version%2F1/workbench"
+      "/contract-drafts/version%2F1/workbench",
+      { headers: { "x-contract-numeric-protocol": "2" } }
     );
     expect(mockApiFetch).toHaveBeenNthCalledWith(
       2,
@@ -469,6 +506,16 @@ describe("contract workbench API client", () => {
         })
       })
     );
+    const regular = mockApiFetch.mock.calls[5]?.[1];
+    expect(regular).not.toHaveProperty("retryUnauthorized");
+    expect(regular).not.toHaveProperty("responseIsCurrent");
+    const responseIsCurrent = () => false;
+    await saveContractDraftAggregate("version/1", "lease-secret", draftPayload, responseIsCurrent);
+    expect(mockApiFetch).toHaveBeenLastCalledWith("/contract-drafts/version%2F1", {
+      ...regular,
+      retryUnauthorized: false,
+      responseIsCurrent
+    });
   });
 
   it("never includes the raw lease token in a failed write error", async () => {
@@ -896,7 +943,8 @@ describe("contract workbench API client", () => {
     expect(mockApiFetch).toHaveBeenCalledTimes(2);
     expect(mockApiFetch).toHaveBeenNthCalledWith(
       1,
-      "/contract-drafts/version-1/workbench"
+      "/contract-drafts/version-1/workbench",
+      { headers: { "x-contract-numeric-protocol": "2" } }
     );
     expect(mockApiFetch).toHaveBeenNthCalledWith(
       2,
@@ -1121,7 +1169,7 @@ describe("contract workbench API client", () => {
 
     await listContractDrafts("my");
 
-    expect(mockApiFetch).toHaveBeenCalledWith("/contract-workbench?scope=my");
+    expect(mockApiFetch).toHaveBeenCalledWith("/contract-workbench?scope=my", { headers: { "x-contract-numeric-protocol": "2" } });
   });
 
   it("listContractDrafts('voided') – GET /contract-workbench?scope=voided", async () => {
@@ -1129,7 +1177,7 @@ describe("contract workbench API client", () => {
 
     await listContractDrafts("voided");
 
-    expect(mockApiFetch).toHaveBeenCalledWith("/contract-workbench?scope=voided");
+    expect(mockApiFetch).toHaveBeenCalledWith("/contract-workbench?scope=voided", { headers: { "x-contract-numeric-protocol": "2" } });
   });
 
   it("saveContractDraft – PATCH /contract-workbench/:contractVersionId (autosave must be PATCH)", async () => {
@@ -1218,11 +1266,11 @@ describe("contract workbench API client", () => {
 
     expect(mockApiFetch).toHaveBeenNthCalledWith(
       1,
-      "/contract-versions/version%2F1/bill-transitions/options"
+      "/contract-versions/version%2F1/bill-transitions/options", undefined
     );
     expect(mockApiFetch).toHaveBeenNthCalledWith(
       2,
-      "/contract-versions/version%2F1/bill-transitions"
+      "/contract-versions/version%2F1/bill-transitions", undefined
     );
     expect(mockApiFetch).toHaveBeenNthCalledWith(
       3,
@@ -1333,7 +1381,7 @@ describe("contract workbench API client", () => {
 
     expect(mockApiFetch).toHaveBeenCalledWith("/contract-workbench/version-1/type-change", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", "x-contract-numeric-protocol": "2" },
       body: JSON.stringify({
         targetBusinessTemplateVersionId: "template-version-2",
         expectedRevision: 2,
@@ -1359,7 +1407,7 @@ describe("contract workbench API client", () => {
 
     await listBusinessParties("云南");
 
-    expect(mockApiFetch).toHaveBeenCalledWith("/business-parties?query=%E4%BA%91%E5%8D%97");
+    expect(mockApiFetch).toHaveBeenCalledWith("/business-parties?query=%E4%BA%91%E5%8D%97", undefined);
   });
 
   it("getBusinessPartyCreateCapability – GET /business-parties/create-capability", async () => {
@@ -1378,7 +1426,7 @@ describe("contract workbench API client", () => {
 
     await getBusinessParty("party-1");
 
-    expect(mockApiFetch).toHaveBeenCalledWith("/business-parties/party-1");
+    expect(mockApiFetch).toHaveBeenCalledWith("/business-parties/party-1", undefined);
   });
 
   it("createBusinessPartyVersion – POST /business-parties/:partyId/versions", async () => {
@@ -1406,7 +1454,7 @@ describe("contract workbench API client", () => {
 
     await listContractNumberRules();
 
-    expect(mockApiFetch).toHaveBeenCalledWith("/contract-number-rules");
+    expect(mockApiFetch).toHaveBeenCalledWith("/contract-number-rules", undefined);
   });
 
   it("createContractNumberRule – POST /contract-number-rules", async () => {
@@ -1486,7 +1534,7 @@ describe("contract workbench API client", () => {
     await expect(listPublishedContractTemplates("material_purchase")).resolves.toEqual(templates);
 
     expect(mockApiFetch).toHaveBeenCalledWith(
-      "/contract-templates?contractTypeKey=material_purchase"
+      "/contract-templates?contractTypeKey=material_purchase", undefined
     );
   });
 
@@ -1533,7 +1581,7 @@ describe("contract workbench API client", () => {
 
     expect(mockApiFetch).toHaveBeenNthCalledWith(
       1,
-      "/contract-templates/template-1?includeHistory=true"
+      "/contract-templates/template-1?includeHistory=true", undefined
     );
     expect(mockApiFetch).toHaveBeenNthCalledWith(
       2,
@@ -1554,7 +1602,7 @@ describe("contract workbench API client", () => {
     await listPublishedLayoutTemplates("material_purchase");
 
     expect(mockApiFetch).toHaveBeenCalledWith(
-      "/contract-layout-templates?contractTypeKey=material_purchase"
+      "/contract-layout-templates?contractTypeKey=material_purchase", undefined
     );
   });
 
@@ -1609,7 +1657,7 @@ describe("contract workbench API client", () => {
 
     expect(mockApiFetch).toHaveBeenNthCalledWith(
       1,
-      "/contract-layout-templates/layout-template-1?includeHistory=true"
+      "/contract-layout-templates/layout-template-1?includeHistory=true", undefined
     );
     expect(mockApiFetch).toHaveBeenNthCalledWith(
       2,
@@ -1640,7 +1688,7 @@ describe("contract workbench API client", () => {
 
     const result = await listPublishedStandardClauses("payment");
 
-    expect(mockApiFetch).toHaveBeenCalledWith("/standard-clauses?category=payment");
+    expect(mockApiFetch).toHaveBeenCalledWith("/standard-clauses?category=payment", undefined);
     expect(result[0].standardClauseVersionId).toBe("clause-version-2");
     expect(result[0].content).toEqual({ text: "结算确认后付款。" });
   });
@@ -1676,7 +1724,7 @@ describe("contract workbench API client", () => {
 
     expect(mockApiFetch).toHaveBeenNthCalledWith(
       1,
-      "/standard-clauses/history?category=%E4%BB%98%E6%AC%BE"
+      "/standard-clauses/history?category=%E4%BB%98%E6%AC%BE", undefined
     );
     expect(mockApiFetch).toHaveBeenNthCalledWith(
       2,
@@ -1817,7 +1865,7 @@ describe("contract workbench API client", () => {
     await downloadContractDraftBillExcelTemplate("version / 1", "main / bill");
 
     expect(mockApiFetch).toHaveBeenCalledWith(
-      "/contract-drafts/version%20%2F%201/bills/main%20%2F%20bill/template"
+      "/contract-drafts/version%20%2F%201/bills/main%20%2F%20bill/template?numericProtocolVersion=2"
     );
   });
 
@@ -1843,7 +1891,7 @@ describe("contract workbench API client", () => {
     );
     expect((options as RequestInit).method).toBe("POST");
     expect(JSON.parse((options as RequestInit).body as string)).toEqual({
-      fileId: "file-1"
+      fileId: "file-1", numericProtocolVersion: 2
     });
   });
 
@@ -1891,7 +1939,7 @@ describe("contract workbench API client", () => {
 
     await listContractDocuments("version-1");
 
-    expect(mockApiFetch).toHaveBeenCalledWith("/contract-workbench/version-1/documents");
+    expect(mockApiFetch).toHaveBeenCalledWith("/contract-workbench/version-1/documents", undefined);
   });
 
   it("retryContractDocument – POST /contract-documents/:documentId/retry", async () => {

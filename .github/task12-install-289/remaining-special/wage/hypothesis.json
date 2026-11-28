@@ -1,0 +1,1 @@
+{"hypothesis":"The original wage fixture retains all 25 assertions after the exact same-instance 288 to 289 upgrade and a no-op deploy.","evidence":"Exact 288 ledger, same owned DB and TLS identity, 289 no-op deploy plus status, 25 exact titles with zero skips, and post-consumer B7 and cleanup.","fields":["wageHistory","wageJest","postconsume","cleanup","failure"]}

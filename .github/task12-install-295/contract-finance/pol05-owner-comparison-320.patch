@@ -1,0 +1,77 @@
+--- pol05-operating-source-facts.spec.ts
++++ pol05-operating-source-facts.spec.ts
+@@ -13,7 +13,10 @@
+ import { ProjectUpstreamFundBusinessEntryService } from "../project/project-upstream-fund-business-entry.service";
+ import { readProjectOwnerBalance } from "../project/project-owner-balance";
+ import { OperatingLedgerService } from "../operating-ledger/operating-ledger.service";
+-import { createOperatingSourceRegistry } from "../operating-ledger/operating-ledger.module";
++import { CONTRACT_WORK_COMPLETION_SOURCE } from "../contract/contract-work-completion-operating-source.adapter";
++import { requiredJsonRecord, requiredJsonText } from "../operating-ledger/formal-operating-source.helpers";
++import { OperatingSourceAdapterRegistry } from "../operating-ledger/operating-source-adapter";
++import { createOperatingSourceRegistry, OPERATING_SOURCE_TYPES } from "../operating-ledger/operating-ledger.module";
+ import { OperatingSourceReplayService } from "../operating-ledger/operating-source-replay.service";
+
+ describe("POL-05 formal operating sources PostgreSQL", () => {
+@@ -181,7 +184,7 @@
+         assert.equal(financeRecords, 1);
+         assert.equal(financeFacts, 0);
+
+-        const comparison = await services[0]!.compareProject(
++        const comparison = await ownerComparisonService(clients[0]!).compareProject(
+           fixture.projectId,
+           fixture.financeUserId
+         );
+@@ -466,6 +469,53 @@
+     factKind: "owner_payment", amountCents: 2000n,
+     impacts: [{ impactKind: "construction_enterprise_funds_increase", amountCents: 2000n }]
+   }]);
++}
++
++// The 320 owner qualification runs its original independent source comparison
++// inside a witnessed owner session. Keep the production runtime adapter in use
++// for all point reads and business operations.
++function ownerComparisonService(client: PrismaClient) {
++  const registry = createOperatingSourceRegistry();
++  const completion = registry.require(CONTRACT_WORK_COMPLETION_SOURCE);
++  const adapters = registry.list().map(adapter => adapter !== completion ? adapter : {
++    sourceType: completion.sourceType,
++    readSourceSnapshot: completion.readSourceSnapshot.bind(completion),
++    toOperatingFactInput: completion.toOperatingFactInput.bind(completion),
++    async readProjectSnapshots(tx: Parameters<typeof completion.readProjectSnapshots>[0], projectId: string) {
++      const [proof] = await tx.$queryRaw<Array<{ sameOwner: boolean }>>`
++        SELECT session_user = 'jg_task01_owner' AND current_user = session_user
++          AND relation.relowner = session_user::regrole::oid
++          AND database.datdba = session_user::regrole::oid AS "sameOwner"
++        FROM pg_catalog.pg_class relation
++        JOIN pg_catalog.pg_database database ON database.datname = current_database()
++        WHERE relation.oid = 'public."ContractWorkCompletionFact"'::regclass
++      `;
++      assert.equal(proof?.sameOwner, true, "POL05_OWNER_COMPLETION_SOURCE_SCOPE");
++      const rows = await tx.$queryRaw<Array<{ id: string; projectId: string; costSnapshot: Prisma.InputJsonValue }>>`
++        SELECT fact.id, fact."projectId", fact."costSnapshot"
++        FROM public."ContractWorkCompletionFact" fact
++        WHERE fact."projectId" = ${projectId}::text AND fact."costSnapshot" IS NOT NULL
++        ORDER BY fact."createdAt", fact.id
++      `;
++      return rows.map(row => {
++        const sourceSnapshot = requiredJsonRecord(row.costSnapshot, "其他合同履约");
++        return {
++          projectId: row.projectId,
++          sourceType: CONTRACT_WORK_COMPLETION_SOURCE,
++          sourceBusinessId: row.id,
++          sourceVersion: 1,
++          sourceBusinessCode: requiredJsonText(sourceSnapshot, "businessCode", "其他合同履约"),
++          status: "confirmed" as const,
++          sourceSnapshot
++        };
++      });
++    }
++  });
++  return new OperatingSourceReplayService(
++    client as never,
++    new OperatingLedgerService(client as never),
++    new OperatingSourceAdapterRegistry(adapters, OPERATING_SOURCE_TYPES)
++  );
+ }
+
+ function replayService(client: PrismaClient) {

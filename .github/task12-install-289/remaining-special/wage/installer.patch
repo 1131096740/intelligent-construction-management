@@ -1,0 +1,28 @@
+--- original
++++ installed
+@@ -241 +241 @@
+-async function installer(receipt, probeOnly, consume, release=stableRelease) {
++async function installer(receipt, probeOnly, consume, release=stableRelease, wageFixture=false) {
+@@ -420,0 +421,7 @@
++        if(wageFixture){
++          if(size===288)receipt.wageHistory={predecessor:288,ledgerSha256:hash(JSON.stringify(observed.ledger)),sameInstance:true};
++          else{
++            need(receipt.wageHistory?.ledgerSha256===outsideMilestones[0].ledgerSha256,'REMAINING_WAGE_288_PREDECESSOR');
++            receipt.wageHistory.terminal=289;
++          }
++        }
+@@ -907,0 +915,14 @@
++
++
++module.exports.withOutside289Wage = receipt => {
++  const {contract289,verifyMaterialized}=require('./checkout.cjs');
++  verifyMaterialized('/qualification/product',contract289);
++  Object.assign(receipt,{releaseTree:outsideRelease.tree,sourceBaseSha:stableRelease.sha,sourceKind:'UNCOMMITTED_EXACT_GIT_TREE'});
++  return installer(receipt,false,async context=>{
++    need(context.candidateTree===outsideRelease.tree&&receipt.wageHistory?.predecessor===288&&
++      receipt.wageHistory.terminal===289&&receipt.wageHistory.sameInstance,'REMAINING_WAGE_EXACT_CONTEXT');
++    await require('./wage.cjs').runWage(context,receipt);
++    assertOutsideWitness(289,JSON.parse((await context.sql(outsideWitnessSql(289))).stdout.trim()));
++    receipt.postconsume={count:289,exactB7:true};
++  },outsideRelease,true);
++};

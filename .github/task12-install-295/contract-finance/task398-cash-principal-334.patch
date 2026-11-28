@@ -1,0 +1,29 @@
+--- predecessor/fixture
++++ forward/fixture
+@@ -501,14 +501,15 @@
+  `);
+ }
+ async function runTask398Owned282Voucher(context, mode="standard", receipt){
+- const modes=new Map([["cash-handover-332",["--cash-handover-real"]],["principal-return-332",["--principal-return-real"]],["cash-handover-331",["--cash-handover-real"]],["principal-return-331",["--principal-return-real"]],["cash-handover-330",["--cash-handover-real"]],["principal-return-330",["--principal-return-real"]],["cash-handover-329",["--cash-handover-real"]],["principal-return-329",["--principal-return-real"]],["cash-handover-295",["--cash-handover-real"]],["principal-return-295",["--principal-return-real"]],["standard-290",[]],["cash-handover-290",["--cash-handover-real"]],["principal-return-290",["--principal-return-real"]],["standard",[]],["principal-return",["--principal-return-real"]],["cash-handover",["--cash-handover-real"]],["correction-catalog",["--cash-handover-real"]]]);
++ const modes=new Map([["cash-handover-334",["--cash-handover-real"]],["principal-return-334",["--principal-return-real"]],["cash-handover-332",["--cash-handover-real"]],["principal-return-332",["--principal-return-real"]],["cash-handover-331",["--cash-handover-real"]],["principal-return-331",["--principal-return-real"]],["cash-handover-330",["--cash-handover-real"]],["principal-return-330",["--principal-return-real"]],["cash-handover-329",["--cash-handover-real"]],["principal-return-329",["--principal-return-real"]],["cash-handover-295",["--cash-handover-real"]],["principal-return-295",["--principal-return-real"]],["standard-290",[]],["cash-handover-290",["--cash-handover-real"]],["principal-return-290",["--principal-return-real"]],["standard",[]],["principal-return",["--principal-return-real"]],["cash-handover",["--cash-handover-real"]],["correction-catalog",["--cash-handover-real"]]]);
+  if(!modes.has(mode))throw new Error("TASK398_OWNED_282_SCENARIO");
+  const exact295=mode==="cash-handover-295"||mode==="principal-return-295";
+  const exact320=mode==="cash-handover-329"||mode==="principal-return-329";
+  const exact330=mode==="cash-handover-330"||mode==="principal-return-330";
+  const exact331=mode==="cash-handover-331"||mode==="principal-return-331";
+- const exact332=mode==="cash-handover-332"||mode==="principal-return-332";
+- const count=exact332?332:exact331?331:exact330?330:329;
++ const exact334=mode==="cash-handover-334"||mode==="principal-return-334";
++ const exact332=exact334||mode==="cash-handover-332"||mode==="principal-return-332";
++ const count=exact334?334:exact332?332:exact331?331:exact330?330:329;
+  const forward=exact332||exact331||exact330||exact320?receipt?.forward320:undefined;
+  if((exact332||exact331||exact330||exact320)&&(receipt?.purpose!=="TASK398_CASH_PRINCIPAL_EXACT_"+count||mode!==receipt.lane+"-"+count
+   ||forward?.count!==count||forward.sameIdentity!==true||forward.sameBaseB7!==true
+@@ -517,6 +518,7 @@
+   ||(count>=330&&(receipt.textDirectPredecessor?.count!==329||receipt.textDirectPredecessor.sameBaseB7!==true))
+   ||(count>=331&&(receipt.paymentRemainderPredecessor?.count!==330||receipt.paymentRemainderPredecessor.sameIdentity!==true
+     ||receipt.paymentRemainderPredecessor.sameBaseB7!==true))
++  ||(exact334&&(receipt.historicalSettlementPredecessor?.count!==333||forward.ledgerSha256!=="27f3af946003d07582efb288b443362fcf61bed0281feb548f9978b739fb5411"))
+   ||(exact332&&(receipt.upwardArchivePredecessor?.count!==331||receipt.upwardArchivePredecessor.sameIdentity!==true
+     ||receipt.upwardArchivePredecessor.sameBaseB7!==true))))
+   throw Error("TASK398_CASH_PRINCIPAL_FORWARD_SCOPE");

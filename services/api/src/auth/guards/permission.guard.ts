@@ -1,3 +1,11 @@
+import { supportsExpenseParallelApproval, loadExpenseApprovalRoleScopes, resolveExpenseParallelDutyIdentity } from "../../expense-claim/expense-claim-parallel-approval";
+import { isLegacyContractParallelRound } from "../../contract/contract-approval-cutover";
+import { isOrdinaryPaymentParallelRound, loadOrdinaryPaymentDelegationPrincipals, resolveOrdinaryPaymentDuty } from "../../payment/ordinary-payment-parallel";
+import { matchesOwnFundReviewReceipt, type FundReviewDecision } from "../../fund-account/fund-account-receipt";
+import { FUND_REVIEW_ACTION, resolveFundReviewIdentity } from "../../fund-account/fund-account-duty";
+import { scopedSpotDutyNodeIndexes } from "../../approval/spot-approval-duty-access";
+import { activeApprovalNodeIndexes, hasVersionedApprovalNodes, isParallelApprovalRound } from "../../approval/parallel-approval-protocol";
+import { contractParallelDutyIdentity, contractRoundSubmissionSnapshot } from "../../contract/contract-parallel-duty-access";
 import {
   CanActivate,
   ExecutionContext,
@@ -63,7 +71,13 @@ export class PermissionGuard implements CanActivate {
     if (!request.user) {
       throw new ForbiddenException("未获取到登录用户，请重新登录");
     }
-    const requiredAction = await this.resolveRequiredAction(request, declaredAction);
+    if (context.getClass().name === "FundAccountController") {
+      const handler = context.getHandler().name;
+      const receiptAction: FundReviewDecision | null = handler === "confirmCorrection" ? "approve" : handler === "returnCorrection" ? "reject" : handler === "withdrawCorrection" ? "withdraw" : null;
+      const registrationId = request.params?.registrationId;
+      if (receiptAction && registrationId && await matchesOwnFundReviewReceipt(this.prisma as never, request.user.id, registrationId, request.body, receiptAction)) return true;
+    }
+    const requiredAction = await this.resolveRequiredAction(request, declaredAction, context.getHandler().name);
 
     const anyProjectPositionScope = this.reflector.getAllAndOverride<boolean>(
       ANY_PROJECT_POSITION_SCOPE_KEY,
@@ -82,13 +96,13 @@ export class PermissionGuard implements CanActivate {
       request.user.id,
       projectId,
       includeAnyProjectRole,
-      (requiredAction === "business_party.create" || requiredAction === "project.master_data.manage")
+      (requiredAction === "business_party.create" || requiredAction === "project.master_data.manage" || requiredAction === "project.basics.manage")
     );
     const effectiveRoleKeys = resolveEffectiveRoleKeys(
       roleScopes.globalRoleKeys,
       roleScopes.projectRoleKeys
     );
-    const actionRoleKeys = (requiredAction === "business_party.create" || requiredAction === "project.master_data.manage")
+    const actionRoleKeys = (requiredAction === "business_party.create" || requiredAction === "project.master_data.manage" || requiredAction === "project.basics.manage")
       ? roleScopes.globalRoleKeys
       : effectiveRoleKeys;
 
@@ -120,7 +134,9 @@ export class PermissionGuard implements CanActivate {
             request.user.id,
             effectiveRoleKeys,
             projectId,
-            roleScopes
+            roleScopes,
+            requiredAction,
+            context.getHandler().name === "delegateApproval"
           )
         : null;
       if (governedApprovalAccess === false) {
@@ -137,6 +153,8 @@ export class PermissionGuard implements CanActivate {
           : false;
         const delegatedApprovalAllowed =
           scopedClearingAllowed ||
+          (requiredAction === FUND_REVIEW_ACTION && await this.scopedFundDutyAccess(request, request.user.id)) ||
+          (requiredAction === "spot_procurement.approve" && projectId && await this.scopedSpotDutyAccess(request, request.user.id, projectId)) ||
           governedApprovalAccess === true ||
           (requiredAction !== "project_expense.approve" &&
             projectId &&
@@ -163,6 +181,28 @@ export class PermissionGuard implements CanActivate {
   async loadEffectiveRoleKeys(userId: string, projectId?: string): Promise<RoleKey[]> {
     const roleScopes = await this.loadRoleScopes(userId, projectId);
     return resolveEffectiveRoleKeys(roleScopes.globalRoleKeys, roleScopes.projectRoleKeys);
+  }
+
+  private async scopedFundDutyAccess(request: AuthenticatedRequest, actorUserId: string) {
+    const id = request.params?.registrationId;
+    const expected = request.body?.expectedApprovalInstanceId;
+    const readOnly = (request as AuthenticatedRequest & { method?: string }).method === "GET";
+    if (!id || (!readOnly && typeof expected !== "string")) return false;
+    try { await resolveFundReviewIdentity(this.prisma as never, id, actorUserId, typeof expected === "string" ? expected : undefined); return true; }
+    catch { return false; }
+  }
+
+  private async scopedSpotDutyAccess(request: AuthenticatedRequest, actorUserId: string, projectId: string) {
+    if (typeof this.prisma.approvalInstance?.findUnique !== "function") return false;
+    const instanceId = request.body?.expectedApprovalInstanceId;
+    const index = request.body?.expectedNodeIndex;
+    if (typeof instanceId !== "string" || typeof index !== "number" || !Number.isInteger(index)) return false;
+    const round = await this.prisma.approvalInstance.findUnique({where: {id: instanceId}});
+    if (!round || round.businessType !== "spot_procurement_version") return false;
+    const version = await this.prisma.spotProcurementVersion.findUnique({where: {id: round.businessId}});
+    const application = version ? await this.prisma.spotProcurement.findUnique({where: {id: version.procurementId}}) : null;
+    if (!application || application.id !== request.params?.procurementId || application.projectId !== projectId || application.currentVersionId !== round.businessId) return false;
+    return (await scopedSpotDutyNodeIndexes(this.prisma as never, round, projectId, actorUserId)).includes(index);
   }
 
   private async loadRoleScopes(
@@ -296,7 +336,9 @@ export class PermissionGuard implements CanActivate {
     userId: string,
     roleKeys: RoleKey[],
     projectId?: string,
-    roleScopes?: { globalRoleKeys: RoleKey[]; projectRoleKeys: RoleKey[] }
+    roleScopes?: { globalRoleKeys: RoleKey[]; projectRoleKeys: RoleKey[] },
+    requiredAction?: BusinessAction,
+    directOrdinaryPaymentDelegation = false
   ): Promise<boolean | null> {
     const target: {
       businessType: string;
@@ -321,6 +363,10 @@ export class PermissionGuard implements CanActivate {
     const approvalClient = this.prisma as unknown as {
       approvalInstance?: {
         findFirst(input: unknown): Promise<{
+          id: string;
+          status: string;
+          flowType: string;
+          applicantUserId?: string;
           frozenNodes: unknown;
           currentNodeIndex: number;
         } | null>;
@@ -335,11 +381,66 @@ export class PermissionGuard implements CanActivate {
         status: "in_progress"
       },
       orderBy: { createdAt: "desc" },
-      select: { frozenNodes: true, currentNodeIndex: true }
+      select: { id: true, status: true, flowType: true, applicantUserId: true, frozenNodes: true, currentNodeIndex: true }
     });
     if (!instance || !Array.isArray(instance.frozenNodes)) return null;
+    if (requiredAction === "expense_claim.approve" && target.businessType === "expense_claim" &&
+        hasVersionedApprovalNodes(instance.frozenNodes)) {
+      if (!isParallelApprovalRound(instance.frozenNodes) || instance.flowType !== "expense_claim.approve") return false;
+      const [claim, actor] = await Promise.all([
+        this.prisma.expenseClaim.findUnique({
+          where: { id: target.businessId },
+          select: { claimType: true, status: true, projectId: true, approvalInstanceId: true, generalProcurementId: true, actualPurchaseBatchId: true }
+        }),
+        this.prisma.user.findUnique({ where: { id: userId }, select: { isActive: true } })
+      ]);
+      if (!claim || !actor?.isActive || !supportsExpenseParallelApproval(claim) ||
+          claim.status !== "approval_pending" || claim.approvalInstanceId !== instance.id) return false;
+      const scopes = await loadExpenseApprovalRoleScopes(this.prisma, userId, claim.projectId);
+      const index = request.body?.approvalDutyIndex;
+      const current = request.body?.approvalInstanceId === instance.id && typeof index === "number" &&
+        activeApprovalNodeIndexes(instance.frozenNodes, instance.currentNodeIndex).includes(index);
+      // A currently authorized signer may receive the service's explicit stale-coordinate response.
+      // The service repeats the identity check for the exact pending duty under the write lock.
+      const nodes = current
+        ? [instance.frozenNodes[index]]
+        : instance.frozenNodes.map(node => ({ ...node, approvedRoleKeys: [] }));
+      return nodes.some(node => Boolean(resolveExpenseParallelDutyIdentity({
+        node, actorUserId: userId, actorRoleScopes: scopes
+      })));
+    }
+    if (target.businessType === "contract_version" && isParallelApprovalRound(instance.frozenNodes)) {
+      const index = request.body?.expectedNodeIndex;
+      if (!projectId || typeof index !== "number" || !Number.isInteger(index) || index < 0 || index >= instance.frozenNodes.length || request.body?.expectedApprovalInstanceId !== instance.id || instance.flowType !== "contract.approve") return false;
+      const version = await this.prisma.contractVersion.findUnique({ where: { id: target.businessId } });
+      if (version?.numericProtocolVersion === 1 && version.status === "in_approval" &&
+          isLegacyContractParallelRound(instance.frozenNodes)) {
+        const node = instance.frozenNodes[index];
+        if (roleScopes?.globalRoleKeys.includes("super_admin") || !Array.isArray(node.approvedRoleKeys) ||
+            node.approvedRoleKeys.length !== 0) return false;
+        const identity = resolveApprovalReviewIdentity({
+          node, actorUserId: userId, actorRoleKeys: roleKeys, actorRoleScopes: roleScopes, legacyContractRoute: true
+        });
+        return identity?.representedUserId === userId && !identity.viaAssignment;
+      }
+      const snapshot = contractRoundSubmissionSnapshot(instance.frozenNodes);
+      if (!version || version.numericProtocolVersion !== 2 || version.status !== "in_approval" || !snapshot || snapshot.contractVersionId !== version.id || snapshot.documentContentRevision !== version.documentContentRevision || snapshot.documentContentFingerprint !== version.documentContentFingerprint) return false;
+      return Boolean(await contractParallelDutyIdentity(this.prisma as never, instance, projectId, userId, index));
+    }
+    const ordinaryParallelPayment = requiredAction === "payment.approve" && target.businessType === "payment_request" && instance.flowType === "payment.approve" &&
+      isOrdinaryPaymentParallelRound(instance.frozenNodes);
+    const expectedIndex = request.body?.expectedNodeIndex;
+    if (ordinaryParallelPayment && (!projectId || request.body?.expectedApprovalInstanceId !== instance.id ||
+        typeof expectedIndex !== "number" || !Number.isInteger(expectedIndex))) return false;
+    if (ordinaryParallelPayment && directOrdinaryPaymentDelegation) {
+      if (instance.applicantUserId === userId || instance.applicantUserId === request.body?.toUserId ||
+          typeof request.body?.expectedApprovalUpdatedAt !== "string") return false;
+      return Boolean(resolveOrdinaryPaymentDuty(instance.frozenNodes, expectedIndex as number, {
+        actorUserId: userId, actorRoleKeys: roleKeys, actorRoleScopes: roleScopes
+      }, true));
+    }
     const node = instance.frozenNodes[instance.currentNodeIndex] as FrozenApprovalNode | undefined;
-    if (!node || !isGovernedFrozenApprovalNode(node)) return null;
+    if (!ordinaryParallelPayment && (!node || !isGovernedFrozenApprovalNode(node))) return null;
 
     if (target.businessType === "project_expense_request") {
       return Boolean(resolveApprovalReviewIdentity({
@@ -367,14 +468,20 @@ export class PermissionGuard implements CanActivate {
           };
         }))
       : [];
-    return Boolean(resolveApprovalReviewIdentity({
-      node,
+    const identity = {
       actorUserId: userId,
       actorRoleKeys: roleKeys,
       actorRoleScopes: roleScopes,
       activeDelegators,
       legacyContractRoute: target.businessType === "contract_version"
-    }));
+    };
+    const delegationPrincipals = ordinaryParallelPayment && projectId
+      ? await loadOrdinaryPaymentDelegationPrincipals(this.prisma, instance.frozenNodes, userId, projectId,
+        id => this.loadRoleScopes(id, projectId), { dutyIndex: expectedIndex as number })
+      : undefined;
+    return ordinaryParallelPayment
+      ? Boolean(resolveOrdinaryPaymentDuty(instance.frozenNodes, expectedIndex as number, { ...identity, delegationPrincipals }))
+      : Boolean(resolveApprovalReviewIdentity({ node: node!, ...identity }));
   }
 
   private async resolvePaymentApprovalTarget(paymentId: string) {
@@ -442,8 +549,18 @@ export class PermissionGuard implements CanActivate {
 
   private async resolveRequiredAction(
     request: AuthenticatedRequest,
-    declaredAction?: BusinessAction
+    declaredAction?: BusinessAction,
+    handler?: string
   ): Promise<BusinessAction | undefined> {
+    const funding = request.body?.registeredFunding;
+    if (declaredAction === "expense_claim.payment.execute" && (
+      (handler === "recordReimbursementPayment" && funding !== null && typeof funding === "object" &&
+        "scopeKey" in funding && funding.scopeKey === "public_cash") ||
+      (handler === "uploadPaymentVoucherFile" && request.query?.scopeKey === "public_cash")
+    )) {
+      return "expense_claim.public_cash_payment.execute";
+    }
+
     const eventId = request.params?.eventId;
     if (
       declaredAction !== "clearing.confirm" ||
@@ -575,11 +692,15 @@ export class PermissionGuard implements CanActivate {
     }
 
     const paymentId = request.params?.paymentId;
-    if (paymentId) {
+    const paymentRequestId = request.params?.paymentRequestId;
+    if (paymentId && !paymentRequestId) {
       const spotProjectId = await this.spotAccess.findPaymentProjectId(paymentId);
       if (spotProjectId) return spotProjectId;
+    }
+    const paymentReference = paymentRequestId ?? paymentId;
+    if (paymentReference) {
       const payment = await this.prisma.paymentRequest.findFirst({
-        where: { OR: [{ id: paymentId }, { code: paymentId }] },
+        where: { OR: [{ id: paymentReference }, { code: paymentReference }] },
         select: { projectId: true }
       });
 
@@ -698,6 +819,21 @@ export class PermissionGuard implements CanActivate {
       });
 
       return settlement?.projectId;
+    }
+
+    const signedSettlementIdFromBody =
+      typeof request.body?.signedSettlementId === "string"
+        ? request.body.signedSettlementId
+        : undefined;
+    if (signedSettlementIdFromBody) {
+      const signedSettlement = await this.prisma.signedContractSettlement.findUnique({
+        where: { id: signedSettlementIdFromBody },
+        select: { projectId: true }
+      });
+      if (!signedSettlement) {
+        throw new ForbiddenException("已签结算资源不存在或当前账号无权访问");
+      }
+      return signedSettlement.projectId;
     }
 
     const contractVersionId =

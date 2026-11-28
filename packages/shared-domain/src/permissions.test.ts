@@ -157,7 +157,7 @@ describe("permission policy table", () => {
     const expectedRoles = [
       [
         "spot_procurement.create",
-        ["material_staff"]
+        ["material_staff", "material_director"]
       ],
       [
         "spot_procurement.approve",
@@ -306,6 +306,7 @@ describe("final approval OR-sign", () => {
     for (const role of [
       "comprehensive_director",
       "project_manager",
+      "contract_director",
       "finance_director",
       "chairman",
       "general_manager"
@@ -314,8 +315,7 @@ describe("final approval OR-sign", () => {
     }
   });
 
-  it("keeps contract and budget roles outside the payment approval route", () => {
-    expect(canPerform("payment.approve", ["contract_director"])).toBe(false);
+  it("keeps budget roles outside the payment approval route", () => {
     expect(canPerform("payment.approve", ["budget_director"])).toBe(false);
   });
 
@@ -381,6 +381,7 @@ describe("role-specific gates", () => {
       "finance_director"
     ]);
     expect(ACTION_REQUIRED_ROLES["contract.takeover.finance_facts.confirm"]).toEqual([
+      "finance_staff",
       "finance_director"
     ]);
 
@@ -394,7 +395,7 @@ describe("role-specific gates", () => {
       false
     );
     expect(canPerform("contract.takeover.finance_facts.confirm", ["finance_staff"])).toBe(
-      false
+      true
     );
   });
 
@@ -492,10 +493,11 @@ describe("role-specific gates", () => {
     expect(canPerform("payment.execution", ["chairman"])).toBe(false);
   });
 
-  it("requires contract or project manager roles to create payment requests", () => {
+  it("requires contract, project or comprehensive roles to create payment requests", () => {
     expect(canPerform("payment.create", ["contract_staff"])).toBe(true);
     expect(canPerform("payment.create", ["contract_director"])).toBe(true);
     expect(canPerform("payment.create", ["project_manager"])).toBe(true);
+    expect(canPerform("payment.create", ["comprehensive_director"])).toBe(true);
     expect(canPerform("payment.create", ["finance_staff"])).toBe(false);
     expect(canPerform("payment.create", ["employee"])).toBe(false);
   });
@@ -512,6 +514,9 @@ describe("role-specific gates", () => {
     expect(canPerform("project.upstream_fund_fact.record", ["finance_director"])).toBe(true);
     expect(canPerform("project.upstream_fund_fact.confirm", ["finance_staff"])).toBe(true);
     expect(canPerform("project.upstream_fund_fact.confirm", ["finance_director"])).toBe(true);
+    expect(
+      canPerform("project.upstream_fund_fact.record", ["comprehensive_director"])
+    ).toBe(true);
     expect(canPerform("project.upstream_fund_fact.record", ["project_manager"])).toBe(false);
     expect(canPerform("project.upstream_fund_fact.confirm", ["chairman"])).toBe(false);
   });
@@ -526,6 +531,29 @@ describe("role-specific gates", () => {
     expect(canPerform("project.affiliate_payment_fact.record", ["finance_director"])).toBe(true);
     expect(canPerform("project.affiliate_payment_fact.confirm", ["finance_staff"])).toBe(true);
     expect(canPerform("project.affiliate_payment_fact.confirm", ["finance_director"])).toBe(true);
+    expect(
+      canPerform("project.affiliate_payment_fact.record", ["comprehensive_director"])
+    ).toBe(true);
+    expect(
+      canPerform("project.construction_payment_correction.request", [
+        "comprehensive_director"
+      ])
+    ).toBe(true);
+    expect(
+      canPerform("project.construction_payment_correction.request", [
+        "finance_staff"
+      ])
+    ).toBe(true);
+    expect(
+      canPerform("project.construction_payment_correction.confirm", [
+        "finance_staff"
+      ])
+    ).toBe(false);
+    expect(
+      canPerform("project.construction_payment_correction.confirm", [
+        "finance_director"
+      ])
+    ).toBe(true);
     expect(
       canPerform("project.affiliate_business_fact.evidence_supplement", ["budget_staff"])
     ).toBe(true);

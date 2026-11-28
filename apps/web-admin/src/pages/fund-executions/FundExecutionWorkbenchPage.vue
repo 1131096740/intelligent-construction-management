@@ -1,7 +1,9 @@
 <script setup lang="ts">
+import ApprovalSelfReviewFields from "../../components/ApprovalSelfReviewFields.vue";
+import { buildApprovalSelfReviewPayload } from "../../components/approval-self-review.config";
 import ApprovalDocumentDownload from "../../components/approval/ApprovalDocumentDownload.vue";
 import ContractRelationshipLedger from "../../components/ContractRelationshipLedger.vue";
-import { computed, onMounted, reactive, ref } from "vue";
+import { computed, onMounted, reactive, ref, watch } from "vue";
 import { MessagePlugin } from "tdesign-vue-next";
 
 import {
@@ -52,6 +54,7 @@ const optionLoading = ref(false);
 const errorMessage = ref("");
 const cases = ref<FundExecutionCaseListItem[]>([]);
 const observationOptions = ref<FundExecutionObservationOption[]>([]);
+const reversalObservations = ref<FundExecutionObservationOption[]>([]);
 const reversalOptions = ref<FundExecutionReversalOption[]>([]);
 const selectedCase = ref<FundExecutionCaseListItem | null>(null);
 const selectedEntrySnapshots = ref<FundExecutionEntrySnapshot[]>([]);
@@ -63,6 +66,13 @@ const approvalComment = ref("");
 const actionDialogVisible = ref(false);
 const pendingAction = ref<PendingAction | null>(null);
 const pendingActionCase = ref<FundExecutionCaseListItem | null>(null);
+const selfReviewReason = ref("");
+const confirmationPassword = ref("");
+const requiresSelfReviewConfirmation = computed(() => pendingActionCase.value?.actions.some(action => action.key === pendingAction.value && action.enabled && action.requiresSelfReviewConfirmation) ?? false);
+watch(actionDialogVisible, visible => { if (!visible) { selfReviewReason.value = ""; confirmationPassword.value = ""; } });
+function selfReviewPayload(required: boolean) {
+  return buildApprovalSelfReviewPayload(required, { selfReviewReason: selfReviewReason.value, confirmationPassword: confirmationPassword.value });
+}
 const pendingApprovalComment = ref("");
 const actionError = ref("");
 const idempotencyLease = createFundExecutionIdempotencyLease();
@@ -88,8 +98,9 @@ const createModeOptions = [
   { label: "初始待分类", value: "quarantine" },
   { label: "反向执行", value: "reversal" }
 ];
+const currentObservations = computed(() => createForm.mode === "reversal" ? reversalObservations.value : observationOptions.value);
 const observationSelectOptions = computed(() =>
-  observationOptions.value.map((option) => ({
+  currentObservations.value.map((option) => ({
     value: option.selectionRef,
     label: option.summary,
     disabled: selectionIsExpired(option.expiresAt)
@@ -173,13 +184,15 @@ async function loadWorkbench() {
   loading.value = true;
   errorMessage.value = "";
   try {
-    const [caseRows, observations, reversals] = await Promise.all([
+    const [caseRows, observations, reversalBankOptions, reversals] = await Promise.all([
       fetchFundExecutionCases(),
       fetchFundExecutionObservationOptions("fund_execution_case"),
+      fetchFundExecutionObservationOptions("fund_execution_reversal"),
       fetchFundExecutionReversalOptions()
     ]);
     cases.value = caseRows;
     observationOptions.value = observations;
+    reversalObservations.value = reversalBankOptions;
     reversalOptions.value = reversals;
     refreshSelectedCase(caseRows);
   } catch (error) {
@@ -209,7 +222,7 @@ function changeCreateMode() {
 
 async function submitCreate() {
   if (submitting.value) return;
-  const observation = observationOptions.value.find(
+  const observation = currentObservations.value.find(
     ({ selectionRef }) => selectionRef === createForm.observationSelectionRef
   );
   if (
@@ -475,7 +488,8 @@ async function approveFundExecutionCaseWithCapability(
     (action) => action.key === "approve" && action.enabled
   );
   if (!operationAllowed) throw new Error("服务端已撤销资金执行审批权限");
-  return reviewFundExecutionCase(caseRef, { action: "approve", comment });
+  const selfReview = selfReviewPayload(freshCase.actions.some(action => action.key === "approve" && !!action.requiresSelfReviewConfirmation));
+  return reviewFundExecutionCase(caseRef, { action: "approve", comment, selfReviewReason: selfReview.selfReviewReason, confirmationPassword: selfReview.confirmationPassword });
 }
 
 async function returnFundExecutionApprovalWithCapability(
@@ -487,8 +501,10 @@ async function returnFundExecutionApprovalWithCapability(
     (action) => action.key === "return_approval" && action.enabled
   );
   if (!operationAllowed) throw new Error("服务端已撤销资金执行审批退回权限");
+  const selfReview = selfReviewPayload(freshCase.actions.some(action => action.key === "return_approval" && !!action.requiresSelfReviewConfirmation));
   return reviewFundExecutionCase(caseRef, {
     action: "return_to_applicant",
+    selfReviewReason: selfReview.selfReviewReason, confirmationPassword: selfReview.confirmationPassword,
     comment
   });
 }
@@ -957,7 +973,13 @@ function statusTone(row: FundExecutionCaseListItem) {
       :error="actionError"
       @confirm="executePendingAction"
       @cancel="actionError = ''"
-    />
+    >
+      <ApprovalSelfReviewFields
+        v-model:self-review-reason="selfReviewReason"
+        v-model:confirmation-password="confirmationPassword"
+        :required="requiresSelfReviewConfirmation"
+      />
+    </SensitiveActionDialog>
   </JgWorkbenchShell>
 </template>
 

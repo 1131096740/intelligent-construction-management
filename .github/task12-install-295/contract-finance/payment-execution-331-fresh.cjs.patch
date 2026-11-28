@@ -1,0 +1,47 @@
+--- fresh.cjs
++++ fresh.cjs
+@@ -3,18 +3,19 @@
+ const {createHash,randomUUID}=require("node:crypto");
+ const fs=require("node:fs");
+ const path=require("node:path");
+-const {withCombined295MultiWitness,withCombined320ContractPayment,withCombined330TextAgreement}=require("./installer.cjs");
++const {withCombined295MultiWitness,withCombined320ContractPayment,withCombined330TextAgreement,withCombined331PaymentRemainder}=require("./installer.cjs");
+ const workspace="/qualification/workspace";
+ const tree="67644d9465a0ab4ee80ede099139d9c129d66f14";
+ const suite="src/database/payment-execution-concurrency.spec.ts";
+ const source=require('./contract-finance-source.json');
+-const forward=source.mode==='current-320'||source.mode==='text-direct-330';
+-const count=source.mode==='text-direct-330'?330:forward?329:295;
++const paymentRemainder=source.mode==='payment-remainder-331';
++const forward=paymentRemainder||source.mode==='current-320'||source.mode==='text-direct-330';
++const count=paymentRemainder?331:source.mode==='text-direct-330'?330:forward?329:295;
+ const install=(receipt,consume)=>forward
+-  ? (count===330?withCombined330TextAgreement:withCombined320ContractPayment)(receipt,consume,{sourceTree:source.sourceTree,
++  ? (paymentRemainder?withCombined331PaymentRemainder:count===330?withCombined330TextAgreement:withCombined320ContractPayment)(receipt,consume,{sourceTree:source.sourceTree,
+     migrations:'/qualification/workspace/services/api/prisma/migrations',tails:source.tails})
+   : withCombined295MultiWitness(receipt,consume);
+-const receipt={schemaVersion:1,sourceSha:source.sourceSha,purpose:"PAYMENT_EXECUTION_ORIGINAL_FRESH_295",status:"STOPPED",stages:[]};
++const receipt={schemaVersion:1,sourceSha:source.sourceSha,purpose:"PAYMENT_EXECUTION_ORIGINAL_FRESH_"+count,status:"STOPPED",stages:[]};
+ function command(phase,file,args,options) {
+   const child=spawnSync(file,args,{encoding:"utf8",maxBuffer:8*1024*1024,timeout:300_000,...options});
+   if(child.status!==0 || child.error) {
+@@ -32,7 +33,7 @@
+     const diagnostics=phase==="PAYMENT_FRESH_JEST" ? {
+       kind:/migration baseline drift/u.test(message)?"MIGRATION_BASELINE_DRIFT":
+         /Cannot find module|MODULE_NOT_FOUND/u.test(message)?"MODULE_NOT_FOUND":
+-        /PAYMENT_CONCURRENCY_OWNED_(?:295|320|330)_IDENTITY/u.test(message)?"OWNED_IDENTITY":
++        /PAYMENT_CONCURRENCY_OWNED_(?:295|320|330|331)_IDENTITY/u.test(message)?"OWNED_IDENTITY":
+         /Test suite failed to run/u.test(message)?"SUITE_LOAD":
+         /exceeded timeout|timed out/u.test(message)?"TIMEOUT":
+         first?"TEST_FAILURE":"JEST_FAILURE",
+@@ -97,6 +98,10 @@
+   if(forward && (receipt.forward320?.ledgerSha256!==source.ledgerSha256 ||
+     receipt.combinedAfterBusiness?.ledgerSha256!==source.ledgerSha256 || receipt.combinedAfterBusiness?.count!==count))
+     throw new Error("PAYMENT_FORWARD_320_LEDGER");
++  if(paymentRemainder && (receipt.paymentRemainderPredecessor?.count!==330 ||
++    receipt.paymentRemainderPredecessor?.ledgerSha256!==source.predecessor330.ledgerSha256 ||
++    receipt.paymentRemainderPredecessor?.sameIdentity!==true || receipt.paymentRemainderPredecessor?.sameBaseB7!==true))
++    throw new Error("PAYMENT_REMAINDER_331_PREDECESSOR");
+   receipt.status="PAYMENT_EXECUTION_FRESH_"+count+"_PASSED";
+ }).catch(error=>{
+   receipt.status="STOPPED";

@@ -1,4 +1,4 @@
-import { economicExcludedAt, assertEconomicContractReady, documentFingerprint, excludedAmount, latestEconomicReviews, normalizeCoverage, suspectedOverlap, type EconomicDocument } from "./contract-economic-coverage";
+import { economicDocuments, economicExcludedAt, assertEconomicContractReady, documentFingerprint, excludedAmount, latestEconomicReviews, normalizeCoverage, suspectedOverlap, type EconomicDocument } from "./contract-economic-coverage";
 const left:EconomicDocument={ref:"contract:one",projectId:"p",reference:"甲-001",title:"道路材料",counterparty:"供应商甲",amountCents:100000n,version:"v1",formal:true,settledCents:0n};
 const right:EconomicDocument={...left,ref:"affiliate:two",reference:"乙-002",title:"道路材料供应",version:"f1"};
 describe("经济重复范围与唯一统计归属",()=>{
@@ -38,4 +38,25 @@ it("草稿新版本复核不会提前抵减旧有效版本，两个版本各按�
  {...common,confirmedAt:new Date("2026-02-01"),frozenSources:[{ref:left.ref,version:"v2:1"}],coverage:[{scope:"道路",leftAmountCents:"40",rightAmountCents:"40",owner:"right"}]}])}};
  expect(await economicExcludedAt(tx as never,"p",left.ref,new Date(),"v1:1")).toBe(20n);
  expect(await economicExcludedAt(tx as never,"p",left.ref,new Date(),"v2:1")).toBe(40n);
+});
+
+it("新版总价未知仍可核对已知重叠部分，保持四位元且不填写兼容分",()=>{
+ const unknown=Object.assign({...left,amountCents:null},{numericProtocolVersion:2 as const,amountYuan:null});
+ const known=Object.assign({...right,amountCents:null},{numericProtocolVersion:2 as const,amountYuan:"1.5340"});
+ expect(normalizeCoverage([{scope:"已验供货批次",leftAmountYuan:"0.001",rightAmountYuan:"0.0010",owner:"right"}],"shared_evidence",unknown,known)).toEqual([{scope:"已验供货批次",numericProtocolVersion:2,leftAmountCents:null,rightAmountCents:null,leftAmountYuan:"0.0010",rightAmountYuan:"0.0010",owner:"right"}]);
+});
+it("履约资料读取以新版1.5340元为事实，不读取兼容153分",async()=>{
+ const tx={contract:{findMany:async()=>[{id:"one",code:"HT-1",name:"材料",counterparty:"供应商"}]},contractVersion:{findMany:async()=>[{id:"v2",contractId:"one",numericProtocolVersion:2,amountYuan:"1.5340",amountCents:153n,amountLimitType:"capped",documentContentRevision:1,effectiveAt:new Date()}]},projectAffiliateContractFact:{findMany:async()=>[]},settlement:{findMany:async()=>[{contractId:"one",amountCents:1n}]},projectAffiliateSettlementFact:{findMany:async()=>[]}};
+ expect(await economicDocuments(tx as never,"p")).toMatchObject([{numericProtocolVersion:2,amountCents:null,amountYuan:"1.5340",settledCents:1n}]);
+ const locked={...tx,$queryRaw:jest.fn(),contractEconomicReview:{findMany:async()=>[]},contractEconomicSettlementCoverage:{findMany:async()=>[]}};
+ expect(await assertEconomicContractReady(locked as never,"p","contract:one")).toMatchObject({numericProtocolVersion:2,excludedAmountCents:null,excludedAmountYuan:"0.0000"});
+});
+it("新版文书金额及未知状态变化使原复核指纹失效，兼容分不参与指纹",()=>{
+ const document={...left,numericProtocolVersion:2 as const,amountCents:null,amountYuan:"1.5340"};
+ expect(documentFingerprint(document)).not.toBe(documentFingerprint({...document,amountYuan:"1.5350"}));
+ expect(documentFingerprint(document)).not.toBe(documentFingerprint({...document,amountYuan:null}));
+});
+it("四位覆盖计算在合法大额边界仍保留末位，不因中间求和舍入而误判超额",()=>{
+ const document={...left,numericProtocolVersion:2 as const,amountCents:null,amountYuan:"99999999999999999999.9999"};
+ expect(normalizeCoverage([{scope:"完整批次",leftAmountYuan:"99999999999999999999.9998",rightAmountYuan:"99999999999999999999.9998",owner:"left"}],"shared_evidence",document,{...document,ref:right.ref})).toMatchObject([{leftAmountYuan:"99999999999999999999.9998"}]);
 });

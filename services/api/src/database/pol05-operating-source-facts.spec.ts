@@ -3,6 +3,15 @@ import * as assert from "node:assert/strict";
 
 import { Prisma, PrismaClient } from "@prisma/client";
 
+import { AuditService } from "../audit/audit.service";
+import { AuthService } from "../auth/auth.service";
+import { CompanyRoleResolverService } from "../auth/company-role-resolver.service";
+import { ProjectVisibilityService } from "../auth/project-visibility.service";
+import { ClearingReconciliationReaderService } from "../clearing/clearing-reconciliation-reader.service";
+import { OperatingProjectionService, OwnerSettlementBelowCentForCloseError } from "../operating-projection/operating-projection.service";
+import { ProjectService } from "../project/project.service";
+import { ProjectUpstreamFundBusinessEntryService } from "../project/project-upstream-fund-business-entry.service";
+import { readProjectOwnerBalance } from "../project/project-owner-balance";
 import { OperatingLedgerService } from "../operating-ledger/operating-ledger.service";
 import { createOperatingSourceRegistry } from "../operating-ledger/operating-ledger.module";
 import { OperatingSourceReplayService } from "../operating-ledger/operating-source-replay.service";
@@ -84,6 +93,16 @@ describe("POL-05 formal operating sources PostgreSQL", () => {
           companyFundsDecreaseCents: 70_000n,
           affiliateFundsDecreaseCents: 20_000n,
           interSubjectCents: 60_000n
+        });
+
+        const ownerBalance = await readProjectOwnerBalance(
+          clients[0]!, fixture.projectId, new Date("2026-09-01T00:00:00.000Z"), new Date()
+        );
+        expect(ownerBalance).toEqual({
+          settlementYuan: "4000.0000",
+          receivedYuan: "0.0000",
+          outstandingYuan: "4000.0000",
+          advanceYuan: "0.0000"
         });
 
         const commitments = await clients[0]!.operatingFact.findMany({
@@ -228,13 +247,226 @@ describe("POL-05 formal operating sources PostgreSQL", () => {
             }
           })
         ).toBe(0);
+        await assertDirectOwnerReceipt(clients[0]!, clients[1]!, fixture, "POL-05 建设单位");
+        await expect(readProjectOwnerBalance(
+          clients[1]!, fixture.projectId, new Date("2026-09-01T00:00:00.000Z"), new Date()
+        )).resolves.toEqual({
+          settlementYuan: "4000.0000", receivedYuan: "20.0000", outstandingYuan: "3980.0000", advanceYuan: "0.0000"
+        });
       } finally {
         await Promise.allSettled(clients.map((client) => client.$disconnect()));
       }
     },
     90_000
   );
+  integrationTest("登记四位正负业主结算，同原键重放及并发减额保持收入、应收和资金独立", async () => {
+    const url = assertDedicatedDatabase();
+    const runtimeUrl = process.env.PROJECT_OWNER_SETTLEMENT_TEST_RUNTIME_URL;
+    const runtime = runtimeUrl ? new URL(runtimeUrl) : null;
+    const target = new URL(url);
+    if (runtime && (runtime.origin !== target.origin || runtime.pathname !== target.pathname ||
+      runtime.hostname !== target.hostname || runtime.port !== target.port ||
+      runtime.username !== "jg_owner_settlement_test_runtime")) {
+      throw new Error("业主结算测试只允许当前专库的隔离运行身份");
+    }
+    const owner = new PrismaClient({ datasources: { db: { url } } });
+    const first = new PrismaClient({ datasources: { db: { url: runtimeUrl ?? url } } });
+    const second = new PrismaClient({ datasources: { db: { url: runtimeUrl ?? url } } });
+    const fixture = fixtureIds();
+    const service = (client: PrismaClient) =>
+      new ProjectService(client as never, new AuditService(), undefined, undefined, replayService(client));
+    try {
+      await seedFixture(owner, fixture);
+      const voucher = await owner.fileObject.create({
+        data: {
+          bucket: "pol05-local-test", objectKey: `${fixture.prefix}_owner_settlement`,
+          originalName: "业主结算凭证.pdf", mimeType: "application/pdf", sizeBytes: 1,
+          uploadedByUserId: fixture.financeUserId, storageStatus: "active", contentSha256: "e".repeat(64)
+        }
+      });
+      const base = {
+        ownerName: "虚构业主结算单位", settledAt: "2026-08-14", voucherFileId: voucher.id
+      };
+      const submit = (client: PrismaClient, amountYuan: string, idempotencyKey = randomUUID()) =>
+        service(client).recordOwnerSettlement(fixture.projectId, fixture.financeUserId, {
+          ...base, amountYuan, idempotencyKey
+        });
+      await expect(service(first).recordOwnerSettlement(fixture.projectId, fixture.managerUserId, {
+        ...base, amountYuan: "1.0000", idempotencyKey: randomUUID()
+      })).rejects.toThrow("无权登记业主结算");
+      const audit = new AuditService();
+      const projection = new OperatingProjectionService(owner as never, new ProjectVisibilityService(owner as never),
+        new ClearingReconciliationReaderService(owner as never, new CompanyRoleResolverService(owner as never)),
+        audit, new AuthService(owner as never, undefined as never, audit));
+      const readCloseProjection = () => owner.$transaction(tx =>
+        projection.readProjectInTransaction(tx, fixture.financeUserId, { projectId: fixture.projectId }));
+      await submit(first, "1.2300");
+      await expect(readCloseProjection()).resolves.toMatchObject({
+        projection: { operating: { confirmedIncomeCents: "123", receivableCents: "123" } }
+      });
+      await submit(first, "-1.2300");
+
+      const originalKey = randomUUID();
+      const registered = await submit(first, "10.0001", originalKey);
+      await expect(submit(second, "10.0001", originalKey)).resolves.toEqual(registered);
+      if (process.env.PROJECT_OWNER_SETTLEMENT_TEST_RUNTIME_URL) {
+        const binding = await first.$queryRaw<Array<{ bound: boolean }>>`
+          SELECT public.jg_project_owner_settlement_voucher_bound(${voucher.id}) AS bound
+        `;
+        expect(binding).toEqual([{ bound: true }]);
+        const expense = await owner.projectExpenseRequest.create({ data: {
+          projectId: fixture.projectId, code: `${fixture.prefix}_owner_voucher_rebind`,
+          expenseType: "sporadic_payment", expenseSubtype: "sporadic_material", paymentSubject: "our_company",
+          reason: "核对独占凭证冲突", requestedAmountCents: 100n, approvedAmountCents: 100n,
+          paymentMethod: "bank_transfer", handlerUserId: fixture.financeUserId,
+          applicantUserId: fixture.financeUserId, status: "approved_pending_payment",
+        } });
+        const constraint = await owner.$transaction(async tx => {
+          await tx.$executeRaw`
+            CREATE FUNCTION pg_temp.try_owner_voucher_rebind(
+              execution_id TEXT, request_key TEXT, expense_id TEXT, project_id TEXT, actor_id TEXT, voucher_id TEXT
+            ) RETURNS TEXT LANGUAGE plpgsql AS $$
+            DECLARE violated TEXT;
+            BEGIN
+              INSERT INTO public."ProjectExpenseExecution"
+                ("id", "idempotencyKey", "projectExpenseRequestId", "projectId", "amountCents", "paidAt", "executedByUserId", "voucherFileId")
+              VALUES (execution_id, request_key, expense_id, project_id, 100, now(), actor_id, voucher_id);
+              RETURN NULL;
+            EXCEPTION WHEN unique_violation THEN
+              GET STACKED DIAGNOSTICS violated = CONSTRAINT_NAME;
+              RETURN violated;
+            END $$;
+          `;
+          return tx.$queryRaw<Array<{ constraint: string }>>`
+            SELECT pg_temp.try_owner_voucher_rebind(${randomUUID()}, ${randomUUID()}, ${expense.id},
+              ${fixture.projectId}, ${fixture.financeUserId}, ${voucher.id}) AS "constraint"
+          `;
+        });
+        expect(constraint).toEqual([{ constraint: "exclusive_file_business_binding_guard" }]);
+        expect(await owner.projectExpenseExecution.count({ where: { projectExpenseRequestId: expense.id } })).toBe(0);
+      }
+
+      const negativeKeys = [randomUUID(), randomUUID()];
+      const results = await Promise.allSettled([
+        submit(first, "-8.0000", negativeKeys[0]), submit(second, "-8.0000", negativeKeys[1])
+      ]);
+      const successful = results.filter(result => result.status === "fulfilled");
+      expect(successful).toHaveLength(1);
+      expect(results.find(result => result.status === "rejected")).toMatchObject({
+        reason: expect.objectContaining({ message: "业主累计结算不能低于零" })
+      });
+      const observed = await second.operatingFact.findMany({
+        where: { projectId: fixture.projectId, sourceType: "project_owner_settlement_entry",
+          sourceBusinessId: { in: [registered.id, ...successful.map(result => result.value.id)] } },
+        include: { impacts: true }, orderBy: { amountYuan: "desc" }
+      });
+      expect(observed.map(row => row.amountYuan?.toFixed(4))).toEqual(["10.0001", "8.0000"]);
+      expect(observed.map(row => row.impacts.map(impact => [impact.impactKind, impact.direction]).sort())).toEqual([
+        [["confirmed_income", "increase"], ["receivable_increase", "increase"]],
+        [["confirmed_income", "decrease"], ["receivable_decrease", "decrease"]]
+      ]);
+      await expect(readProjectOwnerBalance(
+        second, fixture.projectId, new Date("2026-09-01T00:00:00.000Z"), new Date()
+      )).resolves.toEqual({ settlementYuan: "2.0001", receivedYuan: "0.0000",
+        outstandingYuan: "2.0001", advanceYuan: "0.0000" });
+      const advanceOwner = "先付后结的虚构业主";
+      await assertDirectOwnerReceipt(owner, owner, fixture, advanceOwner);
+      const readOwnerBalance = () =>
+        readProjectOwnerBalance(second, fixture.projectId, new Date("2026-09-01T00:00:00.000Z"), new Date());
+      await expect(readOwnerBalance()).resolves.toEqual({
+        settlementYuan: "2.0001", receivedYuan: "20.0000", outstandingYuan: "2.0001", advanceYuan: "20.0000"
+      });
+      const settleAdvanceOwner = (amountYuan: string) =>
+        service(first).recordOwnerSettlement(fixture.projectId, fixture.financeUserId, {
+          ...base, ownerName: advanceOwner, amountYuan, idempotencyKey: randomUUID()
+        });
+      await settleAdvanceOwner("100.0000");
+      await expect(readOwnerBalance()).resolves.toEqual({
+        settlementYuan: "102.0001", receivedYuan: "20.0000", outstandingYuan: "82.0001", advanceYuan: "0.0000"
+      });
+      await settleAdvanceOwner("-90.0000");
+      await expect(readOwnerBalance()).resolves.toEqual({
+        settlementYuan: "12.0001", receivedYuan: "20.0000", outstandingYuan: "2.0001", advanceYuan: "10.0000"
+      });
+
+      await expect(readCloseProjection()).rejects.toBeInstanceOf(OwnerSettlementBelowCentForCloseError);
+      const overview = await projection.getProjectView(fixture.financeUserId, {
+        projectId: fixture.projectId, numericProtocolVersion: 2
+      });
+      expect(overview.operating).toMatchObject({
+        confirmedIncomeCents: null, confirmedIncomeYuan: "12.0001", receivableYuan: "12.0001"
+      });
+      expect(overview.actualFunds.constructionEnterpriseFundsCents).toBe("2000");
+    } finally {
+      await Promise.allSettled([owner.$disconnect(), first.$disconnect(), second.$disconnect()]);
+    }
+  }, 90_000);
+
 });
+
+async function assertDirectOwnerReceipt(
+  first: PrismaClient,
+  second: PrismaClient,
+  fixture: ReturnType<typeof fixtureIds>,
+  counterpartyName: string
+) {
+  const makeProjectService = (client: PrismaClient) => {
+    const audit = new AuditService();
+    const auth = new AuthService(client as never, undefined as never, audit);
+    return {
+      auth,
+      project: new ProjectService(client as never, audit, auth, undefined,
+        replayService(client), undefined, new ProjectUpstreamFundBusinessEntryService(audit))
+    };
+  };
+  const [left, right] = [makeProjectService(first), makeProjectService(second)];
+  const financeUserId = fixture.financeUserId;
+  const password = randomUUID();
+  await first.user.update({
+    where: { id: financeUserId },
+    data: { passwordHash: await left!.auth.hashPassword(password) }
+  });
+  const signatureFile = await first.fileObject.create({
+    data: {
+      bucket: "pol05-local-test", objectKey: `${fixture.prefix}_canvas`,
+      originalName: "手写签名.png", mimeType: "image/png", sizeBytes: 1,
+      uploadedByUserId: financeUserId, storageStatus: "active", contentSha256: "b".repeat(64)
+    }
+  });
+  await first.handwrittenSignatureVersion.create({
+    data: {
+      userId: financeUserId, fileId: signatureFile.id, contentSha256: "b".repeat(64)
+    }
+  });
+  const evidence = await first.fileObject.create({
+    data: {
+      bucket: "pol05-local-test", objectKey: `${fixture.prefix}_owner-receipt`,
+      originalName: "业主到账依据.pdf", mimeType: "application/pdf", sizeBytes: 1,
+      uploadedByUserId: financeUserId, storageStatus: "active", contentSha256: "c".repeat(64)
+    }
+  });
+  const input = {
+    factType: "owner_payment_to_affiliate" as const, basisType: "written" as const,
+    occurredAt: "2026-08-05", amountCents: "2000", counterpartyName,
+    evidenceFileId: evidence.id, idempotencyKey: randomUUID(), confirmedReceipt: true,
+    confirmationPassword: password
+  };
+  const results = await Promise.all([
+    left!.project.recordUpstreamFundFact(fixture.projectId, financeUserId, input),
+    right!.project.recordUpstreamFundFact(fixture.projectId, financeUserId, input)
+  ]);
+  expect(results[0]).toMatchObject({ status: "confirmed", cashEffectCents: "0" });
+  expect(results[1]).toMatchObject({ id: results[0].id, status: "confirmed", cashEffectCents: "0" });
+  const booked = await second.operatingFact.findMany({
+    where: { projectId: fixture.projectId, sourceType: "project_upstream_fund_fact",
+      sourceBusinessId: results[0].id },
+    include: { impacts: true }
+  });
+  expect(booked).toMatchObject([{
+    factKind: "owner_payment", amountCents: 2000n,
+    impacts: [{ impactKind: "construction_enterprise_funds_increase", amountCents: 2000n }]
+  }]);
+}
 
 function replayService(client: PrismaClient) {
   return new OperatingSourceReplayService(
@@ -256,6 +488,8 @@ function fixtureIds() {
   const prefix = `pol05_${randomUUID().replace(/-/gu, "")}`;
   return {
     prefix,
+    affiliateName: `POL-05 施工企业 ${prefix}`,
+    counterpartyName: `POL-05 下游供应商 ${prefix}`,
     projectId: `${prefix}_project`,
     financeUserId: `${prefix}_finance`,
     managerUserId: `${prefix}_manager`,
@@ -341,15 +575,15 @@ async function seedFixture(
     data: [
       {
         id: fixture.affiliatePartyId,
-        name: "POL-05 施工企业",
-        normalizedName: "POL-05 施工企业",
+        name: fixture.affiliateName,
+        normalizedName: fixture.affiliateName,
         unifiedSocialCreditCode: `${fixture.prefix}AFF`,
         createdByUserId: fixture.financeUserId
       },
       {
         id: fixture.counterpartyId,
-        name: "POL-05 下游供应商",
-        normalizedName: "POL-05 下游供应商",
+        name: fixture.counterpartyName,
+        normalizedName: fixture.counterpartyName,
         unifiedSocialCreditCode: `${fixture.prefix}PAYEE`,
         createdByUserId: fixture.financeUserId
       }
@@ -361,14 +595,14 @@ async function seedFixture(
         id: fixture.affiliateVersionId,
         businessPartyId: fixture.affiliatePartyId,
         versionNo: 1,
-        snapshot: { name: "POL-05 施工企业" },
+        snapshot: { name: fixture.affiliateName },
         createdByUserId: fixture.financeUserId
       },
       {
         id: fixture.counterpartyVersionId,
         businessPartyId: fixture.counterpartyId,
         versionNo: 1,
-        snapshot: { name: "POL-05 下游供应商" },
+        snapshot: { name: fixture.counterpartyName },
         createdByUserId: fixture.financeUserId
       }
     ]
@@ -379,7 +613,7 @@ async function seedFixture(
       projectId: fixture.projectId,
       businessPartyId: fixture.affiliatePartyId,
       businessPartyVersionId: fixture.affiliateVersionId,
-      affiliateNameSnapshot: "POL-05 施工企业",
+      affiliateNameSnapshot: fixture.affiliateName,
       affiliateCreditCodeSnapshot: `${fixture.prefix}AFF`,
       effectiveFrom: new Date("2026-01-01T00:00:00.000Z"),
       changeReason: "POL-05 测试",
@@ -447,7 +681,7 @@ async function seedFixture(
       projectId: fixture.projectId,
       code: `${fixture.prefix}-CON`,
       name: "POL-05 材料合同",
-      counterparty: "POL-05 下游供应商",
+      counterparty: fixture.counterpartyName,
       contractTypeKey: "material_purchase"
     }
   });
@@ -487,7 +721,7 @@ async function seedFixture(
       roleKey: "party_b",
       displayOrder: 1,
       businessPartyVersionId: fixture.counterpartyVersionId,
-      snapshot: { name: "POL-05 下游供应商" }
+      snapshot: { name: fixture.counterpartyName }
     }
   });
   await client.contract.create({
@@ -496,7 +730,7 @@ async function seedFixture(
       projectId: fixture.projectId,
       code: `${fixture.prefix}-AFF-CON`,
       name: "POL-05 施工企业材料合同",
-      counterparty: "POL-05 下游供应商",
+      counterparty: fixture.counterpartyName,
       contractTypeKey: "material_purchase"
     }
   });
@@ -512,7 +746,7 @@ async function seedFixture(
       signingSubjectType: "affiliate",
       affiliateAssignmentId: fixture.affiliateAssignmentId,
       affiliateBusinessPartyVersionId: fixture.affiliateVersionId,
-      affiliateNameSnapshot: "POL-05 施工企业",
+      affiliateNameSnapshot: fixture.affiliateName,
       affiliateCreditCodeSnapshot: `${fixture.prefix}AFF`,
       draftData: {},
       templateSnapshot: {},
@@ -526,7 +760,7 @@ async function seedFixture(
       roleKey: "party_b",
       displayOrder: 1,
       businessPartyVersionId: fixture.counterpartyVersionId,
-      snapshot: { name: "POL-05 下游供应商" }
+      snapshot: { name: fixture.counterpartyName }
     }
   });
 
@@ -646,7 +880,7 @@ async function seedFixture(
       periodLabel: "2026年8月",
       affiliateAssignmentId: fixture.affiliateAssignmentId,
       affiliateBusinessPartyVersionId: fixture.affiliateVersionId,
-      affiliateNameSnapshot: "POL-05 施工企业",
+      affiliateNameSnapshot: fixture.affiliateName,
       voucherFileId: fileIds[2]!,
       fileContentSha256Snapshot: "a".repeat(64),
       recordedByUserId: fixture.financeUserId,
@@ -737,13 +971,13 @@ async function seedFixture(
       projectId: fixture.projectId,
       paidAt: new Date("2026-08-14T00:30:00.000Z"),
       amountCents: 20_000n,
-      generalContractorName: "POL-05 施工企业",
-      paidTargetName: "POL-05 下游供应商",
+      generalContractorName: fixture.affiliateName,
+      paidTargetName: fixture.counterpartyName,
       paymentType: "material",
       paymentSubjectType: "affiliate",
       affiliateAssignmentId: fixture.affiliateAssignmentId,
       affiliateBusinessPartyVersionId: fixture.affiliateVersionId,
-      affiliateNameSnapshot: "POL-05 施工企业",
+      affiliateNameSnapshot: fixture.affiliateName,
       voucherFileId: fileIds[4]!,
       recordedByUserId: fixture.financeUserId,
       contractId: fixture.affiliateContractId,
@@ -882,7 +1116,7 @@ async function appendOwnerPaymentRoleProbe(
       isBeforeOperatingLedgerEffectiveDate: false,
       affiliateAssignmentId: fixture.affiliateAssignmentId,
       affiliateBusinessPartyVersionId: fixture.affiliateVersionId,
-      affiliateNameSnapshot: "POL-05 施工企业",
+      affiliateNameSnapshot: fixture.affiliateName,
       affiliateCreditCodeSnapshot: `${fixture.prefix}AFF`,
       sourceSnapshot: { purpose: "actual_payer role constraint probe" },
       subjects: {

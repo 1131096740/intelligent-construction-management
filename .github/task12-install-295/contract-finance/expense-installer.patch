@@ -1,0 +1,458 @@
+--- installer.cjs
++++ installer.cjs
+@@ -184,14 +184,30 @@
+   return verifyPinnedInputs(historical, product, seal, stableRelease);
+ }
+ 
+-async function migrateNativeTask16(plan,root,port,password,sql,jsonSql,command,enter,fromHistory){
+- const controls=fromHistory('./local-staged-migration-controls.cjs'),{createLocalTailQualification}=fromHistory('./local-staged-tail-qualification.cjs');
++const retainedFinanceValidMaterial=path.join(__dirname,'task12-expense-finance-retained-valid.json');
++async function verifyRetainedFinanceValid(material,sql) {
++  need((await sql(material.readback)).stdout.trim()===material.expected,'FINANCE_RETAINED_VALID_FACTS');
++  need((await sql(`SELECT status::text FROM public."ProjectExpenseRequest"
++    WHERE id='finance_valid_request'`)).stdout.trim()==='payment_blocked','FINANCE_RETAINED_VALID_PAYMENT_BLOCKED');
++}
++const expenseRecoveryProfiles=Object.freeze({
++  execution:{module:'./task12-expense-execution-recovery.cjs',prefix:110,terminal:111,marker:'project_expense_execution_audit_missing'},
++  finance:{module:'./task12-expense-finance-recovery.cjs',prefix:111,terminal:112,marker:'project_expense_finance_audit_missing'},
++});
++async function migrateNativeTask16(plan,root,port,password,sql,jsonSql,command,enter,fromHistory,receipt,observePfqFailure){
++ const controls=fromHistory('./local-staged-migration-controls.cjs');
++ const retained=plan.recoveryProfile?require(plan.recoveryProfile.module):undefined;
++ const {createLocalTailQualification}=retained?retained.tailModule(plan.historical):fromHistory('./local-staged-tail-qualification.cjs');
++ const valid=receipt.purpose==='ORIGINAL_EXPENSE_295_RETAINED_VALID_ONLY';
++ const negative=receipt.purpose==='ORIGINAL_EXPENSE_HISTORICAL_NEGATIVES_295_SOURCE';
++ const history=valid||negative ? ({execution:[110,111],finance:[111,112],receipt:[112,113]})[receipt.lane] :
++   retained ? [plan.recoveryProfile.prefix,plan.recoveryProfile.terminal] : [];
+  const ledger=plan.source.witness.profile.ledger,migrations=ledger.map(({name,sha256})=>({name,sha256})),database=plan.database;
+  const {cli,engine}=plan.prismaTools;
+  const schema=capture(path.join(plan.historical,'schema.prisma')).bytes;
+  const roots=new Map();
+  for(const size of [...new Set(plan.stopAt205 ? [203,205] : [
+-   ...(plan.profileUpgrade?[125,126]:[]),203,205,213,215,218,221,ledger.length
++   ...history,...(plan.profileUpgrade?[125,126]:[]),203,205,213,215,218,221,ledger.length
+  ])]){
+   const dir=path.join(root,'prefixes',String(size));fs.mkdirSync(dir,{mode:0o700});fs.mkdirSync(path.join(dir,'migrations'),{mode:0o700});
+   fs.writeFileSync(path.join(dir,'schema.prisma'),size<=126&&plan.profileUpgrade?plan.profileSchema:schema,{flag:'wx',mode:0o600});
+@@ -204,13 +220,106 @@
+  }
+  const baseUrl=new URL('postgresql://jg_task01_owner@127.0.0.1:'+port+'/'+database);baseUrl.password=password;
+  for(const [key,value]of Object.entries({schema:'public',connection_limit:'1',sslmode:'require',sslaccept:'strict',sslcert:path.join(root,'ca.crt'),connect_timeout:'5',pool_timeout:'5'}))baseUrl.searchParams.set(key,value);
+- const deploy=async(size,url=baseUrl)=>{enter('MIGRATE_'+size);await command(process.execPath,[cli,'migrate','deploy','--schema',path.join(roots.get(size),'schema.prisma')],{timeoutMs:plan.limits.migrationMs,extra:{DATABASE_URL:url.toString(),PRISMA_SCHEMA_ENGINE_BINARY:engine,PRISMA_HIDE_UPDATE_MESSAGE:'1',CHECKPOINT_DISABLE:'1'}});};
++ const deploy=async(size,url=baseUrl,allowFailure=false)=>{enter('MIGRATE_'+size);return command(process.execPath,[cli,'migrate','deploy','--schema',path.join(roots.get(size),'schema.prisma')],{allowFailure,timeoutMs:plan.limits.migrationMs,extra:{DATABASE_URL:url.toString(),PRISMA_SCHEMA_ENGINE_BINARY:engine,PRISMA_HIDE_UPDATE_MESSAGE:'1',CHECKPOINT_DISABLE:'1'}});};
+  const identity=row=>{need(row.database===database&&row.ownerOid==='10'&&row.actorOid==='10'&&row.actor==='jg_task01_owner'&&row.sessionActor==='jg_task01_owner'&&row.version===160015&&row.encoding==='UTF8'&&row.replication==='origin','NATIVE_DIRECT_MIGRATION_IDENTITY');return Object.fromEntries(['database','databaseOid','namespaceOid','actorOid','ownerOid','systemIdentifier'].map(k=>[k,row[k]]));};
+- const checkLedger=(row,size)=>{need(equal(row.ledger,ledger.slice(0,size)),'NATIVE_DIRECT_MIGRATION_LEDGER');};
++ const checkLedger=(row,size)=>{
++  if(retained) retained.assertLedger(row.ledger,ledger,size);
++  else need(equal(row.ledger,ledger.slice(0,size)),'NATIVE_DIRECT_MIGRATION_LEDGER');
++ };
++ let retainedIdentity;
++ const recovery=retained && await retained.recover({
++  ledger,sql,jsonSql,inspect:controls.inspectSql(),enter,identity,kind:plan.recoveryProfile.kind,
++  resolve:name=>command(process.execPath,[cli,'migrate','resolve','--rolled-back',name,'--schema',
++   path.join(roots.get(plan.recoveryProfile.terminal),'schema.prisma')],{timeoutMs:plan.limits.migrationMs,
++    extra:{DATABASE_URL:baseUrl.toString(),PRISMA_SCHEMA_ENGINE_BINARY:engine,PRISMA_HIDE_UPDATE_MESSAGE:'1',CHECKPOINT_DISABLE:'1'}}),
++  deploy:async(size,url=baseUrl,expectedFailure=false)=>{
++   if(!expectedFailure) return deploy(size,url);
++   enter('PFQ_ORIGINAL_MIGRATION_FAILURE');
++   need(size===plan.recoveryProfile.terminal&&typeof observePfqFailure==='function','PFQ_RECOVERY_PRISMA_SCOPE');
++   const {result,markerInPostgres}=await observePfqFailure(()=>deploy(size,url,true));
++   need(result.code===1,'PFQ_RECOVERY_PRISMA_EXIT');
++   const {marker}=plan.recoveryProfile;
++   return {prismaCode:/\bP[0-9]{4}\b/u.exec(result.stderr??'')?.[0],
++     markerInPrismaStdout:(result.stdout??'').includes(marker),markerInPrismaStderr:(result.stderr??'').includes(marker),
++     markerInPostgres};
++  },
++ });
++ if(recovery){
++  receipt.expenseRecovery=recovery.receipt;
++  retainedIdentity=recovery.binding;
++ }
++ if(valid){
++ if(receipt.lane==='finance'){
++  const material=JSON.parse(fs.readFileSync(retainedFinanceValidMaterial,'utf8'));
++  need(material.prefix===111&&
++    ledger[110]?.name==='20260728140000_project_expense_execution_idempotency'&&
++    ledger[110].sha256==='b18cb2fe11c734bf144bff12181c4179a0c30089cd517361f53c601bce9cd7fe'&&
++    ledger[111]?.name==='20260728150000_project_expense_finance_idempotency'&&
++    ledger[111].sha256==='3455616a471743268c4bf0ab7ef7ce06ba57d880d5033f90dcd4c25f0d2fe7e5'&&
++    hash(material.seed)===material.seedSha256&&hash(material.readback)===material.readbackSha256&&
++    material.expected==='1|1|400','FINANCE_RETAINED_VALID_SOURCE');
++  await deploy(111);
++  const before=await jsonSql(controls.inspectSql());
++  retainedIdentity=identity(before);checkLedger(before,111);
++  enter('FINANCE_RETAINED_VALID_ORIGINAL_SEED');
++  await sql(material.seed);
++  await deploy(112);
++  const after=await jsonSql(controls.inspectSql());
++  need(equal(identity(after),retainedIdentity),'FINANCE_RETAINED_VALID_IDENTITY');
++  checkLedger(after,112);
++  await verifyRetainedFinanceValid(material,sql);
++  receipt.retainedFinanceValid={prefix:111,originalMigration:112,identity:retainedIdentity,after112:material.expected,paymentBlocked:true};
++ }
++ if(receipt.lane==='receipt'){
++  need(ledger[112]?.name==='20260728160000_project_expense_receipt_confirmation'&&ledger[112].sha256===
++   '96c4e08921d9bca2e67fe3b2695ce2d7243865c00c66de1b22a48aec83ad7875','RETAINED_RECEIPT_SOURCE');
++  const seed=JSON.parse(fs.readFileSync(path.join(__dirname,'task12-expense-receipt-retained-seed.json'),'utf8'));
++  need(typeof seed==='string'&&hash(seed)==='e1fb6f43ae3f784aef2902cb9902f80966f1a5a069bdc7675667423e8743d9ee','RETAINED_RECEIPT_SEED');
++  await deploy(112);
++  const prefix=await jsonSql(controls.inspectSql());retainedIdentity=identity(prefix);checkLedger(prefix,112);
++  enter('RETAINED_RECEIPT_ORIGINAL_SEED');
++  await sql(seed);
++  await deploy(113);
++  const upgraded=await jsonSql(controls.inspectSql());checkLedger(upgraded,113);
++  need(equal(identity(upgraded),retainedIdentity),'RETAINED_RECEIPT_IDENTITY');
++ }
++ if(receipt.lane==='execution'){
++   const {prefix,preceding,target,seed}=require('./task12-expense-execution-retained-valid.json');
++   const matches=(ordinal,record)=>ledger[ordinal]?.name===record.name&&ledger[ordinal]?.sha256===record.sha256;
++   need(prefix===110&&matches(109,preceding)&&matches(110,target),'RETAINED_EXPENSE_EXECUTION_PREFIX_SOURCE');
++   await deploy(110);
++   const before=await jsonSql(controls.inspectSql());retainedIdentity=identity(before);checkLedger(before,110);
++   enter('RETAINED_EXPENSE_EXECUTION_ORIGINAL_VALID_SEED');
++   await sql(seed);
++   const after=await jsonSql(controls.inspectSql());checkLedger(after,110);
++   need(equal(identity(after),retainedIdentity),'RETAINED_EXPENSE_EXECUTION_IDENTITY');
++ }
++ }
++ if(negative){
++ const deployTarget=(size,target,allowFailure=false,writer=false)=>{
++   const url=new URL(baseUrl);
++   url.pathname='/'+target;
++   if(writer)url.searchParams.set('options','-c log_error_verbosity=verbose');
++   return deploy(size,url,allowFailure);
++ };
++ const config={database,root,port,password,deploy:deployTarget,sql,jsonSql,inspect:controls.inspectSql(),ledger,
++   identity,onPhase:enter,readLog:()=>fs.readFileSync(path.join(root,'postgres.log'),'utf8'),receipt};
++ const callback={
++  execution:()=>require('./task12-expense-execution-retained-negative.cjs').verifyExpenseExecutionRetainedNegatives(
++    {...config,material:require('./task12-expense-execution-retained-negative.json')}),
++  finance:()=>require('./task12-expense-finance-retained-negative.cjs').verifyFinanceRetainedNegatives(
++    {...config,material:require('./task12-expense-finance-retained-negative.json')}),
++  receipt:()=>require('./receipt-negative.cjs').verifyReceiptRetainedNegatives(config),
++ };
++ need(Object.hasOwn(callback,receipt.lane),'EXPENSE_HISTORICAL_LANE');
++ await callback[receipt.lane]();
++ throw new Error('EXPENSE_ORIGINAL_NEGATIVES_PRE_203_COMPLETE');
++ }
+  const profileIdentity=plan.profileUpgrade?await require('./profile-history.cjs').runProfileHistory({
+    ledger,deploy,read:()=>jsonSql(controls.inspectSql()),identity,checkLedger,enter,sql,receipt:plan.profileUpgrade,
+  }):undefined;
+  await deploy(203);const first=await jsonSql(controls.inspectSql());const bound=identity(first);checkLedger(first,203);
++ if(retainedIdentity)need(equal(bound,retainedIdentity),'EXPENSE_HISTORY_IDENTITY');
+  if(profileIdentity) need(equal(bound,profileIdentity),'REMAINING_PROFILE_HISTORY_IDENTITY');
+  const migrationPlan={...bound,runId:randomUUID(),nonce:randomBytes(32).toString('hex'),appName:'jg_fixture_app_'+randomBytes(12).toString('hex'),schemaName:'jg_fixture_'+randomBytes(12).toString('hex'),technicalProfile:'CURRENT259_OWNED_TECHNICAL_V1',resourceRunId:plan.runId,migrations:migrations.slice(0,205)};
+  const setup=await jsonSql(controls.setupSql(migrationPlan));controls.checkSetup(setup,migrationPlan);
+@@ -225,13 +334,14 @@
+  const materials=[];const tail=createLocalTailQualification({plan:migrationPlan,setup,migrations},{read:async(_phase,text)=>jsonSql(text),write:async(_phase,text)=>jsonSql(text),recordMaterial:row=>{need(hash(Buffer.from(row.sql))===row.afterSha256,'NATIVE_DIRECT_SQL_MATERIAL');materials.push({kind:row.kind,beforeSha256:row.beforeSha256,afterSha256:row.afterSha256});}});
+  for(const size of [213,215,218,221]){await deploy(size);const row=await jsonSql(controls.inspectSql());need(equal(identity(row),bound),'NATIVE_DIRECT_MIGRATION_IDENTITY');checkLedger(row,size);await tail.qualify(size);}
+  await deploy(ledger.length);const final=await jsonSql(controls.inspectSql());need(equal(identity(final),bound),'NATIVE_DIRECT_MIGRATION_IDENTITY');checkLedger(final,ledger.length);
+- return {plan:migrationPlan,setup,materials};
++ if(recovery)await recovery.verify();
++ return {plan:migrationPlan,setup,materials,recovery};
+ }
+-
++
+-function runCommand(file, args, {stdin, timeoutMs = 120_000, extra, allowFailure, multiWitnessDiagnostic} = {}) {
++function runCommand(file, args, {stdin, timeoutMs = 120_000, extra, allowFailure, multiWitnessDiagnostic, cwd} = {}) {
+   const result = spawnSync(file, args, {
+     input: stdin, encoding:'utf8', timeout:timeoutMs, maxBuffer:16 * 1024 * 1024,
+-    cwd:process.env.JG_RUN_ROOT || '/tmp', env:{ ...baseEnv, HOME:'/tmp', ...extra },
++    cwd:cwd ?? (process.env.JG_RUN_ROOT || '/tmp'), env:{ ...baseEnv, HOME:'/tmp', ...extra },
+   });
+   if (result.status !== 0 && !allowFailure) {
+     if (process.argv[2] === '--tls-probe' && typeof result.stderr === 'string') {
+@@ -260,7 +370,7 @@
+         .filter(reason => (result.stderr || '').toLowerCase().includes(reason.toLowerCase())),
+     });
+   }
+-  return {stdout:result.stdout, code:result.status,
++  return {stdout:result.stdout, code:result.status,...(allowFailure?{stderr:result.stderr??""}:{}),
+     ...(allowFailure && {scopePermissionDenied:/42501:[^\n]*permission denied for table jg_company_transfer_loan_repayment_scope_v1/u.test(result.stderr??'')})};
+ }
+ 
+@@ -304,7 +414,9 @@
+       {metadataRows:4134, verifiedFiles:318, subsetManifestSha256:subsetManifestSha} : {})}};
+   const runId = randomUUID(), database = 'jg_task01_' + runId.replaceAll('-',''), started = Math.floor(Date.now()/1000);
+   const root = fs.mkdtempSync('/tmp/jg394-'), data = path.join(root,'data');
+-  const plan = {runId, database, historical, source:{witness:{profile}}, prismaTools:{cli, engine}, limits:{migrationMs:180000},
++  const recoveryProfile=receipt.purpose==='ORIGINAL_EXPENSE_295_SAME_INSTANCE_RECOVERY_ONLY'
++    ? expenseRecoveryProfiles[receipt.lane] : undefined;
++  const plan = {runId, database, historical, source:{witness:{profile}}, prismaTools:{cli, engine}, limits:{migrationMs:180000},recoveryProfile,
+     ...(profileUpgrade?{profileUpgrade:receipt,profileSchema:schema.bytes}:{})};
+   receipt.runId = runId;
+   const credentials = Object.fromEntries(['owner','runtime','observer'].map(k => [k,randomBytes(48).toString('hex')]));
+@@ -430,7 +542,32 @@
+     await sql(`CREATE DATABASE ${database} OWNER ${owner} ENCODING 'UTF8' TEMPLATE template0 LC_COLLATE 'C' LC_CTYPE 'C';`,{database:'postgres'});
+     const locale = await jsonSql("SELECT jsonb_build_object('encoding',pg_encoding_to_char(encoding),'collate',datcollate,'ctype',datctype,'provider',datlocprovider) FROM pg_database WHERE datname=current_database();");
+     need(equal(locale,{encoding:'UTF8',collate:'C',ctype:'C',provider:'c'}),'INVALID_DB_LOCALE');
+-    receipt.migrationMaterials = (await installHistory(plan, root, port, credentials, sql, jsonSql, command, enter, fromHistory, stageTree, receipt)).materials;
++    const observePfqFailure = plan.recoveryProfile ? async(operation)=>{
++      const isOriginal = ()=>need(lifetime.running()&&equal(readPostmaster(),postmaster),'PFQ_RECOVERY_LOG_POSTMASTER');
++      const fd=fs.openSync(logPath,fs.constants.O_RDONLY|fs.constants.O_NOFOLLOW|fs.constants.O_NONBLOCK);
++      try{
++        const stat=()=>{
++          isOriginal();
++          native.assertNativeTask16LogIdentity(fd,logIdentity,logPath);
++          return fs.fstatSync(fd);
++        };
++        const before=stat();
++        const result=await operation();
++        const after=stat();
++        const length=after.size-before.size;
++        need(length>=0&&length<=1024*1024,'PFQ_RECOVERY_LOG_WINDOW');
++        const delta=Buffer.alloc(length);
++        need(fs.readSync(fd,delta,0,length,before.size)===length,'PFQ_RECOVERY_LOG_WINDOW');
++        need(stat().size===after.size,'PFQ_RECOVERY_LOG_WINDOW');
++        const { hasPostgresMarker }=require(plan.recoveryProfile.module);
++        return {result,markerInPostgres:hasPostgresMarker(delta.toString('utf8'),plan.recoveryProfile.kind)};
++      }finally{fs.closeSync(fd);}
++    } : undefined;
++    const installed=await installHistory(plan,root,port,credentials,sql,jsonSql,command,enter,fromHistory,stageTree,receipt,observePfqFailure);
++    receipt.migrationMaterials=installed.materials;
++    const migrationLedgerMatches=(observed,expected,size=expected.length)=>equal(observed,
++      retained ? retained.expectedLedger(expected,size) : expected.slice(0,size));
++    const retained=installed.recovery&&require(plan.recoveryProfile.module);
+ 
+     const roleIdentity = receipt.databaseIdentity;
+     const endpoint = new URL(`postgresql://${owner}@127.0.0.1:${port}/${database}`);
+@@ -445,7 +582,7 @@
+       await command(process.execPath,[cli,'migrate','deploy','--schema',path.join(folder,'schema.prisma')],
+         {timeoutMs:180000,extra:{DATABASE_URL:endpoint.toString(),PRISMA_SCHEMA_ENGINE_BINARY:engine,PRISMA_HIDE_UPDATE_MESSAGE:'1',CHECKPOINT_DISABLE:'1'}});
+       const observed = await jsonSql(control.inspectSql());
+-      need(equal(observed.ledger,ledger.slice(0,size)) && ['database','databaseOid','namespaceOid','systemIdentifier','ownerOid','actorOid','sessionActor'].every(key => observed[key] === roleIdentity[key]), 'STAGED_TAIL_CONTINUITY');
++      need(migrationLedgerMatches(observed.ledger,ledger,size) && ['database','databaseOid','namespaceOid','systemIdentifier','ownerOid','actorOid','sessionActor'].every(key => observed[key] === roleIdentity[key]), 'STAGED_TAIL_CONTINUITY');
+       receipt.orderedTails.push({size,ledgerSha256:hash(JSON.stringify(observed.ledger))});
+       if(isOutsideFamily(release) && size>=288 && size<=289) {
+         enter(`OUTSIDE_CATALOG_WITNESS_${size}`);
+@@ -678,7 +815,7 @@
+         {timeoutMs:180000,extra:{DATABASE_URL:endpoint.toString(),PRISMA_SCHEMA_ENGINE_BINARY:engine,
+           PRISMA_HIDE_UPDATE_MESSAGE:'1',CHECKPOINT_DISABLE:'1'}});
+       const installed=await jsonSql(control.inspectSql());
+-      need(equal(installed.ledger,expected)&&['database','databaseOid','namespaceOid','systemIdentifier','ownerOid','actorOid','sessionActor']
++      need(migrationLedgerMatches(installed.ledger,expected)&&['database','databaseOid','namespaceOid','systemIdentifier','ownerOid','actorOid','sessionActor']
+         .every(key=>installed[key]===roleIdentity[key]),'INSTALL_ONLY_292_LEDGER_IDENTITY');
+       need(equal(await jsonSql(finalSql),final),'INSTALL_ONLY_292_B7_CONTINUITY');
+       const outside=await jsonSql(outsideWitnessSql(289));
+@@ -687,21 +824,21 @@
+       need(equal(ordinary,receipt.ordinaryApprovalWitnesses.at(-1).ordinary),'INSTALL_ONLY_292_ORDINARY_CATALOG_CONTINUITY');
+       const balance=await jsonSql(successor.catalogSql);
+       need(successor.exactCatalog(balance),'INSTALL_ONLY_292_BALANCE_CATALOG');
+-      receipt.installOnly292={count:installed.ledger.length,ledgerSha256:hash(JSON.stringify(installed.ledger)),
++      receipt.installOnly292={count:expected.length,ledgerSha256:hash(JSON.stringify(expected)),
+         sameIdentity:true,exactB7:true,outside,ordinary,balance};
+-      receipt.orderedTails.push({size:installed.ledger.length,ledgerSha256:receipt.installOnly292.ledgerSha256});
++      receipt.orderedTails.push({size:expected.length,ledgerSha256:receipt.installOnly292.ledgerSha256});
+       if(restore) receipt.approvalAclAt292=await require('./approval-round-catalog.cjs').readApprovalRoundCatalog292({
+         candidateTree:require('./scope.json').tree,database,runId,sql,
+       },receipt);
+       const notice=require('./terminal.cjs');
+-      const noticeLedger=notice.expected(installed.ledger);
++      const noticeLedger=notice.expected(expected);
+       enter('INSTALL_ONLY_293_NOTICE_LOCK');
+       notice.stage(folder,'/qualification/terminal.sql');
+       await command(process.execPath,[cli,'migrate','deploy','--schema',path.join(folder,'schema.prisma')],
+         {timeoutMs:180000,extra:{DATABASE_URL:endpoint.toString(),PRISMA_SCHEMA_ENGINE_BINARY:engine,
+           PRISMA_HIDE_UPDATE_MESSAGE:'1',CHECKPOINT_DISABLE:'1'}});
+       const noticeInstalled=await jsonSql(control.inspectSql());
+-      need(equal(noticeInstalled.ledger,noticeLedger)&&['database','databaseOid','namespaceOid','systemIdentifier','ownerOid','actorOid','sessionActor']
++      need(migrationLedgerMatches(noticeInstalled.ledger,noticeLedger)&&['database','databaseOid','namespaceOid','systemIdentifier','ownerOid','actorOid','sessionActor']
+         .every(key=>noticeInstalled[key]===roleIdentity[key]),'NOTICE_293_LEDGER_IDENTITY');
+       const noticeCatalog=await jsonSql(notice.catalogSql);
+       need(notice.exact(noticeCatalog)&&equal(await jsonSql(finalSql),final),'NOTICE_293_CATALOG');
+@@ -715,13 +852,13 @@
+         {timeoutMs:180000,extra:{DATABASE_URL:endpoint.toString(),PRISMA_SCHEMA_ENGINE_BINARY:engine,
+           PRISMA_HIDE_UPDATE_MESSAGE:'1',CHECKPOINT_DISABLE:'1'}});
+       const payout=await jsonSql(control.inspectSql());
+-      need(equal(payout.ledger,payoutLedger)&&['database','databaseOid','namespaceOid','systemIdentifier','ownerOid','actorOid','sessionActor']
++      need(migrationLedgerMatches(payout.ledger,payoutLedger)&&['database','databaseOid','namespaceOid','systemIdentifier','ownerOid','actorOid','sessionActor']
+         .every(key=>payout[key]===roleIdentity[key]),'ORDINARY_PAYOUT_294_LEDGER_IDENTITY');
+       need(equal(await jsonSql(finalSql),final),'ORDINARY_PAYOUT_294_B7');
+       const payoutCatalog=await jsonSql(terminal.catalogSql);
+       need(terminal.valid(payoutCatalog),'ORDINARY_PAYOUT_294_CATALOG');
+       need(equal(await jsonSql(notice.catalogSql),noticeCatalog),'NOTICE_294_CATALOG_AFTER_PAYOUT_INSTALL');
+-      receipt.installOnly294={count:payout.ledger.length,ledgerSha256:terminal.ledgerHash(payout.ledger),catalog:payoutCatalog};
++      receipt.installOnly294={count:payout.ledger.length,ledgerSha256:terminal.ledgerHash(payoutLedger),catalog:payoutCatalog};
+       receipt.orderedTails.push({size:payout.ledger.length,ledgerSha256:receipt.installOnly294.ledgerSha256});
+       qualifiedLedger=payoutLedger;
+       if (purpose===exactMultiWitness295) {
+@@ -749,7 +886,7 @@
+           throw error;
+         }
+         const installed=await jsonSql(control.inspectSql());
+-        need(equal(installed.ledger,qualifiedLedger)&&['database','databaseOid','namespaceOid','systemIdentifier','ownerOid','actorOid','sessionActor']
++        need(migrationLedgerMatches(installed.ledger,qualifiedLedger)&&['database','databaseOid','namespaceOid','systemIdentifier','ownerOid','actorOid','sessionActor']
+           .every(key=>installed[key]===roleIdentity[key]),'MULTI_WITNESS_295_LEDGER_IDENTITY');
+         const after=await jsonSql(multi.catalogSql);
+         need(multi.valid(after,true)&&equal(await jsonSql(finalSql),final),'MULTI_WITNESS_295_CATALOG_B7');
+@@ -765,9 +902,9 @@
+           need(denied.code===3&&denied.scopePermissionDenied===true,
+             'MULTI_WITNESS_295_NON_OWNER_DENIAL');
+         }
+-        receipt.installOnly295={count:installed.ledger.length,ledgerSha256:multi.ledgerHash(installed.ledger),
++        receipt.installOnly295={count:qualifiedLedger.length,ledgerSha256:multi.ledgerHash(qualifiedLedger),
+           sameIdentity:true,exactB7:true,before,after,rollback,nonOwnerDenied:true};
+-        receipt.orderedTails.push({size:installed.ledger.length,ledgerSha256:receipt.installOnly295.ledgerSha256});
++        receipt.orderedTails.push({size:qualifiedLedger.length,ledgerSha256:receipt.installOnly295.ledgerSha256});
+       }
+     }
+     let cleanupLegacy;
+@@ -835,28 +972,29 @@
+           throw error;
+         }
+         current=await jsonSql(control.inspectSql());
+-        need(equal(current.ledger,qualifiedLedger)&&['database','databaseOid','namespaceOid','systemIdentifier','ownerOid','actorOid','sessionActor']
++        need(migrationLedgerMatches(current.ledger,qualifiedLedger)&&['database','databaseOid','namespaceOid','systemIdentifier','ownerOid','actorOid','sessionActor']
+           .every(key=>current[key]===roleIdentity[key]),'FORWARD_320_LEDGER_IDENTITY');
+-        if (forward320.textDirect && current.ledger.length===329) {
+-          const digest=hash(JSON.stringify(current.ledger));
++        if (forward320.textDirect && qualifiedLedger.length===329) {
++          const digest=hash(JSON.stringify(qualifiedLedger));
+           need(digest==='3e88a4a2ad3ebb128572fafd29f08a816bada6d61795ce35c6c8a4b73ba08bd2' &&
+             equal(await jsonSql(finalSql),final),'TEXT_DIRECT_329_PREDECESSOR_CONTINUITY');
+           receipt.textDirectPredecessor={count:329,ledgerSha256:digest,sameIdentity:true,sameBaseB7:true};
+         }
+-        if (forward320.paymentRemainder && current.ledger.length===330) {
+-          const digest=hash(JSON.stringify(current.ledger));
++        if (forward320.paymentRemainder && qualifiedLedger.length===330) {
++          const digest=hash(JSON.stringify(qualifiedLedger));
+           need(digest==='12a3ffa7cae1b9a54294ebaf38f71788ff4ccb2670a8d539148c84597b5aa99f' &&
+             equal(await jsonSql(finalSql),final),'PAYMENT_REMAINDER_330_PREDECESSOR_CONTINUITY');
+           receipt.paymentRemainderPredecessor={count:330,ledgerSha256:digest,sameIdentity:true,sameBaseB7:true};
+         }
+-        if (forward320.upwardArchive && current.ledger.length===331) {
++        if (forward320.upwardArchive && qualifiedLedger.length===331) {
+-          const digest=hash(JSON.stringify(current.ledger));
++          const digest=hash(JSON.stringify(qualifiedLedger));
+           need(digest==='0ad8b165cbf5c974596c4da840ab327e438ef84fd1beb3788ef980c8f28dd014' &&
+             equal(await jsonSql(finalSql),final),'UPWARD_ARCHIVE_331_PREDECESSOR_CONTINUITY');
+           receipt.upwardArchivePredecessor={count:331,ledgerSha256:digest,sameIdentity:true,sameBaseB7:true};
+         }
+       }
+-      receipt.forward320={count:current.ledger.length,ledgerSha256:hash(JSON.stringify(current.ledger)),sameIdentity:true,sourceTree,tails};
++      receipt.forward320={count:qualifiedLedger.length,ledgerSha256:hash(JSON.stringify(qualifiedLedger)),sameIdentity:true,sourceTree,tails};
++      if (retained) receipt.forward320.recoveryLedger={count:current.ledger.length,sha256:hash(JSON.stringify(current.ledger))};
+       receipt.forward320.fileGuards=await jsonSql(`SELECT coalesce(jsonb_agg(jsonb_build_object(
+         'name',t.tgname,'enabled',t.tgenabled='O','function',p.proname,'definer',p.prosecdef,'sha256',encode(sha256(convert_to(p.prosrc,'UTF8')),'hex')
+       ) ORDER BY t.tgname),'[]'::jsonb) FROM pg_trigger t JOIN pg_proc p ON p.oid=t.tgfoid
+@@ -939,7 +1077,7 @@
+         active = false;
+       }
+       const afterConsumer = await jsonSql(control.inspectSql());
+-      need(equal(afterConsumer.ledger,combined ? qualifiedLedger : ledger) && ['database','databaseOid','namespaceOid','systemIdentifier','ownerOid','actorOid','sessionActor'].every(key => afterConsumer[key] === roleIdentity[key]), 'CONSUMER_DATABASE_CONTINUITY');
++      need(migrationLedgerMatches(afterConsumer.ledger,combined ? qualifiedLedger : ledger) && ['database','databaseOid','namespaceOid','systemIdentifier','ownerOid','actorOid','sessionActor'].every(key => afterConsumer[key] === roleIdentity[key]), 'CONSUMER_DATABASE_CONTINUITY');
+       need(equal(await jsonSql(finalSql), final), 'CONSUMER_PROTECTED_CATALOG_CONTINUITY');
+       if(cleanupLegacy){
+         const legacy=await jsonSql(control.inspectSql(),{database:cleanupLegacy.database});
+@@ -984,9 +1122,10 @@
+           need(equal(await jsonSql(multi.catalogSql),receipt.installOnly295.after),'MULTI_WITNESS_295_CATALOG_AFTER_CONSUMER');
+           receipt.multiWitnessCatalogAfterBusiness=true;
+         }
+-        receipt.combinedAfterBusiness={count:afterConsumer.ledger.length,payoutCatalog,noticeCatalog,
+-          ledgerSha256:hash(JSON.stringify(afterConsumer.ledger)),sameIdentity:true,exactB7:true,ordinary:true,balance};
++        receipt.combinedAfterBusiness={count:(combined?qualifiedLedger:ledger).length,payoutCatalog,noticeCatalog,
++          ledgerSha256:hash(JSON.stringify(combined?qualifiedLedger:ledger)),sameIdentity:true,exactB7:true,ordinary:true,balance};
+       }
++      if(installed.recovery) await installed.recovery.verify();
+       receipt.business = 'CALLBACK_COMPLETED';
+     }
+   } finally {
+@@ -1000,19 +1139,26 @@
+   }
+ }
+ 
+-async function installHistory(plan,root,port,credentials,sql,jsonSql,command,enter,fromHistory,stageTree,receipt){
++async function installHistory(plan,root,port,credentials,sql,jsonSql,command,enter,fromHistory,stageTree,receipt,observePfqFailure){
+ const {runId}=plan;
+-const migration=await migrateNativeTask16(plan,root,port,credentials.owner,sql,jsonSql,command,enter,fromHistory);
++const migration=await migrateNativeTask16(plan,root,port,credentials.owner,sql,jsonSql,command,enter,fromHistory,receipt,observePfqFailure);
+ enter('ROLES');const roles=fromHistory('./task16-current259-role-provision.cjs');
+   const roleIdentity=await jsonSql(`SELECT jsonb_build_object('database',current_database(),'databaseOid',d.oid::text,'namespaceOid',to_regnamespace('public')::oid::text,'ownerOid',d.datdba::text,'actorOid',current_user::regrole::oid::text,'actor',current_user,'sessionActor',session_user,'systemIdentifier',(SELECT system_identifier::text FROM pg_control_system()),'tls',(SELECT ssl FROM pg_stat_ssl WHERE pid=pg_backend_pid()),'clientAddress',host(inet_client_addr()),'serverAddress',host(inet_server_addr()),'serverPort',inet_server_port()) FROM pg_database d WHERE d.datname=current_database();`);
+   need(roleIdentity.ownerOid==='10'&&roleIdentity.actorOid==='10'&&roleIdentity.tls===true&&roleIdentity.clientAddress==='127.0.0.1'&&roleIdentity.serverAddress==='127.0.0.1'&&roleIdentity.serverPort===port,'NATIVE_DIRECT_OWNER');
+-  const roleScope=JSON.stringify({identity:roleIdentity,app:{name:migration.plan.appName,oid:migration.setup.appOid,nonce:migration.plan.nonce},ledger:plan.source.witness.profile.ledger,competition:false});
++  const retained=migration.recovery&&require(plan.recoveryProfile.module);
++  const ledger=plan.source.witness.profile.ledger;
++  const roleScope=JSON.stringify({identity:roleIdentity,app:{name:migration.plan.appName,oid:migration.setup.appOid,nonce:migration.plan.nonce},
++    ledger:retained?retained.expectedLedger(ledger,ledger.length):ledger,competition:false});
+   const before=(await sql(roles.renderNativeTask16RoleRead(migration.setup.appOid,null))).stdout;roles.parseNativeTask16RoleRead(roleScope,before,'before');
+   const staged=(await sql(roles.renderNativeTask16RoleInstall(roleScope,before,{runtime:credentials.runtime,observer:credentials.observer}))).stdout;const stagedRow=roles.parseNativeTask16RoleRead(roleScope,staged,'install',before);
+   const committed=(await sql(roles.renderNativeTask16RoleRead(migration.setup.appOid,stagedRow.writeXid))).stdout;const roleRow=roles.parseNativeTask16RoleRead(roleScope,committed,'committed',before,staged);
+   need(roleRow.state.roles.length===9,'NATIVE_DIRECT_NINE_ROLES');
+   const provisioned={status:'CURRENT259_ROLES_PROVISIONED_NOT_ADMISSION',executionAllowed:false,nativeAdmission:false,sourceSha:stageSha,runId,databaseIdentity:roleIdentity,ordinary:roleRow.state.app,roles:roleRow.state.roles,commitXid:stagedRow.writeXid,databaseAcl:{before:JSON.parse(before).state.databases,after:roleRow.state.databases}};
+- const run=async(label,statement)=>{enter(label);return (await sql(statement)).stdout;};
++ const run=async(label,statement)=>{
++  enter(label);
++  if(migration.recovery)await migration.recovery.verify();
++  return (await sql(retained?retained.bindArchiveLedger(statement,ledger):statement)).stdout;
++ };
+  const source={candidateSha:stageSha,sourceSealSha256:plan.source.witness.profile.sealSha256,profile:plan.source.witness.profile,tree:stageTree};
+  const archive=fromHistory('./task16-current259-archive-install.cjs').beginNativeTask12ArchiveProtocol(JSON.stringify({source,completion:provisioned,serverPort:port}));
+  const seven=archive.acceptBefore(await run('ARCHIVE_BEFORE',archive.beforeSql));
+@@ -1283,7 +1429,7 @@
+   return installer(receipt,false,async context => {
+     need(context.candidateTree===outsideRelease.tree,'OWNED_289_SETTLEMENT_SOURCE');
+     receipt.settlement = require('./contract-ci.cjs').verify('--contract-settlement-ci',context);
+-    assertOutsideWitness(289,JSON.parse((await context.sql(outsideWitnessSql(289))).stdout.trim()));
++    assertOutsideWitness(289,JSON.parse((await context.sql(outsideWitnessSql(289,Boolean(material)))).stdout.trim()));
+   },outsideRelease);
+ };
+ 
+@@ -1296,7 +1442,7 @@
+   return installer(receipt,false,async context => {
+     need(context.candidateTree===outsideRelease.tree,'OWNED_289_ADJACENT_SOURCE');
+     const result=require('./contract-ci.cjs').verify(mode,context);
+-    assertOutsideWitness(289,JSON.parse((await context.sql(outsideWitnessSql(289))).stdout.trim()));
++    assertOutsideWitness(289,JSON.parse((await context.sql(outsideWitnessSql(289,Boolean(material)))).stdout.trim()));
+     receipt.adjacentPostconsume={count:289,exactB7:true};
+     receipt[resultKey]=result;
+   },outsideRelease);
+@@ -1423,3 +1569,49 @@
+   withCombinedOrdinaryLoan(receipt,consume,exactMultiWitness295,false,readForward320(material,330),'cleanup');
+ module.exports.withCombined330MultiWitnessForProfile=(receipt,consume,material)=>
+   withCombinedOrdinaryLoan(receipt,consume,exactMultiWitness295,false,readForward320(material,330),'profile');
++module.exports.withExpense295 = (receipt,lane,material) => {
++  need(['execution','finance','receipt'].includes(lane) && receipt.lane===lane,'EXPENSE_295_LANE');
++  const mode=receipt.purpose;
++  need(['ORIGINAL_EXPENSE_295_APPLICATION_ONLY','ORIGINAL_EXPENSE_295_RETAINED_VALID_ONLY',
++    'ORIGINAL_EXPENSE_HISTORICAL_NEGATIVES_295_SOURCE','ORIGINAL_EXPENSE_295_SAME_INSTANCE_RECOVERY_ONLY'].includes(mode),
++    'EXPENSE_295_MODE');
++  if(mode==='ORIGINAL_EXPENSE_295_SAME_INSTANCE_RECOVERY_ONLY') need(Object.hasOwn(expenseRecoveryProfiles,lane),'EXPENSE_295_RECOVERY_LANE');
++  const install=material ? ({
++    'current-320':module.exports.withCombined320ContractPayment,
++    'text-direct-330':module.exports.withCombined330TextAgreement,
++    'payment-remainder-331':module.exports.withCombined331PaymentRemainder,
++    'upward-archive-332':module.exports.withCombined332UpwardArchive,
++  })[material.mode] : module.exports.withCombined295MultiWitness;
++  need(typeof install==='function','EXPENSE_295_INSTALL_MODE');
++  need(!material || mode!=='ORIGINAL_EXPENSE_HISTORICAL_NEGATIVES_295_SOURCE','EXPENSE_320_NEGATIVE_MUST_RETAIN_HISTORY');
++  return install(receipt,async context=>{
++    if(mode==='ORIGINAL_EXPENSE_295_APPLICATION_ONLY') {
++      await require('./expense-app.cjs').runExpenseApp(lane,context,receipt,runCommand);
++      return;
++    }
++    if(mode==='ORIGINAL_EXPENSE_295_SAME_INSTANCE_RECOVERY_ONLY'){
++      need(receipt.expenseRecovery?.PrismaResolve===true&&receipt.expenseRecovery?.expectedFailure===true,
++        'EXPENSE_RECOVERY_COMPLETION');
++      assertOutsideWitness(289,JSON.parse((await context.sql(outsideWitnessSql(289,Boolean(material),
++        material?.mode==='upward-archive-332'))).stdout.trim()));
++      return;
++    }
++    need(mode==='ORIGINAL_EXPENSE_295_RETAINED_VALID_ONLY','EXPENSE_NEGATIVE_UNEXPECTED_CONTINUATION');
++    if(lane==='execution'){
++      const {readback,expected}=require('./task12-expense-execution-retained-valid.json');
++      need((await context.sql(readback)).stdout.trim()===expected,'EXPENSE_EXECUTION_ORIGINAL_RETAINED_VALUES');
++      receipt.retainedExpenseExecution={prefix:110,bootstrapOid:10,legacyKeyCount:2,includesPaymentBlocked:true};
++    }else if(lane==='finance'){
++      need(context.database===receipt.retainedFinanceValid.identity.database,'FINANCE_RETAINED_VALID_CONTEXT');
++      const material=require('./task12-expense-finance-retained-valid.json');
++      await verifyRetainedFinanceValid(material,context.sql);
++      receipt.retainedFinanceValid['after'+(receipt.forward320?.count??295)]=material.expected;
++    }else{
++      const legacyKey=await context.sql(`SELECT COALESCE("receiptConfirmationIdempotencyKey", '<NULL>')
++        FROM "ProjectExpenseRequest" WHERE "id"='receipt_valid_request'`);
++      need(legacyKey.stdout.trim()==='<NULL>','RETAINED_RECEIPT_ORIGINAL_ASSERTION');
++      receipt.retainedReceipt={prefix:112,originalMigration:113,originalLegacyKeyNull:true,bootstrapOid:10};
++    }
++
++  },material);
++};

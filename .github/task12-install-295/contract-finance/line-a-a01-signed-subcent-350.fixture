@@ -1,0 +1,99 @@
+  it("A01 已签结算不足一分冲减在确认后保留经营原值", async () => {
+    const contractId = "linea-contract-a01";
+    const versionId = "linea-contract-a01-v1";
+    const effectiveAt = new Date();
+    effectiveAt.setUTCDate(effectiveAt.getUTCDate() - 1);
+    await owner.contract.create({ data: {
+      id: contractId, projectId: ids.project, code: "LINEA-HT-A01", name: "隔离不足一分冲减合同",
+      counterparty: "隔离相对方", ownerUserId: ids.director, contractTypeKey: "labor_subcontract",
+      companyEntityId: ids.company, companyEntityName: "隔离参与公司"
+    } });
+    await owner.contractVersion.create({ data: {
+      id: versionId, contractId, versionNo: 1, changeType: "original", status: "effective",
+      amountCents: 1_000_000n, numericProtocolVersion: 1, effectiveAt, pricingNature: "fixed_total",
+      amountLimitType: "capped", settlementMode: "settlement_required", settlementModeSource: "contract_director",
+      settlementModeConfirmedByUserId: ids.director, settlementModeConfirmedAt: effectiveAt,
+      signingSubjectType: "our_company", companyEntityIdSnapshot: ids.company,
+      companyEntityVersionId: ids.companyVersion, companyEntityNameSnapshot: "隔离参与公司",
+      companyEntityCreditCodeSnapshot: "91350100LINEA00001", draftData: {}, templateSnapshot: {}, clauseSnapshot: []
+    } });
+    await owner.paymentTermsVersion.create({ data: {
+      id: "linea-terms-a01", contractId, contractVersionId: versionId, versionNo: 1,
+      status: "effective", originalText: "隔离付款约定：结算后三十日支付"
+    } });
+    await owner.contractPartySnapshot.create({ data: {
+      contractVersionId: versionId, roleKey: "party_b", displayOrder: 0,
+      businessPartyVersionId: ids.counterpartyVersion, snapshot: { name: "隔离相对方" }
+    } });
+    const initial = await newSignedDraft(contractId, "LINEA-A01-OPENING", "1.0100");
+    const submitted = await call("staff", `${settlementPath}/${initial.id}/submission`, { revision: initial.revision });
+    const reviewed = await call("director", `${settlementPath}/${initial.id}/review`, {
+      revision: submitted.body.revision, decision: "confirm"
+    });
+    expect(reviewed).toMatchObject({ status: 201, body: { state: "confirmed", amountYuan: "1.0100" } });
+    const originalSource = { sourceType: "signed_contract_settlement", sourceBusinessId: initial.id };
+    const originalFact = await owner.operatingFact.findFirstOrThrow({ where: originalSource });
+    expect(originalFact).toMatchObject({ numericProtocolVersion: 1, amountCents: 101n });
+    const originalImpacts = await owner.operatingImpactEntry.findMany({ where: originalSource, orderBy: { id: "asc" } });
+    expect(originalImpacts).toEqual(expect.arrayContaining([
+      expect.objectContaining({ impactKind: "confirmed_cost", numericProtocolVersion: 1, amountCents: 101n }),
+      expect.objectContaining({ impactKind: "payable_increase", numericProtocolVersion: 1, amountCents: 101n })
+    ]));
+    expect(originalImpacts).toHaveLength(2);
+
+    const reduction = await newSignedDraft(contractId, "LINEA-A01-SUBCENT", "-0.0001");
+    const pending = await call("staff", `${settlementPath}/${reduction.id}/submission`, { revision: reduction.revision });
+    expect(pending).toMatchObject({ status: 201, body: { state: "pending_review", amountYuan: "-0.0001" } });
+    const basisPath = `${settlementPath}/payment-basis?contractKind=downstream&contractId=${contractId}`;
+    expect((await call("staff", basisPath)).body).toMatchObject({
+      confirmedYuan: "1.0100", latestConfirmed: { id: initial.id }, downstreamCapacity: { wholeCentLimit: "101" }
+    });
+
+    const reviewPath = `${settlementPath}/${reduction.id}/review`;
+    const reviewBody = { revision: pending.body.revision, decision: "confirm" };
+    const confirmation = await call("director", reviewPath, reviewBody);
+    expect(confirmation).toMatchObject({ status: 201, body: { state: "confirmed", amountYuan: "-0.0001" } });
+
+    const where = { id: reduction.id };
+    const confirmed = await owner.signedContractSettlement.findUniqueOrThrow({ where });
+    const numericBasis = {
+      protocolVersion: 2, cumulativeBeforeYuan: "1.0100", cumulativeAfterYuan: "1.0099", payableDeltaCents: "0"
+    };
+    expect(confirmed).toMatchObject({
+      state: "confirmed", confirmedContractSource: { operatingNumericFacts: numericBasis }
+    });
+    expect(confirmed.amountYuan?.toFixed(4)).toBe("-0.0001");
+    const source = { sourceType: "signed_contract_settlement", sourceBusinessId: reduction.id };
+    const sourceKey = `${source.sourceType}:${source.sourceBusinessId}`;
+    const fact = await owner.operatingFact.findUniqueOrThrow({ where: { idempotencyKey: sourceKey } });
+    expect(fact).toMatchObject({
+      ...source, numericProtocolVersion: 2, amountCents: null,
+      sourceSnapshot: { signedAmountYuan: "-0.0001", operatingNumericFacts: numericBasis }
+    });
+    expect(fact.amountYuan?.toFixed(4)).toBe("0.0001");
+    const impacts = await owner.operatingImpactEntry.findMany({ where: source });
+    expect(impacts).toEqual([expect.objectContaining({
+      factId: fact.id, idempotencyKey: `${sourceKey}:confirmed_cost`, sourceImpactKey: "confirmed_cost",
+      impactKind: "confirmed_cost", direction: "decrease", numericProtocolVersion: 2, amountCents: null
+    })]);
+    expect(impacts[0]?.amountYuan?.toFixed(4)).toBe("0.0001");
+    const auditWhere = { businessType: "settlement", businessId: reduction.id, action: "settlement.signed_confirmed" };
+    const audits = await owner.auditLog.findMany({ where: auditWhere });
+    expect(audits).toEqual([expect.objectContaining({ metadata: expect.objectContaining({ amountYuan: "-0.0001" }) })]);
+    const basis = (await call("staff", basisPath)).body;
+    expect(basis).toMatchObject({
+      confirmedYuan: "1.0099", latestConfirmed: { id: reduction.id }, downstreamCapacity: { wholeCentLimit: "101" }
+    });
+
+    // Review uses the settlement ID and revision. Resending the same request must preserve the original ledger keys.
+    const replay = await callRaw("director", reviewPath, reviewBody);
+    expect(replay.status).toBe(409);
+    expect(replay.body.message).toContain("当前结算不可复核，请刷新");
+    expect(await owner.signedContractSettlement.findUniqueOrThrow({ where })).toEqual(confirmed);
+    expect(await owner.operatingFact.findMany({ where: source })).toEqual([fact]);
+    expect(await owner.operatingImpactEntry.findMany({ where: source })).toEqual(impacts);
+    expect(await owner.auditLog.findMany({ where: auditWhere })).toEqual(audits);
+    expect((await call("staff", basisPath)).body).toEqual(basis);
+    expect(await owner.operatingFact.findUniqueOrThrow({ where: { id: originalFact.id } })).toEqual(originalFact);
+    expect(await owner.operatingImpactEntry.findMany({ where: originalSource, orderBy: { id: "asc" } })).toEqual(originalImpacts);
+  });

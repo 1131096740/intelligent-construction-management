@@ -1,3 +1,4 @@
+import { mockApprovalProgress } from "./helpers/approval-progress-mocks";
 import { expect, test, type Page } from "@playwright/test";
 
 interface Deferred {
@@ -295,6 +296,10 @@ test("结算详情 A 的慢响应不会覆盖同路由切换后的 B", async ({ 
   });
 
   await mockLoginAndShell(page, userId);
+  await page.route("**/api/projects", (route) => route.fulfill({ json: [] }));
+  await mockApprovalProgress(page, ["settlement-A", "settlement-B"].map((businessId) => ({ businessType: "settlement", businessId })));
+  await page.route("**/api/approval-forms/settlement/*/capability", (route) => route.fulfill({ json: { available: false } }));
+
   await page.route("**/api/settlements/settlement-A", async (route) => {
     settlementARequests += 1;
     if (settlementARequests > 1) {
@@ -306,6 +311,10 @@ test("结算详情 A 的慢响应不会覆盖同路由切换后的 B", async ({ 
   await page.route("**/api/settlements/settlement-B", (route) => route.fulfill({
     contentType: "application/json",
     body: JSON.stringify(settlementDetail("settlement-B", "B"))
+  }));
+  await page.route("**/api/settlements/settlement-B/capability", (route) => route.fulfill({
+    contentType: "application/json",
+    body: JSON.stringify({ settlementId: "settlement-B", availableActions: ["download_approval_form"] })
   }));
   await page.route("**/api/settlements/settlement-B/approval-pdf/latest", (route) => route.fulfill({
     status: 200,
@@ -320,8 +329,8 @@ test("结算详情 A 的慢响应不会覆盖同路由切换后的 B", async ({ 
   await page.getByRole("button", { name: "刷新", exact: true }).click();
   await slowAStarted.promise;
   await page.locator(".detail-navigation").getByText("流程办理", { exact: true }).click();
-  await page.locator(".action-grid").getByRole("button", { name: "下载审批单" }).click();
-  await expect(page.getByText("确认下载结算审批单？")).toBeVisible();
+  await page.getByRole("region", { name: "结算流程办理" }).getByRole("button", { name: "下载结算单", exact: true }).click();
+  await expect(page.getByText("确认下载结算单？")).toBeVisible();
 
   const settlementAHistoryPosition = await readHistoryPosition(page);
   const settlementBResponsePromise = page.waitForResponse("**/api/settlements/settlement-B");
@@ -342,7 +351,7 @@ test("结算详情 A 的慢响应不会覆盖同路由切换后的 B", async ({ 
     position: settlementAHistoryPosition + 1
   });
   await expect(page.getByRole("heading", { name: "B结算单" })).toBeVisible();
-  await expect(page.getByText("确认下载结算审批单？")).toBeHidden();
+  await expect(page.getByText("确认下载结算单？")).toBeHidden();
 
   const slowSettlementAResponsePromise = page.waitForResponse("**/api/settlements/settlement-A");
   releaseSlowA.resolve();
@@ -360,8 +369,9 @@ test("结算详情 A 的慢响应不会覆盖同路由切换后的 B", async ({ 
   await expect(page.getByText("B结算付款边界", { exact: true })).toBeVisible();
 
   await page.locator(".detail-navigation").getByText("流程办理", { exact: true }).click();
-  await page.locator(".action-grid").getByRole("button", { name: "下载审批单" }).click();
+  await page.getByRole("region", { name: "结算流程办理" }).getByRole("button", { name: "下载结算单", exact: true }).click();
   await submitDownloadConfirmation(page, "**/api/settlements/settlement-B/approval-pdf/latest");
+  await expect(page.getByText("操作已提交，结算详情已刷新。", { exact: true })).toBeVisible();
   expect(settlementDownloadPaths).toEqual([
     "/api/settlements/settlement-B/approval-pdf/latest"
   ]);

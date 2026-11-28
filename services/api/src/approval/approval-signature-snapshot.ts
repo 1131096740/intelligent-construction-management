@@ -1,15 +1,26 @@
 import { BadRequestException, ForbiddenException } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
+import { task12NativeApprovalSignature } from "../file/task12-native-review-readiness";
 import { createHash } from "node:crypto";
 
 interface SignatureSnapshotClient {
   $queryRaw<T>(query: Prisma.Sql): Promise<T>;
 }
 
+export async function clearApprovalRoundSignatureSnapshots(
+  tx: Pick<Prisma.TransactionClient, "approvalActionLog">,
+  approvalInstanceId: string
+) {
+  await tx.approvalActionLog.updateMany({
+    where: { approvalInstanceId, action: "approve" },
+    data: { signatureFileIdSnapshot: null, signatureSha256Snapshot: null, signatureVersionIdSnapshot: null }
+  });
+}
+
 export async function snapshotApprovalSignature(
   tx: SignatureSnapshotClient,
   actorUserId: string,
-  options: { required: boolean }
+  options: { required: boolean; contractReviewProject?: string }
 ): Promise<{ fileId: string | null; sha256: string | null; versionId: string | null; actorName: string | null }> {
   if (!options.required) return { fileId: null, sha256: null, versionId: null, actorName: null };
   const [user] = await tx.$queryRaw<Array<{
@@ -25,7 +36,9 @@ export async function snapshotApprovalSignature(
   if (!user?.isActive) {
     throw new ForbiddenException("当前审批账号已停用，请先转交或委托给启用账号");
   }
-  const [signatureVersion] = await tx.$queryRaw<Array<{
+  const scopedSignature = options.contractReviewProject === undefined ? undefined
+    : await task12NativeApprovalSignature(tx, options.contractReviewProject, actorUserId);
+  const [signatureVersion] = scopedSignature !== undefined ? [scopedSignature] : await tx.$queryRaw<Array<{
     id: string;
     fileId: string;
     contentSha256: string;

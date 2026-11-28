@@ -4,7 +4,7 @@
     variant="outline"
     @click="open"
   >
-    下载审批单 PDF
+    {{ incomplete ? "下载当前审批单 PDF（审批中）" : "下载审批单 PDF" }}
   </t-button>
   <t-dialog
     v-model:visible="visible"
@@ -40,25 +40,30 @@
 import { ref, watch } from "vue";
 import { approvalDocumentCapability } from "../../api/approval-forms.api";
 import { downloadApprovalForm } from "../../api/core-flow-read.api";
-const props = defineProps<{ businessType: string; businessId: string; refreshKey?: unknown }>();
+const props = defineProps<{ businessType: string; businessId: string; approvalInstanceId?: string | null; refreshKey?: unknown }>();
 const available = ref(false);
+const incomplete = ref(false);
 const visible = ref(false);
 const downloading = ref(false);
 const password = ref("");
 const reason = ref("公司纸质归档");
 const error = ref("");
 let request = 0;
-watch(() => [props.businessType, props.businessId, props.refreshKey], async () => {
+watch(() => [props.businessType, props.businessId, props.approvalInstanceId, props.refreshKey], async () => {
   const token = ++request;
   available.value = false;
+  incomplete.value = false;
   visible.value = false;
   password.value = "";
   error.value = "";
   if (!props.businessId) return;
   try {
-    const capability = await approvalDocumentCapability(props.businessType, props.businessId);
-    if (request === token) available.value = capability.available;
-  } catch { if (request === token) available.value = false; }
+    const capability = await approvalDocumentCapability(props.businessType, props.businessId, props.approvalInstanceId ?? undefined);
+    if (request === token) {
+      available.value = capability.available;
+      incomplete.value = capability.incomplete === true;
+    }
+  } catch { if (request === token) { available.value = false; incomplete.value = false; } }
 }, { immediate: true });
 function open() { password.value = ""; error.value = ""; visible.value = true; }
 async function download() {
@@ -66,7 +71,11 @@ async function download() {
   downloading.value = true;
   error.value = "";
   try {
-    await downloadApprovalForm(props.businessType, props.businessId, { confirmationPassword: password.value, downloadReason: reason.value.trim() });
+    await downloadApprovalForm(props.businessType, props.businessId, {
+      confirmationPassword: password.value,
+      downloadReason: reason.value.trim(),
+      expectedApprovalInstanceId: props.approvalInstanceId ?? undefined
+    });
     visible.value = false;
   } catch (cause) { error.value = cause instanceof Error ? cause.message : "下载失败，请重试"; }
   finally { password.value = ""; downloading.value = false; }

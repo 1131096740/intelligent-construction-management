@@ -6,7 +6,10 @@ import {
   hasWorkItemPermissionData,
   emptyHomeWorkItemFilters,
   filterAndSortHomeWorkItemRows,
+  homeWorkItemQuery,
   homeWorkItemSummaryItems,
+  readHomeWorkItemQuery,
+  toHomeActionGroups,
   toHomeWorkItemRows,
   toWorkbenchCards,
   toWorkbenchQueues,
@@ -131,9 +134,7 @@ describe("home workbench card helpers", () => {
       approvalCenter: {
         pendingApproval: [],
         startedByMe: [],
-        handledByMe: [],
-        delegatedToMe: [],
-        overdueReminder: []
+        handledByMe: []
       }
     };
 
@@ -309,9 +310,7 @@ function workItemsFixture(): WorkItemsReadModel {
     approvalCenter: {
       pendingApproval: [],
       startedByMe: [],
-      handledByMe: [],
-      delegatedToMe: [],
-      overdueReminder: []
+      handledByMe: []
     }
   };
 }
@@ -333,5 +332,160 @@ describe("draft aging labels", () => {
       { id: "draft-long", statusLabel: "长期未处理", statusTone: "warning" },
       { id: "draft-stale", statusLabel: "90天以上草稿", statusTone: "warning" }
     ]);
+  });
+});
+
+describe("home action groups and list state", () => {
+  const pendingItems = [
+    {
+      id: "approval:1",
+      type: "approval" as const,
+      title: "钢材采购合同审批",
+      projectName: "一号项目",
+      businessCode: "HT-001",
+      amountText: "¥100.00",
+      currentNode: "项目经理审批",
+      stayedText: "2 小时",
+      nextAction: "去审批",
+      targetPath: "/合同管理/HT-001",
+      tone: "warning" as const,
+      actionGroup: "approval" as const
+    },
+    {
+      id: "approval:2",
+      type: "approval" as const,
+      title: "结算审批",
+      projectName: "二号项目",
+      businessCode: "JS-002",
+      amountText: "¥200.00",
+      currentNode: "预算主管审批",
+      stayedText: "1 天",
+      nextAction: "去审批",
+      targetPath: "/结算管理/JS-002",
+      tone: "warning" as const,
+      actionGroup: "approval" as const
+    },
+    {
+      id: "payment-execution:1",
+      type: "payment_execution" as const,
+      title: "登记实际付款",
+      projectName: "一号项目",
+      businessCode: "FK-001",
+      amountText: "¥50.00",
+      currentNode: "财务登记",
+      stayedText: "3 小时",
+      nextAction: "登记实付",
+      targetPath: "/付款管理/FK-001",
+      tone: "warning" as const,
+      actionGroup: "payment" as const
+    }
+  ];
+  const workItems: WorkItemsReadModel = {
+    generatedAt: "2026-11-23T10:00:00.000Z",
+    visibleProjectCount: 2,
+    queues: { pending: pendingItems, blocked: [], started: [], drafts: [] },
+    queueMeta: {
+      pending: { total: 3, returned: 3, truncated: false },
+      blocked: { total: 0, returned: 0, truncated: false },
+      started: { total: 0, returned: 0, truncated: false },
+      drafts: { total: 0, returned: 0, truncated: false }
+    },
+    approvalCenter: { pendingApproval: [], startedByMe: [], handledByMe: [] },
+    groups: [
+      {
+        key: "approval" as const,
+        title: "待审批",
+        description: "等待你当前岗位审批或同意的单据。",
+        count: 4,
+        targetPath: "/审批中心?view=pendingApproval",
+        items: [pendingItems[0], pendingItems[1]]
+      },
+      {
+        key: "payment" as const,
+        title: "待付款",
+        description: "已批准待实付，等你登记付款与凭证。",
+        count: 1,
+        targetPath: "/付款管理",
+        items: [pendingItems[2]]
+      }
+    ]
+  };
+
+  it("projects backend action groups into cards with counts, summaries and deep links", () => {
+    const cards = toHomeActionGroups(workItems);
+    expect(cards.map((card) => [card.key, card.title, card.count])).toEqual([
+      ["approval", "待审批", 4],
+      ["payment", "待付款", 1]
+    ]);
+    expect(cards[0].items.map((item) => item.title)).toEqual([
+      "钢材采购合同审批",
+      "结算审批"
+    ]);
+    expect(cards[0].items[0].meta).toBe("一号项目 · HT-001");
+    expect(cards[0].items[0].targetPath).toBe("/合同管理/HT-001");
+    expect(cards[0].targetPath).toBe("/审批中心?view=pendingApproval");
+    expect(cards[0].countText).toBe("4");
+  });
+
+  it("degrades to the four queues when the backend omits groups", () => {
+    expect(toHomeActionGroups({ ...workItems, groups: undefined })).toEqual([]);
+    const queues = toWorkItemQueues(workItems);
+    expect(queues.map((queue) => queue.id)).toEqual(["pending", "blocked", "started", "drafts"]);
+  });
+
+  it("filters the work list by action group without losing other filters", () => {
+    const rows = toHomeWorkItemRows(toWorkItemQueues(workItems));
+    const filters = { ...emptyHomeWorkItemFilters(), group: "approval" };
+    // 默认「阻塞优先」按停留时间排序，一天先于两小时。
+    expect(filterAndSortHomeWorkItemRows(rows, filters).map((row) => row.id)).toEqual([
+      "approval:2",
+      "approval:1"
+    ]);
+    expect(
+      filterAndSortHomeWorkItemRows(rows, { ...filters, group: "payment" }).map((row) => row.id)
+    ).toEqual(["payment-execution:1"]);
+  });
+
+  it("round-trips queue, filters and group through the route query so back navigation keeps them", () => {
+    const state = readHomeWorkItemQuery({
+      queue: "drafts",
+      project: "一号项目",
+      businessType: "合同审批",
+      status: "待处理",
+      keyword: "钢材",
+      sort: "overdue",
+      group: "approval",
+      stale: "1"
+    });
+    expect(state).toEqual({
+      queue: "drafts",
+      filters: {
+        project: "一号项目",
+        businessType: "合同审批",
+        status: "待处理",
+        keyword: "钢材",
+        sort: "overdue",
+        group: "approval"
+      },
+      showStaleDrafts: true
+    });
+    expect(homeWorkItemQuery(state)).toEqual({
+      queue: "drafts",
+      project: "一号项目",
+      businessType: "合同审批",
+      status: "待处理",
+      keyword: "钢材",
+      sort: "overdue",
+      group: "approval",
+      stale: "1"
+    });
+  });
+
+  it("ignores invalid queue and sort values from the query", () => {
+    const state = readHomeWorkItemQuery({ queue: "unknown", sort: "nonsense", stale: "0" });
+    expect(state.queue).toBe("pending");
+    expect(state.filters.sort).toBe("blocker");
+    expect(state.showStaleDrafts).toBe(false);
+    expect(homeWorkItemQuery(state)).toEqual({});
   });
 });

@@ -1,0 +1,39 @@
+# 任务10逻辑边距等价局部检查点
+
+2026-11-07在body1a77/service1a4502/processor801与原Java81/r2/Lock95上，新增公开实际用例1c5、计划027b一次执行：API类型退出0（15.095秒）、该用例lint退出0（0.625秒），实际case9.433秒、wrapper13.554秒。原150秒预算、严格schema2、0.1pt几何目标均未改。
+
+同一公共草稿正常选用两个既有受控S0来源：logical80（57d372）与同层等值legacy alias80（74ab1b），不是修改正式44be或自动采纳该诊断样张。每份均经真实公开保存、队列、processor、双格式私有上传和授权下载。两份源及最终Word除已声明同层80aliases外完整infoset/非main成员等价；所有render values除未使用generatedAt相同。含税3与完整总价正文通过，签署行例外left/right108 XML和5.4pt首字形观测均保留；两个PDF的原严格物理检查通过，独立工具分别把8089正文字符完整关联到8089实际绘制字形。
+
+最后，两个表的实际外宽均为logical435.9999934405pt、control433.1999803793pt，差2.8000130613pt，真实超过原0.1pt等价目标。失败发生在实际下载产物的行为比较，不是因缺少新metadata而制造RED；不把该外宽观测升级为全部有效padding、完整字体、签署空间、裁剪或原生Word等价认证。原错误与原阈值保留。两条supersession cleanup日志仍为合成FileService适配器不支持旧文件锁的待验项，不计清理成功或真实PG/COS验证。
+
+产物目录tNcCl1、严格检查physical-YhUqYs及physical-yeKEYd，实际日志SHA b84db07099492f3fa58c0e7e7d985d6d516a6a66c451ee39ee6895f96110f2ec；11产物独立checkpoint SHA be567a38a083abc4f6497075668f63a2f1226a160c02c87412468eb37f159227。服务和runner已自然退出。
+
+后继B1候选仅改3个后端文件，尚未检查或执行GREEN：current tableLayout升级v2、known v1/v2双partner精确同值、旧noflag和v1保原渲染/缓存tuple；只有v2最终DOCX在正常源专有渲染和附件拼装之后，增加同层等值legacy aliases，再把同一Buffer交上传与原Java/schema2。原start/end、签署row108、原模板和成功文件不改。仅实际需要适配的表检查受支持LTR/dxa边界，不支持语义在任何新上传前返回固定中文；无logical需求的其他styled/RTL表不被全局禁用。完整五类八样张矩阵、v1实际兼容、cache隔离及各负控仍待证明，B1拒绝不是永久拿掉既有合法样张导出的理由。
+
+源码、patch及待执行GREEN计划见私有logical-margin-v2-first-green.patch（d34719）与logical-margin-first-public-green-plan.json（e1c140）；本阶段未提交、推送、运行SQL/真实PG、迁移或部署。任务10未完成。
+
+后继在B1 v2候选上，原同1c5用例与全部输入、原150秒和0.1pt阈值不变，一次1/1 GREEN。API类型退出0（14.488秒）、全API lint退出0（8.411秒）；实际case8.927秒、wrapper13.103秒。logical和explicit两份新公开快照双partner都为body-bill-loop-v2；正常保存、排队、真实processor、私有双上传和授权下载后，原严格schema2及各8089正文字符完整关联、签署row108 XML/5.4pt观测、完整Word除等值alias外等价均通过。两表外宽差由原2.800013pt降为0/0，双方实际433.1999803793pt；这一数字是本对照结果，不是通用硬编码目标。
+
+新目录o5oALa，physical-THgOPt及physical-GDjUhr；实际日志SHA860f15fbe59c742607a82feb95753dcee1f5d456d298eff7095e601d9310cf7e，封存checkpoint SHAf38aaebb799404ffe5e742e144bce0f961844c945d1c7d4f10460155f641919b。全部计划源码、runtime和参考SHA均在静态后及实际结束后吻合；runner/Jest自然退出，Nest由finally关闭，无服务保留。一次可选ps只读观测被工具沙箱拒绝，未据其声称额外进程观测通过。
+
+root源码复核后，样式继承的不确定性只对needs-adapt逻辑表触发；新增别名严格left紧前start、right紧前end，依据官方SDK Sequence，已有等值alias须本已合法顺序，不重排源。S0对照原本就是该合法顺序，未修改参考或测试。源码body3f4c56c0/serviceede3a33e/processor3c999665，patch67ed1a53，GREENplan68a81ca8固定。旧v1/noflag分支源码保留，不以本v2成功冒真实旧v1兼容通过。
+
+两条合成清理warning原样保留。后继仍需独立证明known-v1真实执行、新v2与旧key隔离、partner及不支持语义在上传前拒绝，尤其header/footer引用异常或百分号编码、../等内部目标解析当前continue是否由原runtime统一fail-closed；未核清前不能声称这一边界已全修。B1不是永久移除既有合法样张能力，五类八样张矩阵、完整字体/签署/行几何、剩余UI及终审仍未完成。本阶段未提交、推送、运行真实PG/SQL、迁移或部署。
+
+known-v1后继单片已实际1/1通过：API类型退出0（16.501秒）、该用例lint退出0（0.528秒），原150秒内一次转换case5.840秒、wrapper9.708秒。当前producer先捕获v2，再以明确的合成pre-upgrade夹具仅冻结双table版本为v1并重建固定旧v1尾元组key，保留money/engine/runtime。随后经真实processor及授权双下载，最终快照保持v1，global仍top/start/bottom/end、不新增aliases，签署row108保持。
+
+新Word所有解压成员与已冻结trueRED旧v1参考逐一bytes相同（不比较ZIP容器时标），原schema2及8089正文完整关联通过，两表实际几何相对旧v1参考差0/0，0.1原阈值不变。此为明确known-v1新执行的兼容正控，区别于旧noflag正控，也不等同原参考业务生命周期重放、历史成功preview指针守恒或PDF二进制全等。目录SSXjnU/physical-13Q1N9；DOCX SHAe4da949dd22eafe50f066ce30e44af13943a238745a90e6c1051aa51fb3634cd，PDF SHAfd417217696df607f07c3d367e19d8dfde4ab0e0a8a664b8e6bf2c5e55dd67b2，日志SHA2806b78b4b510f16cd8dc8e1e5272d4c12315c9ae05cd84800e607c4e6ea63f8，checkpoint954803682c27b4f5cf467a5fb93d0d40631d4477f1e6fa864ade5e1fc5bbaca1。首尾源码、runtime和参考SHA均吻合，runner/Jest自然退出、Nest finally关闭；未夹下一门。
+
+新v2与旧v1同内容缓存隔离用例92a67bc0、计划e9aa5feb已准备未运行；header/footer内部等价目标的unsupported守卫仍为明确残缺。完整CON13五类八样张/字体几何、剩余UI、治理和终审继续未完成。
+
+新v2与旧v1同内容缓存隔离公开用例92a/e9a已一次1/1通过：API类型退出0（16.551秒）、该用例lint退出0（0.509秒），case0.806秒、wrapper4.690秒。旧known-v1实际SSXjnU文件及快照作为合成历史成功夹具，旧v1尾元组固定；公共新queue实际reusedOld=false、status=queued，重复v2同job。旧快照/key/文件引用/preview指针及授权下载SHA均不变，新增上传0，未调用processor/JVM。首尾源码和引用SHA吻合，服务自然关闭。日志SHA6d8b5bde847114b772ebe3040efe94d92422fd9a1cbeca0ba1ebc55f6814f224，checkpointf731c5e0366c6d699894b9cf427dee6692c32fbe3f816338fbbce7c0e0e36ee4；不把缓存通过冒成新文书物理验收或历史业务重放。
+
+页眉内部关系目标的B1拒绝缺口另备一个公共paired case：规范header1.xml与同义nested/../header1.xml活动页眉逻辑表，原来源和main字节相同，仅rels目标不同。要求先规范对照明确拒绝，再dot段同样固定业务中文、0上传/0scratch变化；不存在manifest仅作无JVM安全兜底，generic runtime失败不能算守卫通过。该测试d888a88e/计划74e0d8f5已准备尚未执行，3产品源码未改；其余percent、missing、malformed和external仍未闭。B1和完整任务10仍未收口。
+
+页眉active logical表拒绝的原d888/74e公开单例已取得真实policy RED：类型0（16.556秒）、用例lint0（0.492秒），case1.948秒、wrapper5.866秒。规范header1.xml正控返回固定“合同模板的表格边距设置暂不支持”；同一活动页眉及合法内部nested/../header1.xml目标却返回runtime-not-ready。两项均通过1次源读取、0上传、0scratch新增、null输出/preview和金额修订守恒，仅dot项最后明确业务信息断言失败。不存在manifest只用于保证绕过B1时也不启动JVM，不把其运行环境失败算守卫通过。日志058532aee901e3dc96b98db0f2096fb1255dfb226adf79f78cfca31eee70962c，checkpointbb4bcb98cd928bcb7aee88461085894a20ac458adf00e6c26131f8c8c931cd57，原失败保留；未证明实际Java/PDF接受或外泄。
+
+后继仅提出内部ASCII路径的包内规范化最小修复C1（相对document目录解析点段、禁止越包根，仍只读ZIP成员），尚未改产品，等主控审查。其他百分号/缺失/异常/External关系边界不由本对照自动计为fail-closed，也不以拒绝原合法样张替代CON13交付。
+
+C1修复后原d888配对公共用例一次1/1 GREEN，测试、样张和150秒预算未动：API类型0（16.271秒）、全API lint0（8.977秒），case1.934秒、wrapper6.294秒。规范header1.xml和等价nested/../header1.xml均返回原固定B1业务拒绝，各1次Word源读取、0新上传、0scratch新增、无JVM/null输出和preview，金额/修订不变。只有包内ASCII Target点段解析被修复，不写原关系或其他XML、不访问外部路径/网络。越包根或非法内部路径明确拒绝；缺失、百分号、fragment、External及其他词法前门仍按原continue，属于明确未闭的后继门，不能宣称整体URI fail-closed。
+
+当前bodyb8a3a4b5/serviceede3a33e/processor3c999665，精确C1 patch9bb28569/计划3c9fcaa0；源/runtime/参考在实际结束后全部SHA匹配，manifest finally还原、runner/Jest自然退出、Nest关闭。实际日志96a39da2eb814ac6315c2f8f91a23e3f414b3b15e312d073a407fe95bafd880b，checkpoint275a2b2f0e94ee12be6aaa1aeacc132d1599b92ec6abb6f9bb64047edcb16d67。原RED保留；本片不是新增PDF、一般页眉版式或完整CON13验收。未运行其他门，也未提交、推送、操作真实PG/SQL、迁移或部署。

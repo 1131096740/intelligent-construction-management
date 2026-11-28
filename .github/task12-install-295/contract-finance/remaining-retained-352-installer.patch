@@ -1,0 +1,15 @@
+--- a/installer.cjs
++++ b/installer.cjs
+@@ -1671,0 +1672,12 @@
++
++function withCombined352Retained(receipt,consume,material,mode) {
++  need(typeof consume==='function' && material && typeof material==='object','COMPANY_HISTORY_352_ARGUMENTS');
++  const profile=require('./company-history-352-profile.cjs');
++  profile.assertSource(material,require('./multi-witness.cjs').final);
++  return withCombinedOrdinaryLoan(receipt,consume,exactMultiWitness295,false,readForward320(material,profile.count),mode)
++    .then(()=>profile.assertInstallation(receipt,material));
++}
++module.exports.withCombined352RetainedCleanup = (receipt,consume,material) =>
++  withCombined352Retained(receipt,consume,material,'cleanup');
++module.exports.withCombined352MultiWitnessForProfile = (receipt,consume,material) =>
++  withCombined352Retained(receipt,consume,material,'profile');

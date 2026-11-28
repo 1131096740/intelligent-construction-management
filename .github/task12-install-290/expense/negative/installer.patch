@@ -1,0 +1,67 @@
+--- installer.cjs
++++ installer.cjs
+@@ -174 +174 @@
+-async function migrateNativeTask16(plan,root,port,password,sql,jsonSql,command,enter,fromHistory){
++async function migrateNativeTask16(plan,root,port,password,sql,jsonSql,command,enter,fromHistory,receipt){
+@@ -180 +180 @@
+- for(const size of [...new Set([203,205,213,215,218,221,ledger.length])]){
++ for(const size of [...new Set([...({execution:[110,111],finance:[111,112],receipt:[112,113]}[receipt.lane]),203,205,213,215,218,221,ledger.length])]){
+@@ -192 +192 @@
+- const deploy=async(size,url=baseUrl)=>{enter('MIGRATE_'+size);await command(process.execPath,[cli,'migrate','deploy','--schema',path.join(roots.get(size),'schema.prisma')],{timeoutMs:plan.limits.migrationMs,extra:{DATABASE_URL:url.toString(),PRISMA_SCHEMA_ENGINE_BINARY:engine,PRISMA_HIDE_UPDATE_MESSAGE:'1',CHECKPOINT_DISABLE:'1'}});};
++ const deploy=async(size,url=baseUrl,allowFailure=false)=>{enter('MIGRATE_'+size);return command(process.execPath,[cli,'migrate','deploy','--schema',path.join(roots.get(size),'schema.prisma')],{allowFailure,timeoutMs:plan.limits.migrationMs,extra:{DATABASE_URL:url.toString(),PRISMA_SCHEMA_ENGINE_BINARY:engine,PRISMA_HIDE_UPDATE_MESSAGE:'1',CHECKPOINT_DISABLE:'1'}});};
+@@ -195 +195,18 @@
+- await deploy(203);const first=await jsonSql(controls.inspectSql());const bound=identity(first);checkLedger(first,203);
++ const deployTarget=(size,target,allowFailure=false,writer=false)=>{
++   const url=new URL(baseUrl);
++   url.pathname='/'+target;
++   if(writer)url.searchParams.set('options','-c log_error_verbosity=verbose');
++   return deploy(size,url,allowFailure);
++ };
++ const config={database,root,port,password,deploy:deployTarget,sql,jsonSql,inspect:controls.inspectSql(),ledger,
++   identity,onPhase:enter,readLog:()=>fs.readFileSync(path.join(root,'postgres.log'),'utf8'),receipt};
++ const callback={
++  execution:()=>require('./task12-expense-execution-retained-negative.cjs').verifyExpenseExecutionRetainedNegatives(
++    {...config,material:require('./task12-expense-execution-retained-negative.json')}),
++  finance:()=>require('./task12-expense-finance-retained-negative.cjs').verifyFinanceRetainedNegatives(
++    {...config,material:require('./task12-expense-finance-retained-negative.json')}),
++  receipt:()=>require('./receipt-negative.cjs').verifyReceiptRetainedNegatives(config),
++ };
++ need(Object.hasOwn(callback,receipt.lane),'EXPENSE_HISTORICAL_LANE');
++ await callback[receipt.lane]();
++ throw new Error('EXPENSE_ORIGINAL_NEGATIVES_PRE_203_COMPLETE');
+@@ -207 +224 @@
+-function runCommand(file, args, {stdin, timeoutMs = 120_000, extra, allowFailure} = {}) {
++function runCommand(file, args, {stdin, timeoutMs = 120_000, extra, allowFailure, cwd} = {}) {
+@@ -210 +227 @@
+-    cwd:process.env.JG_RUN_ROOT || '/tmp', env:{ ...baseEnv, HOME:'/tmp', ...extra },
++    cwd:cwd ?? (process.env.JG_RUN_ROOT || '/tmp'), env:{ ...baseEnv, HOME:'/tmp', ...extra },
+@@ -243 +260,2 @@
+-  if(purpose===installOnly290) need(!probeOnly && !consume && release===outsideRelease,'INSTALL_ONLY_290_PREDECESSOR');
++  if(purpose===installOnly290) need(!probeOnly && release===outsideRelease,'INSTALL_ONLY_290_PREDECESSOR');
++  let consumerLedger;
+@@ -584,0 +603 @@
++      consumerLedger=expected;
+@@ -619 +638 @@
+-      enter('EXACT_'+release.count+'_CONSUMER');
++      enter(consumerLedger ? 'EXACT_290_EXPENSE_APP_CONSUMER' : 'EXACT_'+release.count+'_CONSUMER');
+@@ -638 +657 @@
+-      need(equal(afterConsumer.ledger,ledger) && ['database','databaseOid','namespaceOid','systemIdentifier','ownerOid','actorOid','sessionActor'].every(key => afterConsumer[key] === roleIdentity[key]), 'CONSUMER_DATABASE_CONTINUITY');
++      need(equal(afterConsumer.ledger,consumerLedger ?? ledger) && ['database','databaseOid','namespaceOid','systemIdentifier','ownerOid','actorOid','sessionActor'].every(key => afterConsumer[key] === roleIdentity[key]), 'CONSUMER_DATABASE_CONTINUITY');
+@@ -639,0 +659,5 @@
++      if (consumerLedger) {
++        const successor=require('./successor.cjs');
++        assertOutsideWitness(289,await jsonSql(outsideWitnessSql(289)));
++        need(successor.exactCatalog(await jsonSql(successor.catalogSql)),'SETTLEMENT_290_CATALOG_CONTINUITY');
++      }
+@@ -655 +679 @@
+-const migration=await migrateNativeTask16(plan,root,port,credentials.owner,sql,jsonSql,command,enter,fromHistory);
++const migration=await migrateNativeTask16(plan,root,port,credentials.owner,sql,jsonSql,command,enter,fromHistory,receipt);
+@@ -929 +953,2 @@
+-module.exports.withOutside290InstallOnly = receipt => {
++module.exports.withOutside290Fresh = (receipt,lane) => {
++  need(['execution','finance','receipt'].includes(lane),'EXPENSE_290_APP_LANE');
+@@ -935 +960,3 @@
+-  return installer(receipt,false,undefined,outsideRelease,installOnly290);
++  return installer(receipt,false,async context=>{
++    throw new Error('EXPENSE_NEGATIVES_CROSSED_HISTORICAL_BOUNDARY');
++  },outsideRelease,installOnly290);

@@ -1,8 +1,10 @@
+import { assertNotDirectPendingSource, DirectPendingSourceUnavailableError } from "../contract/contract-direct-pending-policy";
 import { ConflictException, Inject, Injectable } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
 import { createHash, randomUUID } from "node:crypto";
 import { addShanghaiCalendarMonths } from "../contract/contract-retention-calendar";
 import { PrismaService } from "../database/prisma.service";
+import { reviewReferenceCatalog } from "../file/contract-review-file-retention";
 import {
   acquireFileBusinessBindingTransactionLock
 } from "../file/file-business-binding";
@@ -263,7 +265,7 @@ export class ContractEndedApplicationPurgeService {
       await this.finalizeObjectCleanup(prepared.receiptId);
       return "completed";
     } catch (error) {
-      if (error instanceof EndedApplicationPurgeSkippedError) return "skipped";
+      if (error instanceof EndedApplicationPurgeSkippedError || error instanceof DirectPendingSourceUnavailableError) return "skipped";
       await this.markRetryable(contractVersionId, retryableFailureCode(error));
       return "retryable";
     }
@@ -294,7 +296,7 @@ export class ContractEndedApplicationPurgeService {
       await this.finalizeObjectCleanup(prepared.receiptId);
       return { contractVersionId, status: "completed" };
     } catch (error) {
-      if (error instanceof EndedApplicationPurgeSkippedError) {
+      if (error instanceof EndedApplicationPurgeSkippedError || error instanceof DirectPendingSourceUnavailableError) {
         return { contractVersionId, status: "skipped" };
       }
       await this.markRetryable(contractVersionId, retryableFailureCode(error));
@@ -304,6 +306,7 @@ export class ContractEndedApplicationPurgeService {
 
   private async prepare(contractVersionId: string, batchId: string, now: Date) {
     return this.prisma.$transaction(async (tx) => {
+      await assertNotDirectPendingSource(tx, contractVersionId);
       const existingReceipt = await tx.contractEndedApplicationPurgeReceipt.findUnique({
         where: { contractVersionId },
         select: { id: true, status: true, aggregateHash: true }
@@ -367,6 +370,7 @@ export class ContractEndedApplicationPurgeService {
     auditException?: LegacyAuditDeletionException
   ) {
     return this.prisma.$transaction(async (tx) => {
+      await assertNotDirectPendingSource(tx, contractVersionId);
       const existingReceipt = await tx.contractEndedApplicationPurgeReceipt.findUnique({
         where: { contractVersionId },
         select: { id: true, status: true, aggregateHash: true }
@@ -425,6 +429,7 @@ export class ContractEndedApplicationPurgeService {
     auditException?: LegacyAuditDeletionException
   ): Promise<void> {
     await this.prisma.$transaction(async (tx) => {
+      await assertNotDirectPendingSource(tx, contractVersionId);
       const locked = await this.lockEndedApplication(tx, contractVersionId);
       if (!locked) {
         const receipt = await tx.contractEndedApplicationPurgeReceipt.findUnique({
@@ -465,6 +470,9 @@ export class ContractEndedApplicationPurgeService {
         throw new CleanupScopeError("结束申请存在不可证明为精确对象的独占文件");
       }
       const exclusiveRows = manifest.rows.filter((row) => row.bindingType === "exclusive");
+      if (exclusiveRows.length && await reviewReferenceCatalog(tx) !== "legacy") {
+        throw new CleanupScopeError("当前清理流程无法确认履约复核原件保留，已停止登记待删文件");
+      }
       await this.deleteAggregate(
         tx,
         locked,
@@ -502,11 +510,12 @@ export class ContractEndedApplicationPurgeService {
     await this.prisma.$transaction(async (tx) => {
       const receipt = await tx.contractEndedApplicationPurgeReceipt.findUnique({
         where: { id: receiptId },
-        select: { id: true, status: true, exclusiveFileCount: true }
+        select: { id: true, status: true, exclusiveFileCount: true, contractVersionId: true }
       });
       if (!receipt) {
         throw new ConflictException("结束申请清理回执不存在");
       }
+      await assertNotDirectPendingSource(tx, receipt.contractVersionId);
       if (receipt.status === "completed") return;
       await acquireFileBusinessBindingTransactionLock(tx);
       const manifest = await this.resumableFileManifest(tx, receipt.id);
@@ -519,9 +528,15 @@ export class ContractEndedApplicationPurgeService {
       if (blocked.length > 0) {
         throw new CleanupScopeError("结束申请待清理文件出现共享或不可证明范围");
       }
+      if (manifest.rows.length && await tx.contractDraftAttachment.findFirst({ where: { slotKey: "direct_signed_originals_v1", fileId: { in: manifest.rows.map(row => row.fileId) } }, select: { id: true } })) throw new DirectPendingSourceUnavailableError("原件仍在待登记资料中，当前不能物理清理");
       this.assertConfiguredStorageBucket(manifest.rows);
       const objectKeys = [...new Set(manifest.rows.map((row) => row.objectKey))];
       if (objectKeys.length > 0) {
+        // A receipt may predate the retention schema. Do not resume physical
+        // deletion on a snapshot that cannot prove the current key cohort.
+        if (await reviewReferenceCatalog(tx) !== "legacy") {
+          throw new CleanupScopeError("当前清理回执无法确认履约复核原件保留，已停止删除文件");
+        }
         await this.fileCleanup.deleteExactObjects(objectKeys, this.storage);
       }
       await tx.fileObject.deleteMany({ where: { purgeReceiptId: receipt.id } });

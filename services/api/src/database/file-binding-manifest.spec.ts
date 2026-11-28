@@ -37,6 +37,7 @@ describe("file binding manifest database integration", () => {
         );
         const ownedFileIds = new Set(ownedBindings.map((binding) => binding.fileId));
         expect(ownedFileIds.has("file-z")).toBe(false);
+        expect(ownedFileIds.has("file-archive-evidence-other")).toBe(false);
         expect(ownedFileIds.has("file-a")).toBe(true);
         expect(ownedFileIds.has("file-new")).toBe(true);
         expect(ownedFileIds.has("file-base")).toBe(true);
@@ -56,13 +57,20 @@ describe("file binding manifest database integration", () => {
             fileId: "file-e"
           })
         );
+        expect(ownedBindings).toContainEqual({
+          table: "ContractArchiveEvidenceFile",
+          column: "fileId",
+          rowId: "evidence-1",
+          fileId: "file-archive-evidence"
+        });
 
-        // 2. 行级引用扫描：文件 a 同时被目标草稿行与外部结算行引用。
-        const refsForA = await fileBusinessBindingRefs(client, ["file-a"]);
-        expect(refsForA.map((ref) => `${ref.table}:${ref.column}:${ref.rowId}`)).toEqual(
+        // 2. 行级引用扫描包含外部结算和其他版本的归档证据。
+        const refs = await fileBusinessBindingRefs(client, ["file-a", "file-archive-evidence-other"]);
+        expect(refs.map((ref) => `${ref.table}:${ref.column}:${ref.rowId}`)).toEqual(
           expect.arrayContaining([
             "ContractDraftAttachment:fileId:draft-1",
-            "SettlementLineAttachment:fileId:settlement-1"
+            "SettlementLineAttachment:fileId:settlement-1",
+            "ContractArchiveEvidenceFile:fileId:evidence-other"
           ])
         );
 
@@ -72,7 +80,7 @@ describe("file binding manifest database integration", () => {
         });
         expect(manifest.mode).toBe("preview_only");
         expect(manifest.executionAllowed).toBe(false);
-        expect(manifest.rows).toHaveLength(13);
+        expect(manifest.rows).toHaveLength(14);
 
         const byFileId = new Map(manifest.rows.map((row) => [row.fileId, row]));
         expect(byFileId.get("file-a")).toMatchObject({ bindingType: "shared" });
@@ -95,6 +103,7 @@ describe("file binding manifest database integration", () => {
           "file-bill",
           "file-import",
           "file-archive",
+          "file-archive-evidence",
           "file-new",
           "file-base"
         ]) {
@@ -103,10 +112,10 @@ describe("file binding manifest database integration", () => {
         }
 
         expect(manifest.summary).toEqual({
-          exclusiveCount: 11,
+          exclusiveCount: 12,
           sharedCount: 2,
           blockedCount: 2,
-          totalObjectCount: 13
+          totalObjectCount: 14
         });
       } finally {
         await client.$disconnect();
@@ -121,6 +130,7 @@ describe("file binding manifest database integration", () => {
 const EXTRA_VERSION_COLUMNS: Record<string, string[]> = {
   ContractDraftAttachment: ["contractVersionId"],
   ContractArchiveFile: ["contractVersionId"],
+  ContractArchiveEvidenceFile: ["contractVersionId"],
   ContractFormalFile: ["contractVersionId"],
   ContractGeneratedDocument: ["contractVersionId"],
   ContractOfflineRevision: ["contractVersionId"],
@@ -168,6 +178,8 @@ async function seed(client: PrismaClient): Promise<void> {
   await insertFile("file-bill", null);
   await insertFile("file-import", null);
   await insertFile("file-archive", null);
+  await insertFile("file-archive-evidence", null);
+  await insertFile("file-archive-evidence-other", null);
   await insertFile("file-z", null);
   await insertFile("file-new", "file-base");
   await insertFile("file-base", null);
@@ -183,6 +195,11 @@ async function seed(client: PrismaClient): Promise<void> {
   await client.$executeRawUnsafe(
     `INSERT INTO "ContractArchiveFile" ("id", "contractVersionId", "fileId")
      VALUES ('archive-1', 'version-v1', 'file-archive'), ('archive-new', 'version-v1', 'file-new'), ('archive-base', 'version-v1', 'file-base')`
+  );
+  await client.$executeRawUnsafe(
+    `INSERT INTO "ContractArchiveEvidenceFile" ("id", "contractVersionId", "fileId")
+     VALUES ('evidence-1', 'version-v1', 'file-archive-evidence'),
+       ('evidence-other', 'version-v2', 'file-archive-evidence-other')`
   );
   await client.$executeRawUnsafe(
     `INSERT INTO "ContractFormalFile" ("id", "contractVersionId", "fileId")

@@ -14,6 +14,7 @@ import type { PrivateFileReadModel } from "./core-flow-read.api";
 // ---------------------------------------------------------------------------
 // Local HTTP helpers (built on apiFetch; keep isolated from core-flow client)
 // ---------------------------------------------------------------------------
+type GuardedRequestOptions = { retryUnauthorized?: boolean; responseIsCurrent?: () => boolean };
 
 async function ensureOk(
   response: Response,
@@ -100,6 +101,7 @@ async function ensureOk(
   }
 
   const error = new Error(message) as Error & {
+    status?: number;
     code?: string;
     conflictReason?: string;
     projectId?: string;
@@ -113,6 +115,7 @@ async function ensureOk(
       status: "document_invalidated" | "unchanged" | "refresh_required";
     };
   };
+  error.status = response.status;
   if (code) error.code = code;
   if (conflictReason) error.conflictReason = conflictReason;
   if (projectId) error.projectId = projectId;
@@ -123,26 +126,28 @@ async function ensureOk(
   throw error;
 }
 
-async function readJson<T>(path: string, preserveErrorCode = false): Promise<T> {
-  const response = await apiFetch(path);
+async function readJson<T>(path: string, preserveErrorCode = false, headers?: Record<string, string>, options?: GuardedRequestOptions): Promise<T> {
+  const response = await apiFetch(path, headers || options ? { headers, ...options } : undefined);
   await ensureOk(response, "读取失败", preserveErrorCode);
   return response.json() as Promise<T>;
 }
 
-async function postJson<TResponse>(path: string, body?: unknown): Promise<TResponse> {
+async function postJson<TResponse>(path: string, body?: unknown, options?: GuardedRequestOptions): Promise<TResponse> {
   const response = await apiFetch(path, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body ?? {})
+    body: JSON.stringify(body ?? {}),
+    ...options
   });
   await ensureOk(response, "提交失败");
   return response.json() as Promise<TResponse>;
 }
 
-async function postForm<TResponse>(path: string, body: FormData): Promise<TResponse> {
+async function postForm<TResponse>(path: string, body: FormData, options?: GuardedRequestOptions): Promise<TResponse> {
   const response = await apiFetch(path, {
     method: "POST",
-    body
+    body,
+    ...options
   });
   await ensureOk(response, "上传失败");
   return response.json() as Promise<TResponse>;
@@ -151,12 +156,14 @@ async function postForm<TResponse>(path: string, body: FormData): Promise<TRespo
 async function postJsonWithHeaders<TResponse>(
   path: string,
   body: unknown,
-  headers: Record<string, string>
+  headers: Record<string, string>,
+  options?: GuardedRequestOptions
 ): Promise<TResponse> {
   const response = await apiFetch(path, {
     method: "POST",
     headers: { "Content-Type": "application/json", ...headers },
-    body: JSON.stringify(body)
+    body: JSON.stringify(body),
+    ...options
   });
   await ensureOk(response, "提交失败", true);
   return response.json() as Promise<TResponse>;
@@ -185,12 +192,14 @@ async function putJson<TResponse>(path: string, body?: unknown): Promise<TRespon
 async function putJsonWithHeaders<TResponse>(
   path: string,
   body: unknown,
-  headers: Record<string, string>
+  headers: Record<string, string>,
+  options?: GuardedRequestOptions
 ): Promise<TResponse> {
   const response = await apiFetch(path, {
     method: "PUT",
     headers: { "Content-Type": "application/json", ...headers },
-    body: JSON.stringify(body)
+    body: JSON.stringify(body),
+    ...options
   });
   await ensureOk(response, "保存失败", true);
   return response.json() as Promise<TResponse>;
@@ -209,12 +218,14 @@ async function deleteJson<TResponse>(path: string, body?: unknown): Promise<TRes
 async function deleteJsonWithHeaders<TResponse>(
   path: string,
   body: unknown,
-  headers: Record<string, string>
+  headers: Record<string, string>,
+  options?: GuardedRequestOptions
 ): Promise<TResponse> {
   const response = await apiFetch(path, {
     method: "DELETE",
     headers: { "Content-Type": "application/json", ...headers },
-    body: JSON.stringify(body)
+    body: JSON.stringify(body),
+    ...options
   });
   await ensureOk(response, "删除失败", true);
   return response.json() as Promise<TResponse>;
@@ -243,14 +254,22 @@ type CreateWorkbenchDraftBasePayload = {
   signingSubjectType?: "affiliate" | "our_company";
 };
 
-export type CreateWorkbenchDraftPayload = CreateWorkbenchDraftBasePayload & (
+export type CreateWorkbenchDraftPayload = (CreateWorkbenchDraftBasePayload & (
   | { businessScenarioId: string; scenarioTemplateMappingId: string }
   | { businessScenarioId?: never; scenarioTemplateMappingId?: never }
+)) | {
+  numericProtocolVersion: 2;
+  projectId: string;
+  contractTypeKey: string;
+  amountLimitType: "capped" | "unlimited";
+} & (
+  | { relationship?: "inside" | "outside" | "upward"; handlingMode?: never }
+  | { relationship: "outside" | "upward"; handlingMode: "direct_signed" }
 );
 
 export interface CreateWorkbenchDraftReadModel {
-  contract: { id: string };
-  version: { id: string };
+  contract: { id: string; projectId?: string };
+  version: { id: string; contractId?: string; draftData?: Record<string, unknown> };
   [key: string]: unknown;
 }
 
@@ -259,14 +278,14 @@ export interface ContractCreateCapabilityReadModel {
   availableActions: string[];
 }
 
-export function fetchContractCreateCapabilities(projectId: string) {
-  return readJson<ContractCreateCapabilityReadModel>(
-    `/contracts/create-capability?projectId=${encodeURIComponent(projectId)}`
-  );
+export function fetchContractCreateCapabilities(projectId: string, options?: GuardedRequestOptions, relationship?: "upward") {
+  const path = `/contracts/create-capability?projectId=${encodeURIComponent(projectId)}`;
+  return readJson<ContractCreateCapabilityReadModel>(relationship ? `${path}&relationship=${relationship}` : path, false, undefined, options);
 }
 
-export function createWorkbenchDraft(body: CreateWorkbenchDraftPayload) {
-  return postJson<CreateWorkbenchDraftReadModel>("/contracts", body);
+export function createWorkbenchDraft(body: CreateWorkbenchDraftPayload, responseIsCurrent?: () => boolean) {
+  return postJson<CreateWorkbenchDraftReadModel>("/contracts", body,
+    "handlingMode" in body && body.handlingMode === "direct_signed" ? { retryUnauthorized: false, responseIsCurrent } : undefined);
 }
 
 export interface ContractWorkbenchReadModel extends SharedContractWorkbenchReadModel {
@@ -274,12 +293,20 @@ export interface ContractWorkbenchReadModel extends SharedContractWorkbenchReadM
 }
 
 export type ContractDraftWorkbenchReadModel =
-  Omit<ContractWorkbenchReadModel, "checkpoints"> & {
+  Omit<ContractWorkbenchReadModel, "checkpoints" | "paymentTerms"> & {
+    paymentTerms: ContractWorkbenchReadModel["paymentTerms"] | null;
+    directPendingInput?: unknown;
+    directPendingCapabilities?: unknown;
+    upwardDraftSubjects?: unknown;
     draft: Record<string, unknown>;
     attachments: ContractDraftAttachmentModel[];
     draftOperationAvailableActions: string[];
     lease: ContractDraftLeaseState;
-    version: ContractWorkbenchReadModel["version"] & {
+    version: Omit<ContractWorkbenchReadModel["version"], "documentContentRevision"> & {
+      contractId?: string;
+      documentContentRevision: number | null;
+      originalSignedNumber?: string | null;
+      originalSignedNumberState?: "available" | "unavailable";
       draftLifecycleKind?: "pristine_draft" | "approval_draft";
     };
   };
@@ -312,6 +339,9 @@ export interface ContractDraftLeaseHeartbeat {
 }
 
 export interface ContractDraftFieldsPayload {
+  numericProtocolVersion?: 2;
+  manualAmountYuan?: string | null;
+  originalSignedNumber?: string | null;
   companyEntityId?: string;
   draftData: Record<string, unknown>;
   clauses: ContractClauseDefinition[];
@@ -320,7 +350,7 @@ export interface ContractDraftFieldsPayload {
   manualAmountCents?: string;
   estimatedAmountCents?: string;
   amountAdjustmentReason?: string;
-  layoutTemplateVersionId?: string;
+  layoutTemplateVersionId?: string | null;
   taxFacts: {
     invoiceType: ContractInvoiceType | null;
     taxMode: ContractTaxMode;
@@ -331,12 +361,15 @@ export interface ContractDraftFieldsPayload {
 
 export interface ContractDraftPartyModel {
   roleKey: string;
+  /** Verified editor-only identity from the controlled party detail. */
+  businessPartyId?: string;
   businessPartyVersionId?: string;
   displayOrder: number;
   snapshot: Record<string, unknown>;
 }
 
 export interface ContractDraftBillModel {
+  numericProtocolVersion?: number;
   billKey: string;
   expectedRevision: number;
   rows: Array<Record<string, unknown>>;
@@ -385,15 +418,24 @@ export interface SaveContractDraftAggregatePayload {
 }
 
 export interface SaveContractDraftAggregateResult {
+  requestFingerprint?: string;
+  billRowKeys?: Record<string, Array<{ clientRowKey: string; rowKey: string }>>;
+  deletedRowRestoreRefs?: Record<string, Array<{ saveIntentKey: string; oldRowKey: string; originalValues: Record<string, unknown> }>>;
   contractVersionId: string;
   draftRevision: number;
   serverRevision: number;
   savedAt: string;
   effectiveChangedSections: ContractDraftChangedSection[];
+  versionAmount?: { numericProtocolVersion: 2; amountYuan: string | null; amountCents: string | null };
+  billAmounts?: Array<{ billKey: string; numericProtocolVersion: 2; taxInclusiveAmountYuan: string | null; taxExclusiveAmountYuan: string | null; taxAmountYuan: string | null; taxInclusiveAmountCents: string | null; taxExclusiveAmountCents: string | null; taxAmountCents: string | null }>;
   amounts: {
-    taxInclusiveAmountCents: string;
-    taxExclusiveAmountCents: string;
-    taxAmountCents: string;
+    numericProtocolVersion?: 2;
+    taxInclusiveAmountYuan?: string | null;
+    taxExclusiveAmountYuan?: string | null;
+    taxAmountYuan?: string | null;
+    taxInclusiveAmountCents: string | null;
+    taxExclusiveAmountCents: string | null;
+    taxAmountCents: string | null;
   };
   billRevisions: Record<string, number>;
   issueCounts: Record<string, number>;
@@ -409,53 +451,184 @@ export interface SaveContractDraftAggregateResult {
   };
 }
 
-export function fetchContractWorkbench(contractId: string) {
-  return readJson<ContractWorkbenchReadModel>(
-    `/contract-workbench/${encodeURIComponent(contractId)}`
+export interface SaveDirectPendingDraftResult {
+  contractVersionId: string;
+  draftRevision: number;
+  serverRevision: number;
+  originalSignedNumber: string | null;
+  requestFingerprint: string;
+  directSigningInput: unknown;
+  documentContentRevision: null;
+  documentContentFingerprint: null;
+  documentsOutdated: false;
+  savedAt: string;
+  availableActions: [];
+}
+
+export function fetchDirectPendingSaveResult(contractVersionId: string, idempotencyKey: string, responseIsCurrent: () => boolean) {
+  return readJson<{ status: "unknown" } | { status: "saved"; result: SaveDirectPendingDraftResult; latestRevision: number }>(
+    `/contract-drafts/${encodeURIComponent(contractVersionId)}/save-requests/${encodeURIComponent(idempotencyKey)}`, false,
+    { "x-contract-numeric-protocol": "2" }, { retryUnauthorized: false, responseIsCurrent }
   );
 }
 
-export function fetchContractDraftWorkbench(contractVersionId: string) {
+export function fetchContractWorkbench(contractId: string) {
+  return readJson<ContractWorkbenchReadModel>(
+    `/contract-workbench/${encodeURIComponent(contractId)}`, false, { "x-contract-numeric-protocol": "2" }
+  );
+}
+
+export function fetchContractDraftSaveResult(contractVersionId: string, idempotencyKey: string) {
+  return readJson<{ status: "unknown" } | { status: "saved"; result: SaveContractDraftAggregateResult; latestRevision: number }>(
+    `/contract-drafts/${encodeURIComponent(contractVersionId)}/save-requests/${encodeURIComponent(idempotencyKey)}`, false,
+    { "x-contract-numeric-protocol": "2" }
+  );
+}
+
+export function fetchContractDraftWorkbench(contractVersionId: string, options?: GuardedRequestOptions) {
   return readJson<ContractDraftWorkbenchReadModel>(
     `/contract-drafts/${encodeURIComponent(contractVersionId)}/workbench`,
-    true
+    true,
+    { "x-contract-numeric-protocol": "2" }, options
   );
+}
+
+export interface ContractBodyEditPlan {
+  protocolVersion: 1;
+  layoutTemplateVersionId: string;
+  sourceSha256: string;
+  edits: Array<{ positionId: string; text: string }>;
+  additions?: Array<{ id: string; afterPositionId: string; text: string }>;
+  deletedPositionIds?: string[];
+  paragraphOrder?: string[];
+  signatureSupplementReviewDigest?: string;
+}
+
+export interface ContractBodyDeleteSavedAdditionAction {
+  kind: "delete_saved_addition";
+  additionId: string;
+}
+
+export type ContractBodyAction = ContractBodyDeleteSavedAdditionAction | { kind: "regenerate"; confirmOverwrite: true };
+
+export interface ContractBodyUpdateContext {
+  contractVersionId: string;
+  draftRevision: number;
+  layoutTemplateVersionId: string;
+  sourceSha256: string;
+  action: ContractBodyAction;
+}
+
+export interface ContractBodyDeleteSavedAdditionContext extends ContractBodyUpdateContext {
+  action: ContractBodyDeleteSavedAdditionAction;
+}
+
+export interface ContractBodyParagraph {
+  id: string;
+  kind: "paragraph";
+  text: string;
+  editable: boolean;
+  format: { fontFamily?: string; fontSizePt?: number; align: string; bold?: boolean };
+  blankFields: string[];
+}
+
+export type ContractBodyFlowNode = { kind: "paragraph"; paragraphId: string } | {
+  kind: "table";
+  columns: number[];
+  rows: Array<{ repeatHeader: boolean; cells: Array<{
+    paragraphIds: string[]; columnSpan: number; verticalMerge: string | null; flow: ContractBodyFlowNode[];
+  }> }>;
+};
+
+export interface ContractDraftBodyReadModel {
+  contractVersionId: string;
+  draftRevision: number;
+  documentContentRevision: number;
+  layoutTemplateVersionId: string;
+  sourceSha256: string;
+  mechanicalContactLayoutVersion: "mechanical-contact-layout-v2" | null;
+  warnings?: readonly string[];
+  partyDetailsRecovery?: {roleIds:string[];groups:string[][]};
+  laborSignatureRecovery?: {entries:Array<{id:string;text:string;kind:"edit"|"deletion"}>;groups:string[][]};
+  signatureSupplementReview?: {digest:string;confirmed:boolean;scope?:"company-and-bank"|"labor-company-and-bank";entries:Array<{role:"party_a"|"party_b";id:string;text:string}>};
+  blocks: ContractBodyParagraph[];
+  flow: ContractBodyFlowNode[];
+  paragraphGroups: string[][];
+  savePoints: Array<{ id: string; createdAt: string; documentContentRevision: number; layoutTemplateVersionId: string; documentBody: ContractBodyEditPlan | null }>;
+}
+
+const approvedBodyWarnings = new Set(["请核对内容及甲乙方归属，确认后保存。","劳务主合同或附件签署位置已有编辑，请保留并复制原内容，联系合同管理员核对；草稿内容已保留。","请核对劳务主合同签署栏内容，确保不含公司及银行信息；如有请先转填主体资料。","请核对签署页前的甲乙方补充内容，确保不含公司及银行信息；如有请先转填主体资料。","请核对签署页前的甲乙方补充内容，确保不含银行资料；如有请先转填主体银行资料。", "主体、银行资料或版式映射需要核对，请保留内容并联系合同管理员处理。", "当前合同使用历史税率内容，请保存填写资料后更新正文税务内容。", "正文主体或开票资料包含旧编辑，请先复制需要保留的内容，再恢复主体称谓或删除开票资料相关编辑并保存，才能生成合同。", "正文开票资料与当前版式映射冲突，请联系合同管理员处理；合同正文内容已保留。"]);
+const incompleteBodyWarning = "正文提示暂无法完整读取，请核对当前填写资料后重新读取正文。";
+function normalizeBodyWarnings(value: unknown): string[] {
+  if (value === undefined) return [];
+  if (!Array.isArray(value) || value.length > 8 || value.some(item => typeof item !== "string" || item.length > 256 || !approvedBodyWarnings.has(item))) return [incompleteBodyWarning];
+  return [...new Set(value as string[])];
+}
+export function fetchContractPaperDraftIdentity(contractVersionId: string) {
+  return readJson<Pick<ContractDraftBodyReadModel,
+    "contractVersionId" | "draftRevision" | "documentContentRevision" | "layoutTemplateVersionId" | "sourceSha256" | "mechanicalContactLayoutVersion">>(
+    `/contract-drafts/${encodeURIComponent(contractVersionId)}/document-body`, true,
+    { "x-contract-numeric-protocol": "2" }
+  );
+}
+
+export async function fetchContractDraftBody(contractVersionId: string) {
+  const body = await readJson<ContractDraftBodyReadModel>(
+    `/contract-drafts/${encodeURIComponent(contractVersionId)}/document-body`, true,
+    { "x-contract-numeric-protocol": "2" }
+  );
+  if(body.mechanicalContactLayoutVersion!==null && body.mechanicalContactLayoutVersion!=="mechanical-contact-layout-v2") throw new Error("正文呈现版本无法核对，请重新读取正文");
+  const recovery=body.partyDetailsRecovery;
+  const groups=recovery?.groups,roles=recovery?.roleIds;
+  const valid=Array.isArray(groups)&&groups.length<=3000&&groups.every(group=>Array.isArray(group)&&group.length<=3000&&group.every(id=>typeof id==="string"&&/^[a-f0-9]{64}$/u.test(id)))&&
+    Array.isArray(roles)&&roles.length>0&&roles.length<=2&&roles.every(id=>typeof id==="string"&&/^[a-f0-9]{64}$/u.test(id));
+  const flat=valid?groups.flat():[];
+  const accepted=valid&&flat.length<=3000&&new Set(flat).size===flat.length&&new Set(roles).size===roles.length&&roles.every(id=>flat.includes(id));
+  const review=body.signatureSupplementReview;
+  const laborRecovery=body.laborSignatureRecovery;
+  const validLaborRecovery=laborRecovery&&Array.isArray(laborRecovery.entries)&&laborRecovery.entries.length>0&&laborRecovery.entries.length<=64&&laborRecovery.entries.every(entry=>entry&&typeof entry.id==="string"&&/^[a-f0-9]{64}$/u.test(entry.id)&&typeof entry.text==="string"&&entry.text.length<=20000&&(entry.kind==="edit"||entry.kind==="deletion"))&&new Set(laborRecovery.entries.map(entry=>entry.id)).size===laborRecovery.entries.length&&Array.isArray(laborRecovery.groups)&&laborRecovery.groups.length<=3000&&laborRecovery.groups.every(group=>Array.isArray(group)&&group.length<=3000&&group.every(id=>typeof id==="string"&&/^[a-f0-9]{64}$/u.test(id)))&&laborRecovery.groups.flat().length<=3000&&new Set(laborRecovery.groups.flat()).size===laborRecovery.groups.flat().length;
+  const validReview=review&&typeof review.digest==="string"&&/^[a-f0-9]{64}$/u.test(review.digest)&&typeof review.confirmed==="boolean"&&(review.scope===undefined||review.scope==="company-and-bank"||review.scope==="labor-company-and-bank")&&Array.isArray(review.entries)&&review.entries.length>0&&review.entries.length<=32&&review.entries.every(entry=>entry&&(entry.role==="party_a"||entry.role==="party_b")&&typeof entry.id==="string"&&/^[a-f0-9]{64}$/u.test(entry.id)&&typeof entry.text==="string"&&entry.text.length<=20000)&&review.entries.reduce((sum,entry)=>sum+entry.text.length,0)<=500000;
+  return { ...body, warnings: normalizeBodyWarnings(body.warnings),partyDetailsRecovery:accepted?{roleIds:roles,groups}:undefined,laborSignatureRecovery:validLaborRecovery?laborRecovery:undefined,signatureSupplementReview:validReview?review:undefined };
 }
 
 export function fetchContractDraftOperationCapabilities(
-  contractVersionId: string
+  contractVersionId: string,
+  options?: GuardedRequestOptions
 ) {
   return readJson<ContractDraftWorkbenchReadModel>(
     `/contract-drafts/${encodeURIComponent(contractVersionId)}/workbench`,
-    true
+    true,
+    { "x-contract-numeric-protocol": "2" }, options
   );
 }
 
-export function acquireContractDraftEditLease(contractVersionId: string) {
+export function acquireContractDraftEditLease(contractVersionId: string, options?: GuardedRequestOptions) {
   return postJson<ContractDraftLeaseGrant>(
-    `/contract-drafts/${encodeURIComponent(contractVersionId)}/edit-lease`
+    `/contract-drafts/${encodeURIComponent(contractVersionId)}/edit-lease`, undefined, options
   );
 }
 
 export function heartbeatContractDraftEditLease(
   contractVersionId: string,
-  leaseToken: string
+  leaseToken: string,
+  options?: GuardedRequestOptions
 ) {
   return postJsonWithHeaders<ContractDraftLeaseHeartbeat>(
     `/contract-drafts/${encodeURIComponent(contractVersionId)}/edit-lease/heartbeat`,
     {},
-    { "X-Contract-Draft-Lease": leaseToken }
+    { "X-Contract-Draft-Lease": leaseToken }, options
   );
 }
 
 export function releaseContractDraftEditLease(
   contractVersionId: string,
-  leaseToken: string
+  leaseToken: string,
+  options?: GuardedRequestOptions
 ) {
   return deleteJsonWithHeaders<{ released: boolean }>(
     `/contract-drafts/${encodeURIComponent(contractVersionId)}/edit-lease`,
     {},
-    { "X-Contract-Draft-Lease": leaseToken }
+    { "X-Contract-Draft-Lease": leaseToken }, options
   );
 }
 
@@ -472,12 +645,25 @@ export function takeOverContractDraftEditLease(
 export function saveContractDraftAggregate(
   contractVersionId: string,
   leaseToken: string,
+  payload: SaveContractDraftAggregatePayload,
+  responseIsCurrent: () => boolean
+): Promise<SaveDirectPendingDraftResult>;
+export function saveContractDraftAggregate(
+  contractVersionId: string,
+  leaseToken: string,
   payload: SaveContractDraftAggregatePayload
+): Promise<SaveContractDraftAggregateResult>;
+export function saveContractDraftAggregate(
+  contractVersionId: string,
+  leaseToken: string,
+  payload: SaveContractDraftAggregatePayload,
+  responseIsCurrent?: () => boolean
 ) {
-  return putJsonWithHeaders<SaveContractDraftAggregateResult>(
+  return putJsonWithHeaders<SaveContractDraftAggregateResult | SaveDirectPendingDraftResult>(
     `/contract-drafts/${encodeURIComponent(contractVersionId)}`,
     payload,
-    { "X-Contract-Draft-Lease": leaseToken }
+    { "X-Contract-Draft-Lease": leaseToken },
+    responseIsCurrent ? { retryUnauthorized: false, responseIsCurrent } : undefined
   );
 }
 
@@ -496,14 +682,41 @@ export interface ContractDraftSubmissionResult {
   approvalInstanceId: string;
   status: "in_approval";
   formalCode: string;
-  draftRevision: number;
-  firstSubmittedAt: string;
+  draftRevision?: number;
+  firstSubmittedAt?: string;
+}
+
+export interface ContractDraftV2SubmissionIntent {
+  expectedRevision: number;
+  submissionProtocolVersion: 2;
+  documentContentRevision: number;
+  documentContentFingerprint: string;
+  generatedDocumentId: string;
+  sourceSha256: string;
+  blanksReviewed: true;
+}
+
+export type ContractDraftSubmissionPayload =
+  | { expectedRevision: number; idempotencyKey: string }
+  | (ContractDraftV2SubmissionIntent & { idempotencyKey: string });
+
+export type ContractDraftSubmissionLookup = { status: "unknown" } | {
+  status: "submitted";
+  result: ContractDraftSubmissionResult;
+  requestSha256: string;
+  intent: ContractDraftV2SubmissionIntent;
+};
+
+export function fetchContractDraftSubmissionResult(contractVersionId: string, idempotencyKey: string) {
+  return readJson<ContractDraftSubmissionLookup>(
+    `/contract-drafts/${encodeURIComponent(contractVersionId)}/submission-requests/${encodeURIComponent(idempotencyKey)}`
+  );
 }
 
 export function submitContractDraft(
   contractVersionId: string,
   leaseToken: string,
-  payload: { expectedRevision: number; idempotencyKey: string }
+  payload: ContractDraftSubmissionPayload
 ) {
   return postJsonWithHeaders<ContractDraftSubmissionResult>(
     `/contract-drafts/${encodeURIComponent(contractVersionId)}/submission`,
@@ -1113,7 +1326,8 @@ export function uploadContractWorkbenchPrivateFile(
   contractVersionId: string,
   file: Blob,
   fileName: string,
-  idempotencyKey?: string
+  idempotencyKey?: string,
+  options?: GuardedRequestOptions
 ) {
   const form = new FormData();
   form.append("file", file, fileName);
@@ -1122,7 +1336,8 @@ export function uploadContractWorkbenchPrivateFile(
   }
   return postForm<PrivateFileReadModel>(
     `/contract-drafts/${encodeURIComponent(contractVersionId)}/files`,
-    form
+    form,
+    options
   );
 }
 
@@ -1131,7 +1346,7 @@ export function checkContractSubmissionReadiness(contractVersionId: string) {
 }
 
 export function listContractDrafts(scope: "my" | "voided") {
-  return readJson<unknown[]>(`/contract-workbench?scope=${scope}`);
+  return readJson<unknown[]>(`/contract-workbench?scope=${scope}`, false, { "x-contract-numeric-protocol": "2" });
 }
 
 export interface SaveContractDraftPayload {
@@ -1185,9 +1400,8 @@ export function confirmContractSettlementMode(
   contractVersionId: string,
   body: ConfirmContractSettlementModePayload
 ) {
-  return postJson<SaveContractDraftResult>(
-    `/contract-workbench/${contractVersionId}/settlement-mode/confirm`,
-    body
+  return postJsonWithHeaders<SaveContractDraftResult>(
+    `/contract-workbench/${contractVersionId}/settlement-mode/confirm`, body, { "x-contract-numeric-protocol": "2" }
   );
 }
 
@@ -1267,10 +1481,7 @@ export function applyContractTypeChange(
 ) {
   // Backend requires explicit `confirmed: true` (ApplyContractTypeChangeDto) so the
   // migration only runs after the user accepts the preview.
-  return postJson<unknown>(`/contract-workbench/${contractVersionId}/type-change`, {
-    ...body,
-    confirmed: true
-  });
+  return postJsonWithHeaders<unknown>(`/contract-workbench/${contractVersionId}/type-change`, { ...body, confirmed: true }, { "x-contract-numeric-protocol": "2" });
 }
 
 export interface TransferContractDraftPayload {
@@ -1310,9 +1521,9 @@ export function restoreContractDraft(contractId: string) {
 // Business parties (GET/POST /business-parties)
 // ---------------------------------------------------------------------------
 
-export function listBusinessParties(query?: string) {
+export function listBusinessParties(query?: string, options?: GuardedRequestOptions) {
   const qs = query ? `?query=${encodeURIComponent(query)}` : "";
-  return readJson<unknown[]>(`/business-parties${qs}`);
+  return readJson<unknown[]>(`/business-parties${qs}`, false, undefined, options);
 }
 
 export async function getBusinessPartyCreateCapability() {
@@ -1330,8 +1541,8 @@ export interface CreateBusinessPartyPayload {
   [key: string]: unknown;
 }
 
-export function getBusinessParty(partyId: string) {
-  return readJson<unknown>(`/business-parties/${partyId}`);
+export function getBusinessParty(partyId: string, options?: GuardedRequestOptions) {
+  return readJson<unknown>(`/business-parties/${encodeURIComponent(partyId)}`, false, undefined, options);
 }
 
 export function createBusinessPartyVersion(partyId: string, body: CreateBusinessPartyPayload & { expectedVersionNo: number }) {
@@ -2224,17 +2435,25 @@ export async function downloadContractDraftBillExcelTemplate(
   billKey: string
 ): Promise<void> {
   return downloadBillExcelTemplateFromPath(
-    `/contract-drafts/${encodeURIComponent(contractVersionId)}/bills/${encodeURIComponent(billKey)}/template`,
+    `/contract-drafts/${encodeURIComponent(contractVersionId)}/bills/${encodeURIComponent(billKey)}/template?numericProtocolVersion=2`,
     `合同清单模板-${billKey}.xlsx`
+  );
+}
+
+export async function exportContractDraftBill(contractVersionId: string, billKey: string): Promise<void> {
+  return downloadBillExcelTemplateFromPath(
+    `/contract-drafts/${encodeURIComponent(contractVersionId)}/bills/${encodeURIComponent(billKey)}/export`,
+    "合同清单.xlsx", "导出合同清单失败，请稍后重试"
   );
 }
 
 async function downloadBillExcelTemplateFromPath(
   path: string,
-  fallbackFileName: string
+  fallbackFileName: string,
+  errorMessage = "下载清单模板失败"
 ): Promise<void> {
   const response = await apiFetch(path);
-  await ensureOk(response, "下载清单模板失败");
+  await ensureOk(response, errorMessage);
   const blob = await response.blob();
   const disposition = response.headers.get("Content-Disposition") ?? "";
   const match = /filename\*=UTF-8''([^;]+)/.exec(disposition);
@@ -2245,6 +2464,8 @@ async function downloadBillExcelTemplateFromPath(
 }
 
 export interface ContractDraftBillExcelImportPreview {
+  sourceColumns?: Array<{ key: string; label: string; column: string }>;
+  sourceRows?: Array<{ sheet: string; row: number; values: Record<string, string> }>;
   billKey: string;
   targetBillRevision: number;
   rows: ContractBillCandidateRowInput[];
@@ -2263,11 +2484,11 @@ export interface ContractDraftBillExcelImportPreview {
 export function previewContractDraftBillExcelImport(
   contractVersionId: string,
   billKey: string,
-  body: { fileId: string }
+  body: { fileId: string; mode?: "append" | "replace" }
 ) {
   return postJson<ContractDraftBillExcelImportPreview>(
     `/contract-drafts/${encodeURIComponent(contractVersionId)}/bills/${encodeURIComponent(billKey)}/import-preview`,
-    body
+    { ...body, numericProtocolVersion: 2 }
   );
 }
 
@@ -2289,8 +2510,22 @@ export function queueContractDocument(
   return postJson<unknown>(`/contract-workbench/${contractVersionId}/documents`, body);
 }
 
+export interface ContractGeneratedSubmissionDocument {
+  [key: string]: unknown;
+  id: string;
+  contractVersionId: string;
+  status: string;
+  sourceRevision: number;
+  layoutTemplateVersionId: string;
+  documentContentRevision: number | null;
+  documentContentFingerprint: string | null;
+  docxFileId: string | null;
+  pdfFileId: string | null;
+  inputSnapshot: { layoutSourceMapping?: { sourceSha256?: string }; mechanicalContactLayoutVersion?: "mechanical-contact-layout-v1" | "mechanical-contact-layout-v2" };
+}
+
 export function listContractDocuments(contractVersionId: string) {
-  return readJson<unknown[]>(`/contract-workbench/${contractVersionId}/documents`);
+  return readJson<ContractGeneratedSubmissionDocument[]>(`/contract-workbench/${contractVersionId}/documents`);
 }
 
 export function retryContractDocument(documentId: string) {

@@ -62,13 +62,31 @@ jobs:
       - name: Verify migration baseline
         run: pnpm check:migration-baseline
 
+      - name: Verify change verification tier
+        if: ${{ github.event_name == 'pull_request' }}
+        env:
+          PR_BODY: ${{ github.event.pull_request.body }}
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          set -euo pipefail
+          printf '%s' "$PR_BODY" > "$RUNNER_TEMP/pr-body.txt"
+          node scripts/verify-verification-tier.mjs \
+            --base "$PR_BASE_SHA" \
+            --pr-body "$RUNNER_TEMP/pr-body.txt" \
+            --require-declaration
+
       - name: Verify CI orchestration contract
-        run: pnpm test:ci-orchestration
+        run: |
+          set -euo pipefail
+          sudo install -d -m 0700 -o "$(id -u)" -g "$(id -g)" /private/tmp
+          pnpm test:ci-orchestration
 
       - name: Audit production dependencies
         run: pnpm audit --prod --audit-level high
 
       - name: Typecheck
+        env:
+          NODE_OPTIONS: --max-old-space-size=4096
         run: |
           pnpm typecheck
           pnpm --filter @jiangkong/web-admin typecheck:e2e
@@ -84,9 +102,13 @@ jobs:
           bash scripts/ops/go-live-safety-self-test.sh
 
   unit-test-gates:
-    name: Unit test gates
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
+    name: Unit test gates (${{ matrix.target }})
+    runs-on: ${{ startsWith(matrix.target, 'api-') && 'ubuntu-24.04' || 'ubuntu-latest' }}
+    timeout-minutes: ${{ startsWith(matrix.target, 'api-') && 60 || 20 }}
+    strategy:
+      fail-fast: false
+      matrix:
+        target: [api-1, api-2, api-3, api-4, web, shared-domain]
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -115,13 +137,39 @@ jobs:
       - name: Install frozen dependencies
         run: CI=true pnpm install --frozen-lockfile
 
-      - name: Generate Prisma client
-        run: pnpm --filter @jiangkong/api exec prisma generate
-
-      - name: Test
+      - name: Prepare API browser dependencies
+        timeout-minutes: 35
+        if: startsWith(matrix.target, 'api-')
         env:
           NODE_OPTIONS: --max-old-space-size=4096
-        run: pnpm test
+          API_TEST_TARGET: ${{ matrix.target }}
+        run: |
+          set -euo pipefail
+          shard="${API_TEST_TARGET#api-}"
+          sudo install -d -m 0700 -o "$(id -u)" -g "$(id -g)" /private/tmp
+          tests=$(pnpm --filter @jiangkong/api exec jest --listTests --runInBand --config jest.runtime.config.cjs --shard="$shard/4")
+          if grep -Eq '/task10-(labor-signature-recovery|signature-review)-browser\.http\.spec\.ts$' <<< "$tests"; then
+            pnpm --filter @jiangkong/web-admin exec playwright install --with-deps chromium webkit
+          fi
+
+      - name: Test API shard
+        if: startsWith(matrix.target, 'api-')
+        timeout-minutes: 20
+        env:
+          NODE_OPTIONS: --max-old-space-size=4096
+          API_TEST_TARGET: ${{ matrix.target }}
+        run: |
+          set -euo pipefail
+          shard="${API_TEST_TARGET#api-}"
+          pnpm --filter @jiangkong/api run test --runInBand --config jest.runtime.config.cjs --shard="$shard/4"
+
+      - name: Test Web
+        if: matrix.target == 'web'
+        run: pnpm --filter @jiangkong/web-admin test
+
+      - name: Test shared domain
+        if: matrix.target == 'shared-domain'
+        run: pnpm --filter @jiangkong/shared-domain test
 
   build-manifest-gates:
     name: Build and manifest gates
@@ -160,7 +208,7 @@ jobs:
 
       - name: Build API and Web production applications
         run: |
-          pnpm --filter @jiangkong/api build
+          NODE_OPTIONS=--max-old-space-size=4096 pnpm --filter @jiangkong/api build
           pnpm --filter @jiangkong/web-admin build
 
       - name: Verify business cleanup preservation and safety
@@ -170,6 +218,8 @@ jobs:
         run: pnpm --filter @jiangkong/web-admin check:ui
 
       - name: Verify capability and usage manifests
+        env:
+          NODE_OPTIONS: --max-old-space-size=4096
         run: pnpm inspect:release-manifests
 
       - name: Install upload and draft feedback browser runtime
@@ -179,10 +229,11 @@ jobs:
         run: pnpm --filter @jiangkong/web-admin exec playwright test --config playwright.upload-draft.config.ts
 
   postgresql16-dynamic-gates:
-    name: PostgreSQL 16 dynamic gate (${{ matrix.group }})
-    runs-on: ubuntu-latest
+    name: PostgreSQL 16 dynamic gate (${{ matrix.shard && format('{0}/{1}', matrix.group, matrix.shard) || matrix.group }})
+    runs-on: ${{ matrix.group == 'pol113_pol115_business_entries' && 'ubuntu-24.04' || 'ubuntu-latest' }}
     # POL-108 builds 20,001 facts and 100,001 impacts through the public writer.
-    timeout-minutes: ${{ startsWith(matrix.group, 'operating_projection_pol108') && 90 || 20 }}
+    # Onboarding runs its PostgreSQL and personnel feedback browsers sequentially.
+    timeout-minutes: ${{ startsWith(matrix.group, 'operating_projection_pol108') && 90 || matrix.group == 'remaining_dynamic_postgresql16' && 60 || matrix.group == 'pol113_pol115_business_entries' && matrix.shard == 'pol113_pol114' && 45 || matrix.group == 'employee_onboarding' && 30 || 20 }}
     strategy:
       fail-fast: false
       matrix:
@@ -204,11 +255,38 @@ jobs:
           - operating_projection_pol108_facts
           - operating_projection_pol108_impacts
           - project_close_profit_pol109
-          - pol113_pol115_business_entries
           - remaining_dynamic_postgresql16
           - employee_onboarding
           - general_procurement
           - contract_finance_acceptance
+          - task398_shared_standard
+          - task398_browser
+          - task398_browser_completion
+          - task407_public_cash_handover
+          - task409_principal_return
+          - task410_company_proxy_repayment
+          - line_a_real_db
+          - issue420_approval_center
+          - issue413_construction_paid
+          - issue422_archives
+          - issue414_construction_deduction
+          - issue400_financial_correction_refund
+          - issue403_actual_purchase_batch
+          - issue404_reimbursement
+          - issue405_other_project_payment
+          - issue411_third_company_repayment
+          - issue416_his_gap
+          - issue416_takeover_handover
+          - issue417_history_expense
+          - issue418_operating_dedup
+          - issue421_signed_settlement_ledger
+          - issue421b_four_ledger
+          - historical_takeover_a28
+        include:
+          - group: pol113_pol115_business_entries
+            shard: pol113_pol114
+          - group: pol113_pol115_business_entries
+            shard: pol115_workbench
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -252,6 +330,7 @@ jobs:
       - name: Prefer official HTTPS Ubuntu mirrors
         run: |
           sudo python3 - <<'PY'
+          import re
           from pathlib import Path
           mirrors = Path('/etc/apt/apt-mirrors.txt')
           if mirrors.is_file():
@@ -263,6 +342,15 @@ jobs:
                   if not official.intersection(urls):
                       raise SystemExit('Missing official HTTPS Ubuntu mirror; refusing to change mirrors')
                   mirrors.write_text(''.join(line for line in lines if not line.split() or line.split()[0] != azure))
+          ec2 = re.compile(r'http://[a-z0-9-]+\.ec2\.archive\.ubuntu\.com/ubuntu(?=/|\s|$)')
+          for source in (mirrors, Path('/etc/apt/sources.list'), Path('/etc/apt/sources.list.d/ubuntu.sources')):
+              if source.is_file():
+                  original = source.read_text()
+                  updated = ''.join(line if line.lstrip().startswith('#') else
+                                    ec2.sub('https://archive.ubuntu.com/ubuntu', line)
+                                    for line in original.splitlines(keepends=True))
+                  if updated != original:
+                      source.write_text(updated)
           PY
 
       - name: Install seed layout PDF runtime
@@ -284,7 +372,7 @@ jobs:
           PLAYWRIGHT_BROWSERS_PATH="$browser_path" pnpm --filter @jiangkong/web-admin exec node scripts/verify-linux-webkit-runtime.cjs
 
       - name: Install contract finance browser and document runtimes
-        if: ${{ matrix.group == 'contract_finance_acceptance' }}
+        if: ${{ matrix.group == 'contract_finance_acceptance' && hashFiles('.github/task12-install-295/contract-finance/run.sh') == '' }}
         run: |
           sudo apt-get update
           sudo apt-get install --yes --no-install-recommends libreoffice-writer libreoffice-calc fonts-noto-cjk
@@ -292,6 +380,12 @@ jobs:
           browser_path="$RUNNER_TEMP/contract-finance-playwright"
           echo "PLAYWRIGHT_BROWSERS_PATH=$browser_path" >> "$GITHUB_ENV"
           PLAYWRIGHT_BROWSERS_PATH="$browser_path" pnpm --filter @jiangkong/web-admin exec playwright install --with-deps chromium
+
+      - name: Install task 398 Chromium runtime
+        if: ${{ matrix.group == 'task398_browser' || matrix.group == 'task398_browser_completion' }}
+        run: |
+          sudo install -d -m 0700 -o "$(id -u)" -g "$(id -g)" /private/tmp
+          pnpm --filter @jiangkong/web-admin exec playwright install --with-deps chromium
 
       - name: Install POL-109 browser runtime
         if: ${{ matrix.group == 'project_close_profit_pol109' }}
@@ -313,13 +407,187 @@ jobs:
       - name: Run exact-SHA PostgreSQL dynamic gate shard
         env:
           DYNAMIC_GROUP: ${{ matrix.group }}
+          DYNAMIC_SHARD: ${{ matrix.shard }}
+          TASK12_289_PR: ${{ github.event_name == 'pull_request' && github.event.pull_request.number == 428 }}
         run: |
+          count=$(node -p "require('./services/api/prisma/database-dynamic-gate-manifest.json').migrationBaseline.expectedDirectoryCount")
+          if [[ "$count" == 346 ]]; then
+            dispatch=$(node -e "const gate=require('./services/api/prisma/dynamic-gate-346.cjs'); const {migrationBaseline}=require('./services/api/prisma/database-dynamic-gate-manifest.json'); if(!gate.matchesBaseline346(migrationBaseline)) process.exit(65); console.log((gate.commandFor346(process.env.DYNAMIC_GROUP, process.env.CI_SOURCE_SHA, process.env.DYNAMIC_SHARD) ?? []).join(' '));")
+            if [[ -z "$dispatch" ]]; then
+              echo "::error::346 PostgreSQL gate has no admitted runner for $DYNAMIC_GROUP${DYNAMIC_SHARD:+/$DYNAMIC_SHARD}"
+              exit 65
+            fi
+            read -r -a exact_args <<< "$dispatch"
+            exec bash "${exact_args[@]}"
+          fi
+          if [[ "$count" == 349 ]]; then
+            dispatch=$(node -e "const gate=require('./services/api/prisma/dynamic-gate-349.cjs'); const {migrationBaseline}=require('./services/api/prisma/database-dynamic-gate-manifest.json'); if(!gate.matchesBaseline349(migrationBaseline)) process.exit(65); console.log((gate.commandFor349(process.env.DYNAMIC_GROUP, process.env.CI_SOURCE_SHA, process.env.DYNAMIC_SHARD) ?? []).join(' '));")
+            if [[ -z "$dispatch" ]]; then
+              echo "::error::349 PostgreSQL gate has no admitted runner for $DYNAMIC_GROUP${DYNAMIC_SHARD:+/$DYNAMIC_SHARD}"
+              exit 65
+            fi
+            read -r -a exact_args <<< "$dispatch"
+            exec bash "${exact_args[@]}"
+          fi
+          if [[ "$count" == 352 ]]; then
+            dispatch=$(node -e "const gate=require('./services/api/prisma/dynamic-gate-352.cjs'); const {migrationBaseline}=require('./services/api/prisma/database-dynamic-gate-manifest.json'); if(!gate.matchesBaseline352(migrationBaseline)) process.exit(65); console.log((gate.commandFor352(process.env.DYNAMIC_GROUP, process.env.CI_SOURCE_SHA, process.env.DYNAMIC_SHARD) ?? []).join(' '));")
+            if [[ -z "$dispatch" ]]; then
+              echo "::error::352 PostgreSQL gate has no admitted runner for $DYNAMIC_GROUP${DYNAMIC_SHARD:+/$DYNAMIC_SHARD}"
+              exit 65
+            fi
+            read -r -a exact_args <<< "$dispatch"
+            exec bash "${exact_args[@]}"
+          fi
+          if (( count > 334 )); then
+            echo "::error::$count PostgreSQL gate has no admitted baseline"
+            exit 65
+          fi
+          if [[ "$count" == 334 ]]; then
+            dispatch=$(node -e "const gate=require('./services/api/prisma/dynamic-gate-334.cjs'); console.log((gate.commandFor334(process.env.DYNAMIC_GROUP, process.env.CI_SOURCE_SHA, process.env.DYNAMIC_SHARD || '') || []).join(' '))")
+            if [[ -n "$dispatch" ]]; then
+              read -r -a exact_args <<< "$dispatch"
+              exec bash "${exact_args[@]}"
+            fi
+            echo "::error::334 PostgreSQL gate has no admitted runner for $DYNAMIC_GROUP${DYNAMIC_SHARD:+/$DYNAMIC_SHARD}"
+            exit 65
+          fi
+          mode_args=()
+          case "$count" in
+            329) mode_args=(--current-320) ;;
+            330) mode_args=(--text-direct-330) ;;
+            331) mode_args=(--payment-remainder-331) ;;
+            332) mode_args=(--upward-archive-332) ;;
+          esac
+          predecessor=a187dc73a133114e1cfbbc891a4aec923abe2545
+          if [[ "$DYNAMIC_GROUP" == contract_finance_acceptance && -z "$DYNAMIC_SHARD" && -f .github/task12-install-295/contract-finance/run.sh ]]; then
+            if (( ${#mode_args[@]} )); then
+              exec bash .github/task12-install-295/contract-finance/run.sh "$CI_SOURCE_SHA" "${mode_args[@]}" "$predecessor"
+            fi
+            exec bash .github/task12-install-295/contract-finance/run.sh "$CI_SOURCE_SHA"
+          fi
+          if [[ "$DYNAMIC_GROUP" == remaining_dynamic_postgresql16 && -z "$DYNAMIC_SHARD" && -f .github/task12-install-295/contract-finance/run-remaining.sh ]]; then
+            if (( ${#mode_args[@]} )); then
+              exec bash .github/task12-install-295/contract-finance/run-remaining.sh "$CI_SOURCE_SHA" "${mode_args[@]}"
+            fi
+            exec bash .github/task12-install-295/contract-finance/run-remaining.sh "$CI_SOURCE_SHA"
+          fi
+          if [[ "$DYNAMIC_GROUP" == pol113_pol115_business_entries && "$DYNAMIC_SHARD" == pol113_pol114 && -f .github/task12-install-295/named-pol113-pol114/ci.sh ]]; then
+            bash .github/task12-install-295/named-pol113-pol114/ci.sh pol113 ${mode_args[@]+"${mode_args[@]}"}
+            exec bash .github/task12-install-295/named-pol113-pol114/ci.sh pol114 ${mode_args[@]+"${mode_args[@]}"}
+          fi
+          if [[ "$DYNAMIC_GROUP" == pol113_pol115_business_entries && "$DYNAMIC_SHARD" == pol115_workbench && -f .github/task12-install-295/contract-finance/workbench/run-workbench295.sh ]]; then
+            exec bash .github/task12-install-295/contract-finance/run-contract-adjacent-ci.sh "$CI_SOURCE_SHA" pol115-workbench ${mode_args[@]+"${mode_args[@]}"}
+          fi
+          if [[ -z "$DYNAMIC_SHARD" && -f .github/task12-install-295/contract-finance/run-contract-adjacent-ci.sh ]]; then
+            if [[ "$DYNAMIC_GROUP" == line_a_real_db ]] && (( ${#mode_args[@]} )); then
+              exec bash .github/task12-install-295/contract-finance/run-contract-adjacent-ci.sh "$CI_SOURCE_SHA" line-a "${mode_args[@]}"
+            fi
+            case "$DYNAMIC_GROUP" in
+              contract_settlement_v2) lane=settlement ;;
+              contract_template_scenario) lane=template ;;
+              settlement_draft_lifecycle) lane=draft ;;
+              task398_shared_standard) lane=task398-standard ;;
+              task407_public_cash_handover) lane=cash-handover ;;
+              task409_principal_return) lane=principal-return ;;
+              project_expense_execution) lane=expense-execution ;;
+              project_expense_finance) lane=expense-finance ;;
+              project_expense_receipt) lane=expense-receipt ;;
+              payment_execution) lane=payment-execution ;;
+              task410_company_proxy_repayment) lane=company-proxy ;;
+              task398_browser) lane=browser-partial ;;
+              task398_browser_completion) lane=browser-completion ;;
+              fund_execution_v7) lane=v7 ;;
+              invoice_ledger_pol260) lane=invoice ;;
+              necessary_expense_reserve_pol279) lane=pol279 ;;
+              project_fund_dispute_pol280) lane=pol280 ;;
+              operating_projection_pol108) lane=pol108-core ;;
+              operating_projection_pol108_facts) lane=pol108-facts ;;
+              operating_projection_pol108_impacts) lane=pol108-impacts ;;
+              project_close_profit_pol109) lane=pol109 ;;
+              project_financing_quota) lane=pfq ;;
+              clearing_reconciliation_pol275) lane=pol275 ;;
+              employee_onboarding) lane=onboarding ;;
+              general_procurement) lane=procurement ;;
+              *) lane= ;;
+            esac
+            if [[ -n "$lane" ]]; then
+              if [[ "$lane" == pol275 ]] && (( ${#mode_args[@]} )); then
+                exec bash .github/task12-install-295/contract-finance/run-contract-adjacent-ci.sh "$CI_SOURCE_SHA" "$lane" "${mode_args[@]}" "$predecessor"
+              fi
+              exec bash .github/task12-install-295/contract-finance/run-contract-adjacent-ci.sh "$CI_SOURCE_SHA" "$lane" ${mode_args[@]+"${mode_args[@]}"}
+            fi
+          fi
+          if [[ "$TASK12_289_PR" == true && "$DYNAMIC_GROUP" == contract_settlement_v2 && -z "$DYNAMIC_SHARD" ]]; then
+            if [[ -f .github/task12-install-290/profile.json ]]; then
+              exec bash .github/task12-install-290/run.sh settlement
+            fi
+            exec bash .github/task12-install-289/run.sh settlement
+          fi
+          if [[ "$TASK12_289_PR" == true && "$DYNAMIC_GROUP" == contract_template_scenario && -z "$DYNAMIC_SHARD" ]]; then
+            if [[ -f .github/task12-install-290/profile.json ]]; then
+              exec bash .github/task12-install-290/run.sh template
+            fi
+            exec bash .github/task12-install-289/run.sh template
+          fi
+          if [[ "$TASK12_289_PR" == true && "$DYNAMIC_GROUP" == settlement_draft_lifecycle && -z "$DYNAMIC_SHARD" ]]; then
+            if [[ -f .github/task12-install-290/profile.json ]]; then
+              exec bash .github/task12-install-290/run.sh draft
+            fi
+            exec bash .github/task12-install-289/run.sh draft
+          fi
+          if [[ "$TASK12_289_PR" == true && -z "$DYNAMIC_SHARD" ]]; then
+            if [[ -f .github/task12-install-290/profile.json ]]; then
+              case "$DYNAMIC_GROUP" in
+                project_expense_execution) exec bash .github/task12-install-290/run.sh expense-execution ;;
+                project_expense_finance) exec bash .github/task12-install-290/run.sh expense-finance ;;
+                project_expense_receipt) exec bash .github/task12-install-290/run.sh expense-receipt ;;
+                payment_execution) exec bash .github/task12-install-290/run.sh payment-execution ;;
+                fund_execution_v7) exec bash .github/task12-install-290/run.sh v7 ;;
+                invoice_ledger_pol260) exec bash .github/task12-install-290/run.sh invoice ;;
+                necessary_expense_reserve_pol279) exec bash .github/task12-install-290/run.sh pol279 ;;
+                project_fund_dispute_pol280) exec bash .github/task12-install-290/run.sh pol280 ;;
+                project_financing_quota) exec bash .github/task12-install-290/run.sh pfq ;;
+                operating_projection_pol108) exec bash .github/task12-install-290/run.sh pol108-core ;;
+                operating_projection_pol108_facts) exec bash .github/task12-install-290/run.sh pol108-facts ;;
+                operating_projection_pol108_impacts) exec bash .github/task12-install-290/run.sh pol108-impacts ;;
+                project_close_profit_pol109) exec bash .github/task12-install-290/run.sh pol109 ;;
+                clearing_reconciliation_pol275) exec bash .github/task12-install-290/run.sh pol275 ;;
+                task398_shared_standard) exec bash .github/task12-install-290/standard/run.sh ;;
+                task407_public_cash_handover) exec bash .github/task12-install-290/cash-principal/run.sh cash-handover ;;
+                task409_principal_return) exec bash .github/task12-install-290/cash-principal/run.sh principal-return ;;
+                task410_company_proxy_repayment) exec bash .github/task12-install-290/company-proxy/run.sh ;;
+                task398_browser) exec bash .github/task12-install-290/browser-partial/run.sh ;;
+                task398_browser_completion) exec bash .github/task12-install-290/browser-completion/ci.sh ;;
+                general_procurement) exec bash .github/task12-install-290/procurement/run-all.sh ;;
+                employee_onboarding) exec bash .github/task12-install-290/onboarding/run.sh ;;
+              esac
+            fi
+            case "$DYNAMIC_GROUP" in
+              fund_execution_v7) exec bash .github/task12-install-289/run.sh v7 ;;
+              invoice_ledger_pol260) exec bash .github/task12-install-289/run.sh invoice ;;
+              necessary_expense_reserve_pol279) exec bash .github/task12-install-289/run.sh pol279 ;;
+              project_fund_dispute_pol280) exec bash .github/task12-install-289/run.sh pol280 ;;
+              operating_projection_pol108) exec bash .github/task12-install-289/run.sh pol108-core ;;
+              operating_projection_pol108_facts) exec bash .github/task12-install-289/run.sh pol108-facts ;;
+              operating_projection_pol108_impacts) exec bash .github/task12-install-289/run.sh pol108-impacts ;;
+              project_close_profit_pol109) exec bash .github/task12-install-289/run.sh pol109 ;;
+              clearing_reconciliation_pol275) exec bash .github/task12-install-289/run.sh pol275 ;;
+              project_financing_quota) exec bash .github/task12-install-289/run.sh pfq ;;
+            esac
+          fi
+          if [[ "$TASK12_289_PR" == true && "$DYNAMIC_GROUP" == general_procurement && -z "$DYNAMIC_SHARD" ]]; then
+            node .github/task12-install-289/procurement/preflight.cjs --preflight general_procurement
+          fi
           candidate_sha="$(git rev-parse HEAD)"
+          shard_args=()
+          if [ -n "$DYNAMIC_SHARD" ]; then
+            shard_args=(--pol113-pol115-shard "$DYNAMIC_SHARD")
+          fi
           node services/api/prisma/run-database-dynamic-gate-local.cjs \
             --execute \
             --group "$DYNAMIC_GROUP" \
             --candidate-sha "$candidate_sha" \
-            --confirm LOCAL_PG16_DYNAMIC_GATE
+            --confirm LOCAL_PG16_DYNAMIC_GATE "${shard_args[@]}"
 
       - name: Verify personnel feedback and recovery on desktop and mobile
         if: ${{ matrix.group == 'employee_onboarding' }}

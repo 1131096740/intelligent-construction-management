@@ -7,46 +7,28 @@ const routes = readFileSync(join(__dirname, "../../routes/route-records.ts"), "u
 const api = readFileSync(join(__dirname, "../../api/payable-settlement.api.ts"), "utf8");
 
 describe("payable settlement workbench structure", () => {
-  it("wires a real candidate selection and allocation lifecycle without execution UUIDs", () => {
-    for (const wrapper of [
-      "fetchPaymentExecutionCandidates",
-      "fetchInterEntityRelationships",
-      "allocatePayableSettlement",
-      "submitPayableSettlement",
-      "confirmPayableSettlement",
-      "returnPayableSettlement",
-      "returnInterEntityRelationship",
-      "uploadInterEntityRelationshipEvidence"
-    ]) {
-      expect(page).toContain(wrapper);
-    }
-    expect(page).toContain("SensitiveActionDialog");
-    expect(page).toContain("selectionRef");
-    expect(page).not.toContain("paymentExecutionId");
-    expect(api).not.toContain("paymentExecutionId");
+  it("renders wage balances and history with no dedicated wage operation", () => {
+    expect(page).toContain("fetchWagePayableCases");
+    expect(page).toContain("fetchPayableSettlementWorkbench");
+    expect(page).toContain("历史核销案件");
     expect(page).toContain("over_settled_reconciliation_required");
     expect(page).toContain("超额核销待核对");
-    expect(page).toContain("跨主体代付往来");
-    expect(page).toContain("实际付款主体与原债务主体不一致时");
     expect(page).not.toContain("paymentExecutionId");
+    expect(api).not.toContain("paymentExecutionId");
+    expect(api).not.toContain("payment-execution-candidates");
+    expect(api).not.toContain("/allocations");
   });
 
-  it("freshly rechecks each server capability immediately before its mutation wrapper", () => {
-    for (const [handler, capability, wrapper] of [
-      ["allocatePayableSettlementWithCapability", "allocate", "allocatePayableSettlement"],
-      ["submitPayableSettlementWithCapability", "submit", "submitPayableSettlement"],
-      ["confirmPayableSettlementWithCapability", "confirm", "confirmPayableSettlement"],
-      ["returnPayableSettlementWithCapability", "return", "returnPayableSettlement"]
-    ] as const) {
-      expect(page).toContain(`async function ${handler}`);
-      expect(page).toContain(`const operationAllowed = capability.${capability}`);
-      expect(page).toContain(`return ${wrapper}(`);
-    }
-    expect(page.match(/await fetchPayableSettlementCapabilities\(\)/gu)).toHaveLength(6);
+  it("preserves current relationship entry and authorization independent of retired wage confirmation", () => {
+    expect(page).toContain('path: "/公司互转台账"');
+    expect(page).toContain("row.status === 'open' && capabilities.returnRelationship");
+    expect(page).toContain("originalInterEntityRelationshipId: row.relationshipEntryId");
+    expect(page).not.toContain("上传代付往来凭证");
+    expect(api).not.toContain('method: "POST"');
   });
 
   it("registers the finance-only navigation and canonical route", () => {
-    expect(routes).toContain('label: "工资应付核销工作台"');
+    expect(routes).toContain('label: "历史工资应付核销"');
     expect(routes).toContain('path: "/工资应付核销工作台"');
     expect(routes).toContain('path: "工资应付核销工作台"');
     expect(routes).toContain('ACTION_REQUIRED_ROLES["payable_settlement.read"]');

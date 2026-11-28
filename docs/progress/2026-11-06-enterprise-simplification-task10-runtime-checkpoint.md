@@ -1,0 +1,31 @@
+# 任务10新正文运行时局部检查点
+
+本记录用于新正文runtime/processor/reader限定预审，不是完整任务10完成或发布资格。准确提交及逐文件、日志、产物hash由本地`/private/tmp/jg-task10-evidence-20261106/runtime-checkpoint-handoff.json`在提交后锚定；原工作区、全部失败和其它作者工作保留。
+
+原LO完整劳务公开生成已取得实际Word/PDF；原shared reader最初IndexError属于工具缺陷，不能当标点RED。只读精确配对证明PyMuPDF默认去subset前缀，将同名不同program的gid合并；保留full subset/resource名后16页6631次实际中文绘制全部唯一配对、无越界。最小reader修正明确拒绝missing/ambiguity/invalid gid，原family/embedding/nonempty/A4阈值不变；同旧两pair单次复核GREEN后，原劳务3个U+FF0C实际texttrace缺失才被确认为业务RED（Word各1次、PDF各0次、删逗号版本各1次，页4/5/7），不使用ActualText补通过。
+
+新正文快照在原队列和唯一草稿聚合权威之外只增加文书生成事实：明确`pdfEngine`及runtime lock指纹，独立幂等维度，源hash/确认映射/正文计划/权威值/内容revision与fingerprint继续冻结。旧无新标记的queued快照保持旧renderer/LO；旧成功文件和XLSX不全局切换。新processor在预检、完整转换和原PDF归一化成功后才上传两格式，成功仍经原CAS、私有文件授权下载、替代谱系及审计；原失败cleanup分支保留。
+
+初始r1离线Java源码已核hash并用精确原JDK17/JAR编译为两份独立class，字体均为08锁定10文件的自有副本，字库/JDK/JAR/class二进制不入Git。第一次编译门实际未到javac：Node整路径排序与Python Path部件排序不同；逐条456项name/type/link/bytes/mode集合完全相同，原Python仍得approved digest，改部件比较器后同冻结行精确匹配，未改expected或工具字节；日志保留。实际javac首次执行0，源码956f8e39…e491a，class85b02735…a79a及14d5ca61…56bc，runtime lock417fe50a…bb6a3。每job独立scratch、只读精确pins、清空继承JVM/loader配置、先拒外部rels/主动字段并限制ZIP/XML，加载Word前实证网络/DNS/外文件三拒绝；没有隐式LO/font fallback。
+
+同完整原劳务/固定双方及3行数据/原150秒预算，公开queue→processor→带密码和原因的真实双下载首次新engine正控GREEN（9.34秒），Word16个ZIP部件与原LO逐项字节SHA一致、3个原逗号恢复、schema2严核实际公开runtime witness和字节链。schema1仍保留旧soffice/profile规则，不能携新engine witness；schema2独立核JDK/JAR/source/class/font及最终Word/PDF字节、单次转换和三拒绝。schema1/09原契约没有通过新引擎冒替。
+
+缺manifest首公共负控failed/null output/pointer不变，但旧上传次序曾先上传Word一次，合成复杂清理SQL未支持的警告保留，不能称真实孤儿清理通过。补充公开FileService call-through观察后同案上传1为真实RED；仅新engine前移转换后公共failed及上传0均GREEN。后续同labor成功回归8.11秒、Word/PDF各一次真实上传且buffer SHA与合法下载逐一相同，16部件桥及物理/逗号不变；错用已核hash TNR代入仿宋角色的真实manifest负控也failed/0上传。测试不替换公共方法返回，不从DB侧面断言。
+
+parent环境注入正控仅在worker处理期间安装不存在agent/loader/classpath/fontconfig/LO路径等8类配置，随后恢复，没有测试强制引擎选择。实际业务仍经新snapshot成功，公开witness子环境仅LANG/LC_ALL/PATH/TMPDIR、三拒绝及一次转换；16部件、3comma、strict physical、一次上传/合法下载hash全部GREEN（8.05秒）。此结论只属于已锁本机新engine，不称旧LO坏字体B或拟发布运行环境已修。
+
+89b局部检查点验证（不作后续头完整全跑证明）：新9段公开双下载/schema2及原字节不改的09 two-font逐字em轮廓reader通过（5.49秒）；引入schema2后的两旧schema1原产物各一次GREEN/0failure；API全量typecheck/full lint退出0；原document service/processor与body/runtime四套共124项通过、0失败/0跳过（6.16秒）。实际新runtime门与旧schema1/09的输入、输出、配置及log全部独立保存，不把旧SHA收据冒为未来源。
+
+仍未完成：正式已采用模板实际使用字体/face逐字轮廓、字号与段落物理检查，各自真实列数下45行长表及签署门、净税guard/真实显示语义、完整双端正文编辑/A4与未保存行为、真实PG竞争准备和最终治理/双轴复审。UI原MachPort启动权限失败保留；后续正式启动已获得正文heading真实RED，最小读取/普通编辑首纵片在合成租约入口与局部字体修正后原双端2/2通过，包检查和其余完整UI仍待，详见同目录正文UI检查点；旧全Web12失败/1error与canvas债、原字体B、任务12/13/34和44门保留。真实PG、资源、SQL执行、迁移、真实通知/交易、部署及生产写均未执行。
+
+
+89b限定运行时预审发现P2输出预算后置、P3简单/跨run主动字段遗漏两项代码缺口，未声称发生外泄或宿主耗尽。用户补充确认公开固定输出适配器与独立候选Java CLI边界后，实际DOCX简单HYPERLINK公开job原先success/有双文件构成功能RED；按Word命名空间解码简单字段属性、按复杂字段边界拼接指令后，简单/跨run/实体编码三形态均SOURCE_ERROR、null双文件、0上传、scratch目录成员不变，缺manifest/错字体共5公共案通过。
+
+P2固定100000000字节上限保留：父端先stat再流式累计读取，Java product输出流在delegate写入前拒绝越界，正式转换不落盘FO，JVM明确heap768MiB/direct128MiB/metaspace192MiB/stack1MiB。公开Java适配器extraction-only仍原delegate时，64KiB块写至null sink后下一字节到delegate为实际RED；计数流GREEN，正式r2同源classes的single/bulk拒绝probe再过，0文书文件。Node公开适配器首案仅macOS tmpdir路径非规范失败，修测试realpath后小PDF/100000001字节sparse案通过，不把此路径工具失败称为预算RED或实测内存耗尽。
+
+r2新Java源81c5d2ed351d747941f4b239e24a6af5b73defc5caeb9b5513ee19fbf90343c5，精确三class（新增计数流），新lock95f5243446393e03e14472002835ac8607634982b1be420a012b2ea5a5adafab；原r1与全部红绿证据未改。同完整原劳务/16 ZIP部件逐hash/三原逗号/原150秒及严格schema2物理门公开正控通过（6.885秒case/12.458秒总），source原三footer的PAGE/NUMPAGES保留，8类parent注入、两次上传与实际合法下载hash仍成立；唯一Java conversion原始output.pdf为221304字节（SHA0836b108a89d9f005e71c38ddbe2cd5ce8574be8a13e1793b0383b40b81e60fb），无FO文件；经原归一化后的最终授权下载PDF为2970446字节（SHAff27effc57f82d89db7644e787e00edc481118cb1233e636071612bddcfa47b2），两者不能混称。r2全部5公共拒绝再过（6.399秒）。准确asrun、probe、输出库存与产物位于独立本地证据根的labor-docx4j-r2-safety-asrun.json、output-budget-java-r2-bulk-green/receipt.json、r2-single-conversion-output-inventory.json；当前源码API tsc --noEmit与4个改动API TS定向eslint均退出0；准确日志api-types-runtime-safety-r2.log、api-eslint-runtime-safety-r2.log，未冒称原124项在新头全跑。同审计员固定f511增量复核确认旧P2/P3均闭合、新P1/P2/P3为0，并核38项源码/证据SHA；其只读报告不作完整任务10终审或收口。
+
+
+2026-11-06独立只读来源/角色澄清（note SHAe540c96d6aa83a059ba8822b6eab69802d6bd4acd0852249c583d0024b645f8e）：上述faae3ceb完整劳务是08 technical-probe-only样张的实际public runtime正控，不是正式main劳务d82812b3，不能替代正式劳务/材料全族产物验收。原pair实际有字drawing只覆盖仿宋、黑体、小标宋及TNR regular/bold；楷体仅fontTable声明，TNR italic/BI未实际覆盖，“允许四family闭集”不等于四family都已逐字通过。正式材料44be为8+2；08技术8d707为13+7+2双loop，只作额外技术能力，不自动当正式10硬门或自动正式采用。产品硬门是正式已采用模板自身列数/映射、45行/A4签署及实际使用字体roles；不能为补覆盖强令每一产物嵌入全部未使用字库。旧reader与实际PDF/DOCX字节及失败均保留，新独立reader方案由单独只读角色矩阵指针承接。
+
+补充primary规则边界：pStyle引用不存在时不应用该段落样式；不能见PDF14pt就倒填expected或未经完整默认规则/已确认业务role policy直接补Normal。faae及正式d828/44be等原资产已有missingStyle，并非本轮renderer新增；未明确的继承/字号结论仍UNPROVEN。独立reader由专门角色承接，旧09原字节不改。

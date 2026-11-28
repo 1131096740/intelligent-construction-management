@@ -1,7 +1,15 @@
 import { assertEconomicContractReady } from "../contract-ledger/contract-economic-coverage";
-import { ConflictException, Inject, Injectable } from "@nestjs/common";
+import { BadRequestException, ConflictException, Inject, Injectable } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
 import { AuditService } from "../audit/audit.service";
+import { freezeHistoricalUpwardAuthority, isHistoricalUpwardDraft } from "./historical-upward-authority";
+import {
+  freezeHistoricalDownstreamSettlementAuthority,
+  historicalDownstreamRelationship,
+  historicalSettlementPartySelections
+} from "./historical-settlement-authority";
+import { sourceJson } from "../operating-ledger/formal-operating-source.helpers";
+import { assertTakeoverHandoverReady } from "./contract-takeover-handover";
 import { dbMoneyToBigInt } from "../money/decimal-money";
 import {
   OperatingSourceReplayService,
@@ -33,8 +41,10 @@ interface PreparedTakeover {
 }
 
 interface PreparedContractFacts {
+  signedAt: Date;
   historicalSettledCents: bigint;
   zeroSettlementDeclared: boolean;
+  contractFactsSnapshot?: Prisma.JsonValue;
 }
 
 interface PreparedFinanceFacts {
@@ -53,6 +63,7 @@ interface PreparedHistoricalPaymentVoucher {
 }
 
 interface PreparedContract {
+  counterparty: string;
   contractTypeKey: string | null;
   companyEntityId: string | null;
   companyEntityIsActive: boolean | null;
@@ -64,6 +75,7 @@ interface PreparedContract {
 }
 
 interface PreparedContractVersion {
+  draftData: Prisma.JsonValue;
   amountCents: bigint;
   amountLimitType: string;
 }
@@ -112,14 +124,9 @@ export class ContractTakeoverActivationService {
     if (!financeFacts) {
       throw new ConflictException("财务侧资料尚未保存，不能激活");
     }
-    if (takeover.takeoverLevel === "C") {
-      throw new ConflictException(
-        "C级历史接管只能进入资料缺口，不能激活正式合同接管"
-      );
-    }
-    if (takeover.takeoverLevel !== "A" && takeover.takeoverLevel !== "B") {
-      throw new ConflictException("历史接管等级不在正式经营账支持范围内");
-    }
+    // A/B 为历史兼容等级；无等级/C 级必须先登记合同、财务和复核负责人，
+    // 分工登记只决定今后由谁办理，不改变任何历史事实。
+    await assertTakeoverHandoverReady(tx, takeover, "激活正式经营账");
     const takeoverId = takeover.id;
     if (payments.some((payment) => payment.status !== "draft")) {
       throw new ConflictException(
@@ -170,6 +177,33 @@ export class ContractTakeoverActivationService {
     }
 
     await assertEconomicContractReady(tx, takeover.projectId, `contract:${takeover.contractId}`, historicalSettledCents, undefined, takeover.contractVersionId);
+    const draftData = prepared.contractVersion.draftData;
+    const upwardDraft = takeover.takeoverLevel === "NONE" && isHistoricalUpwardDraft(draftData) ? draftData : null;
+    const downstreamRelationship = takeover.takeoverLevel === "NONE" ? historicalDownstreamRelationship(draftData) : null;
+    let historicalSettlementAuthority: Awaited<ReturnType<typeof freezeHistoricalDownstreamSettlementAuthority>> | undefined;
+    if (downstreamRelationship) {
+      const { counterparty, counterpartyVersionId, signingPartyVersionId } = historicalSettlementPartySelections(contractFacts.contractFactsSnapshot);
+      if (counterpartyVersionId && counterparty !== contract.counterparty) {
+        throw new BadRequestException("合同侧相对方与原合同资料不一致，请先核对合同信息");
+      }
+      historicalSettlementAuthority = await freezeHistoricalDownstreamSettlementAuthority(tx, {
+        projectId: takeover.projectId, signedAt: contractFacts.signedAt, relationship: downstreamRelationship,
+        companyEntityId: contract.companyEntityId, counterparty: contract.counterparty,
+        counterpartyVersionId, signingPartyVersionId
+      });
+    }
+    let historicalUpwardAuthority: Awaited<ReturnType<typeof freezeHistoricalUpwardAuthority>> | undefined;
+    if (upwardDraft) {
+      const project = await tx.project.findUnique({
+        where: { id: takeover.projectId }, select: { operatingLedgerEffectiveDate: true }
+      });
+      if (project?.operatingLedgerEffectiveDate) {
+        historicalUpwardAuthority = await freezeHistoricalUpwardAuthority(tx, {
+          projectId: takeover.projectId, signedAt: contractFacts.signedAt,
+          companyEntityId: contract.companyEntityId, counterparty: contract.counterparty
+        });
+      }
+    }
     const capacityCents = isSettlementContract ? historicalSettledCents : 0n;
     const requestedExcessTreatment =
       financeFacts.excessTreatment === "historical_advance" ||
@@ -197,6 +231,26 @@ export class ContractTakeoverActivationService {
         throw new ConflictException(
           "历史实付存在超额款项时必须保留认定依据"
         );
+      }
+    }
+
+    if (historicalSettlementAuthority?.status === "verified" && historicalSettlementAuthority.relationship === "inside") {
+      const { counterpartyVersionId } = historicalSettlementAuthority;
+      const selection = { contractVersionId: takeover.contractVersionId, roleKey: "party_b" };
+      const originals = await tx.contractPartySnapshot.findMany({
+        where: selection, select: { businessPartyVersionId: true }, take: 2
+      });
+      if (originals.length > 1 || (originals[0] && originals[0].businessPartyVersionId !== counterpartyVersionId)) {
+        throw new ConflictException("原合同相对方版本与已保存的签约快照不一致");
+      }
+      if (!originals.length) {
+        const original = await tx.businessPartyVersion.findUniqueOrThrow({
+          where: { id: counterpartyVersionId }, select: { snapshot: true }
+        });
+        await tx.contractPartySnapshot.create({
+          data: { ...selection, displayOrder: 0, businessPartyVersionId: counterpartyVersionId,
+            snapshot: original.snapshot as Prisma.InputJsonValue }
+        });
       }
     }
 
@@ -263,6 +317,9 @@ export class ContractTakeoverActivationService {
         settlementModeSource: "backfill",
         settlementModeConfirmedByUserId: actorUserId,
         settlementModeConfirmedAt: activatedAt,
+        ...(historicalUpwardAuthority ? { draftData: sourceJson({ ...upwardDraft, historicalUpwardAuthority }) } : {}),
+        ...(historicalSettlementAuthority
+          ? { draftData: sourceJson({ ...(draftData as Prisma.JsonObject), historicalSettlementAuthority }) } : {}),
         ...(contract.companyEntityId &&
         contract.companyEntityIsActive === true &&
         contract.companyEntityDataStatus === "complete" &&
@@ -294,7 +351,7 @@ export class ContractTakeoverActivationService {
       );
     }
 
-    if (allocation.excessAllocatedCents > 0n && excessTreatment) {
+    if (allocation.excessAllocatedCents > 0n && excessTreatment && !upwardDraft) {
       const balanceAccount =
         await tx.contractTakeoverBalanceAccount.create({
           data: {
@@ -325,7 +382,7 @@ export class ContractTakeoverActivationService {
         confirmedAt: activatedAt,
         historicalPaidCents: allocation.totalPaidCents,
         historicalAdvancePaidCents:
-          excessTreatment === "historical_advance"
+          excessTreatment === "historical_advance" && !upwardDraft
             ? allocation.excessAllocatedCents
             : 0n,
         historicalBalanceConfirmedByUserId: actorUserId,

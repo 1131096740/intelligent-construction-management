@@ -10,6 +10,7 @@ import { Prisma } from "@prisma/client";
 import { createHash } from "node:crypto";
 import { isGovernedFrozenApprovalNode, resolveApprovalReviewIdentity, type FrozenApprovalNode } from "../approval/approval-review-identity";
 import { activeApprovalDelegatorIds } from "../approval/active-approval-delegations";
+import { activeApprovalNodeIndexes, isParallelApprovalRound } from "../approval/parallel-approval-protocol";
 import { PrismaService } from "../database/prisma.service";
 import type { PreviewRoleAdditionDto } from "./dto/preview-role-addition.dto";
 import type { PreviewRoleRemovalBatchDto } from "./dto/preview-role-removal-batch.dto";
@@ -1460,11 +1461,15 @@ function collectRelevantRemovalNodes(
       relevant.push({ ...instance, parsedNode: null });
       continue;
     }
+    const activeProcurementDuties = instance.businessType === "general_procurement" && isParallelApprovalRound(instance.frozenNodes)
+      ? activeApprovalNodeIndexes(instance.frozenNodes, instance.currentNodeIndex)
+      : null;
     for (
       let nodeIndex = instance.currentNodeIndex;
       nodeIndex < instance.frozenNodes.length;
       nodeIndex += 1
     ) {
+      if (activeProcurementDuties && !activeProcurementDuties.includes(nodeIndex)) continue;
       const parsedNode = parseNodeAt(
         instance,
         nodeIndex,

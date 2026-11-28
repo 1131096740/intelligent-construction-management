@@ -1,7 +1,6 @@
 import type { RoleKey } from "@jiangkong/shared-domain";
 
 const TEMPLATE_MAINTENANCE_ROLE_KEYS = new Set<RoleKey>([
-  "contract_staff",
   "contract_director"
 ]);
 const TEMPLATE_PUBLICATION_ROLE_KEYS = new Set<RoleKey>(["contract_director"]);

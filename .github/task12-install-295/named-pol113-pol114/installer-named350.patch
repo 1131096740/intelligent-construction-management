@@ -1,0 +1,57 @@
+--- installer.cjs
++++ installer.cjs
+@@ -287 +287,3 @@
+-  const named349=purpose===named292&&receipt.purpose==='NAMED_POL113_POL114_EXACT_349';
++  const named350=purpose===named292&&receipt.purpose==='NAMED_POL113_POL114_EXACT_350';
++  const signedSettlement=named350?require('./signed-settlement-350-profile.cjs'):undefined;
++  const named349=named350||(purpose===named292&&receipt.purpose==='NAMED_POL113_POL114_EXACT_349');
+@@ -744 +746 @@
+-        const target=precision?.count ?? expenseWitness?.count ?? 334;
++        const target=signedSettlement?.count ?? precision?.count ?? expenseWitness?.count ?? 334;
+@@ -746 +748 @@
+-          need(material.sourceMode===precision.mode && material.ledger346===expenseWitness.ledgerSha256 &&
++          need(material.sourceMode===(signedSettlement?.mode ?? precision.mode) && material.ledger346===expenseWitness.ledgerSha256 &&
+@@ -747,0 +750,4 @@
++        }
++        if (signedSettlement) {
++          need(material.ledger350===signedSettlement.ledgerSha256 && equal(rows.at(-1),signedSettlement.terminal),
++            'NAMED_350_ADMISSION');
+@@ -780 +786 @@
+-          if (expenseWitness&&count>=334) (precision ?? expenseWitness).assertPrefix(count,expected);
++          if (expenseWitness&&count>=334) (signedSettlement ?? precision ?? expenseWitness).assertPrefix(count,expected);
+@@ -824 +830 @@
+-          if (precision&&count>=expenseWitness.count) {
++          if (precision&&count>=expenseWitness.count&&count<=precision.count) {
+@@ -835,0 +842,12 @@
++            if (signedSettlement) {
++              const before=await jsonSql(signedSettlement.catalogSql);
++              need(equal(before.expense,precisionCatalog[count])&&equal(before.historical,receipt.historicalSettlement334Catalog),
++                'NAMED_350_CATALOG_PREIMAGE');
++              receipt.signedSettlementCatalogBefore=before;
++            }
++          }
++          if (signedSettlement&&count===signedSettlement.count) {
++            const after=await jsonSql(signedSettlement.catalogSql);
++            signedSettlement.assertCatalog(after,receipt.signedSettlementCatalogBefore);
++            receipt.signedSettlementCatalog=after;
++            receipt.forward350={count,ledgerSha256:expected,sourceTree:material.sourceTree,sameIdentity:true,exactB7:true,outside};
+@@ -866 +884 @@
+-      enter(named349?'EXACT_349_NAMED_FRESH_CONSUMER':named346?'EXACT_346_NAMED_FRESH_CONSUMER':named334?'EXACT_334_NAMED_FRESH_CONSUMER':named320?'EXACT_329_NAMED_FRESH_CONSUMER':named295?'EXACT_295_NAMED_FRESH_CONSUMER':exact292?'EXACT_292_NAMED_FRESH_CONSUMER':consumerLedger?'EXACT_290_FRESH_CONSUMER':'EXACT_'+release.count+'_CONSUMER');
++      enter(named350?'EXACT_350_NAMED_FRESH_CONSUMER':named349?'EXACT_349_NAMED_FRESH_CONSUMER':named346?'EXACT_346_NAMED_FRESH_CONSUMER':named334?'EXACT_334_NAMED_FRESH_CONSUMER':named320?'EXACT_329_NAMED_FRESH_CONSUMER':named295?'EXACT_295_NAMED_FRESH_CONSUMER':exact292?'EXACT_292_NAMED_FRESH_CONSUMER':consumerLedger?'EXACT_290_FRESH_CONSUMER':'EXACT_'+release.count+'_CONSUMER');
+@@ -896 +914 @@
+-          if(named320) receipt[named349?'postBehavior349':named346?'postBehavior346':'postBehavior334']={exactB7:true,sameIdentity:true,
++          if(named320) receipt[named350?'postBehavior350':named349?'postBehavior349':named346?'postBehavior346':'postBehavior334']={exactB7:true,sameIdentity:true,
+@@ -902 +920,2 @@
+-            need(equal(await jsonSql(settlement.catalogSql),receipt.historicalSettlement334Catalog),'NAMED_334_SETTLEMENT_AFTER');
++            const expected=signedSettlement?receipt.signedSettlementCatalog.historical:receipt.historicalSettlement334Catalog;
++            need(equal(await jsonSql(settlement.catalogSql),expected),'NAMED_334_SETTLEMENT_AFTER');
+@@ -911 +930,6 @@
+-              need(equal(await jsonSql(precision.catalogSql),catalogs[precision.count]),'NAMED_349_CATALOG_AFTER_CONSUMER');
++              if (signedSettlement) {
++                need(equal(await jsonSql(signedSettlement.catalogSql),receipt.signedSettlementCatalog),'NAMED_350_CATALOG_AFTER_CONSUMER');
++                receipt.signedSettlementCatalogAfterBusiness=true;
++              } else {
++                need(equal(await jsonSql(precision.catalogSql),catalogs[precision.count]),'NAMED_349_CATALOG_AFTER_CONSUMER');
++              }
+@@ -1262,0 +1287 @@
++module.exports.withNamedPol113Pol114350=(receipt,mode,consume)=>withNamedPol113Pol114(receipt,mode,consume,350);

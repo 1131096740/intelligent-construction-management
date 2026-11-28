@@ -1,5 +1,7 @@
 <script setup lang="ts">
+import { chinaDateOnly } from "@jiangkong/shared-domain";
 import ApprovalProgressPanel from "../../components/ApprovalProgressPanel.vue";
+import DutySmsStatusPanel from "../../components/DutySmsStatusPanel.vue";
 import type { UploadFile } from "tdesign-vue-next";
 import { computed, nextTick, onBeforeUnmount, reactive, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
@@ -22,6 +24,7 @@ import {
   withdrawSpotProcurementPayment,
   SpotProcurementApiError,
   type SpotProcurementPaymentDetailReadModel,
+  type SpotRegisteredFundingInput,
   type SpotProcurementPaymentMethod,
   type PrepareSpotProcurementPaymentReviewActionResult,
   type SpotProcurementPaymentReviewActionContext,
@@ -30,6 +33,7 @@ import {
   fetchActiveCompanyEntities,
   type CompanyEntityModel
 } from "../../api/company-entity.api";
+import { fetchFundAccounts, type FundAccount } from "../../api/fund-account.api";
 import { downloadApprovalForm } from "../../api/core-flow-read.api";
 import { useAuthStore } from "../../auth/auth.store";
 import ApprovalTimeline from "../../components/ApprovalTimeline.vue";
@@ -82,6 +86,8 @@ interface ExecutionAttempt {
   paymentMethod: SpotProcurementPaymentMethod;
   paymentChannelId: string;
   voucherFileIds: string[];
+  registeredFunding?: SpotRegisteredFundingInput;
+  actualPayerName?: string;
 }
 
 class StaleApplicationOperationError extends Error {}
@@ -111,6 +117,18 @@ const companies = ref<CompanyEntityModel[]>([]);
 const historicalMerchants = ref<string[]>([]);
 const attachmentFiles = ref<UploadFile[]>([]);
 const executionAttempt = ref<ExecutionAttempt | null>(null);
+const registeredFundingMode = ref(false);
+const fundingAccounts = ref<FundAccount[]>([]);
+const fundingLoading = ref(false);
+const fundingError = ref("");
+const fundingScopeKey = ref("");
+let latestFundingRequest = 0;
+const canChooseRegisteredFunding = computed(() => Boolean(detail.value?.originalDebtorCompanyId &&
+  auth.user?.globalRoleKeys.some(role => ["finance_staff", "finance_director", "comprehensive_director"].includes(role))));
+const fundingAmounts = ref<Record<string, string>>({});
+const fundingAccount = computed(() => fundingAccounts.value.find(account => account.scopeKey === fundingScopeKey.value));
+watch(fundingScopeKey, () => { fundingAmounts.value = {}; });
+
 const refundFiles = ref<UploadFile[]>([]);
 const refundAttempt = ref<{
   paymentId: string;
@@ -121,7 +139,7 @@ const refundCompletedReceipt = ref<{ amountCents: string; receivedAt: string; st
 const refundDetailRefreshed = ref(false);
 let refundOperationSequence = 0;
 const refundForm = reactive({
-  receivedAt: new Date().toISOString().slice(0, 10),
+  receivedAt: chinaDateOnly(),
   refundMethod: "bank_transfer" as "bank_transfer" | "cash"
 });
 const retainedAttachmentIds = ref<string[]>([]);
@@ -289,7 +307,12 @@ function money(value: string | null | undefined) {
 function dateTime(value: string | null | undefined) {
   if (!value) return "—";
   const date = new Date(value);
-  return Number.isNaN(date.getTime()) ? value : date.toLocaleString("zh-CN", { hour12: false });
+  return Number.isNaN(date.getTime()) ? value : date.toLocaleString("zh-CN", { hour12: false, timeZone: "Asia/Shanghai" });
+}
+
+function refundDateText(value: string | null | undefined) {
+  if (!value) return "—";
+  try { return chinaDateOnly(value); } catch { return "日期待核对"; }
 }
 
 function readStatusLabel(value: { statusLabel?: string; label?: string }) {
@@ -344,6 +367,16 @@ async function loadDetail() {
     const viewDetail = structuredClone(serverDetail);
     spotProcurementPaymentCapability.value = serverDetail;
     detail.value = viewDetail;
+    const stored = readRegisteredAttempt(requestedPaymentId);
+    if (stored && recordedRegisteredAttempt(viewDetail, stored)) {
+      forgetRegisteredAttempt(requestedPaymentId);
+      if (executionAttempt.value?.idempotencyKey === stored.idempotencyKey) {
+        resetExecutionAttempt();
+        executionVisible.value = false;
+      }
+      showSuccess("已核对到原付款登记，无需再次提交。");
+    }
+
   } catch (error) {
     if (requestId !== latestDetailRequestId || requestedPaymentId !== paymentId.value) return;
     spotProcurementPaymentCapability.value = null;
@@ -593,7 +626,7 @@ async function savePayer() {
     await updateSpotProcurementPaymentPayerWithCapability(current.payment.id, { companyEntityId: requiredText(payerForm.companyEntityId, "付款主体"), paymentMethods: payerForm.paymentMethods, ...(payerForm.changeReason.trim() ? { changeReason: payerForm.changeReason.trim() } : {}) });
     if (paymentId.value !== operationPaymentId) return;
     payerVisible.value = false;
-    showSuccess(current.payment.payerManagement?.requiresReapproval ? "付款主体已调整，将从本轮冻结的首个节点重新审批；原审批记录保留。" : "付款主体和拟付款方式已保存。");
+    showSuccess(current.payment.payerManagement?.requiresReapproval ? "付款主体已调整，将按本轮冻结岗位重新审批；原审批记录保留。" : "付款主体和拟付款方式已保存。");
     await loadDetail();
     await restorePayerTriggerFocus();
   } catch (error) {
@@ -1165,9 +1198,89 @@ async function confirmAction(values: { reason: string; password: string }) {
   finally { actionBusy.value = false; }
 }
 
+function registeredAttemptKey(paymentIdCoordinate: string) {
+  return auth.user?.id ? `spot-registered-execution:${auth.user.id}:${paymentIdCoordinate}` : null;
+}
+
+function readRegisteredAttempt(paymentIdCoordinate: string) {
+  const key = registeredAttemptKey(paymentIdCoordinate);
+  if (!key) return null;
+  try {
+    const saved = sessionStorage.getItem(key);
+    return saved ? JSON.parse(saved) as ExecutionAttempt : null;
+  } catch {
+    return null;
+  }
+}
+
+function forgetRegisteredAttempt(paymentIdCoordinate: string) {
+  const key = registeredAttemptKey(paymentIdCoordinate);
+  try { if (key) sessionStorage.removeItem(key); } catch { /* The server receipt remains authoritative. */ }
+}
+
+function recordedRegisteredAttempt(view: SpotProcurementPaymentDetailReadModel, attempt: ExecutionAttempt) {
+  return view.executions.some(execution => execution.actualPayerCompanyId &&
+    execution.amountCents === attempt.amountCents && execution.paymentMethod === attempt.paymentMethod &&
+    attempt.voucherFileIds.length > 0 && execution.vouchers?.length === attempt.voucherFileIds.length &&
+    attempt.voucherFileIds.every(id => execution.vouchers?.some(voucher => voucher.fileId === id)));
+}
+
+function eligibleFundingSources(account: FundAccount) {
+  return account.sources.filter(source => source.id && source.sourceStatus === "known" &&
+    source.amountYuan && source.pendingAllocation !== true && Number(source.amountYuan) > 0 &&
+    ((source.projectStatus === "project" && source.projectId === payment.value?.project.id) ||
+      (account.companyEntityId !== detail.value?.originalDebtorCompanyId && source.isCompanyOwnedUnadvanced === true)));
+}
+
+function payerAccountOptions(paidAt: string) {
+  return fundingAccounts.value.filter(account => account.active && account.kind === "company" &&
+    account.currentRegistrationId && account.balanceYuan !== null && account.asOfDate &&
+    account.asOfDate.slice(0, 10) < paidAt.slice(0, 10) && eligibleFundingSources(account).length);
+}
+
+async function loadFundingAccounts() {
+  const coordinate = executionOpenedPaymentId;
+  const request = ++latestFundingRequest;
+  const isCurrent = () => Boolean(coordinate && coordinate === executionOpenedPaymentId && coordinate === paymentId.value && request === latestFundingRequest);
+  if (!isCurrent() || !canChooseRegisteredFunding.value || !actionEnabled("record_execution")) return;
+  fundingError.value = "";
+  fundingLoading.value = true;
+  try {
+    const response = await fetchFundAccounts(isCurrent, { includeSourceOwnership: true });
+    if (isCurrent()) fundingAccounts.value = response.accounts;
+  } catch (error) {
+    if (isCurrent()) fundingError.value = formatUnknownApiError(error, "已登记资金账户读取失败");
+  } finally {
+    if (isCurrent()) fundingLoading.value = false;
+  }
+}
+
+function selectedRegisteredFunding(payload: PaymentExecutionSubmitPayload): SpotRegisteredFundingInput | undefined {
+  if (!registeredFundingMode.value) return;
+  if (!canChooseRegisteredFunding.value) throw new Error("当前岗位不可使用登记公司账户");
+  const account = payerAccountOptions(payload.paidAt).find(row => row.scopeKey === fundingScopeKey.value);
+  if (!account?.currentRegistrationId) throw new Error("请选择有权使用且付款日期晚于余额登记日的公司账户");
+  const sourceAllocations = eligibleFundingSources(account).flatMap(source => {
+    const entered = fundingAmounts.value[source.id!]?.trim();
+    if (!entered) return [];
+    const amountCents = yuanTextToCentsText(entered);
+    if (BigInt(amountCents) === 0n) return [];
+    const [yuan, fraction = ""] = source.amountYuan!.split(".");
+    if (BigInt(amountCents) * 100n > BigInt(yuan + fraction.padEnd(4, "0"))) throw new Error("来源使用金额不能超过可用余额");
+    return [{sourceBatchId: source.id!, amountCents}];
+  });
+  if (sourceAllocations.reduce((total, source) => total + BigInt(source.amountCents), 0n) !== BigInt(yuanTextToCentsText(payload.amountYuan))) {
+    throw new Error("各资金来源使用金额的合计必须等于本次实付款");
+  }
+  return { scopeKey: account.scopeKey, expectedRegistrationId: account.currentRegistrationId, sourceAllocations };
+}
+
 async function prepareExecutionAttempt(
-  payload: PaymentExecutionSubmitPayload
+  payload: PaymentExecutionSubmitPayload,
+  paymentIdCoordinate: string,
 ): Promise<ExecutionAttempt> {
+  const registeredFunding = selectedRegisteredFunding(payload);
+  const actualPayerName = fundingAccount.value?.name;
   const prepared = await prepareSpotExecutionWithUploads(
     {
       amountYuan: payload.amountYuan,
@@ -1181,19 +1294,30 @@ async function prepareExecutionAttempt(
     payload.files,
     (file, fileName) =>
       uploadSpotProcurementExecutionVoucherWithCapability(
-        paymentId.value,
+        paymentIdCoordinate,
         file,
         fileName
       ),
     payload.paymentMethod === "cash" ? "请上传商家收据" : "请上传付款成功凭证"
   );
-  return { ...prepared, amountYuan: payload.amountYuan, paidAtInput: payload.paidAt };
+  return { ...prepared, amountYuan: payload.amountYuan, paidAtInput: payload.paidAt,
+    ...(registeredFunding ? {registeredFunding, actualPayerName} : {}) };
+
 }
 
 function openExecution(trigger: HTMLElement | null = null) {
   const current = detail.value;
   if (!current || !actionEnabled("record_execution")) return;
   executionOpenedPaymentId = current.payment.id;
+  latestFundingRequest += 1;
+  executionAttempt.value ??= readRegisteredAttempt(current.payment.id);
+  registeredFundingMode.value = Boolean(executionAttempt.value?.registeredFunding);
+  fundingAccounts.value = [];
+  fundingScopeKey.value = "";
+  fundingAmounts.value = {};
+  fundingLoading.value = false;
+  fundingError.value = "";
+
   clearExecutionFocusRestore();
   executionTriggerElement = trigger;
   executionError.value = "";
@@ -1201,6 +1325,7 @@ function openExecution(trigger: HTMLElement | null = null) {
 }
 
 async function submitExecution(payload: PaymentExecutionSubmitPayload) {
+  if (actionBusy.value) return;
   const current = detail.value;
   if (
     !current ||
@@ -1213,28 +1338,50 @@ async function submitExecution(payload: PaymentExecutionSubmitPayload) {
     return;
   }
   const operationPaymentId = executionOpenedPaymentId;
+  const actorId = auth.user?.id;
   actionBusy.value = true;
   executionError.value = "";
   try {
-    const attempt = executionAttempt.value ?? (await prepareExecutionAttempt(payload));
+    const retryAttempt = executionAttempt.value;
+    const attempt = retryAttempt ?? (await prepareExecutionAttempt(payload, operationPaymentId));
     if (
       paymentId.value !== operationPaymentId ||
-      executionOpenedPaymentId !== operationPaymentId
+      executionOpenedPaymentId !== operationPaymentId || auth.user?.id !== actorId
     ) return;
     executionAttempt.value = attempt;
-    await recordSpotProcurementPaymentExecutionWithCapability(operationPaymentId, {
+    if (attempt.registeredFunding) {
+      const key = registeredAttemptKey(operationPaymentId);
+      if (!key) throw new Error("登录状态已变化，请重新登录后登记");
+      sessionStorage.setItem(key, JSON.stringify(attempt));
+    }
+    let alreadyRecorded = false;
+    if (attempt.registeredFunding) {
+      const recovery = await fetchSpotProcurementPaymentDetail(operationPaymentId);
+      if (
+        paymentId.value !== operationPaymentId ||
+        executionOpenedPaymentId !== operationPaymentId || auth.user?.id !== actorId
+      ) return;
+      if (recovery.payment.id !== operationPaymentId) throw new Error("付款坐标已变化，请刷新详情后重试");
+      alreadyRecorded = Boolean(retryAttempt && recordedRegisteredAttempt(recovery, retryAttempt));
+      if (!alreadyRecorded && !recovery.originalDebtorCompanyId) {
+        throw new Error("原债公司尚待核对，请核对原单");
+      }
+    }
+    if (!alreadyRecorded) await recordSpotProcurementPaymentExecutionWithCapability(operationPaymentId, {
       idempotencyKey: attempt.idempotencyKey,
       amountCents: attempt.amountCents,
       paidAt: attempt.paidAt,
       paymentMethod: attempt.paymentMethod,
       paymentChannelId: attempt.paymentChannelId,
       voucherFileIds: attempt.voucherFileIds,
+      ...(attempt.registeredFunding ? {registeredFunding: attempt.registeredFunding} : {}),
       confirmationPassword: payload.confirmationPassword
     });
     if (
       paymentId.value !== operationPaymentId ||
       executionOpenedPaymentId !== operationPaymentId
     ) return;
+    if (attempt.registeredFunding) forgetRegisteredAttempt(operationPaymentId);
     resetExecutionAttempt();
     executionVisible.value = false;
     showSuccess("实际付款与凭证已登记。累计实付和剩余待付已按服务端事实刷新。");
@@ -1469,6 +1616,8 @@ function resetExecutionEditorState() {
   clearExecutionCoordinates();
   resetExecutionAttempt();
 }
+
+watch(() => auth.user?.id, resetExecutionEditorState);
 
 onBeforeUnmount(clearExecutionFocusRestore);
 onBeforeUnmount(() => {
@@ -1872,7 +2021,7 @@ watch(
         >
           <dl class="fact-list">
             <div><dt>退款金额</dt><dd>{{ money(refundCompletedReceipt?.amountCents ?? detail.discrepancy?.refund?.amountCents) }}</dd></div>
-            <div><dt>到账日期</dt><dd>{{ (refundCompletedReceipt?.receivedAt ?? detail.discrepancy?.refund?.receivedAt ?? '').slice(0, 10) }}</dd></div>
+            <div><dt>到账日期</dt><dd>{{ refundDateText(refundCompletedReceipt?.receivedAt ?? detail.discrepancy?.refund?.receivedAt) }}</dd></div>
             <div><dt>当前状态</dt><dd>{{ refundCompletedReceipt?.status === 'resolved' ? '已办结' : (detail.discrepancy?.statusLabel ?? '已办结') }}</dd></div>
             <div><dt>净实付</dt><dd>{{ refundCompletedReceipt && !refundDetailRefreshed ? '刷新后读取' : money(detail.payment.netPaidAmountCents) }}</dd></div>
           </dl>
@@ -2017,7 +2166,7 @@ watch(
           <p>{{ payment.payerCompanyName ?? '尚未确定付款主体' }}；{{ detail.paymentMethods?.map((method) => method.label).join('、') || '尚未确定拟付款方式' }}</p>
           <BusinessStatusText
             v-if="payerManagement.requiresReapproval"
-            text="财务主管调整后将从本轮冻结的首个节点重新审批"
+            text="财务主管调整后将按本轮冻结岗位重新审批"
             semantic="progress"
           />
           <t-button
@@ -2045,17 +2194,29 @@ watch(
           :payment-fact-consistent="payment.paymentFactConsistent"
         />
         <section>
-          <h3>逐笔实际付款</h3><t-table
+          <h3>逐笔实际付款</h3>
+          <p>原债公司：{{ detail.originalDebtorCompanyName ?? "待核对" }}</p>
+          <t-table
             v-if="detail.executions.length"
             row-key="id"
             size="small"
             :data="detail.executions"
-            :columns="[{colKey:'paidAt',title:'付款时间',width:180},{colKey:'amountCents',title:'实付金额',width:130},{colKey:'paymentMethodLabel',title:'方式',width:110},{colKey:'executedBy',title:'登记人',width:110},{colKey:'vouchers',title:'凭证',width:150},{colKey:'active',title:'状态',width:100}]"
+            :columns="[{colKey:'paidAt',title:'付款时间',width:180},{colKey:'amountCents',title:'实付金额',width:130},{colKey:'paymentMethodLabel',title:'方式',width:110},{colKey:'executedBy',title:'登记人',width:110},{colKey:'actualPayer',title:'实际付款公司',minWidth:160},{colKey:'vouchers',title:'凭证',width:150},{colKey:'active',title:'状态',width:100}]"
           >
             <template #paidAt="{row}">
               {{ dateTime(row.paidAt) }}
             </template><template #amountCents="{row}">
               <strong>{{ money(row.amountCents) }}</strong>
+            </template><template #actualPayer="{row}">
+              {{ row.actualPayerCompanyName ?? "待核对" }}
+              <router-link
+                v-if="row.relationshipEntryId"
+                :to="{path: '/公司互转台账', query: {
+                  projectId: payment.project.id, originalOperationalPaymentId: row.relationshipEntryId, view: 'history'
+                }}"
+              >
+                查看原债
+              </router-link>
             </template><template #executedBy="{row}">
               {{ row.executedBy.name }}
             </template><template #vouchers="{row}">
@@ -2223,14 +2384,14 @@ watch(
           <t-alert
             theme="warning"
             title="受控变更"
-            :message="payerManagement?.requiresReapproval ? '财务主管变更后将从本轮冻结的首个节点重新审批，请再次确认原因。' : '付款主体与拟付款方式只可由财务人员、综合部主管或财务主管在当前合法阶段维护。'"
+            :message="payerManagement?.requiresReapproval ? '财务主管变更后将按本轮冻结岗位重新审批，请再次确认原因。' : '付款主体与拟付款方式只可由财务人员、综合部主管或财务主管在当前合法阶段维护。'"
           /><dl
             v-if="payerManagement?.requiresReapproval"
             class="detail-grid"
           >
             <div><dt>原付款主体</dt><dd>{{ payment.payerCompanyName ?? "未确定" }}</dd></div>
             <div><dt>新付款主体</dt><dd>{{ selectedPayerCompanyName }}</dd></div>
-            <div><dt>审批影响</dt><dd>重置本轮前序节点的通过状态，从本轮冻结的首个节点重新审批；原审批记录保留</dd></div>
+            <div><dt>审批影响</dt><dd>重置本轮已通过的审批状态，按本轮冻结岗位重新审批；原审批记录保留</dd></div>
           </dl><label><span>我方付款主体</span><t-select
             v-model="payerForm.companyEntityId"
             :options="payerOptions"
@@ -2277,10 +2438,39 @@ watch(
         :payment-channels="detail.paymentChannels ?? []"
         :existing-executions="detail.executions"
         :locked-attempt="executionLockedAttempt"
+        :registered-attempt="Boolean(executionAttempt?.registeredFunding)"
         @close="closeExecution"
         @submit="submitExecution"
         @reset-attempt="resetExecutionAttempt"
-      />
+      >
+        <template #funding="{paidAt}">
+          <template v-if="canChooseRegisteredFunding">
+            <t-checkbox v-model="registeredFundingMode" @change="registeredFundingMode && loadFundingAccounts()">
+              使用已登记公司账户
+            </t-checkbox>
+            <template v-if="registeredFundingMode">
+              <p>原债公司：{{ detail.originalDebtorCompanyName }}</p>
+              <label><span>实际付款账户</span><t-select v-model="fundingScopeKey"
+                :loading="fundingLoading"
+                :options="payerAccountOptions(paidAt).map(account => ({label: account.name, value: account.scopeKey}))"
+                placeholder="选择适用于付款日期的登记账户"
+              /></label>
+              <t-alert v-if="fundingError" theme="warning" :message="fundingError" />
+              <label v-for="source in (fundingAccount ? eligibleFundingSources(fundingAccount) : [])" :key="source.id">
+                <span>{{ source.sourceName ?? "已核对资金" }} · 可用 ¥{{ source.amountYuan }}</span>
+                <t-input v-model="fundingAmounts[source.id!]" placeholder="本次使用金额（元）" />
+              </label>
+            </template>
+          </template>
+        </template>
+        <template #funding-confirmation>
+          <p v-if="registeredFundingMode">
+            原债公司：{{ detail.originalDebtorCompanyName }}<br>
+            实际付款公司：{{ executionAttempt?.actualPayerName ?? fundingAccount?.name ?? "待选择" }}
+          </p>
+        </template>
+      </PaymentExecutionDrawer>
+
 
       <SensitiveActionDialog
         v-if="!isRealPayment && paymentReviewActionEnabled('review_approval') && confirmation.kind === 'review_approve'"
@@ -2369,6 +2559,11 @@ watch(
         @cancel="cancelConfirmation"
       />
     </template>
+    <DutySmsStatusPanel
+      v-if="payment?.id && detail?.availableActions.some(action => action.key === 'record_execution' && action.enabled)"
+      domain="spot-procurement-payments"
+      :business-id="payment.id"
+    />
     <ApprovalProgressPanel
       business-type="spot_procurement_payment"
       :business-id="payment?.id"

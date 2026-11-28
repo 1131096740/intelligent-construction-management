@@ -1,4 +1,5 @@
 import path from "node:path";
+import { mockApprovalProgress } from "./helpers/approval-progress-mocks";
 import { expect, test, type Page, type Route } from "@playwright/test";
 import {
   expectHorizontalScrollOwner,
@@ -321,7 +322,7 @@ async function loginAndOpenReceipt(page: Page) {
   await page.goto("/零星采购收货/procurement-A");
 }
 
-test("renders A4 application, A5 payment and payment-opened final receipt without legacy balance fields", async ({ page }, testInfo) => {
+test("renders A4 application, A5 payment and historical receipt without legacy balance fields", async ({ page }, testInfo) => {
   const paymentListViews: string[] = [];
   await mockLogin(page);
   await page.route("**/api/spot-procurements**", (route) => {
@@ -414,10 +415,10 @@ test("renders A4 application, A5 payment and payment-opened final receipt withou
   await page.goto("/零星采购工作台");
   await expect(page.getByRole("heading", { name: "零星采购工作台" })).toBeVisible();
   await expect(page.getByRole("columnheader", { name: "到位日期", exact: true })).toBeVisible();
-  await expect(page.getByText("2026/7/18", { exact: true })).toBeVisible();
-  await expect(page.getByText("LXCG-E2E-001", { exact: true })).toBeVisible();
-  await expect(page.getByText("付款：付款金额待确定", { exact: true })).toBeVisible();
-  await expect(page.getByText("收货：待确认收货", { exact: true })).toBeVisible();
+  await expect(page.getByRole("cell", { name: "2026/7/18", exact: true })).toBeVisible();
+  await expect(page.locator(".jg-desktop-record-list").getByText("LXCG-E2E-001", { exact: true })).toBeVisible();
+  await expect(page.locator(".jg-desktop-record-list").getByText("付款：付款金额待确定", { exact: true })).toBeVisible();
+  await expect(page.locator(".jg-desktop-record-list").getByText("收货：待确认收货", { exact: true })).toBeVisible();
   await expect(page.getByRole("link", { name: "填写付款申请", exact: true })).toBeVisible();
   await page.getByRole("link", { name: "填写付款申请", exact: true }).click();
   await expect.poll(() => {
@@ -457,8 +458,9 @@ test("renders A4 application, A5 payment and payment-opened final receipt withou
   });
 
   await page.getByRole("button", { name: "新建采购申请" }).click();
+  await page.getByRole("button", { name: "采购申请填写说明" }).hover();
   await expect(page.getByText("采购申请单号会在保存草稿时由系统自动生成。")).toBeVisible();
-  await expect(page.getByText("XM-001 · 一号项目", { exact: true })).toBeVisible();
+  await expect(page.getByRole("cell", { name: "XM-001 · 一号项目", exact: true })).toBeVisible();
   await expect(page.getByText("系统申请单编号", { exact: true })).toHaveCount(0);
 
   await page.goto("/零星材料付款工作台");
@@ -482,8 +484,8 @@ test("renders A4 application, A5 payment and payment-opened final receipt withou
   ]) {
     await expect(page.getByRole("columnheader", { name: heading, exact: true })).toBeVisible();
   }
-  await expect(page.getByText("实付 ¥2,200.00 / 退款 ¥0.00 / 剩余 ¥2,200.00", { exact: true })).toBeVisible();
-  await expect(page.getByText("待确认收货 / 待补发票", { exact: true })).toBeVisible();
+  await expect(page.getByRole("table").getByText("实付 ¥2,200.00 / 退款 ¥0.00 / 剩余 ¥2,200.00", { exact: true })).toBeVisible();
+  await expect(page.getByRole("table").getByText("待确认收货 / 待补发票", { exact: true })).toBeVisible();
   await expect(page.getByText("收货与发票", { exact: true })).toHaveCount(0);
   await expect(page.getByText("转商户余额", { exact: true })).toHaveCount(0);
   const paymentLedgerRow = page.getByRole("row").filter({ hasText: "LXFK-E2E-001" });
@@ -525,7 +527,10 @@ test("renders A4 application, A5 payment and payment-opened final receipt withou
   expect(taskGridColumns.trim().split(/\s+/)).toHaveLength(1);
   await expectNoDocumentHorizontalOverflow(page);
   await expectNoNestedHorizontalScrollers(page);
-  await expectHorizontalScrollOwner(page.locator(".jg-table-region .t-table__content"));
+  await expect(page.locator(".jg-table-region .t-table__content")).toBeHidden();
+  const mobilePayment = page.locator("article.business-mobile-card").filter({ hasText: "LXFK-E2E-001" });
+  await expect(mobilePayment).toBeVisible();
+  await expect(mobilePayment.getByText("实付 ¥2,200.00 / 退款 ¥0.00 / 剩余 ¥2,200.00", { exact: true })).toBeVisible();
   await page.screenshot({
     path: path.join(testInfo.outputDir, "spot-procurement-payment-workbench-390x844.png"),
     fullPage: true
@@ -539,18 +544,18 @@ test("renders A4 application, A5 payment and payment-opened final receipt withou
   expect(decodeURIComponent(new URL(page.url()).pathname)).toBe("/零星材料付款工作台");
 
   await page.goto("/收货确认工作台");
-  await expect(page.getByRole("heading", { name: "收货确认工作台" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "历史收货记录" })).toBeVisible();
   await expect(page.getByText("采购/付款编号", { exact: true })).toBeVisible();
   await expect(page.getByText("材料摘要", { exact: true })).toBeVisible();
   await expect(page.getByText("已付金额", { exact: true })).toBeVisible();
   await expect(page.getByText("收货责任人/受托人", { exact: true })).toBeVisible();
-  await expect(page.getByText("免烧砖（240×115×53）", { exact: true })).toBeVisible();
-  await expect(page.getByText("物资员甲（委托：受托人乙）", { exact: true })).toBeVisible();
-  await expect(page.getByText("待确认收货", { exact: true })).toBeVisible();
+  const receiptLedger = page.getByRole("table");
+  await expect(receiptLedger.getByText("免烧砖（240×115×53）", { exact: true })).toBeVisible();
+  await expect(receiptLedger.getByText("物资员甲（委托：受托人乙）", { exact: true })).toBeVisible();
+  await expect(receiptLedger.getByText("待确认收货", { exact: true })).toBeVisible();
 
   await page.goto("/零星采购收货/procurement-1");
-  await expect(page.getByText("一次最终收货", { exact: true })).toBeVisible();
-  await expect(page.getByText("没有商户余额路径", { exact: true })).toBeVisible();
+  await expect(page.getByText("历史收货明细", { exact: true })).toBeVisible();
   await expect(page.getByText("发票是整张付款申请的可选附件", { exact: true })).toBeVisible();
 });
 
@@ -933,7 +938,7 @@ test("fails closed when switching A5 payment routes and discards stale merchant 
     paymentBSubmits += 1;
     await route.fulfill({ contentType: "application/json", body: "{}" });
   });
-  await page.route("**/api/files", (route) => { pendingUploads.push(route); });
+  await page.route(/\/api\/spot-procurement-payments\/payment-[AB]\/draft-file-uploads$/u, (route) => { pendingUploads.push(route); });
   await page.route("**/api/spot-procurement-payments?*", async (route) => {
     const projectId = new URL(route.request().url()).searchParams.get("projectId");
     if (projectId === "project-A") {
@@ -1060,7 +1065,7 @@ test("fails closed when switching A5 payment routes and discards stale merchant 
   expect(localDrafts).not.toMatch(/6222000011112222|A银行|attachmentFiles/u);
 });
 
-test("routes an enabled refund task to the real receipt workflow and preserves frozen archive facts", async ({ page }) => {
+test("opens the enabled refund form on the payment and preserves frozen archive facts", async ({ page }) => {
   await mockLogin(page);
   await page.route("**/api/spot-procurement-payments/payment-refund", (route) => {
     const base = paymentDetail();
@@ -1084,6 +1089,7 @@ test("routes an enabled refund task to the real receipt workflow and preserves f
           enabled: true,
           disabledReason: null
         },
+        discrepancy: { status: "awaiting_refund", refundExpectedAmountCents: "44000" },
         availableActions: [],
         archives: [{
           id: "archive-1",
@@ -1117,9 +1123,6 @@ test("routes an enabled refund task to the real receipt workflow and preserves f
       })
     });
   });
-  await page.route("**/api/spot-procurements/procurement-1/receipt", (route) =>
-    route.fulfill({ contentType: "application/json", body: JSON.stringify(receiptDetail()) })
-  );
   await page.route("**/api/spot-procurements/procurement-1", (route) =>
     route.fulfill({ contentType: "application/json", body: JSON.stringify(procurementDetail()) })
   );
@@ -1146,7 +1149,8 @@ test("routes an enabled refund task to the real receipt workflow and preserves f
 
   await page.locator(".t-tabs").getByText("当前办理", { exact: true }).click();
   await taskPanel.getByRole("button", { name: "办理退款", exact: true }).click();
-  await expect.poll(() => decodeURIComponent(new URL(page.url()).pathname)).toBe("/零星采购收货/procurement-1");
+  await expect(page.locator(".payment-refund-form").getByText("待退款整笔差额", { exact: true })).toBeInViewport();
+  expect(decodeURIComponent(new URL(page.url()).pathname)).toBe("/零星材料付款/payment-refund");
 
   await page.goto("/零星材料付款/payment-refund-disabled?tab=current");
   await expect(page.getByRole("button", { name: "办理退款", exact: true })).toHaveCount(0);
@@ -1155,6 +1159,11 @@ test("routes an enabled refund task to the real receipt workflow and preserves f
 
 test("records two controlled executions from the frozen channel and refreshes server payment facts", async ({ page }) => {
   await mockLogin(page);
+  await mockApprovalProgress(page, [{ businessType: "spot_procurement_payment", businessId: "payment-execution" }]);
+  await page.route("**/api/approval-forms/spot_procurement_payment/payment-execution/capability",
+    route => route.fulfill({ json: { available: false } }));
+  await page.route("**/api/spot-procurement-payments/payment-execution/duty-sms",
+    route => route.fulfill({ json: { notice: null } }));
   let paidCents = 0;
   let uploadNo = 0;
   const executionPayloads: Array<Record<string, unknown>> = [];
@@ -1217,7 +1226,7 @@ test("records two controlled executions from the frozen channel and refreshes se
   await page.route("**/api/spot-procurement-payments/payment-execution", (route) =>
     route.fulfill({ contentType: "application/json", body: JSON.stringify(executionDetail()) })
   );
-  await page.route("**/api/files", (route) => {
+  await page.route("**/api/spot-procurement-payments/payment-execution/execution-voucher-file-uploads", (route) => {
     uploadNo += 1;
     return route.fulfill({
       contentType: "application/json",
@@ -1253,9 +1262,10 @@ test("records two controlled executions from the frozen channel and refreshes se
     await expect(page.getByText(`已关联 1 份`, { exact: true })).toHaveCount(expectedExecutionNo);
     if (expectedExecutionNo === 1) {
       await expect(page.getByText("部分已付", { exact: true }).first()).toBeVisible();
-      await page.locator(".t-tabs").getByText("收货与发票", { exact: true }).click();
-      await expect(page.getByText("待确认收货", { exact: true })).toBeVisible();
+      await expect(page.locator(".payment-composition-card__facts > div").filter({ hasText: "剩余待付" })
+        .getByText("¥2,200.00", { exact: true })).toBeVisible();
       await page.locator(".t-tabs").getByText("当前办理", { exact: true }).click();
+      await expect(page.getByRole("button", { name: "登记实际付款", exact: true })).toBeVisible();
     }
   }
 
@@ -1276,6 +1286,7 @@ test("records two controlled executions from the frozen channel and refreshes se
 
 test("retries a failed execution with one upload, the same frozen attempt and a re-entered password", async ({ page }) => {
   await mockLogin(page);
+  await mockApprovalProgress(page, [{ businessType: "spot_procurement_payment", businessId: "payment-execution-retry" }]);
   let paid = false;
   let uploadNo = 0;
   const executionPayloads: Array<Record<string, unknown>> = [];
@@ -1339,7 +1350,7 @@ test("retries a failed execution with one upload, the same frozen attempt and a 
   await page.route("**/api/spot-procurement-payments/payment-execution-retry", (route) =>
     route.fulfill({ contentType: "application/json", body: JSON.stringify(executionDetail()) })
   );
-  await page.route("**/api/files", (route) => {
+  await page.route("**/api/spot-procurement-payments/payment-execution-retry/execution-voucher-file-uploads", (route) => {
     uploadNo += 1;
     return route.fulfill({
       contentType: "application/json",
@@ -1380,6 +1391,52 @@ test("retries a failed execution with one upload, the same frozen attempt and a 
   expect(executionPayloads[1]?.voucherFileIds).toEqual(executionPayloads[0]?.voucherFileIds);
   expect(executionPayloads[1]?.voucherFileIds).toEqual(["voucher-retry"]);
   await expect(page.getByText("已付款", { exact: true }).first()).toBeVisible();
+});
+
+test("recovers a recorded registered-account attempt without another write", async ({ page }) => {
+  const id = "payment-registered-retry";
+  const key = `spot-registered-execution:handler-1:${id}`;
+  const original = paymentDetail();
+  const attempt = {
+    idempotencyKey: "registered-spot-original-key", amountCents: "220000", amountYuan: "2200.00",
+    paidAt: now, paidAtInput: "2026-07-18 16:00:00", paymentMethod: "bank_transfer",
+    paymentChannelId: "channel-1", voucherFileIds: ["voucher-1"], actualPayerName: "代付公司",
+    registeredFunding: { scopeKey: "company:payer", expectedRegistrationId: "registration-1",
+      sourceAllocations: [{ sourceBatchId: "source-1", amountCents: "220000" }] }
+  };
+  let recorded = false;
+  let submissions = 0;
+  await mockLogin(page, { globalRoleKeys: ["finance_staff"] });
+  await mockApprovalProgress(page, [{ businessType: "spot_procurement_payment", businessId: id }]);
+  await page.route(`**/api/spot-procurement-payments/${id}/executions`, (route) => {
+    submissions += 1;
+    return route.fulfill({ status: 500, body: "unexpected second write" });
+  });
+  await page.route(`**/api/spot-procurement-payments/${id}`, (route) => route.fulfill({
+    json: {
+      ...original, originalDebtorCompanyId: "debtor", originalDebtorCompanyName: "原债公司",
+      payment: { ...original.payment, id, status: recorded ? "paid" : "approved_pending_payment",
+        statusLabel: recorded ? "已付款" : "待付款", remainingAmountCents: recorded ? "0" : "220000" },
+      executions: recorded ? original.executions.map(execution => ({ ...execution, actualPayerCompanyId: "payer" })) : [],
+      currentTask: { ...original.currentTask, key: recorded ? "none" : "record_execution", label: "登记实际付款" },
+      availableActions: recorded ? [] : [{ key: "record_execution", label: "登记实际付款", kind: "primary", enabled: true }]
+    }
+  }));
+  await page.goto("/login");
+  await page.getByPlaceholder("请输入手机号").fill("13900000000");
+  await page.getByPlaceholder("请输入密码").fill("Spot@2026");
+  await page.getByRole("button", { name: "登录" }).click();
+  await expect(page).not.toHaveURL(/\/login(?:\?|$)/u);
+  await page.evaluate(({ key, attempt }) => sessionStorage.setItem(key, JSON.stringify(attempt)), { key, attempt });
+  await page.goto(`/零星材料付款/${id}?tab=current`);
+  await page.getByRole("button", { name: "登记实际付款", exact: true }).click();
+  await page.getByRole("button", { name: "重试登记", exact: true }).click();
+  await page.getByLabel("当前登录密码", { exact: true }).fill("fresh-password");
+  recorded = true;
+  await page.getByRole("button", { name: "确认登记", exact: true }).click();
+  await expect(page.getByText("已付款", { exact: true }).first()).toBeVisible();
+  expect(submissions).toBe(0);
+  expect(await page.evaluate(key => sessionStorage.getItem(key), key)).toBeNull();
 });
 
 test("restores focus to the actual execution trigger after the drawer has closed", async ({ page }) => {
@@ -1497,7 +1554,7 @@ test("opens one responsive A5 approval drawer, confirms facts, and posts the fro
   await expect(drawer.getByText("审批金额", { exact: true })).toBeVisible();
   await expect(drawer.getByText("云南建工测试公司", { exact: true })).toBeVisible();
   await expect(drawer.getByText("利民建材店", { exact: true })).toBeVisible();
-  await expect(drawer.getByText("董事长/总经理审批", { exact: true })).toBeVisible();
+  await expect(drawer.getByText("董事长/总经理或签审批", { exact: true })).toBeVisible();
   await drawer.getByText("退回申请人修改", { exact: true }).click();
   await drawer.getByRole("button", { name: "继续确认", exact: true }).click();
   await expect(drawer.getByText("退回原因不能为空", { exact: true })).toBeVisible();
@@ -1530,12 +1587,9 @@ test("opens one responsive A5 approval drawer, confirms facts, and posts the fro
   await expect(drawer.getByText("¥4,400.00", { exact: true })).toBeVisible();
   await expect(drawer.getByText("云南建工测试公司", { exact: true })).toBeVisible();
   await expect(drawer.getByText("利民建材店", { exact: true })).toBeVisible();
-  await expect(drawer.getByText("董事长/总经理审批", { exact: true })).toBeVisible();
+  await expect(drawer.getByText("董事长/总经理或签审批", { exact: true })).toBeVisible();
   await drawer.getByRole("button", { name: "确认提交", exact: true }).click();
-  await expect.poll(() => approvalPayload).toEqual({
-    decision: "approve",
-    comment: ""
-  });
+  await expect.poll(() => approvalPayload).toEqual({ decision: "approve" });
 });
 
 test("closes payer and approval editors on an SPA payment switch without writing to either record", async ({ page }) => {
@@ -1677,7 +1731,7 @@ test("refreshes the completed payer task after a stale shared-role save gets 409
   await page.route("**/api/spot-procurement-payments/payment-payer", (route) => {
     detailReads += 1;
     const base = paymentDetail();
-    const completed = detailReads > 1;
+    const completed = payerWrites > 0;
     return route.fulfill({
       contentType: "application/json",
       body: JSON.stringify({
@@ -1714,7 +1768,7 @@ test("refreshes the completed payer task after a stale shared-role save gets 409
           disabledReason: null
         },
         availableActions: completed ? [] : [{
-          key: "complete_payer",
+          key: "manage_payer",
           label: "维护付款主体",
           kind: "primary",
           enabled: true,
@@ -1745,7 +1799,7 @@ test("refreshes the completed payer task after a stale shared-role save gets 409
   await page.locator(".t-tabs").getByText("付款申请", { exact: true }).click();
   await expect(page.locator(".detail-panel").getByText("其他岗位已选主体", { exact: true })).toBeVisible();
   expect(payerWrites).toBe(1);
-  expect(detailReads).toBeGreaterThanOrEqual(2);
+  expect(detailReads).toBeGreaterThanOrEqual(3);
 });
 
 test("keeps the latest spot payment detail and reloads a replacement draft", async ({ page }) => {
@@ -1892,7 +1946,7 @@ test("keeps only the latest payment workbench request when views resolve out of 
 
   pendingRequests[1]!.release("success");
   await pendingRequests[1]!.completed;
-  await expect(page.getByText("NEW-ALL", { exact: true })).toBeVisible();
+  await expect(page.getByRole("table").getByText("NEW-ALL", { exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: "全部申请 1", exact: true })).toHaveAttribute("aria-pressed", "true");
   await expect(page.getByRole("button", { name: "处理", exact: true })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "查看", exact: true })).toHaveCount(2);
@@ -1908,10 +1962,10 @@ test("keeps only the latest payment workbench request when views resolve out of 
   expect(pendingRequests[3]!.view).toBe("closed");
   pendingRequests[3]!.release("success");
   await pendingRequests[3]!.completed;
-  await expect(page.getByText("NEW-CLOSED", { exact: true })).toBeVisible();
+  await expect(page.getByRole("table").getByText("NEW-CLOSED", { exact: true })).toBeVisible();
   pendingRequests[2]!.release("failure");
   await pendingRequests[2]!.completed;
-  await expect(page.getByText("NEW-CLOSED", { exact: true })).toBeVisible();
+  await expect(page.getByRole("table").getByText("NEW-CLOSED", { exact: true })).toBeVisible();
   await expect(page.getByText("零星材料付款暂不可用", { exact: true })).toHaveCount(0);
 });
 
@@ -1927,42 +1981,26 @@ test("keeps receipt B visible when delayed receipt A reads finish after an SPA r
   await loginAndOpenReceipt(page);
   await expect.poll(() => pendingAReads).toBe(2);
   await switchReceiptRoute(page, "procurement-B");
-  await expect(page.getByRole("heading", { name: "项目B · 最终收货", exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "项目B · 历史收货", exact: true })).toBeVisible();
   releaseA.resolve();
-  await expect(page.getByRole("heading", { name: "项目B · 最终收货", exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "项目B · 历史收货", exact: true })).toBeVisible();
   await expect(page.getByText("LXCG-A", { exact: true })).toHaveCount(0);
 });
 
-test("does not bind a delayed receipt photo upload after switching from receipt A to B", async ({ page }) => {
-  const uploadStarted = deferred();
-  const releaseUpload = deferred();
-  let photoBindings = 0;
+test("keeps a historical receipt read-only even when an older response advertises writing", async ({ page }) => {
   await mockLogin(page);
   await mockReceiptPair(page, receiptDetailFor("procurement-A", "LXCG-A", [
-    { key: "append_receipt_photo", label: "补充收货照片", kind: "primary", enabled: true, disabledReason: null }
+    { key: "append_receipt_photo", label: "补充收货照片", kind: "primary", enabled: true, disabledReason: null },
+    { key: "submit_receipt", label: "提交最终收货", kind: "primary", enabled: true, disabledReason: null },
+    { key: "review_receipt", label: "复核收货", kind: "primary", enabled: true, disabledReason: null }
   ]));
-  await page.route("**/api/spot-procurements/*/receipt/photos", async (route) => {
-    photoBindings += 1;
-    await route.fulfill({ contentType: "application/json", body: "{}" });
-  });
-  await page.route("**/api/files", async (route) => {
-    uploadStarted.resolve();
-    await releaseUpload.promise;
-    await route.fulfill({ contentType: "application/json", body: JSON.stringify({ id: "uploaded-photo-A" }) });
-  });
-
   await loginAndOpenReceipt(page);
-  await expect(page.getByRole("heading", { name: "项目A · 最终收货", exact: true })).toBeVisible();
-  await page.locator(".photo-form input[type=file]").setInputFiles({
-    name: "现场照片.jpg", mimeType: "image/jpeg", buffer: Buffer.from("receipt-photo")
-  });
-  await page.getByRole("button", { name: "上传并生成水印", exact: true }).click();
-  await uploadStarted.promise;
-  await switchReceiptRoute(page, "procurement-B");
-  await expect(page.getByRole("heading", { name: "项目B · 最终收货", exact: true })).toBeVisible();
-  releaseUpload.resolve();
-  await expect(page.getByText("已阻止跨单写入", { exact: true })).toBeVisible();
-  await expect.poll(() => photoBindings).toBe(0);
+  await expect(page.getByRole("heading", { name: "项目A · 历史收货", exact: true })).toBeVisible();
+  await expect(page.getByText("收货照片与乙方送货单", { exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "上传并生成水印", exact: true })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "提交最终收货", exact: true })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "复核通过", exact: true })).toHaveCount(0);
+  await expect(page.getByRole("region", { name: "待办短信" })).toHaveCount(0);
 });
 
 test("does not record a delayed refund upload after switching from receipt A to B", async ({ page }) => {
@@ -1983,14 +2021,14 @@ test("does not record a delayed refund upload after switching from receipt A to 
     refundWrites += 1;
     await route.fulfill({ contentType: "application/json", body: "{}" });
   });
-  await page.route("**/api/files", async (route) => {
+  await page.route("**/api/spot-procurements/procurement-A/refund-voucher-file-uploads", async (route) => {
     uploadStarted.resolve();
     await releaseUpload.promise;
     await route.fulfill({ contentType: "application/json", body: JSON.stringify({ id: "refund-voucher-A" }) });
   });
 
   await loginAndOpenReceipt(page);
-  await expect(page.getByRole("heading", { name: "项目A · 最终收货", exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "项目A · 历史收货", exact: true })).toBeVisible();
   await page.locator(".refund-form input[type=file]").setInputFiles({
     name: "退款凭证.pdf", mimeType: "application/pdf", buffer: Buffer.from("refund-proof")
   });
@@ -1998,7 +2036,7 @@ test("does not record a delayed refund upload after switching from receipt A to 
   await page.getByRole("button", { name: "确定", exact: true }).click();
   await uploadStarted.promise;
   await switchReceiptRoute(page, "procurement-B");
-  await expect(page.getByRole("heading", { name: "项目B · 最终收货", exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "项目B · 历史收货", exact: true })).toBeVisible();
   releaseUpload.resolve();
   await expect(page.getByText("已阻止跨单写入", { exact: true })).toBeVisible();
   await expect.poll(() => refundWrites).toBe(0);
@@ -2016,6 +2054,11 @@ test("posts frozen spot procurement review coordinates after a fresh preflight",
     name: "物资主管甲",
     roleKeys: ["material_director"]
   });
+  await mockApprovalProgress(page, ["approve", "reject", "return", "return-draft"].map(suffix => ({
+    businessType: "spot_procurement_version", businessId: `version-procurement-review-${suffix}`
+  })));
+  await page.route(/\/api\/approval-forms\/spot_procurement_version\/version-procurement-review-(?:approve|reject|return(?:-draft)?)\/capability$/u,
+    route => route.fulfill({ json: { available: false } }));
   const requests: Array<{
     procurementId: string;
     method: string;
@@ -2239,6 +2282,11 @@ test("withdraws one exact spot procurement approval after a fresh preflight", as
     name: "申请人甲",
     roleKeys: ["material_staff"]
   });
+  await mockApprovalProgress(page, ["desktop", "desktop-draft", "mobile", "mobile-draft"].map(suffix => ({
+    businessType: "spot_procurement_version", businessId: `version-procurement-withdraw-${suffix}`
+  })));
+  await page.route(/\/api\/approval-forms\/spot_procurement_version\/version-procurement-withdraw-(?:(?:desktop|mobile)(?:-draft)?)\/capability$/u,
+    route => route.fulfill({ json: { available: false } }));
   const requests: Array<{
     procurementId: string;
     method: string;
@@ -2534,7 +2582,7 @@ test("withdraws one exact spot procurement approval after a fresh preflight", as
   expect(pageErrors).toEqual([]);
 });
 
-test("executes server-owned procurement, A5 payment and receipt draft lifecycle actions", async ({ page }) => {
+test("executes server-owned procurement and A5 payment draft lifecycle actions", async ({ page }) => {
   await mockLogin(page);
   const requests: Array<{ path: string; body: unknown }> = [];
   const procurementFixture = procurementDetail();
@@ -2609,6 +2657,7 @@ test("executes server-owned procurement, A5 payment and receipt draft lifecycle 
   await page.getByPlaceholder("请输入手机号").fill("13900000000");
   await page.getByPlaceholder("请输入密码").fill("Spot@2026");
   await page.getByRole("button", { name: "登录" }).click();
+  await expect(page).not.toHaveURL(/\/login(?:\?|$)/u);
 
   await page.goto("/零星采购/procurement-1");
   await page.getByText("审批与动作", { exact: true }).click();
@@ -2620,16 +2669,145 @@ test("executes server-owned procurement, A5 payment and receipt draft lifecycle 
   await page.getByText("审批进度", { exact: true }).click();
   await page.getByRole("button", { name: "放弃付款草稿" }).click();
   await page.getByPlaceholder("说明本次操作原因").fill("付款对象需要重新确认");
-  await page.getByRole("button", { name: "确认放弃付款草稿" }).click();
+  await page.getByRole("button", { name: "确认删除付款草稿" }).click();
   await expect.poll(() => requests.some((request) => request.path.endsWith("/payment-1/abandonment"))).toBe(true);
 
-  await page.goto("/零星采购收货/procurement-1");
-  await page.getByRole("button", { name: "重置未提交收货" }).click();
-  await page.getByRole("button", { name: "确认重置" }).click();
-  await expect.poll(() => requests.some((request) => request.path.endsWith("/receipt/draft-reset"))).toBe(true);
   expect(requests).toEqual(expect.arrayContaining([
     expect.objectContaining({ body: { action: "delete_pristine_draft" } }),
-    expect.objectContaining({ body: { expectedUpdatedAt: now, reason: "付款对象需要重新确认" } }),
-    expect.objectContaining({ body: { expectedRevision: 1 } })
+    expect.objectContaining({ body: { expectedUpdatedAt: now, reason: "付款对象需要重新确认" } })
   ]));
+});
+
+test("待实付短信仅可用原失败尝试重试，待确认和已受理不可重发", async ({ page }) => {
+  const unmocked: string[] = [];
+  await page.route(url => url.pathname.startsWith("/api/"), route => {
+    unmocked.push(new URL(route.request().url()).pathname);
+    return route.abort();
+  });
+  await mockLogin(page, { id: "finance-1", name: "财务甲", roleKeys: ["finance_staff"] });
+  await page.route(url => url.pathname === "/api/approval-progress", route => route.fulfill({ json: { items: [], nextCursor: null } }));
+  const paymentId = "payment-duty-sms";
+  const statusUrl = `**/api/spot-procurement-payments/${paymentId}/duty-sms`;
+  const base = paymentDetail();
+  let authorized = true;
+  let reads = 0;
+  let notice = { attemptId: "original", status: "unknown", canRetry: true };
+  const retries: Array<{ attemptId: string }> = [];
+  await page.route(`**/api/spot-procurement-payments/${paymentId}`, route => route.fulfill({ json: {
+    ...base,
+    payment: { ...base.payment, id: paymentId, status: "approved_pending_payment", statusLabel: "待付款" },
+    currentTask: authorized
+      ? { key: "record_execution", label: "登记实际付款", hint: "登记实付", priority: 300, scope: "personal", enabled: true, disabledReason: null }
+      : { key: "none", label: "无需办理", hint: "当前无办理权限", priority: 0, scope: "none", enabled: false, disabledReason: null },
+    availableActions: authorized ? [{ key: "record_execution", label: "登记实际付款", enabled: true, disabledReason: null }] : []
+  } }));
+  await page.route(statusUrl, route => {
+    reads++;
+    return route.fulfill({ json: { notice } });
+  });
+  await page.route(statusUrl + "/retry", route => {
+    retries.push(route.request().postDataJSON());
+    return route.fulfill({ json: { attemptId: "new-attempt", status: "queued", canRetry: false } });
+  });
+  await page.goto("/login");
+  await page.getByPlaceholder("请输入手机号").fill("13900000000");
+  await page.getByPlaceholder("请输入密码").fill("Spot@2026");
+  await page.getByRole("button", { name: "登录" }).click();
+  await expect(page).not.toHaveURL(/\/login(?:\?|$)/u);
+  await page.goto(`/零星材料付款/${paymentId}?tab=current`);
+  const panel = page.getByRole("region", { name: "待办短信" });
+  const retry = panel.getByRole("button", { name: "重新发送" });
+  const refresh = panel.getByRole("button", { name: "刷新短信状态" });
+  await expect(panel).toContainText("发送结果待确认");
+  await expect(retry).toHaveCount(0);
+  notice = { ...notice, status: "accepted" };
+  await refresh.click();
+  await expect(panel).toContainText("供应商已受理，送达待确认");
+  await expect(retry).toHaveCount(0);
+  notice = { ...notice, status: "failed", canRetry: false };
+  await refresh.click();
+  await expect(panel).toContainText("发送失败");
+  await expect(retry).toHaveCount(0);
+  expect(retries).toHaveLength(0);
+  notice = { ...notice, canRetry: true };
+  await refresh.click();
+  await retry.click();
+  await expect(panel).toContainText("等待发送");
+  await expect(retry).toHaveCount(0);
+  expect(retries).toEqual([{ attemptId: "original" }]);
+  authorized = false;
+  const beforeReload = reads;
+  await page.reload();
+  await expect(page.getByRole("heading", { name: "当前无需办理付款" })).toBeVisible();
+  await expect(panel).toHaveCount(0);
+  expect(reads).toBe(beforeReload);
+  expect(unmocked).toEqual([]);
+});
+
+test("spot procurement request SMS retry uses its own current duty and original attempt", async ({ page }) => {
+  const unexpectedApi: string[] = [];
+  const attempts: unknown[] = [];
+  let statusReads = 0;
+  const match = (path: string) => (url: URL) => url.pathname === path;
+  await page.route(url => url.pathname.startsWith("/api/"), async route => {
+    unexpectedApi.push(new URL(route.request().url()).pathname);
+    await route.fulfill({ json: {} });
+  });
+  await mockLogin(page);
+  await mockApprovalProgress(page, ["version-1", "version-2"].map(businessId => ({
+    businessType: "spot_procurement_version", businessId
+  })));
+  const path = "/api/spot-procurements/procurement-1";
+  await page.route(url => url.pathname === "/api/actual-purchase-batches" && url.searchParams.get("procurementId") === "procurement-1",
+    route => route.fulfill({ json: { items: [] } }));
+  const original = procurementDetail();
+  let record = { ...original, currentVersion: { ...original.currentVersion, requestProtocolVersion: 2 },
+    purchaseTask: { pending: true, canHandle: true }, availableActions: [] as Array<{ key: string; enabled: boolean; label: string }> };
+  await page.route(match(path), route => route.fulfill({ json: record }));
+  await page.route(url => /^\/api\/approval-forms\/spot_procurement_version\/version-[12]\/capability$/u.test(url.pathname),
+    route => route.fulfill({ status: 404, json: {} }));
+  const purchase = { attemptId: "purchase-original", dutyName: "项目物资员采购", status: "failed", canRetry: true };
+  const correction = { attemptId: "correction-original", dutyName: "退回修改", status: "failed", canRetry: true };
+  await page.route(match(path + "/duty-sms"), route => {
+    statusReads++;
+    return route.fulfill({ json: {
+      notices: record.procurement.status === "draft" ? [correction] : [
+        purchase, { attemptId: "parallel-unknown", dutyName: "原并联审批", status: "unknown", canRetry: false }
+      ]
+    } });
+  });
+  await page.route(match(path + "/duty-sms/retry"), route => {
+    const sent = route.request().postDataJSON();
+    attempts.push(sent);
+    const row = sent.attemptId === purchase.attemptId ? purchase : correction;
+    return route.fulfill({ status: 201, json: { ...row, attemptId: row.attemptId + "-retry", status: "accepted", canRetry: false } });
+  });
+
+  await page.goto("/login");
+  await page.getByPlaceholder("请输入手机号").fill("13900000000");
+  await page.getByPlaceholder("请输入密码").fill("E2e@2026");
+  await page.getByRole("button", { name: "登录" }).click();
+  await expect(page.getByRole("heading", { name: "工作台" })).toBeVisible();
+  await page.goto("/零星采购/procurement-1");
+  const panel = page.getByRole("region", { name: "零星采购申请待办短信" });
+  await expect(panel.getByRole("button", { name: "重新发送" })).toHaveCount(1);
+  await panel.getByRole("listitem").filter({ hasText: "项目物资员采购" }).getByRole("button", { name: "重新发送" }).click();
+  await expect(panel).toContainText("供应商已受理");
+  await expect(panel).toContainText("发送结果待确认");
+
+  record = { ...record, procurement: { ...record.procurement, status: "draft" },
+    currentVersion: { ...record.currentVersion, id: "version-2", versionNo: 2, status: "draft" },
+    purchaseTask: { pending: false, canHandle: false },
+    availableActions: [{ key: "edit_draft", enabled: true, label: "编辑草稿" }] };
+  await page.reload();
+  await panel.getByRole("listitem").filter({ hasText: "退回修改" }).getByRole("button", { name: "重新发送" }).click();
+  await expect(panel).toContainText("供应商已受理");
+  expect(attempts).toEqual([{ attemptId: "purchase-original" }, { attemptId: "correction-original" }]);
+
+  record = { ...record, currentVersion: { ...record.currentVersion, requestProtocolVersion: 1 } };
+  await page.reload();
+  await expect(page.getByText("LXCG-E2E-001", { exact: true }).first()).toBeVisible();
+  await expect(panel).toHaveCount(0);
+  expect(statusReads).toBe(2);
+  expect(unexpectedApi).toEqual([]);
 });

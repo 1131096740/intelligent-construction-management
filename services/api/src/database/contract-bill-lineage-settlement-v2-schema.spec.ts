@@ -36,7 +36,7 @@ describe("contract bill lineage and settlement workbench v2 foundation schema", 
   });
 
   it("keeps compatibility columns nullable and supplies all v2 read-model links", () => {
-    expect(model("Contract")).toContain("finalSettlementId         String?   @unique");
+    expect(model("Contract")).toMatch(/finalSettlementId\s+String\?\s+@unique/u);
     expect(model("ContractBillRow")).toMatch(/lineageId\s+String\?/u);
     expect(model("SettlementDraft")).toContain("processId                         String?   @unique");
     expect(model("Settlement")).toContain("processId                         String?   @unique");

@@ -16,7 +16,14 @@ test("资金执行案件响应丢失重试复用幂等键", async ({ page }) => 
 
   await page.goto("/资金执行案件");
   await expect(page.getByRole("heading", { name: "资金执行案件" })).toBeVisible();
-  await page.getByPlaceholder("选择已核验且尚未认领的银行流水").click();
+  const selectObservation = page.getByPlaceholder("选择已核验且尚未认领的银行流水");
+  await selectObservation.click();
+  await expect(page.getByText("9月1日原款冲回出账 200.00 元", { exact: true })).toHaveCount(0);
+  await page.getByText("反向执行", { exact: true }).click();
+  await selectObservation.click();
+  await expect(page.getByText("9月1日原款冲回出账 200.00 元", { exact: true })).toBeVisible();
+  await page.getByText("初始待分类", { exact: true }).click();
+  await selectObservation.click();
   await page.getByText("9月1日项目工程款入账 10,000.00 元", { exact: true }).click();
   await page.getByPlaceholder("说明暂存待分类或反向执行的真实业务原因")
     .fill("工程款到账，暂待财务完成逐轴分类");
@@ -93,7 +100,7 @@ async function installFundExecutionHarness(
   }));
   await page.route("**/api/fund-executions/**", async (route) => {
     const request = route.request();
-    const { pathname } = new URL(request.url());
+    const { pathname, searchParams } = new URL(request.url());
 
     if (pathname === "/api/fund-executions/cases" && request.method() === "POST") {
       createRequests.push(request.postDataJSON() as RecordedCreateRequest);
@@ -116,7 +123,11 @@ async function installFundExecutionHarness(
           selectionRef: observationSelectionRef,
           expiresAt: "2099-09-01T07:00:00.000Z",
           summary: "9月1日项目工程款入账 10,000.00 元"
-        }])
+        }, ...(searchParams.get("purpose") === "fund_execution_reversal" ? [{
+          selectionRef: "archived-reversal-reference",
+          expiresAt: "2099-09-01T07:00:00.000Z",
+          summary: "9月1日原款冲回出账 200.00 元"
+        }] : [])])
       });
     }
     if (pathname === "/api/fund-executions/reversal-options") {

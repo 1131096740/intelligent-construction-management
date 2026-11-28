@@ -2,9 +2,15 @@
   <section class="home-page">
     <BusinessPageHeader
       title="工作台"
-      description="按岗位和项目权限汇总当前要处理的接管、审批与付款事项。"
+      description="先看待办与草稿，再新建业务；项目、独立台账、资金与管理入口在左侧固定分组。"
     >
       <template #actions>
+        <t-button
+          theme="primary"
+          @click="startNewBusiness"
+        >
+          新建业务
+        </t-button>
         <t-button
           variant="outline"
           :loading="loading"
@@ -14,8 +20,6 @@
         </t-button>
       </template>
     </BusinessPageHeader>
-
-    <BusinessLauncher />
 
     <BusinessFeedback
       v-if="errorMessage"
@@ -45,6 +49,13 @@
         appearance="metrics"
       />
 
+      <HomeActionGroups
+        v-if="actionGroups.length"
+        :groups="actionGroups"
+        @open="go"
+        @view-all="viewGroup"
+      />
+
       <EmptyBusinessState
         v-if="!hasOpenItems"
         title="当前没有待处理事项"
@@ -54,6 +65,7 @@
 
       <template v-else>
         <BusinessTableToolbar
+          id="work-items-panel"
           title="工作项"
           description="筛选与排序作用于当前已加载的工作项；未提交草稿单独列示，不计入待审批。"
           appearance="plain"
@@ -68,6 +80,14 @@
             </t-button>
           </template>
 
+          <label class="filter-field">
+            <span>分组</span>
+            <t-select
+              v-model="filters.group"
+              :options="filterOptions.group"
+              size="small"
+            />
+          </label>
           <label class="filter-field">
             <span>项目</span>
             <t-select
@@ -123,7 +143,7 @@
               v-for="queue in queues"
               :key="queue.id"
               :value="queue.id"
-              :label="queue.title"
+              :label="queue.tabLabel"
             />
           </t-tabs>
 
@@ -187,17 +207,31 @@
           />
         </section>
       </template>
+
+      <HomeProjectSection
+        :projects="projects"
+        :loading="projectsLoading"
+        :error-message="projectsError"
+        @open="openProject"
+        @open-workbench="openProjectWorkbench"
+      />
+
+      <div id="new-business">
+        <BusinessLauncher />
+      </div>
     </template>
   </section>
 </template>
 
 <script setup lang="ts">
 import type { PrimaryTableCol } from "tdesign-vue-next";
-import { computed, onMounted, reactive, ref } from "vue";
-import { useRouter } from "vue-router";
+import { computed, onMounted, reactive, ref, watch } from "vue";
+import { useRoute, useRouter } from "vue-router";
 import { formatUnknownApiError } from "../../api/error-message";
 import {
+  fetchProjects,
   fetchWorkItems,
+  type ProjectOptionReadModel,
   type WorkItemsReadModel
 } from "../../api/core-flow-read.api";
 import BusinessFeedback from "../../components/BusinessFeedback.vue";
@@ -207,25 +241,35 @@ import BusinessPageHeader from "../../components/BusinessPageHeader.vue";
 import BusinessStatusSummary from "../../components/BusinessStatusSummary.vue";
 import BusinessTableToolbar from "../../components/BusinessTableToolbar.vue";
 import EmptyBusinessState from "../../components/EmptyBusinessState.vue";
+import HomeActionGroups from "./HomeActionGroups.vue";
+import HomeProjectSection from "./HomeProjectSection.vue";
 import {
   emptyHomeWorkItemFilters,
   filterAndSortHomeWorkItemRows,
   hasOpenWorkItems,
   hasWorkItemPermissionData,
   homeWorkItemFilterOptions,
+  homeWorkItemQuery,
   homeWorkItemSummaryItems,
+  readHomeWorkItemQuery,
+  toHomeActionGroups,
   toHomeWorkItemRows,
   toWorkItemQueues,
   type HomeWorkItemRow
 } from "./home.config";
 
 const router = useRouter();
+const route = useRoute();
+const initialState = readHomeWorkItemQuery(route.query as Record<string, unknown>);
 const loading = ref(false);
 const errorMessage = ref("");
 const workItems = ref<WorkItemsReadModel | null>(null);
-const activeQueue = ref("pending");
-const showStaleDrafts = ref(false);
-const filters = reactive(emptyHomeWorkItemFilters());
+const activeQueue = ref(initialState.queue);
+const showStaleDrafts = ref(initialState.showStaleDrafts);
+const filters = reactive({ ...initialState.filters });
+const projects = ref<ProjectOptionReadModel[]>([]);
+const projectsLoading = ref(false);
+const projectsError = ref("");
 
 const columns: PrimaryTableCol<HomeWorkItemRow>[] = [
   { colKey: "statusLabel", title: "状态", width: 84 },
@@ -253,6 +297,7 @@ const activeQueueModel = computed(() =>
 );
 const allRows = computed(() => toHomeWorkItemRows(queues.value));
 const filterOptions = computed(() => homeWorkItemFilterOptions(allRows.value));
+const actionGroups = computed(() => toHomeActionGroups(workItems.value));
 const summaryItems = computed(() =>
   homeWorkItemSummaryItems(queues.value, workItems.value?.visibleProjectCount ?? 0)
 );
@@ -279,6 +324,20 @@ function openMobileRow(id: string) {
   if (row) go(row.targetPath);
 }
 
+// 队列、筛选与分组写入 query：办理后浏览器后退回到首页仍保持原筛选（G7）。
+watch(
+  [activeQueue, () => ({ ...filters }), showStaleDrafts],
+  () => {
+    const query = homeWorkItemQuery({
+      queue: activeQueue.value,
+      filters: { ...filters },
+      showStaleDrafts: showStaleDrafts.value
+    });
+    if (JSON.stringify(route.query) === JSON.stringify(query)) return;
+    void router.replace({ path: route.path, query });
+  }
+);
+
 async function loadSummary() {
   loading.value = true;
   errorMessage.value = "";
@@ -292,8 +351,38 @@ async function loadSummary() {
   }
 }
 
+async function loadProjects() {
+  projectsLoading.value = true;
+  projectsError.value = "";
+  try {
+    projects.value = await fetchProjects();
+  } catch (error) {
+    projectsError.value = `未能读取项目：${formatUnknownApiError(error, "项目读取失败")}。`;
+  } finally {
+    projectsLoading.value = false;
+  }
+}
+
 function resetFilters() {
   Object.assign(filters, emptyHomeWorkItemFilters());
+}
+
+function viewGroup(groupKey: string) {
+  activeQueue.value = "pending";
+  filters.group = groupKey;
+  document.getElementById("work-items-panel")?.scrollIntoView({ behavior: "smooth", block: "start" });
+}
+
+function startNewBusiness() {
+  document.getElementById("new-business")?.scrollIntoView({ behavior: "smooth", block: "start" });
+}
+
+function openProject(projectId: string) {
+  void router.push({ path: "/项目经营", query: { projectId } });
+}
+
+function openProjectWorkbench() {
+  void router.push("/项目经营");
 }
 
 function go(path: string) {
@@ -302,6 +391,7 @@ function go(path: string) {
 
 onMounted(() => {
   void loadSummary();
+  void loadProjects();
 });
 </script>
 

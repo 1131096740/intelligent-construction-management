@@ -780,7 +780,7 @@ describe("SettlementController authorization wiring", () => {
     }
   );
 
-  it("returns settlement project actions and uploads draft evidence through the scoped controller", async () => {
+  it("retains the historical capability shape and the internal archive fixture upload delegate", async () => {
     const files = { uploadPrivateFile: jest.fn().mockResolvedValue({ id: "file-2" }) };
     const controller = new SettlementDraftController(
       {} as never,
@@ -797,16 +797,10 @@ describe("SettlementController authorization wiring", () => {
       buffer: Buffer.from("draft-evidence")
     };
 
-    expect(controller.capability("project-1")).toEqual(
-      expect.objectContaining({
-        projectId: "project-1",
-        availableActions: expect.arrayContaining([
-          "save_draft",
-          "preview_import",
-          "attach_line_file"
-        ])
-      })
-    );
+    expect(controller.capability("project-1")).toEqual({
+      projectId: "project-1",
+      availableActions: []
+    });
     await expect(
       controller.uploadPrivateFile(file, { id: "contract-1" } as never, { idempotencyKey: "draft-upload-1" })
     ).resolves.toEqual({ id: "file-2" });
@@ -880,6 +874,52 @@ describe("SettlementController authorization wiring", () => {
       "settlement-1", { id: "director-1" } as never,
       { confirmPureRenderingIssue: false, reason: "事实变化", confirmationPassword: "secret" }
     )).toThrow("请确认仅修复渲染问题");
+  });
+
+  it("forwards visible projects, actor and filters to the signed settlement ledger", async () => {
+    const signedSettlementLedger = {
+      list: jest.fn().mockResolvedValue({ rows: [], meta: {}, summary: {}, filters: {}, columns: [] }),
+      exportLedger: jest.fn().mockResolvedValue({
+        buffer: Buffer.from("xlsx"),
+        fileName: "已签结算台账.xlsx"
+      })
+    };
+    const projectVisibility = { visibleProjectIds: jest.fn().mockResolvedValue(["project-1"]) };
+    const response = { set: jest.fn() };
+    const controller = new SettlementController(
+      {} as never, {} as never, {} as never, projectVisibility as never, {} as never,
+      undefined, undefined, undefined, undefined, undefined, signedSettlementLedger as never
+    );
+
+    await controller.signedLedger(
+      { id: "user-1" } as never,
+      { keyword: "幕墙", projectId: "project-1" }
+    );
+    expect(signedSettlementLedger.list).toHaveBeenCalledWith(
+      ["project-1"], "user-1", { keyword: "幕墙", projectId: "project-1" }
+    );
+
+    await controller.signedLedgerExport(
+      { id: "user-1" } as never, response, { keyword: "幕墙" }
+    );
+    expect(projectVisibility.visibleProjectIds).toHaveBeenCalledWith("user-1");
+    expect(signedSettlementLedger.exportLedger).toHaveBeenCalledWith(
+      ["project-1"], "user-1", { keyword: "幕墙" }
+    );
+    expect(response.set).toHaveBeenCalledWith(
+      expect.objectContaining({
+        "Content-Type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+      })
+    );
+  });
+
+  it("gates the signed settlement ledger read and export with the existing ledger policies", () => {
+    expect(
+      Reflect.getMetadata(REQUIRED_POSITIONS_KEY, SettlementController.prototype.signedLedger)
+    ).toEqual(LEDGER_READ_POSITION_KEYS);
+    expect(
+      Reflect.getMetadata(REQUIRED_POSITIONS_KEY, SettlementController.prototype.signedLedgerExport)
+    ).toEqual(CONTRACT_SETTLEMENT_LEDGER_EXPORT_ROLE_KEYS);
   });
 
   it("retries a missing or failed pending-generation claim without force regeneration", async () => {

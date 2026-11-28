@@ -1,0 +1,34 @@
+--- spec
++++ spec
+@@ -5,4 +5,5 @@
+ import { companyTransferWorkItems } from "../company-transfer/company-transfer-workitems";
+ import { OperatingLedgerService } from "../operating-ledger/operating-ledger.service";
++import { OperatingSourceAdapterRegistry } from "../operating-ledger/operating-source-adapter";
+ import { OperatingSourceReplayService } from "../operating-ledger/operating-source-replay.service";
+ import "reflect-metadata";
+@@ -576,6 +577,23 @@
+       `;
+       expect(privileges).toEqual({ routines: 4n, publicExecute: false });
+-      const comparison = await app.get(OperatingSourceReplayService).compareProject(projectId, finance);
+-      expect(comparison.differences.filter(difference => difference.sourceType === "company_transfer_debt_correction")).toEqual([]);
++      const comparisonUrl = process.env.TASK410_REPLAY_DATABASE_URL;
++      if (process.env.TASK410_OWNED_320 === "1") expect(comparisonUrl).toBeDefined();
++      const reader = comparisonUrl ? new PrismaService({ datasourceUrl: comparisonUrl }) : undefined;
++      try {
++        let replay = app.get(OperatingSourceReplayService);
++        if (reader) {
++          const [identity] = await reader.$queryRaw<Array<{ role: string; tls: boolean }>>`
++            SELECT session_user AS role, ssl AS tls FROM pg_stat_ssl WHERE pid=pg_backend_pid()
++          `;
++          expect(identity).toEqual({ role: `finance_runtime_${process.env.TASK410_ISOLATED_RUN_ID}`, tls: true });
++          replay = new OperatingSourceReplayService(
++            reader, app.get(OperatingLedgerService), app.get(OperatingSourceAdapterRegistry)
++          );
++        }
++        const comparison = await replay.compareProject(projectId, finance);
++        expect(comparison.differences.filter(difference => difference.sourceType === "company_transfer_debt_correction")).toEqual([]);
++      } finally {
++        await reader?.$disconnect();
++      }
+     }
+     if (canonical === "none") expect(journal).toEqual([]);

@@ -1,0 +1,22 @@
+--- pol108-core-cases
++++ pol108-core-cases
+@@ -827,7 +827,7 @@
+         SELECT current_database() AS database,
+                (d.datdba = 10 AND current_user::regrole::oid = 10
+                 AND current_user = session_user AND (SELECT ssl FROM pg_stat_ssl WHERE pid = pg_backend_pid())
+-                AND (SELECT COUNT(*) FROM "_prisma_migrations" WHERE finished_at IS NOT NULL AND rolled_back_at IS NULL) = 290
++                AND (SELECT COUNT(*) FROM "_prisma_migrations" WHERE finished_at IS NOT NULL AND rolled_back_at IS NULL) = 295
+                 AND EXISTS (SELECT FROM "_prisma_migrations"
+                   WHERE migration_name = '20261118231000_registered_payment_voucher_fixed_read'
+                     AND checksum = 'e1ff36a191e8173a2cf06db3c20aa386db58360bfceba39eed010f9444da196e'
+@@ -835,6 +835,10 @@
+                 AND EXISTS (SELECT FROM "_prisma_migrations"
+                   WHERE migration_name = '20261119000500_contract_outside_archive_evidence_voucher_check'
+                     AND checksum = '90c194e51d72760db01145dca0678fdf4ff427c017074d1728c76e6dc876c0e4'
++                    AND finished_at IS NOT NULL AND rolled_back_at IS NULL)
++                AND EXISTS (SELECT FROM "_prisma_migrations"
++                  WHERE migration_name = '20261119003800_company_transfer_ordinary_loan_multi_witness'
++                    AND checksum = 'e5b56cb299eb4a51eb094267fbf302b6fa6b40b31c0337c6dfcf628694d5de25'
+                     AND finished_at IS NOT NULL AND rolled_back_at IS NULL)
+                 AND EXISTS (SELECT FROM "_prisma_migrations"
+                   WHERE migration_name = '20261119003500_fund_balance_correction_controlled_round'

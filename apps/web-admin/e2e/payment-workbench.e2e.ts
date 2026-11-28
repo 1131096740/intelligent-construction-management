@@ -105,7 +105,15 @@ function paymentApprovalDetail(
   };
 }
 
+async function mockPaymentDetailReaders(page: Page) {
+  await page.route("**/api/projects", route =>
+    route.fulfill({ json: [{ id: "project-1", code: "P001", name: "科技园项目" }] }));
+  await page.route("**/api/approval-forms/payment_request/*/capability", route =>
+    route.fulfill({ json: { available: false } }));
+}
+
 async function mockPaymentApprovalShell(page: Page) {
+  await mockPaymentDetailReaders(page);
   await page.route("**/api/auth/login", (route) =>
     route.fulfill({
       contentType: "application/json",
@@ -240,6 +248,7 @@ function paymentExecutionDetail(paymentId: string) {
 }
 
 async function mockPaymentExecutionShell(page: Page) {
+  await mockPaymentDetailReaders(page);
   await page.route("**/api/auth/login", (route) =>
     route.fulfill({
       contentType: "application/json",
@@ -285,6 +294,10 @@ async function mockPaymentExecutionShell(page: Page) {
         body: "[]"
       })
   );
+  await page.route(/\/api\/payment-executions\/(?:work-items|recorded-items)$/u, (route) => {
+    if (route.request().method() !== "GET") return route.fallback();
+    return route.fulfill({ json: { items: [], total: 0 } });
+  });
 }
 
 async function mockPaymentExecutionRequests(
@@ -606,6 +619,22 @@ test("separates the payment ledger from the contract-linked creation workbench",
   page
 }, testInfo) => {
   let createdBody: Record<string, unknown> | null = null;
+  let recordedReads = 0;
+  await page.route("**/api/payment-executions/recorded-items", async (route) => {
+    expect(route.request().method()).toBe("GET");
+    recordedReads += 1;
+    await route.fulfill({ json: { items: [], total: 0 } });
+  });
+  await page.route("**/api/payment-executions/work-items", route =>
+    route.fulfill({ json: { items: [], total: 0 } }));
+  await page.route("**/api/contract-relationship-ledger?*", route =>
+    route.fulfill({ json: { readAt: "2026-11-25T01:00:00.000Z", rows: [], totals: [], notice: "" } }));
+  await page.route("**/api/operating-projections/as-of?*", route =>
+    route.fulfill({ json: {
+      asOf: { businessDate: "2026-11-25", readAt: "2026-11-25T01:00:00.000Z" },
+      integrity: { statusLabel: "金额完整", moneyComplete: true, notices: [] },
+      operating: { receivableCents: "0", payableCents: "0" }
+    } }));
 
   await page.route("**/api/auth/login", (route) =>
     route.fulfill({
@@ -702,6 +731,24 @@ test("separates the payment ledger from the contract-linked creation workbench",
       body: JSON.stringify({ projectId: "project-1", availableActions: ["create_payment"] })
     })
   );
+  const paymentAgreementText = "结算后 30 日支付 80%，提交验收证明。";
+  await page.route("**/api/projects/project-1/signed-contract-settlements/payment-basis?*", (route) =>
+    route.fulfill({
+      json: {
+        latestConfirmed: {
+          id: "signed-negative", number: "JS-NEG-001", amountYuan: "-5.0000",
+          confirmedAt: "2026-11-25T01:00:00.000Z", source: "signed_registration", attachmentFileIds: []
+        },
+        confirmedHistory: [], contractAttachmentIds: [], canReadSignedAttachments: false,
+        confirmedYuan: "85.0000", paymentAgreementText,
+        downstreamCapacity: {
+          recordedPaidYuan: "0.0000", outstandingYuan: "80.0000", unoccupiedYuan: "5.0000",
+          wholeCentLimit: "500", advancePaidYuan: "0.0000", unsettledAdvanceYuan: "0.0000",
+          overpayYuan: "0.0000", abnormalOverpayYuan: "0.0000", capacityShortfallYuan: "0.0000", suspended: false
+        }
+      }
+    })
+  );
   await page.route(/\/api\/payments(?:\?.*)?$/u, async (route) => {
     if (route.request().method() === "POST") {
       createdBody = route.request().postDataJSON() as Record<string, unknown>;
@@ -752,6 +799,12 @@ test("separates the payment ledger from the contract-linked creation workbench",
     .last()
     .click();
   await selects.nth(2).click();
+  await page.getByText("已签结算最近确认一期", { exact: true }).last().click();
+  const signedBasis = page.getByLabel("已签结算付款依据", { exact: true });
+  await expect(signedBasis).toContainText(paymentAgreementText);
+  await expect(signedBasis).toContainText("最近确认：JS-NEG-001 · 本期 -5.0000 元");
+  await expect(signedBasis).toContainText("可付 500 分");
+  await selects.nth(2).click();
   await page.getByText("单张结算付款", { exact: true }).last().click();
   await selects.nth(3).click();
   await page.getByText("JS-2026-001 · 2026-06 · ¥50,000.00", { exact: true }).last().click();
@@ -767,6 +820,7 @@ test("separates the payment ledger from the contract-linked creation workbench",
   await expect
     .poll(() => decodeURIComponent(new URL(page.url()).pathname))
     .toBe("/付款管理/FK-E2E-001");
+  await expect.poll(() => recordedReads).toBeGreaterThan(0);
   expect(createdBody).toEqual({
     sourceType: "settlement",
     code: "FK-E2E-001",

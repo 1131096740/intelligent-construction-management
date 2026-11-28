@@ -1,0 +1,202 @@
+{
+  "cleanup": {
+    "mounts": {
+      "fixtures/contract-draft-aggregate-concurrency.spec.ts": {
+        "target": "workspace/services/api/src/database/contract-draft-aggregate-concurrency.spec.ts",
+        "sha256": "1997a922aabf03503e7c628bcf33666bf298937ef52bfd105d4c47ce35fd3ce4"
+      },
+      "fixtures/contract-draft-retention-script.spec.ts": {
+        "target": "workspace/services/api/src/database/contract-draft-retention-script.spec.ts",
+        "sha256": "1f6ed8b75602220663019d63fd13dac0c9367fb7e950994e7a584ae1134f45ec"
+      },
+      "fixtures/contract-ended-application-purge.spec.ts": {
+        "target": "workspace/services/api/src/database/contract-ended-application-purge.spec.ts",
+        "sha256": "90ce9a25ca8a3d41f714c8348fae55559f2d58a556aae1e8fd3427a1cf50af7f"
+      },
+      "fixtures/contract-ended-application-retention.spec.ts": {
+        "target": "workspace/services/api/src/database/contract-ended-application-retention.spec.ts",
+        "sha256": "5f335aecb1f01b9979252a4cecd4a64a5e7e4765a7c0d671f650288dec3909d2"
+      },
+      "fixtures/contract-lifecycle-route.spec.ts": {
+        "target": "workspace/services/api/src/database/contract-lifecycle-route.spec.ts",
+        "sha256": "32b015b36b9093f8354281d4807edb4f304eb657902eeb22faa43a3e952f9d1f"
+      },
+      "fixtures/legacy-contract-cleanup-preflight-postgres.spec.ts": {
+        "target": "workspace/services/api/src/database/legacy-contract-cleanup-preflight-postgres.spec.ts",
+        "sha256": "5cb9c5d5f9724b213dced5c53e81d183b4e5d92465b824608f9c9bac9c518e6d"
+      },
+      "fixtures/project-operating-profile-upgrade.spec.ts": {
+        "target": "workspace/services/api/src/database/project-operating-profile-upgrade.spec.ts",
+        "sha256": "a9f90c38e0d89698ff86be5577bc920cfdc3605e2d92c21229028089a39c1abd"
+      },
+      "fixtures/remaining-289-cleanup-fixture.ts": {
+        "target": "workspace/services/api/src/database/remaining-289-cleanup-fixture.ts",
+        "sha256": "b069b19848053e356e3867318e392178b56cf36ff5c552aa2d548ac46797ce5d"
+      },
+      "support/scripts/ops/deploy-production-server.sh": {
+        "target": "workspace/scripts/ops/deploy-production-server.sh",
+        "sha256": "9f60bff36eb14b159a22465890b2a35123c32ac429da5f55d84544df8c89d2b6"
+      },
+      "support/scripts/ops/systemd/jiangkong-draft-retention.service": {
+        "target": "workspace/scripts/ops/systemd/jiangkong-draft-retention.service",
+        "sha256": "50cc967d0c0a4d5c70b4338301079fef9a8714d3a4c0091a43bf1d79ab30ab47"
+      },
+      "support/scripts/ops/systemd/jiangkong-draft-retention.timer": {
+        "target": "workspace/scripts/ops/systemd/jiangkong-draft-retention.timer",
+        "sha256": "81a832b4e0d6efc90b3057ba7ed8de18f613593e565e013ff645d6d305611693"
+      },
+      "support/services/api/scripts/execute-contract-draft-retention.cjs": {
+        "target": "workspace/services/api/scripts/execute-contract-draft-retention.cjs",
+        "sha256": "2166cbf3c0988fe637f755c43438efb6199ea4b18a4744d4d4501a0d85bbf969"
+      },
+      "support/services/api/scripts/inspect-legacy-contract-cleanup-preflight.cjs": {
+        "target": "workspace/services/api/scripts/inspect-legacy-contract-cleanup-preflight.cjs",
+        "sha256": "f37a08cf28c944c504a1258cf58704906df6810ef2597b296142d5baa76124c4"
+      },
+      "support/services/api/scripts/operational-maintenance-write-boundary.cjs": {
+        "target": "workspace/services/api/scripts/operational-maintenance-write-boundary.cjs",
+        "sha256": "65dc36b64806ae4dc8d9ee11902a23fdc375b6843ba7b6596b8cc4668430787a"
+      },
+      "support/services/api/scripts/purge-pristine-draft-deletion-receipts.cjs": {
+        "target": "workspace/services/api/scripts/purge-pristine-draft-deletion-receipts.cjs",
+        "sha256": "362b7aaf481a88b580e18254eb801012a4c8feb8fea983bbea76fa7c8a28a8c6"
+      },
+      "entry.cjs": {
+        "target": "entry.cjs",
+        "sha256": "338d540bbc521af46d1caa68db4360b33af4d0125dcb79137cae60c951d5b4a5"
+      },
+      "remaining-retained.cjs": {
+        "target": "remaining-retained.cjs",
+        "sha256": "7b6ae487f0a3d6d020ca77227c18b3b774762519952f4415edb91eec49e9a76e"
+      },
+      "fixtures.json": {
+        "target": "fixtures.json",
+        "sha256": "6af14063a3fd2511d757d1dd527b9dea97f06b8f504696e0e76be10aff2fb9d6"
+      },
+      "project-profile-original-seed.sql": {
+        "target": "project-profile-original-seed.sql",
+        "sha256": "43e2dd735b37852e1021d795906c3327db71524030c7ae11c92387643392ff99"
+      },
+      "original-jest-inventory.json": {
+        "target": "original-jest-inventory.json",
+        "sha256": "654ec22bc6e3e0accafa9638010deb8bff9d0752a2e4e478237d9d8b4432631d"
+      }
+    },
+    "baseSha256": "86d62f558f8a9e38ef0c3fa4acfd3aaae988d2b23874392802061047be3f9b10",
+    "patchSha256": "532f37b9a6fd75813c2a6ebe844b3bde19de99d9194100cbf7013a4cb12b2014",
+    "installerSha256": "8802cd9e070bdf6a4ea654c951315f7f6b317d968d9fe8bd0f5a3e1d136a3151",
+    "receiptSha256": "c8929e6d335099d0d0813182d3b3a26aa187d40971ed9206bcc0a44fde120810"
+  },
+  "profile": {
+    "mounts": {
+      "fixtures/contract-draft-aggregate-concurrency.spec.ts": {
+        "target": "workspace/services/api/src/database/contract-draft-aggregate-concurrency.spec.ts",
+        "sha256": "1997a922aabf03503e7c628bcf33666bf298937ef52bfd105d4c47ce35fd3ce4"
+      },
+      "fixtures/contract-draft-retention-script.spec.ts": {
+        "target": "workspace/services/api/src/database/contract-draft-retention-script.spec.ts",
+        "sha256": "1f6ed8b75602220663019d63fd13dac0c9367fb7e950994e7a584ae1134f45ec"
+      },
+      "fixtures/contract-ended-application-purge.spec.ts": {
+        "target": "workspace/services/api/src/database/contract-ended-application-purge.spec.ts",
+        "sha256": "90ce9a25ca8a3d41f714c8348fae55559f2d58a556aae1e8fd3427a1cf50af7f"
+      },
+      "fixtures/contract-ended-application-retention.spec.ts": {
+        "target": "workspace/services/api/src/database/contract-ended-application-retention.spec.ts",
+        "sha256": "5f335aecb1f01b9979252a4cecd4a64a5e7e4765a7c0d671f650288dec3909d2"
+      },
+      "fixtures/contract-lifecycle-route.spec.ts": {
+        "target": "workspace/services/api/src/database/contract-lifecycle-route.spec.ts",
+        "sha256": "32b015b36b9093f8354281d4807edb4f304eb657902eeb22faa43a3e952f9d1f"
+      },
+      "fixtures/legacy-contract-cleanup-preflight-postgres.spec.ts": {
+        "target": "workspace/services/api/src/database/legacy-contract-cleanup-preflight-postgres.spec.ts",
+        "sha256": "5cb9c5d5f9724b213dced5c53e81d183b4e5d92465b824608f9c9bac9c518e6d"
+      },
+      "fixtures/project-operating-profile-upgrade.spec.ts": {
+        "target": "workspace/services/api/src/database/project-operating-profile-upgrade.spec.ts",
+        "sha256": "a9f90c38e0d89698ff86be5577bc920cfdc3605e2d92c21229028089a39c1abd"
+      },
+      "fixtures/remaining-289-cleanup-fixture.ts": {
+        "target": "workspace/services/api/src/database/remaining-289-cleanup-fixture.ts",
+        "sha256": "b069b19848053e356e3867318e392178b56cf36ff5c552aa2d548ac46797ce5d"
+      },
+      "support/scripts/ops/deploy-production-server.sh": {
+        "target": "workspace/scripts/ops/deploy-production-server.sh",
+        "sha256": "9f60bff36eb14b159a22465890b2a35123c32ac429da5f55d84544df8c89d2b6"
+      },
+      "support/scripts/ops/systemd/jiangkong-draft-retention.service": {
+        "target": "workspace/scripts/ops/systemd/jiangkong-draft-retention.service",
+        "sha256": "50cc967d0c0a4d5c70b4338301079fef9a8714d3a4c0091a43bf1d79ab30ab47"
+      },
+      "support/scripts/ops/systemd/jiangkong-draft-retention.timer": {
+        "target": "workspace/scripts/ops/systemd/jiangkong-draft-retention.timer",
+        "sha256": "81a832b4e0d6efc90b3057ba7ed8de18f613593e565e013ff645d6d305611693"
+      },
+      "support/services/api/scripts/execute-contract-draft-retention.cjs": {
+        "target": "workspace/services/api/scripts/execute-contract-draft-retention.cjs",
+        "sha256": "2166cbf3c0988fe637f755c43438efb6199ea4b18a4744d4d4501a0d85bbf969"
+      },
+      "support/services/api/scripts/inspect-legacy-contract-cleanup-preflight.cjs": {
+        "target": "workspace/services/api/scripts/inspect-legacy-contract-cleanup-preflight.cjs",
+        "sha256": "f37a08cf28c944c504a1258cf58704906df6810ef2597b296142d5baa76124c4"
+      },
+      "support/services/api/scripts/operational-maintenance-write-boundary.cjs": {
+        "target": "workspace/services/api/scripts/operational-maintenance-write-boundary.cjs",
+        "sha256": "65dc36b64806ae4dc8d9ee11902a23fdc375b6843ba7b6596b8cc4668430787a"
+      },
+      "support/services/api/scripts/purge-pristine-draft-deletion-receipts.cjs": {
+        "target": "workspace/services/api/scripts/purge-pristine-draft-deletion-receipts.cjs",
+        "sha256": "362b7aaf481a88b580e18254eb801012a4c8feb8fea983bbea76fa7c8a28a8c6"
+      },
+      "entry.cjs": {
+        "target": "entry.cjs",
+        "sha256": "e2b82057997d70cd3d053c158dab481f892ba97c219e7dfb9af23520676fa842"
+      },
+      "remaining-retained.cjs": {
+        "target": "remaining-retained.cjs",
+        "sha256": "bb2f6b8545f86c00a27d8867fcaa4f4f1ae1034ff3582890c6848c920c109bc6"
+      },
+      "fixtures.json": {
+        "target": "fixtures.json",
+        "sha256": "6af14063a3fd2511d757d1dd527b9dea97f06b8f504696e0e76be10aff2fb9d6"
+      },
+      "project-profile-original-seed.sql": {
+        "target": "project-profile-original-seed.sql",
+        "sha256": "43e2dd735b37852e1021d795906c3327db71524030c7ae11c92387643392ff99"
+      }
+    },
+    "baseSha256": "86d62f558f8a9e38ef0c3fa4acfd3aaae988d2b23874392802061047be3f9b10",
+    "patchSha256": "a761b241646bf6c387282608d42505d5814f26e9443e7883e7b73dcf8fbe9c39",
+    "installerSha256": "a9c8c8390c755a2ef0484f405ca94466d3f73f7c8bc2556f924e89fbe891eb63",
+    "receiptSha256": "a359fcd7ab3a7b242b02545737ab6c6c2352209331eabcedbb7b51754ad19787"
+  },
+  "wage": {
+    "mounts": {
+      "wage-statement-constraints.spec.ts": {
+        "target": "workspace/services/api/src/database/wage-statement-constraints.spec.ts",
+        "sha256": "588bc9f9a7a27aa01aa0fb70cedecc24f0cdd180014b28c3a59e4b9062bf87c3"
+      },
+      "entry.cjs": {
+        "target": "entry.cjs",
+        "sha256": "6ee5aa89d422636e07bdf4e0154be83a1baaa33091b0a6eb3133f71f3f16f01e"
+      },
+      "wage.cjs": {
+        "target": "wage.cjs",
+        "sha256": "0eda7d8e9d8200109322b37b9319d3abc8fbbd0a464797c0cac45b76f4bfeada"
+      },
+      "wage-material.json": {
+        "target": "wage-material.json",
+        "sha256": "f8be767de63922f198e5fcb9c878e39216972e2c246d3f02feb01e7fb9ecc9aa"
+      },
+      "hypothesis.json": {
+        "target": "hypothesis.json",
+        "sha256": "79b8992e34f609a6bb54bfc0deeca4883fd19b1913ab9d6060cf208646744162"
+      }
+    },
+    "baseSha256": "86d62f558f8a9e38ef0c3fa4acfd3aaae988d2b23874392802061047be3f9b10",
+    "patchSha256": "9fa258c4dd67019de217c774510efcc1b0fab3b918491e66b4e5ef27d765134f",
+    "installerSha256": "aa672613c9e44affb41c15c4ce884ab14d4a8fec08507ea9edfe843da8b36ff6",
+    "receiptSha256": "0fc0fa0ec3998ae662300c2836759c03c9d110e6806908909b2973c5183cc0e0"
+  }
+}

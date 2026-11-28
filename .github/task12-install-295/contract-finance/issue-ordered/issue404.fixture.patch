@@ -1,0 +1,162 @@
+--- a/fixture.ts
++++ b/fixture.ts
+@@ -3 +3 @@
+-import { PrismaClient } from "@prisma/client";
++import { PrismaClient, type Prisma } from "@prisma/client";
+@@ -251 +251 @@
+-  });
++  }, 45_000);
+@@ -256 +256 @@
+-    const fixture = await seedFixture(prisma);
++    const fixture = await seedFixture(prisma, true);
+@@ -469 +469 @@
+-  });
++  }, 45_000);
+@@ -567,2 +567,2 @@
+-    assertFileHasNoBusinessBinding: async (_tx: unknown, fileId: string) => {
+-      const file = await prisma.fileObject.findUniqueOrThrow({ where: { id: fileId }, select: { uploadedByUserId: true } });
++    assertFileHasNoBusinessBinding: async (tx: Prisma.TransactionClient, fileId: string) => {
++      const file = await tx.fileObject.findUniqueOrThrow({ where: { id: fileId }, select: { uploadedByUserId: true } });
+@@ -638,0 +639,18 @@
++  const orderedDatabase = process.env.JG_ISSUE404_ORDERED_344_DATABASE;
++  if (orderedDatabase) {
++    if (
++      process.env.NODE_ENV !== "test" ||
++      !/^jg_task01_[a-f0-9]{32}$/u.test(orderedDatabase) ||
++      url.protocol !== "postgresql:" ||
++      url.hostname !== "127.0.0.1" ||
++      url.username !== "jg_task01_owner" ||
++      Number(url.port) <= 1024 ||
++      url.pathname !== "/" + orderedDatabase ||
++      url.searchParams.get("sslmode") !== "require" ||
++      url.searchParams.get("sslaccept") !== "strict" ||
++      !/^\/tmp\/jg394-[A-Za-z0-9]+\/ca\.crt$/u.test(url.searchParams.get("sslcert") ?? "")
++    ) {
++      throw new Error("ISSUE-404 测试需要本轮有序安装的 TLS 专库");
++    }
++    return raw;
++  }
+@@ -645 +663 @@
+-async function seedFixture(prisma: PrismaClient) {
++async function seedFixture(prisma: PrismaClient, seedRefundAccount = false) {
+@@ -664 +682,10 @@
+-  await prisma.companyEntity.create({ data: { id: companyId, name: `合成费用公司 ${prefix}`, dataStatus: "complete" } });
++  const start = new Date("2026-11-01");
++  const creditCode = `91310000${prefix.toUpperCase()}18`;
++  const companyName = `合成费用公司 ${prefix}`;
++  await prisma.companyEntity.create({ data: {
++    id: companyId,
++    name: companyName,
++    unifiedSocialCreditCode: creditCode,
++    currentVersionNo: 1,
++    dataStatus: "complete"
++  } });
+@@ -669,2 +696 @@
+-      name: `#404 真库项目 ${prefix}`,
+-      operatingLedgerEffectiveDate: new Date("2026-11-01")
++      name: `#404 真库项目 ${prefix}`
+@@ -724,0 +751,20 @@
++  const companyVersion = await prisma.companyEntityVersion.create({ data: {
++    companyEntityId: companyId,
++    versionNo: 1,
++    name: companyName,
++    unifiedSocialCreditCode: creditCode,
++    isActive: true,
++    action: "create",
++    actorUserId: financeStaffUserId
++  } });
++  await prisma.projectParticipatingCompany.create({ data: {
++    projectId,
++    companyEntityId: companyId,
++    companyEntityVersionId: companyVersion.id,
++    companyNameSnapshot: companyName,
++    companyCreditCodeSnapshot: creditCode,
++    effectiveFrom: start,
++    changeReason: "报销真库我方参与公司",
++    addedByUserId: financeStaffUserId
++  } });
++  await prisma.project.update({ where: { id: projectId }, data: { operatingLedgerEffectiveDate: start } });
+@@ -726,0 +773,11 @@
++  const requestLine = (name: string) => ({
++    id: randomUUID(),
++    name,
++    specification: null,
++    unit: null,
++    quantity: null,
++    unitPrice: null,
++    estimatedAmount: null,
++    requiredOn: null,
++    note: null
++  });
+@@ -743 +800 @@
+-        lines: [],
++        lines: [requestLine("办公用品")],
+@@ -760 +817 @@
+-        lines: [],
++        lines: [requestLine("后勤用品")],
+@@ -812,32 +869,33 @@
+-  await prisma.registeredFundAccount.create({ data: { id: accountId, scopeKey: `public_cash_404_${prefix}`, kind: "public_cash" } });
+-  await prisma.fundAccountBalanceRegistration.create({
+-    data: {
+-      id: openingId,
+-      accountId,
+-      version: 1,
+-      kind: "opening",
+-      status: "confirmed",
+-      balanceYuan: 5000,
+-      asOfDate: "2026-11-01",
+-      evidenceReference: `OPEN-404-${prefix}`,
+-      reconciliationNote: "真库期初",
+-      reason: "真库期初",
+-      idempotencyKey: `opening-404-${prefix}`,
+-      payloadFingerprint: "d".repeat(64),
+-      createdByUserId: financeStaffUserId,
+-      confirmedByUserId: financeStaffUserId,
+-      confirmedAt: new Date("2026-11-01T00:00:00.000Z")
+-    }
+-  });
+-  await prisma.fundAccountSourceBatch.create({
+-    data: {
+-      id: sourceBatchId,
+-      registrationId: openingId,
+-      lineNo: 1,
+-      amountYuan: 5000,
+-      sourceStatus: "known",
+-      sourceName: "期初",
+-      projectStatus: "project",
+-      projectId
+-    }
+-  });
++  if (seedRefundAccount) {
++    await prisma.registeredFundAccount.create({ data: { id: accountId, scopeKey: "public_cash", kind: "public_cash" } });
++    await prisma.fundAccountBalanceRegistration.create({
++      data: {
++        id: openingId,
++        accountId,
++        version: 1,
++        kind: "opening",
++        status: "confirmed",
++        balanceYuan: 5000,
++        asOfDate: "2026-11-01",
++        evidenceReference: `OPEN-404-${prefix}`,
++        reconciliationNote: "真库期初",
++        reason: "真库期初",
++        idempotencyKey: `opening-404-${prefix}`,
++        payloadFingerprint: "d".repeat(64),
++        createdByUserId: financeStaffUserId,
++        confirmedByUserId: financeStaffUserId,
++        confirmedAt: new Date("2026-11-01T00:00:00.000Z"),
++        sources: {
++          create: {
++            id: sourceBatchId,
++            lineNo: 1,
++            amountYuan: 5000,
++            sourceStatus: "known",
++            sourceName: "期初",
++            projectStatus: "project",
++            projectId
++          }
++        }
++      }
++    });
++  }

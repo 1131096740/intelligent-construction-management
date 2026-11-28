@@ -159,10 +159,7 @@ describe("production dependency security through the private-file HTTP entry", (
     );
 
     expect(response.status).toBe(201);
-    expect(confirmPassword).toHaveBeenCalledWith(
-      "finance-file-upload-1",
-      "current-password"
-    );
+    expect(confirmPassword).not.toHaveBeenCalled();
     expect(createDownloadTicket).toHaveBeenCalledWith("file-1", {
       actorUserId: "finance-file-upload-1",
       downloadReason: "合同归档复核"

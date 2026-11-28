@@ -1,0 +1,26 @@
+--- spec
++++ spec
+@@ -1,5 +1,5 @@
+ import { assertTask410Owner290, task410TestDatabase } from "./task410-owned-test-database";
+ import { buildRegisteredPgFixturePlan } from "./registered-payment-postgres.fixture";
+-import { verifySignedSettlementRoundedPayment } from "./task410-signed-settlement-payment.test-support";
++import { verifySignedSettlementRoundedPayment, verifySignedSettlementPaymentCompetition } from "./task410-signed-settlement-payment.test-support";
+ import { seedSharedPaymentPredecessors } from "./task16-shared-standard-fixture";
+ import { ProjectVisibilityService } from "../auth/project-visibility.service";
+@@ -36,4 +36,8 @@
+     }
+     const mode = task410TestDatabase(target);
++    if (process.env.TASK410_OWNED_PAYMENT_REMAINDER_331 === "1") {
++      target.searchParams.set("connection_limit", "4");
++      process.env.DATABASE_URL = target.href;
++    }
+     app = (await Test.createTestingModule({ imports: [AppModule] }).compile()).createNestApplication({ logger: ["error"] });
+     app.getHttpAdapter().getInstance().set("json replacer", apiJsonReplacer);
+@@ -601,4 +605,7 @@
+       expect(journal).toEqual([]);
+       await verifySignedSettlementRoundedPayment(db, password, loginActor, call);
++      if (process.env.TASK410_OWNED_PAYMENT_REMAINDER_331 === "1") {
++        await verifySignedSettlementPaymentCompetition(db, password, loginActor, call);
++      }
+     } else {
+       const direction = canonical === "source" ? "increase" : "decrease";

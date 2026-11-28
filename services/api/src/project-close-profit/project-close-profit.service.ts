@@ -19,7 +19,7 @@ import {
 import { ProjectVisibilityService } from "../auth/project-visibility.service";
 import { AuditService } from "../audit/audit.service";
 import { PrismaService } from "../database/prisma.service";
-import { OperatingProjectionService } from "../operating-projection/operating-projection.service";
+import { OperatingProjectionService, OwnerSettlementBelowCentForCloseError } from "../operating-projection/operating-projection.service";
 import { OperatingLedgerService } from "../operating-ledger/operating-ledger.service";
 import { isWithinPostgresBigIntRange } from "../money/money-storage-range";
 import { resolveProjectCloseImpactPolicy } from "./project-close-impact-policy";
@@ -152,7 +152,7 @@ export class ProjectCloseProfitService {
   async getWorkbench(actorUserId: string, projectId: string) {
     return this.prisma.$transaction(async (tx) => {
       const [
-        projection,
+        projectionResult,
         versions,
         roleKeysByProject,
         attestations,
@@ -163,7 +163,10 @@ export class ProjectCloseProfitService {
         impacts,
         decisionSubmissions
       ] = await Promise.all([
-        this.projections.readProjectInTransaction(tx, actorUserId, { projectId }),
+        this.projections.readProjectInTransaction(tx, actorUserId, { projectId }).catch(error => {
+          if (error instanceof OwnerSettlementBelowCentForCloseError) return error;
+          throw error;
+        }),
         tx.projectCloseStageVersion.findMany({
           where: { projectId },
           orderBy: [{ stageKey: "asc" }, { revision: "desc" }],
@@ -249,6 +252,8 @@ export class ProjectCloseProfitService {
           orderBy: [{ decisionKind: "asc" }, { revision: "desc" }]
         })
       ]);
+      const blockedByPrecision = projectionResult instanceof OwnerSettlementBelowCentForCloseError;
+      const projection = blockedByPrecision ? null : projectionResult;
       const latestByStage = latestStageVersions(versions);
       const completedStages = PROJECT_STAGES.filter(
         (stage) => latestByStage.get(stage)?.status === "completed"
@@ -260,7 +265,7 @@ export class ProjectCloseProfitService {
       const technicalAdministrator = roleKeys.includes("super_admin");
       const timeline = buildProjectCloseStageTimeline(completedStages, affectedStages);
       const contractResponsibilityStages = new Set<ProjectStage>();
-      if (!technicalAdministrator && !roleKeys.includes("contract_director")) {
+      if (projection && !technicalAdministrator && !roleKeys.includes("contract_director")) {
         for (const stage of [
           "owner_settlement_completed",
           "downstream_cost_confirmed"
@@ -294,7 +299,7 @@ export class ProjectCloseProfitService {
       );
       const currentFinalProfitSubmission = decisionSubmissions.find(
         (row) => row.decisionKind === "final_profit" &&
-          row.projectionFingerprint === projection.fingerprint &&
+          row.projectionFingerprint === projection?.fingerprint &&
           currentFinalProfitPrerequisites !== null &&
           frozenPrerequisitesMatch(
             row.prerequisiteStageVersionIds,
@@ -303,7 +308,7 @@ export class ProjectCloseProfitService {
       );
       const currentDistributionSubmission = decisionSubmissions.find(
         (row) => row.decisionKind === "distribution" &&
-          row.projectionFingerprint === projection.fingerprint &&
+          row.projectionFingerprint === projection?.fingerprint &&
           currentProfitConfirmation !== undefined &&
           row.profitConfirmationId === currentProfitConfirmation.id &&
           row.profitStageVersionId === currentProfitConfirmation.stageVersionId
@@ -313,8 +318,8 @@ export class ProjectCloseProfitService {
         schema: "project_close_profit/V1" as const,
         projectId,
         canReconcileImpacts:
-          !technicalAdministrator && roleKeys.includes("finance_director"),
-        availableActions: technicalAdministrator
+          Boolean(projection) && !technicalAdministrator && roleKeys.includes("finance_director"),
+        availableActions: !projection || technicalAdministrator
           ? []
           : [...new Set(timeline.flatMap((item, index) =>
               availableStageActions(
@@ -328,20 +333,21 @@ export class ProjectCloseProfitService {
                 }
               )
             ))],
-        projection: {
+        ...(blockedByPrecision ? { writeBlockedReason: projectionResult.message } : {}),
+        projection: projection ? {
           readAt: projection.readAt.toISOString(),
           cutoffAt: projection.cutoffAt.toISOString(),
           fingerprint: projection.fingerprint,
           view: projection.aggregate
-        },
+        } : null,
         stages: timeline.map((item, index) => ({
           key: item.stage,
           label: PROJECT_STAGE_LABELS[item.stage],
           status: item.status,
           responsibility: STAGE_RESPONSIBILITY_LABELS[item.stage],
-          blockedReason: item.status === "pending" ? "前置阶段尚未正式完成" : null,
+          blockedReason: blockedByPrecision ? projectionResult.message : item.status === "pending" ? "前置阶段尚未正式完成" : null,
           currentVersion: stageVersionReadModel(latestByStage.get(item.stage)),
-          availableActions: technicalAdministrator
+          availableActions: !projection || technicalAdministrator
             ? []
             : availableStageActions(
                 item.stage,
@@ -393,7 +399,7 @@ export class ProjectCloseProfitService {
           occurredAt: row.observedAt.toISOString()
         })),
         participatingCompanies: participatingCompanies
-          .filter((row) => participantEffectiveAt(row, projection.cutoffAt))
+          .filter((row) => projection !== null && participantEffectiveAt(row, projection.cutoffAt))
           .map((row) => ({
           id: row.id,
           companyEntityId: row.companyEntityId,

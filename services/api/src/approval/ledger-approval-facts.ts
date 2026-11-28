@@ -1,3 +1,5 @@
+import { requireLegacyOperatingCents } from "../operating-ledger/operating-money-protocol";
+import { normalizeBusinessAmount } from "@jiangkong/shared-domain";
 import { economicDocuments } from "../contract-ledger/contract-economic-coverage";
 import { approvalEvidenceMetadata } from "./approval-evidence";
 import { approvalDate as formatDate } from "./approval-date";
@@ -76,11 +78,19 @@ export async function ledgerApprovalFacts(tx: Prisma.TransactionClient, business
       const bank = observation?.transactionSourceType === "contract_bank_verification" ? await tx.contractBankVerificationRequest.findUnique({ where: { id: observation.transactionSourceId } }) : null;
       code = `${typeof source.reference === "string" ? source.reference : "对上结算"} · ${bank?.bankReference ?? formatDate(row.occurredAt)}`;
       summary.push({ label: "核销方向", value: row.originalId ? "冲回原到账核销" : "到账核销" },
-        { label: "到账依据", value: `${formatDate(receipt.occurredAt)} · ${money(receipt.amountCents)}${bank ? ` · 流水 ${bank.bankReference}` : ""}` });
+        { label: "到账依据", value: `${formatDate(receipt.occurredAt)} · ${money(requireLegacyOperatingCents(receipt))}${bank ? ` · 流水 ${bank.bankReference}` : ""}` });
     }
   }
   if ("coverage" in row && Array.isArray(row.coverage)) {
-    const documents = await economicDocuments(tx, row.projectId, row.targetSourceRef ? { targetRef: row.targetSourceRef, targetVersionId: row.targetVersionId ?? undefined } : undefined);
+    const frozen = Array.isArray(row.frozenSources) ? row.frozenSources : [];
+    const direct = frozen.some(side => side && typeof side === "object" && !Array.isArray(side) && Object.hasOwn(side, "directInput"));
+    const documents = direct ? frozen.map(side => {
+      if (!side || typeof side !== "object" || Array.isArray(side) || typeof side.ref !== "string" ||
+        typeof side.reference !== "string" || typeof side.title !== "string" || typeof side.counterparty !== "string") {
+        throw new BadRequestException("复核冻结的原文书依据不完整");
+      }
+      return { ref: side.ref, reference: side.reference, title: side.title, counterparty: side.counterparty };
+    }) : await economicDocuments(tx, row.projectId, row.targetSourceRef ? { targetRef: row.targetSourceRef, targetVersionId: row.targetVersionId ?? undefined } : undefined);
     for (const [ref, label] of [[row.leftSourceRef, "左方文书"], [row.rightSourceRef, "右方文书"]]) {
       const document = documents.find(item => item.ref === ref);
       if (!document) throw new BadRequestException("复核关联文书缺失，不能冻结审批单");
@@ -89,6 +99,11 @@ export async function ledgerApprovalFacts(tx: Prisma.TransactionClient, business
     code = `${documents.find(item => item.ref === row.leftSourceRef)?.reference || "左方文书"} / ${documents.find(item => item.ref === row.rightSourceRef)?.reference || "右方文书"} · ${formatDate(row.createdAt)}`;
     summary.push({ label: "履约关系", value: ({ independent: "独立履约", supplement: "补充履约", replacement: "替代文书", shared_evidence: "共同依据" } as Record<string, string>)[row.relation] ?? "履约复核" });
     for (const item of row.coverage) {
+      if(item&&typeof item==="object"&&!Array.isArray(item)&&item.numericProtocolVersion===2){
+        if(typeof item.scope!=="string"||typeof item.leftAmountYuan!=="string"||typeof item.rightAmountYuan!=="string"||item.leftAmountCents!==null||item.rightAmountCents!==null||!["left","right"].includes(String(item.owner)))throw new BadRequestException("履约复核四位分项依据不完整，不能冻结审批单");
+        summary.push({label:"履约分项",value:`${item.scope}：左方 ${normalizeBusinessAmount(item.leftAmountYuan)} 元；右方 ${normalizeBusinessAmount(item.rightAmountYuan)} 元；由${item.owner==="left"?"左方":"右方"}计入及结算`});
+        continue;
+      }
       if (item && typeof item === "object" && !Array.isArray(item) && typeof item.scope === "string" && typeof item.leftAmountCents === "string" && typeof item.rightAmountCents === "string") summary.push({ label: "履约分项", value: `${item.scope}：左方 ${money(item.leftAmountCents)}；右方 ${money(item.rightAmountCents)}；由${item.owner === "left" ? "左方" : "右方"}计入及结算` });
     }
   }

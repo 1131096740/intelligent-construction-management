@@ -385,11 +385,12 @@ describe("SettlementService", () => {
 
   function settlementQuotaTables() {
     return {
-      $queryRaw: jest.fn().mockImplementation(async (query: { strings: string[] }) =>
-        query.strings.join("?").includes('FROM "Settlement"')
+      $queryRaw: jest.fn().mockImplementation(async (query: { strings: string[] }) => {
+        const sql = query.strings.join("?");
+        return sql.includes('FROM "Settlement"') || sql.includes("jg_read_ordinary_contract_tax_fact_v1")
           ? []
-          : [{ id: "project-1" }]
-      ),
+          : [{ id: "project-1" }];
+      }),
       projectUpstreamSettlement: {
         findMany: jest.fn().mockResolvedValue([{ approvedAmountCents: BigInt(20000000) }])
       },

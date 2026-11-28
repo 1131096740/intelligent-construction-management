@@ -1,4 +1,8 @@
 import assert from "node:assert/strict";
+import "../.github/task12-install-295/contract-finance/payment-execution-352-permissions.test.cjs";
+import "../.github/task12-install-295/contract-finance/pol108-352-export.test.cjs";
+import "../.github/task12-install-295/contract-finance/pol115/browser-witness.test.cjs";
+import pol113Pol115Shards from "../services/api/prisma/pol113-pol115-shards.cjs";
 import { mkdtemp, readFile, readdir, rm, mkdir, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { spawnSync } from "node:child_process";
@@ -8,6 +12,29 @@ import test from "node:test";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 const localGate = join(root, "scripts", "ops", "run-local-release-gate.sh");
+
+test("331 and 332 workbench run all five issue 430 scenarios with simulated SMS and preserves original workbench proof", async () => {
+  const lane = join(root, ".github/task12-install-295/contract-finance/workbench");
+  const [entry, launcher, input, sms] = await Promise.all([
+    readFile(join(lane, "workbench-entry.cjs"), "utf8"),
+    readFile(join(lane, "run-workbench295.sh"), "utf8"),
+    readFile(join(lane, "workbench-inputs.cjs"), "utf8"),
+    readFile(join(lane, "issue430-approval-sms-ci.cjs"), "utf8")
+  ]);
+  const { createHash } = await import("node:crypto");
+  const digest = createHash("sha256").update(sms).digest("hex");
+  assert.match(entry, /await runWorkbench[\s\S]*?if\(paymentRemainder\) await require\('\.\/issue430-approval-sms-ci\.cjs'\)\.runIssue430ApprovalSms\(context,receipt,source\)/u);
+  assert.match(entry, /withCombined332UpwardArchive[\s\S]*?receipt\.upwardArchivePredecessor/u);
+  assert.match(launcher, /--upward-archive-332\) mode_args=\(--upward-archive-332\); count=332/u);
+  assert.match(entry, /receipt\.workbench\?\.tests,9/u);
+  assert.match(launcher, /--network none[\s\S]*?issue430-approval-sms-ci\.cjs/u);
+  assert.match(launcher, /proof\.issue430\?\.tests!==5\|\|proof\.issue430\?\.externalSends!==0/u);
+  assert.ok(input.includes(`'issue430-approval-sms-ci.cjs':'${digest}'`));
+  assert.match(sms, /'src\/approval\/issue430-notification\.pg\.spec\.ts'/u);
+  assert.match(sms, /'src\/fund-execution\/fund-execution-entry\.http\.pg\.spec\.ts'/u);
+  assert.match(sms, /RUN_ISSUE430_SMS: '1'[\s\S]*?APPROVAL_SMS_ENABLED: 'false', SMS_ENABLED: 'false'/u);
+  assert.match(sms, /numPassedTests, 5[\s\S]*?assert\.deepEqual\(scenarios, expectedScenarios\)/u);
+});
 
 test("local release gate publishes the exact-SHA database and browser checks", () => {
   const result = spawnSync("bash", [localGate, "--list-checks"], {
@@ -34,6 +61,29 @@ function jobBlock(workflow, jobName) {
   return workflow.slice(start, end);
 }
 
+test("quality typecheck has a bounded compiler-only heap while preserving complete commands", async () => {
+  const workflow = await readFile(join(root, ".github/workflows/ci.yml"), "utf8");
+  const quality = jobBlock(workflow, "quality-gates");
+  const step = /      - name: Typecheck\n([\s\S]*?)(?=\n      - name:)/u.exec(quality)?.[1];
+  assert.ok(step);
+  assert.match(step, /        env:\n          NODE_OPTIONS: --max-old-space-size=4096\n/u);
+  const commands = step.split("        run: |\n")[1].trim().split("\n").map(line => line.trim());
+  assert.deepEqual(commands, ["pnpm typecheck", "pnpm --filter @jiangkong/web-admin typecheck:e2e"]);
+  assert.doesNotMatch(jobBlock(workflow, "postgresql16-dynamic-gates"), /max-old-space-size/u);
+});
+
+test("API runtime shards reuse isolated transpilation without changing heap, timeout or coverage", async () => {
+  const workflow = await readFile(join(root, ".github/workflows/ci.yml"), "utf8");
+  const unit = jobBlock(workflow, "unit-test-gates");
+  const step = /      - name: Test API shard\n([\s\S]*?)(?=\n      - name:)/u.exec(unit)?.[1];
+  assert.ok(step);
+  assert.match(step, /NODE_OPTIONS: --max-old-space-size=4096/u);
+  assert.match(step, /pnpm --filter @jiangkong\/api run test --runInBand --config jest\.runtime\.config\.cjs --shard="\$shard\/4"/u);
+  assert.ok(unit.includes("runs-on: ${{ startsWith(matrix.target, 'api-') && 'ubuntu-24.04' || 'ubuntu-latest' }}"));
+  assert.match(unit, /target: \[api-1, api-2, api-3, api-4, web, shared-domain\]/u);
+  assert.doesNotMatch(step, /testTimeout|testNamePattern|passWithNoTests|testPathIgnore/u);
+});
+
 test("POL-275 CI prefetch preserves the reviewed lockfile and cleans up on success and drift", async () => {
   const workflow = await readFile(join(root, ".github/workflows/ci.yml"), "utf8");
   const step = /      - name: Prefetch POL-275 reviewed-base frozen dependencies\n        if: (.+)\n        run: \|\n([\s\S]*?)(?=\n      - name:)/u.exec(workflow);
@@ -58,7 +108,7 @@ test("POL-275 CI prefetch preserves the reviewed lockfile and cleans up on succe
   }
 });
 
-test("all PostgreSQL runtime installs remove only Azure with an existing official HTTPS fallback", async () => {
+test("all PostgreSQL runtime installs retain Azure fallback rules and use HTTPS for EC2 archives", async () => {
   const workflow = await readFile(join(root, ".github/workflows/ci.yml"), "utf8");
   const dynamic = jobBlock(workflow, "postgresql16-dynamic-gates");
   const start = dynamic.indexOf("      - name: Prefer official HTTPS Ubuntu mirrors\n");
@@ -74,7 +124,9 @@ test("all PostgreSQL runtime installs remove only Azure with an existing officia
   const directory = await mkdtemp(join(tmpdir(), "ci-apt-mirrors-test-"));
   const mirrors = join(directory, "apt-mirrors.txt");
   const signedSources = "Types: deb\nURIs: mirror+file:/etc/apt/apt-mirrors.txt\nSuites: noble noble-updates noble-security\nSigned-By: /usr/share/keyrings/ubuntu-archive-keyring.gpg\n";
-  const source = step[1].replace(/^          /gmu, "").replace("'/etc/apt/apt-mirrors.txt'", JSON.stringify(mirrors));
+  const source = step[1].replace(/^          /gmu, "").replace("'/etc/apt/apt-mirrors.txt'", JSON.stringify(mirrors))
+    .replace("'/etc/apt/sources.list'", JSON.stringify(join(directory, "sources.list")))
+    .replace("'/etc/apt/sources.list.d/ubuntu.sources'", JSON.stringify(join(directory, "ubuntu.sources")));
   const azure = "http://azure.archive.ubuntu.com/ubuntu/\tpriority:1\n";
   const archive = "https://archive.ubuntu.com/ubuntu/\tpriority:2\n";
   const security = "https://security.ubuntu.com/ubuntu/\tpriority:3\n";
@@ -85,6 +137,7 @@ test("all PostgreSQL runtime installs remove only Azure with an existing officia
     [azure + "http://archive.ubuntu.com/ubuntu/\n", null, false],
     [azure + "# https://archive.ubuntu.com/ubuntu/\n", null, false],
     [archive + security + other, archive + security + other, true],
+    ["http://us-east-2.ec2.archive.ubuntu.com/ubuntu/\tpriority:2\n" + other, archive + other, true],
     ["", "", true],
     [null, null, true]
   ];
@@ -242,11 +295,15 @@ test("CI fans out independent static and database gates behind one stable summar
   const tests = jobBlock(workflow, "unit-test-gates");
   const build = jobBlock(workflow, "build-manifest-gates");
   const dynamic = jobBlock(workflow, "postgresql16-dynamic-gates");
-  assert.ok(dynamic.includes("timeout-minutes: ${{ startsWith(matrix.group, 'operating_projection_pol108') && 90 || 20 }}"));
+  assert.ok(dynamic.includes("timeout-minutes: ${{ startsWith(matrix.group, 'operating_projection_pol108') && 90 || matrix.group == 'remaining_dynamic_postgresql16' && 60 || matrix.group == 'pol113_pol115_business_entries' && matrix.shard == 'pol113_pol114' && 45 || matrix.group == 'employee_onboarding' && 30 || 20 }}"));
   for (const group of ["operating_projection_pol108", "operating_projection_pol108_facts", "operating_projection_pol108_impacts"]) {
     assert.ok(dynamic.includes(`          - ${group}\n`));
   }
   const summary = jobBlock(workflow, "release-gates");
+  assert.ok(dynamic.includes("          - contract_finance_acceptance\n"));
+  assert.ok(dynamic.includes("          - remaining_dynamic_postgresql16\n"));
+  assert.doesNotMatch(workflow, /^  task12-install-28[9]:/mu);
+  assert.doesNotMatch(workflow, /^  task12-install-290:/mu);
 
   for (const independentJob of [quality, tests, build, dynamic]) {
     assert.doesNotMatch(independentJob, /\n\s+needs:/u);
@@ -261,7 +318,10 @@ test("CI fans out independent static and database gates behind one stable summar
   assert.match(quality, /pnpm audit --prod --audit-level high/u);
   assert.match(quality, /pnpm typecheck/u);
   assert.match(quality, /pnpm lint/u);
-  assert.match(tests, /pnpm test/u);
+  assert.match(tests, /target:\s*\[api-1, api-2, api-3, api-4, web, shared-domain\]/u);
+  assert.match(tests, /pnpm --filter @jiangkong\/api run test --runInBand --config jest\.runtime\.config\.cjs --shard="\$shard\/4"/u);
+  assert.match(tests, /pnpm --filter @jiangkong\/web-admin test/u);
+  assert.match(tests, /pnpm --filter @jiangkong\/shared-domain test/u);
   assert.match(build, /pnpm --filter @jiangkong\/web-admin build/u);
   assert.match(build, /pnpm test:business-zeroing-tools/u);
   assert.ok(
@@ -273,15 +333,37 @@ test("CI fans out independent static and database gates behind one stable summar
   const configuredGroups = [
     ...dynamic.matchAll(/^\s{10}- ([a-z0-9_]+)$/gmu)
   ].map((match) => match[1]);
+  const manualGroups = manifest.coveredGroups.filter(group => group.ciExecution === "manual-only");
+  assert.deepEqual(manualGroups.map(group => group.id), ["enterprise_task01_entry"]);
+  assert.equal(manualGroups[0].pendingTests, 1);
+  assert.equal(manualGroups[0].testFiles.length, 1);
+  assert.equal(manualGroups[0].runner.invocation, "task01_explicit_inputs");
+  assert.equal(manualGroups[0].executionStatus, "NOT_EXECUTED");
+  const ciGroups = manifest.coveredGroups.filter(group => group.ciExecution !== "manual-only");
+  assert.equal(ciGroups.length, 45);
+  assert.equal(ciGroups.reduce((n, group) => n + group.testFiles.length, 0), 111);
+  assert.equal(ciGroups.reduce((n, group) => n + group.pendingTests, 0), 638);
+  assert.doesNotMatch(workflow, /enterprise_task01_entry|run-enterprise-task01-local|--task01-(?:packet|inputs|confirm)/u);
   assert.deepEqual(
     configuredGroups,
-    manifest.coveredGroups.map((group) => group.id)
+    ciGroups.filter(group => group.id !== pol113Pol115Shards.POL113_POL115_GROUP).map((group) => group.id)
   );
+  const matrixShards = [...dynamic.matchAll(/^ {10}- group: ([a-z0-9_]+)\n {12}shard: ([a-z0-9_]+)$/gmu)]
+    .map(([, group, shard]) => [group, shard]);
+  assert.deepEqual(matrixShards, Object.keys(pol113Pol115Shards.SHARDS)
+    .map(shard => [pol113Pol115Shards.POL113_POL115_GROUP, shard]));
+  assert.match(dynamic, /name: PostgreSQL 16 dynamic gate \(\$\{\{ matrix\.shard && format\('\{0\}\/\{1\}', matrix\.group, matrix\.shard\) \|\| matrix\.group \}\}\)/u);
+  assert.match(dynamic, /DYNAMIC_SHARD: \$\{\{ matrix\.shard \}\}[\s\S]*?shard_args=\(--pol113-pol115-shard "\$DYNAMIC_SHARD"\)[\s\S]*?--confirm LOCAL_PG16_DYNAMIC_GATE "\$\{shard_args\[@\]\}"/u);
   assert.match(dynamic, /fail-fast: false/u);
   assert.match(dynamic, /--group "\$DYNAMIC_GROUP"/u);
   assert.match(dynamic, /--candidate-sha "\$candidate_sha"/u);
   assert.match(dynamic, /--confirm LOCAL_PG16_DYNAMIC_GATE/u);
   assert.match(dynamic, /pnpm check:migration-baseline/u);
+  assert.match(dynamic, /329\) mode_args=\(--current-320\) ;;\s+330\) mode_args=\(--text-direct-330\) ;;\s+331\) mode_args=\(--payment-remainder-331\) ;;\s+332\) mode_args=\(--upward-archive-332\) ;;/u);
+  assert.match(
+    dynamic,
+    /"\$DYNAMIC_GROUP" == contract_finance_acceptance[^\n]*\n\s+if \(\( \$\{#mode_args\[@\]\} \)\); then\n\s+exec bash \.github\/task12-install-295\/contract-finance\/run\.sh "\$CI_SOURCE_SHA" "\$\{mode_args\[@\]\}" "\$predecessor"\n\s+fi\n\s+exec bash \.github\/task12-install-295\/contract-finance\/run\.sh "\$CI_SOURCE_SHA"/u
+  );
   assert.match(
     dynamic,
     /if: \$\{\{ matrix\.group == 'pol113_pol115_business_entries' \}\}[\s\S]*?browser_path="\$RUNNER_TEMP\/pol113-pol115-playwright"[\s\S]*?echo "PLAYWRIGHT_BROWSERS_PATH=\$browser_path" >> "\$GITHUB_ENV"[\s\S]*?PLAYWRIGHT_BROWSERS_PATH="\$browser_path" pnpm --filter @jiangkong\/web-admin exec playwright install --with-deps chromium webkit/u
@@ -347,6 +429,113 @@ test("CI binds PR head, main push and manual target to verified checkouts", asyn
 });
 
 
+test("the hosted 334 step routes only prepared exact groups and rejects unadmitted original groups", async () => {
+  const workflow = await readFile(join(root, ".github/workflows/ci.yml"), "utf8");
+  const dynamic = jobBlock(workflow, "postgresql16-dynamic-gates");
+  const step = /      - name: Run exact-SHA PostgreSQL dynamic gate shard\n[\s\S]*?        run: \|\n([\s\S]*?)(?=\n      - name:)/u.exec(dynamic);
+  assert.ok(step);
+  const source = step[1].replace(/^          /gmu, "");
+  const executable = source.replace(/^count=.*$/mu, "count=334").replaceAll('exec bash "${exact_args[@]}"',
+    'printf "%s\\n" "${exact_args[@]}"; exit 0');
+  const sha = "d".repeat(40);
+  for (const [group, shard, status, lane] of [
+    ["line_a_real_db", "", 0, "line-a"],
+    ["historical_takeover_a28", "", 0, "historical-takeover-a28"],
+    ["contract_finance_acceptance", "", 0, "contract-finance"],
+    ["remaining_dynamic_postgresql16", "", 0, "remaining"],
+    ["payment_execution", "", 0, "payment-execution"],
+    ["employee_onboarding", "", 0, "onboarding"],
+    ["general_procurement", "", 0, "procurement"],
+    ["issue421_signed_settlement_ledger", "", 0, "issue421"],
+    ["issue421b_four_ledger", "", 0, "issue421b"],
+    ["issue422_archives", "", 0, "issue422"],
+    ["issue420_approval_center", "", 0, "issue420"],
+    ["issue400_financial_correction_refund", "", 0, "issue400"],
+    ["issue405_other_project_payment", "", 0, "issue405"],
+    ["issue411_third_company_repayment", "", 0, "issue411"],
+    ["issue413_construction_paid", "", 0, "issue413"],
+    ["issue414_construction_deduction", "", 0, "issue414"],
+    ["issue416_takeover_handover", "", 0, "issue416_handover"],
+    ["issue416_his_gap", "", 0, "issue416_his"],
+    ["pol113_pol115_business_entries", "pol113_pol114", 0, "named"],
+    ["pol113_pol115_business_entries", "pol115_workbench", 65],
+    ["pol113_pol115_business_entries", "", 65],
+    ["pol113_pol115_business_entries", "unknown", 65],
+    ["issue403_actual_purchase_batch", "", 65],
+    ["line_a_real_db", "unexpected", 65]
+  ]) {
+    const result = spawnSync("bash", ["-c", executable], { cwd: root, encoding: "utf8",
+      env: { ...process.env, CI_SOURCE_SHA: sha, DYNAMIC_GROUP: group, DYNAMIC_SHARD: shard } });
+    assert.equal(result.status, status, result.stderr);
+    const plan = ".github/task12-install-295/contract-finance/";
+    if (lane === "contract-finance") assert.deepEqual(result.stdout.trim().split("\n"), [
+      plan + "run.sh", sha, "--historical-settlement-334", "a187dc73a133114e1cfbbc891a4aec923abe2545"
+    ]);
+    else if (lane === "named") assert.deepEqual(result.stdout.trim().split("\n"), [
+      ".github/task12-install-295/named-pol113-pol114/run-matrix334.sh", sha, shard
+    ]);
+    else if (lane === "remaining") assert.deepEqual(result.stdout.trim().split("\n"), [plan + "run-remaining.sh", sha, "--historical-settlement-334"]);
+    else if (status === 0) assert.deepEqual(result.stdout.trim().split("\n"), [
+      plan + "run-contract-adjacent-ci.sh", sha, lane, "--historical-settlement-334"
+    ]);
+    else assert.match(result.stdout, /334 PostgreSQL gate has no admitted runner/u);
+  }
+  for (const count of [335, 347, 350, 351]) {
+    const repinned = executable.replace(/^count=.*$/mu, `count=${count}`);
+    const result = spawnSync("bash", ["-c", `exec () { exit 99; }\n${repinned}`], {
+      cwd: root, encoding: "utf8",
+      env: { ...process.env, CI_SOURCE_SHA: sha, DYNAMIC_GROUP: "contract_finance_acceptance", DYNAMIC_SHARD: "" }
+    });
+    assert.equal(result.status, 65, result.stdout + result.stderr);
+    assert.match(result.stdout, new RegExp(`${count} PostgreSQL gate has no admitted baseline`, "u"));
+  }
+});
+
+for (const [count, terminal, checksum] of [
+  [346, "20261129015000_expense_public_cash_operating_source", "d2f1419df6337020ad7dc5385b4b52a2997f276656dd3ff90f71d8c62f5c8b9a"],
+  [349, "20261129018000_reimbursement_exact_cash_cost_links", "58b3cc0404a85a97dbb484654245d4bd042e5fb2014f32997244b2597cb5110b"],
+  [352, "20261129021000_company_history_expense", "8cb43f1ae9a6fb6108280f1ea08df4d2d2edf7c060b39b37dfbeeaff7ae368e5"]
+]) {
+  test(`the hosted ${count} step routes the complete automatic matrix through isolated wrappers`, async () => {
+    const workflow = await readFile(join(root, ".github/workflows/ci.yml"), "utf8");
+    const job = jobBlock(workflow, "postgresql16-dynamic-gates");
+    const [, command] = /      - name: Run exact-SHA PostgreSQL dynamic gate shard\n[\s\S]*?        run: \|\n([\s\S]*?)(?=\n      - name:)/u.exec(job);
+    const executable = command.replace(/^          /gmu, "")
+      .replace(/^count=.*$/mu, `count=${count}`)
+      .replaceAll(
+        "require('./services/api/prisma/database-dynamic-gate-manifest.json')",
+        `({ migrationBaseline: { expectedDirectoryCount: ${count}, ` +
+          `terminalMigration: '${terminal}', terminalMigrationChecksum: '${checksum}' } })`
+      )
+      .replaceAll('exec bash "${exact_args[@]}"', 'printf "%s\\n" "${exact_args[@]}"; exit 0');
+    const manifest = JSON.parse(await readFile(join(root, "services/api/prisma/database-dynamic-gate-manifest.json")));
+    const sha = "d".repeat(40);
+    for (const { id, ciExecution } of manifest.coveredGroups) {
+      const shards = id === "pol113_pol115_business_entries" ? ["pol113_pol114", "pol115_workbench"] : [""];
+      for (const shard of shards) {
+        const result = spawnSync("bash", ["-c", executable], { cwd: root, encoding: "utf8",
+          env: { ...process.env, CI_SOURCE_SHA: sha, DYNAMIC_GROUP: id, DYNAMIC_SHARD: shard } });
+        const label = shard ? id + "/" + shard : id;
+        if (ciExecution === "manual-only") {
+          assert.equal(result.status, 65, label);
+          assert.match(result.stdout, new RegExp(`${count} PostgreSQL gate has no admitted runner`, "u"));
+          continue;
+        }
+        assert.equal(result.status, 0, label + result.stderr);
+        const [runner, actualSha, ...args] = result.stdout.trim().split("\n");
+        assert.match(runner, /^\.github\/task12-install-295\//u, label);
+        assert.equal(actualSha, sha, label);
+        if (shard) assert.deepEqual(args, count === 352 ? [shard, "--company-history-352"] : count === 349 ? [shard, "--expense-witness-349"] : [shard], label);
+        else assert.ok(args.includes(count === 352 ? "--company-history-352" : `--expense-witness-${count}`), label);
+        if ((count === 349 || count === 352) && runner.endsWith("run-contract-adjacent-ci.sh") &&
+            args[0].startsWith("issue") && !["issue417", "issue418-operating"].includes(args[0])) {
+          assert.match(args[0], new RegExp(`_${count}$`, "u"), label);
+        }
+      }
+    }
+  });
+}
+
 test("personnel feedback runs after its real PostgreSQL shard with both browsers and original budgets", async () => {
   const workflow = await readFile(join(root, ".github/workflows/ci.yml"), "utf8");
   const dynamic = jobBlock(workflow, "postgresql16-dynamic-gates");
@@ -408,4 +597,26 @@ with zipfile.ZipFile(p/'trace.zip','w') as z:
       ] }, `${resource} resources must not affect test events`);
     }
   } finally { await rm(directory, { recursive: true, force: true }); }
+});
+
+test("变更分档在 PR 上强制执行，且规则入口有本地脚本与 PR 模板承载", async () => {
+  const [workflow, template, manifest] = await Promise.all([
+    readFile(join(root, ".github", "workflows", "ci.yml"), "utf8"),
+    readFile(join(root, ".github", "pull_request_template.md"), "utf8"),
+    readFile(join(root, "package.json"), "utf8")
+  ]);
+
+  const quality = jobBlock(workflow, "quality-gates");
+  const step = /      - name: Verify change verification tier\n        if: (.+)\n        env:\n([\s\S]*?)\n        run: \|\n([\s\S]*?)(?=\n      - name:)/u.exec(quality);
+  assert.ok(step, "quality-gates 必须包含 Verify change verification tier 步骤");
+  assert.equal(step[1], "${{ github.event_name == 'pull_request' }}");
+  assert.match(step[2], /PR_BODY: \$\{\{ github\.event\.pull_request\.body \}\}/u);
+  assert.match(step[2], /PR_BASE_SHA: \$\{\{ github\.event\.pull_request\.base\.sha \}\}/u);
+  assert.match(step[3], /node scripts\/verify-verification-tier\.mjs/u);
+  assert.match(step[3], /--require-declaration/u, "CI 必须要求显式声明");
+  assert.match(step[3], /--base "\$PR_BASE_SHA"/u);
+
+  assert.match(template, /^验证分档: T[123]$/mu, "PR 模板必须承载声明行");
+  assert.match(manifest, /"verify:verification-tier:local"/u);
+  assert.match(manifest, /scripts\/verify-verification-tier\.test\.mjs/u, "检查器自身的测试必须进入 CI 编排");
 });

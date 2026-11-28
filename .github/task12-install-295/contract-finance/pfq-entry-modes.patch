@@ -1,0 +1,68 @@
+--- entry.cjs
++++ entry.cjs
+@@ -1,6 +1,11 @@
+ 'use strict';
+ const assert=require('node:assert/strict');
+-const {withPfq295}=require('/qualification/installer.cjs');
++const {withPfq295,withPfq320}=require('./installer.cjs');
++const source=require('./contract-finance-source.json');
++const requestedMode=process.argv[3];
++const count={'--current-320':329,'--text-direct-330':330,'--payment-remainder-331':331,'--upward-archive-332':332}[requestedMode]??295;
++const current320=count>295;
++const archiveProfile=count===332?require('./upward-archive-332-profile.cjs'):undefined;
+ const lane=process.argv[2];
+ const expected={
+   'pre115-clean':{prefix:114},
+@@ -13,12 +18,40 @@
+ };
+ assert.ok(Object.hasOwn(expected,lane));
+ const mode='--pfq-'+lane+'-289-local';
+-const receipt={schemaVersion:1,sourceSha:require('./contract-finance-source.json').sourceSha,purpose:'ORIGINAL_PFQ_EXACT_295',lane,business:'NOT_ENTERED',stages:[]};
+-withPfq295(receipt,mode).then(()=>{
++const receipt={schemaVersion:1,sourceSha:source.sourceSha,purpose:'ORIGINAL_PFQ_EXACT_'+count,lane,business:'NOT_ENTERED',stages:[]};
++Promise.resolve().then(()=>{
++  assert.equal(process.argv.length,current320?4:3);
++  assert.equal(source.migrationCount,count);
++  if(current320) {
++    assert.equal(source.mode,requestedMode.slice(2));
++    assert.equal(source.predecessor.migrationCount,295);
++    if(archiveProfile) archiveProfile.assertSource(source,source.sourceSha,require('./multi-witness.cjs').final);
++    return withPfq320(receipt,mode,{
++      mode:source.mode,sourceTree:source.sourceTree,migrations:'/qualification/workspace/services/api/prisma/migrations',tails:source.tails
++    });
++  }
++  return withPfq295(receipt,mode);
++}).then(()=>{
+   assert.equal(receipt.releaseTree,'67644d9465a0ab4ee80ede099139d9c129d66f14');
+-  assert.deepEqual(receipt.pfqPostconsume,{count:295,exactB7:true});
++  assert.deepEqual(receipt.pfqPostconsume,{count,exactB7:true});
+   assert.equal(receipt.installOnly295?.count,295);
+   assert.equal(receipt.combinedAfterBusiness?.exactB7,true);
++  if(current320) {
++    assert.equal(receipt.installOnly295.ledgerSha256,source.predecessor.ledgerSha256);
++    assert.equal(receipt.forward320.count,count);
++    assert.equal(receipt.forward320.sourceTree,source.sourceTree);
++    assert.equal(receipt.forward320.ledgerSha256,source.ledgerSha256);
++    assert.equal(receipt.forward320.sameBaseB7,true);
++    assert.equal(receipt.combinedAfterBusiness.count,count);
++    assert.equal(receipt.combinedAfterBusiness.ledgerSha256,source.ledgerSha256);
++    assert.equal(receipt.combinedAfterBusiness.sameIdentity,true);
++    if(archiveProfile) archiveProfile.assertInstallation(receipt,source);
++    if(count===331){
++      assert.deepEqual(receipt.paymentRemainderPredecessor,{
++        count:330,ledgerSha256:source.predecessor330.ledgerSha256,sameIdentity:true,sameBaseB7:true
++      });
++    }
++  }
+   assert.equal(receipt.business,'CALLBACK_COMPLETED');
+   assert.equal(receipt.orderedTails.at(-1).size,295);
+   const shape=expected[lane];
+@@ -46,7 +79,7 @@
+     assert.equal(receipt.pfqApp.sessionAttestationRounds,2);
+   }
+   assert.equal(receipt.cleanup,'POSTMASTER_STOPPED_TMPFS_REMOVED_BY_CONTAINER_EXIT');
+-  console.log(JSON.stringify({...receipt,status:'ORIGINAL_PFQ_EXACT_295_PASSED'}));
++  console.log(JSON.stringify({...receipt,status:'ORIGINAL_PFQ_EXACT_'+count+'_PASSED'}));
+ }).catch(error=>{
+   const code=error.code??error.message;
+   console.log(JSON.stringify({...receipt,status:'STOPPED',failure:{

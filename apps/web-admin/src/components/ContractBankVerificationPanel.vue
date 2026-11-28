@@ -1,10 +1,13 @@
 <script setup lang="ts">
+import { useAuthStore } from "../auth/auth.store";
+import DutySmsStatusPanel from "./DutySmsStatusPanel.vue";
 import ApprovalDocumentDownload from "./approval/ApprovalDocumentDownload.vue";
 import {onBeforeUnmount,reactive,ref,watch} from "vue";
 import {fetchBankVerifications,prepareBankVerification,decideBankVerification,type BankVerificationData} from "../api/contract-bank-verification.api";
 import {uploadPrivateFile,downloadPrivateFileByTicket} from "../api/core-flow-read.api";
 import {formatUnknownApiError} from "../api/error-message";
 import {yuanTextToCentsText,centsTextToYuanText} from "../lib/money";
+const auth = useAuthStore();
 const props=defineProps<{projectId:string}>(),emit=defineEmits<{changed:[]}>();
 const page=ref(1),status=ref("pending_confirm");
 const data=ref<BankVerificationData|null>(null),busy=ref(false),error=ref(""),show=ref(false),password=ref(""),file=ref<File|null>(null),fileId=ref<string>(),decision=ref<{id:string;decision:"confirm"|"return"}|null>(null);
@@ -109,6 +112,12 @@ async function downloadPrivateFileByTicketWithCapability(arg0: Parameters<typeof
           退回重填
         </t-button>
       </template>
+      <DutySmsStatusPanel
+        v-if="auth.user?.id && data?.canReview && r.canConfirm && r.status === 'pending_confirm'"
+        :key="`${auth.user.id}:${r.id}`"
+        domain="contract-bank-verifications"
+        :business-id="r.id"
+      />
       <ApprovalDocumentDownload business-type="contract_bank_verification" :business-id="r.id" :refresh-key="r.status" />
     </article>
     <t-drawer

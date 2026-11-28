@@ -3,14 +3,18 @@ import type { AdminNavigationGroup } from "../routes/route-records";
 const tasks = [
   { path: "/零星采购工作台", label: "零星材料采购", description: "申请材料、数量和到位日期" },
   { path: "/零星材料付款工作台", label: "零星材料付款", description: "填付款申请、看实付进度" },
-  { path: "/收货确认工作台", label: "材料收货", description: "登记收货、补照片、交复核" },
+  { path: "/收货确认工作台", label: "历史收货", description: "查询已有收货记录和附件" },
   { path: "/费用与报销工作台", label: "费用与报销", description: "报销、借款和员工垫资" },
+  { path: "/其他项目付款", label: "其他项目付款", description: "无合同特殊项目支出与分次实付" },
   { path: "/综合采购申请", label: "综合采购", description: "办公、设备等采购申请" },
   { path: "/合同工作台", label: "合同与用章", description: "起草、审批、签署与归档" },
   { path: "/结算工作台", label: "办理结算", description: "核对工程量、金额和依据" },
+  { path: "/资金账户", label: "资金账户", description: "核对公司登记余额与公共现金、查看来源和核对记录" },
   { path: "/统一资金办理工作台", label: "办理付款", description: "登记实付、凭证与核对" },
+  { path: "/资金流水", label: "资金流水", description: "按项目/公司/日期/类型查看到账、付款、转入、转出、退款与余额" },
   { path: "/公司互转台账", label: "公司资金互转", description: "申请调剂、领导审批、到账核对与往来归还" },
   { path: "/项目经营", label: "项目经营", description: "查看项目账、资金和接管状态" },
+  { path: "/历史费用核实入账", label: "历史费用核实入账", description: "批量登记历史无合同费用，逐行核实后入账" },
   { path: "/工资承担工作台", label: "工资承担", description: "人员工资、承担与支付情况" },
   { path: "/清分工作台", label: "清分与对账", description: "核对资金、分配与差异" }
 ] as const;

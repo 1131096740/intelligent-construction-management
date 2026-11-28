@@ -1,0 +1,51 @@
+--- runner
++++ runner
+@@ -320,7 +320,7 @@
+  if(overpayScenario)env.TASK398_OVERPAY_MODE="1";
+  if(ledgerLossScenario)env.TASK398_LEDGER_LOSS_MODE="1";
+  if(transferScenario&&!usesAdvanceRuntime){env.TASK406_TRANSFER_MODE=transferRejection?"rejection":transferBrowser?"browser":"1";env.TASK406_PRIVATE_FAILURE_PATH=path.join(privateLogDir,"transfer-failure.jsonl");}
+- if(browserScenario){const evidenceDir=realpathSync(mkdtempSync(browser290?"/run/task398-browser/jg398-browser-evidence-":current280?path.join(storage,"browser-evidence-"):"/private/tmp/jg398-browser-evidence-"));chmodSync(evidenceDir,0o700);env.TASK398_BROWSER_MODE=scenario==="src/database/task16-real-browser-completion.pg.spec.ts"?"2":"1";env.TASK398_CANDIDATE_SHA=browser290?"7c226e44401c2143f06808f86c8bc3c0fdb8a944":candidate;env.TASK398_BROWSER_EVIDENCE=path.join(evidenceDir,"receipt.json");if(browser290){env.PLAYWRIGHT_BROWSERS_PATH="/opt/jg-playwright";env.TASK398_OWNED_VITE_CACHE=path.join(storage,"vite-cache");}console.log(`TASK398_BROWSER_EVIDENCE_DIR ${evidenceDir}`);}
++ if(browserScenario){const evidenceDir=realpathSync(mkdtempSync(browser290?"/run/task398-browser/jg398-browser-evidence-":current280?path.join(storage,"browser-evidence-"):"/private/tmp/jg398-browser-evidence-"));chmodSync(evidenceDir,0o700);env.TASK398_BROWSER_MODE=scenario==="src/database/task16-real-browser-completion.pg.spec.ts"?"2":"1";env.TASK398_CANDIDATE_SHA=browser290?(browser290.sourceSha??"7c226e44401c2143f06808f86c8bc3c0fdb8a944"):candidate;env.TASK398_BROWSER_EVIDENCE=path.join(evidenceDir,"receipt.json");if(browser290){env.PLAYWRIGHT_BROWSERS_PATH="/opt/jg-playwright";env.TASK398_OWNED_VITE_CACHE=path.join(storage,"vite-cache");}console.log(`TASK398_BROWSER_EVIDENCE_DIR ${evidenceDir}`);}
+  const scenarios=companyProxyScenario
+   ? [scenario,"src/expense-claim/expense-claim-registered-payment.http.pg.spec.ts"]
+   : [scenario];
+@@ -497,7 +497,9 @@
+  `);
+ }
+ async function runTask398Owned282Voucher(context, mode="standard", receipt){
+- const modes=new Map([["browser-partial-290",["--browser-real"]],["standard-290",[]],["standard",[]],["principal-return",["--principal-return-real"]],["cash-handover",["--cash-handover-real"]],["correction-catalog",["--cash-handover-real"]]]);
++ const modes=new Map([["browser-partial-295",["--browser-real"]],["browser-partial-290",["--browser-real"]],["standard-290",[]],["standard",[]],["principal-return",["--principal-return-real"]],["cash-handover",["--cash-handover-real"]],["correction-catalog",["--cash-handover-real"]]]);
++ const partial295=mode==="browser-partial-295";
++ if(partial295&&(receipt?.purpose!=="TASK398_BROWSER_PARTIAL_EXACT_295"||!(/^[a-f0-9]{40}$/u.test(receipt.sourceSha)))) throw Error("TASK398_BROWSER_295_SCOPE");
+  if(!modes.has(mode))throw new Error("TASK398_OWNED_282_SCENARIO");
+  if(mode==="browser-partial-290"&&receipt?.purpose!=="TASK398_BROWSER_PARTIAL_EXACT_290") throw Error("TASK398_BROWSER_290_SCOPE");
+  if(mode==="standard-290"&&receipt?.purpose!=="TASK398_STANDARD_EXACT_290") throw Error("TASK398_STANDARD_290_SCOPE");
+@@ -506,7 +508,7 @@
+  const fences=ownedCashFenceProfile(options.principalScenario);
+  const {candidateTree,sourceBaseSha: candidate,runId,database,workDir,sql:ownerSql,readPostgresLog}=context;
+  const short=runId.replaceAll("-","");
+- if(candidateTree!==((mode==="correction-catalog"||mode==="standard-290"||mode==="browser-partial-290")?"23b1c98bc15f36e986d17059579e6673315b9be8":"8d3e50a0c525a68e717b74fbecbcceabc80840f7")||candidate!=="0a5b607cf912ffbb50237af2608ac8b2a5360c16"||containerName(runId)===""||database!==`jg_task01_${short}`
++ if(candidateTree!==(partial295?"67644d9465a0ab4ee80ede099139d9c129d66f14":(mode==="correction-catalog"||mode==="standard-290"||mode==="browser-partial-290")?"23b1c98bc15f36e986d17059579e6673315b9be8":"8d3e50a0c525a68e717b74fbecbcceabc80840f7")||candidate!=="0a5b607cf912ffbb50237af2608ac8b2a5360c16"||containerName(runId)===""||database!==`jg_task01_${short}`
+    ||!path.isAbsolute(workDir)||typeof ownerSql!=="function"||typeof readPostgresLog!=="function")throw new Error("TASK398_OWNED_280_IDENTITY");
+  const roleUrls={jg_task01_owner:context.ownerUrl,jg_task01_runtime:context.runtimeUrl,jg_task01_observer:context.observerUrl};
+  const urls=Object.entries(roleUrls).map(([role,value])=>{
+@@ -546,8 +548,8 @@
+  `));
+  const ledger=readback.ledger.map(row=>({name:row.name,sha256:row.sha256,finished:true,rolledBack:false}));
+  if(readback.database!==database||readback.actor!=="jg_task01_owner"||readback.ownerOid!=="10"
+-   ||readback.sameActor!==true||readback.tls!==true||readback.inactiveLedger!==0||ledger.length!==((mode==="correction-catalog"||mode==="standard-290"||mode==="browser-partial-290")?290:282)
+-   ||createHash("sha256").update(JSON.stringify(ledger)).digest("hex")!==((mode==="correction-catalog"||mode==="standard-290"||mode==="browser-partial-290")?"8741d9da09253efb803af9e132b4cde09de0dfef86da7edf952b6c0056a057a5":"be6d9aed22658af5e273010a2e1e839544fa27e74e998701fb3d9e9248f88cfc"))throw new Error("TASK398_OWNED_280_LEDGER");
++   ||readback.sameActor!==true||readback.tls!==true||readback.inactiveLedger!==0||ledger.length!==(partial295?295:(mode==="correction-catalog"||mode==="standard-290"||mode==="browser-partial-290")?290:282)
++   ||createHash("sha256").update(JSON.stringify(ledger)).digest("hex")!==(partial295?"b0d398a46c4c6a3209e1448ddd415938ea95425c3d823f1f8a77d81dde396f2d":(mode==="correction-catalog"||mode==="standard-290"||mode==="browser-partial-290")?"8741d9da09253efb803af9e132b4cde09de0dfef86da7edf952b6c0056a057a5":"be6d9aed22658af5e273010a2e1e839544fa27e74e998701fb3d9e9248f88cfc"))throw new Error("TASK398_OWNED_280_LEDGER");
+  const protectedExec=await snapshotOwned280CashProfile(sql,fences);
+  const storage=mkdtempSync(path.join(workDir,"cash-storage-"));
+  chmodSync(storage,0o700);
+@@ -563,7 +565,7 @@
+    ${options.handoverScenario?owned282CashHandoverSql:""}
+  `);
+  const catalog=await runBusiness(options,{candidate,short,storage,url,sql,env,current280:true,readPostgresLog,
+-  correctionCatalog:mode==="correction-catalog"?{context,receipt}:undefined,standard290:mode==="standard-290"?receipt:undefined,browser290:mode==="browser-partial-290"?receipt:undefined,ownedMigrationBaseline:{
++  correctionCatalog:mode==="correction-catalog"?{context,receipt}:undefined,standard290:mode==="standard-290"?receipt:undefined,browser290:partial295||mode==="browser-partial-290"?receipt:undefined,ownedMigrationBaseline:{
+   expectedDirectoryCount:282,terminalMigration:"20261118231000_registered_payment_voucher_fixed_read",
+   terminalMigrationChecksum:"e1ff36a191e8173a2cf06db3c20aa386db58360bfceba39eed010f9444da196e"
+  }});

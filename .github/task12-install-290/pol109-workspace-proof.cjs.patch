@@ -1,0 +1,5 @@
+--- workspace-proof.cjs
++++ workspace-proof.cjs
+@@ -10 +10 @@
+-  if(sha(bytes)!=='d7b56dac143198fb6c303cf8bd4f21784bdce186e30a95fcfd581f84f3a6de34') throw new Error('POL109_WORKSPACE_MANIFEST');
++  if(sha(bytes)!=='ede07410dbf18bc8c03f0fcbb8687f5cc1912817727cb50f3552c8886aeb23ff') throw new Error('POL109_WORKSPACE_MANIFEST');

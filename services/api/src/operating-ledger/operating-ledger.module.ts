@@ -1,3 +1,5 @@
+import { CONTRACT_WORK_COMPLETION_SOURCE, ContractWorkCompletionOperatingSourceAdapter } from "../contract/contract-work-completion-operating-source.adapter";
+import { CompanyTransferCanonicalCorrectionSource, COMPANY_TRANSFER_DEBT_CORRECTION_SOURCE } from "../company-transfer/company-transfer-canonical-correction";
 import {CompanyTransferOperatingSourceAdapter} from "../company-transfer/company-transfer-operating-source.adapter";
 import {FundCounterpartyCashAdapter} from "../contract-ledger/fund-counterparty-cash.adapter";
 import { UpwardReceiptMatchOperatingSourceAdapter } from "../contract-ledger/upward-receipt-match-operating-source.adapter";
@@ -29,9 +31,15 @@ import {
   PROJECT_PROXY_PAYMENT_SOURCE_TYPE,
   ProjectUpstreamFundFactOperatingSourceAdapter,
   PROJECT_UPSTREAM_FUND_SOURCE_TYPE,
+  ProjectOwnerSettlementEntryOperatingSourceAdapter,
+  PROJECT_OWNER_SETTLEMENT_ENTRY_SOURCE_TYPE,
   ProjectUpstreamSettlementOperatingSourceAdapter,
   PROJECT_UPSTREAM_SETTLEMENT_SOURCE_TYPE
 } from "../project/project-operating-source.adapter";
+import {
+  CONSTRUCTION_ENTERPRISE_FEE_SOURCE_TYPE,
+  ConstructionEnterpriseFeeOperatingSourceAdapter
+} from "../project/project-construction-enterprise-fee-operating-source.adapter";
 import {
   SPOT_PROCUREMENT_INVOICE_RECORD_SOURCE_TYPE,
   SPOT_PROCUREMENT_PAYMENT_EXECUTION_SOURCE_TYPE,
@@ -51,6 +59,14 @@ import {
   OperatingTakeoverSourceAdapter
 } from "../operating-takeover/operating-takeover-source.adapter";
 import { SettlementOperatingSourceAdapter } from "../settlement/settlement-operating-source.adapter";
+import {
+  SIGNED_SETTLEMENT_OPERATING_SOURCE_TYPE,
+  SignedSettlementOperatingSourceAdapter
+} from "../settlement/signed-settlement-operating-source.adapter";
+import { AuthModule } from "../auth/auth.module";
+import { AuditModule } from "../audit/audit.module";
+import { OperatingCostAttributionController } from "./operating-cost-attribution.controller";
+import { OperatingCostAttributionService } from "./operating-cost-attribution.service";
 import { OperatingLedgerService } from "./operating-ledger.service";
 import { OperatingSourceAdapterRegistry } from "./operating-source-adapter";
 import { OperatingSourceReplayService } from "./operating-source-replay.service";
@@ -73,16 +89,21 @@ import {
 export const OPERATING_SOURCE_TYPES = Object.freeze([
   "contract_version",
   "contract_economic_review",
+  CONTRACT_WORK_COMPLETION_SOURCE,
   "contract_proxy_execution",
   "company_transfer_event",
+  COMPANY_TRANSFER_DEBT_CORRECTION_SOURCE,
   "upward_receipt_match",
   "fund_execution_counterparty",
+  PROJECT_OWNER_SETTLEMENT_ENTRY_SOURCE_TYPE,
   PROJECT_UPSTREAM_SETTLEMENT_SOURCE_TYPE,
   PROJECT_UPSTREAM_FUND_SOURCE_TYPE,
+  CONSTRUCTION_ENTERPRISE_FEE_SOURCE_TYPE,
   PROJECT_AFFILIATE_CONTRACT_FACT_SOURCE_TYPE,
   PROJECT_AFFILIATE_SETTLEMENT_FACT_SOURCE_TYPE,
   PROJECT_AFFILIATE_PAYMENT_FACT_SOURCE_TYPE,
   "settlement",
+  SIGNED_SETTLEMENT_OPERATING_SOURCE_TYPE,
   PAYMENT_EXECUTION_SOURCE_TYPE,
   PROJECT_PROXY_PAYMENT_SOURCE_TYPE,
   EXPENSE_CLAIM_APPROVAL_SOURCE_TYPE,
@@ -104,15 +125,20 @@ export function createOperatingSourceRegistry(): OperatingSourceAdapterRegistry 
     [
       new ContractOperatingSourceAdapter(),
       new ContractEconomicReviewOperatingSourceAdapter(),
+      new ContractWorkCompletionOperatingSourceAdapter(),
   new ContractProxyOperatingSourceAdapter(),
   new CompanyTransferOperatingSourceAdapter(),
+      new CompanyTransferCanonicalCorrectionSource(),
       new UpwardReceiptMatchOperatingSourceAdapter(),new FundCounterpartyCashAdapter(),
+      new ProjectOwnerSettlementEntryOperatingSourceAdapter(),
       new ProjectUpstreamSettlementOperatingSourceAdapter(),
       new ProjectUpstreamFundFactOperatingSourceAdapter(),
+      new ConstructionEnterpriseFeeOperatingSourceAdapter(),
       new ProjectAffiliateContractFactOperatingSourceAdapter(),
       new ProjectAffiliateSettlementFactOperatingSourceAdapter(),
       new ProjectAffiliatePaymentFactOperatingSourceAdapter(),
       new SettlementOperatingSourceAdapter(),
+      new SignedSettlementOperatingSourceAdapter(),
       new PaymentExecutionOperatingSourceAdapter(),
       new ProjectProxyPaymentOperatingSourceAdapter(),
       new ExpenseClaimApprovalOperatingSourceAdapter(),
@@ -133,7 +159,10 @@ export function createOperatingSourceRegistry(): OperatingSourceAdapterRegistry 
 }
 
 @Module({
+  imports: [AuthModule, AuditModule],
+  controllers: [OperatingCostAttributionController],
   providers: [
+    OperatingCostAttributionService,
     OperatingLedgerService,
     {
       provide: OperatingSourceAdapterRegistry,
@@ -142,6 +171,7 @@ export function createOperatingSourceRegistry(): OperatingSourceAdapterRegistry 
     OperatingSourceReplayService
   ],
   exports: [
+    OperatingCostAttributionService,
     OperatingLedgerService,
     OperatingSourceAdapterRegistry,
     OperatingSourceReplayService

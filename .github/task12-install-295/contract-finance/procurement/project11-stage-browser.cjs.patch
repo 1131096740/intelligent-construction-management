@@ -1,0 +1,11 @@
+--- original
++++ ported
+@@ -1,7 +1,7 @@
+ 'use strict';
+ const fs=require('node:fs');
+ const path=require('node:path');
+-const source='/qualification/procurement289-nodb/apps/web-admin';
++const source='/qualification/workspace/apps/web-admin';
+ 
+ function stageWebWorkspace(workDir) {
+   if (!/^\/tmp\/jg394-[A-Za-z0-9]+$/u.test(workDir) ||

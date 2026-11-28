@@ -1,0 +1,1 @@
+Hypothesis: the original valid payment seeded at exact 109 retains original company, uploader and settlement facts after 110 and exact 290 on the same instance. Observe retainedPayment.identity, retainedPayment.facts, retainedPayment.at290, installOnly290 and first diagnostic.

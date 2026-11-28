@@ -4,6 +4,25 @@ import {
 } from "./project-visibility.service";
 
 describe("ProjectVisibilityService", () => {
+  it.each(["finance_staff", "comprehensive_director", "employee"])("keeps %s visibility through the transaction boundary with only the roster project projection", async (role) => {
+    const tx = {
+      userPosition: { findMany: jest.fn().mockResolvedValueOnce([{positionId:"global-position",projectId:null}]).mockResolvedValueOnce([]) },
+      projectMember: { findMany: jest.fn().mockResolvedValue([]) },
+      projectRosterMember: {
+        groupBy: jest.fn(async (query: unknown) => {
+          expect(query).toEqual({by:["projectId"],where:{userId:"actor"}});
+          return [{projectId:"project-1"}, {projectId:"project-1"}];
+        })
+      },
+      project: { findMany: jest.fn().mockResolvedValue([{id:"project-1"},{id:"project-2"}]) },
+      position: { findMany: jest.fn().mockResolvedValue([{id:"global-position",key:role}]) }
+    };
+    const service = new ProjectVisibilityService({} as never);
+    await expect(service.visibleProjectIdsInTransaction(tx as never,"actor")).resolves.toEqual(
+      role === "employee" ? ["project-1"] : ["project-1","project-2"]
+    );
+  });
+
   it("limits project-only users to their active project memberships", async () => {
     const prisma = {
       userPosition: {
@@ -16,7 +35,7 @@ describe("ProjectVisibilityService", () => {
         findMany: jest.fn().mockResolvedValue([{ projectId: "project-2" }])
       },
       projectRosterMember: {
-        findMany: jest.fn().mockResolvedValue([])
+        groupBy: jest.fn().mockResolvedValue([])
       },
       project: {
         findMany: jest.fn().mockResolvedValue([{ id: "project-1" }, { id: "project-2" }, { id: "project-3" }])
@@ -30,7 +49,7 @@ describe("ProjectVisibilityService", () => {
     await expect(service.visibleProjectIds("user-1")).resolves.toEqual(["project-1", "project-2"]);
   });
 
-  it("allows global business roles to see all active projects", async () => {
+  it.each(["chairman", "finance_staff", "finance_director", "comprehensive_director", "contract_director", "material_director", "super_admin"])("allows company %s to see all active projects without granting approval", async (role) => {
     const prisma = {
       userPosition: {
         findMany: jest
@@ -42,13 +61,13 @@ describe("ProjectVisibilityService", () => {
         findMany: jest.fn().mockResolvedValue([])
       },
       projectRosterMember: {
-        findMany: jest.fn().mockResolvedValue([])
+        groupBy: jest.fn().mockResolvedValue([])
       },
       project: {
         findMany: jest.fn().mockResolvedValue([{ id: "project-1" }, { id: "project-2" }])
       },
       position: {
-        findMany: jest.fn().mockResolvedValue([{ id: "pos-chairman", key: "chairman" }])
+        findMany: jest.fn().mockResolvedValue([{ id: "pos-chairman", key: role }])
       }
     };
     const service = new ProjectVisibilityService(prisma as never);
@@ -71,7 +90,7 @@ describe("ProjectVisibilityService", () => {
           .mockResolvedValueOnce([])
       },
       projectMember: { findMany: jest.fn().mockResolvedValue([]) },
-      projectRosterMember: { findMany: jest.fn().mockResolvedValue([]) },
+      projectRosterMember: { groupBy: jest.fn().mockResolvedValue([]) },
       project: { findMany: projectFindMany },
       position: {
         findMany: jest.fn().mockResolvedValue([
@@ -102,7 +121,7 @@ describe("ProjectVisibilityService", () => {
         findMany: jest.fn().mockResolvedValue([{ projectId: "project-1" }])
       },
       projectRosterMember: {
-        findMany: jest.fn().mockResolvedValue([])
+        groupBy: jest.fn().mockResolvedValue([])
       },
       project: {
         findMany: jest.fn().mockResolvedValue([{ id: "project-1" }, { id: "project-2" }])
@@ -130,7 +149,7 @@ describe("ProjectVisibilityService", () => {
         findMany: jest.fn().mockResolvedValue([{ projectId: "project-1" }])
       },
       projectRosterMember: {
-        findMany: jest.fn().mockResolvedValue([])
+        groupBy: jest.fn().mockResolvedValue([])
       },
       project: {
         findMany: jest.fn().mockResolvedValue([{ id: "project-1" }, { id: "project-2" }])
@@ -155,7 +174,7 @@ describe("ProjectVisibilityService", () => {
         findMany: jest.fn().mockResolvedValue([])
       },
       projectRosterMember: {
-        findMany: jest.fn().mockResolvedValue([{ projectId: "project-2" }])
+        groupBy: jest.fn().mockResolvedValue([{ projectId: "project-2" }])
       },
       project: {
         findMany: jest.fn().mockResolvedValue([{ id: "project-1" }, { id: "project-2" }])
@@ -177,7 +196,7 @@ describe("ProjectVisibilityService", () => {
           .mockResolvedValueOnce([{ projectId: "project-1", positionId: "pos-finance" }])
       },
       projectMember: { findMany: jest.fn().mockResolvedValue([]) },
-      projectRosterMember: { findMany: jest.fn().mockResolvedValue([]) },
+      projectRosterMember: { groupBy: jest.fn().mockResolvedValue([{ projectId: "project-1" }]) },
       project: { findMany: jest.fn().mockResolvedValue([{ id: "project-1" }]) },
       position: { findMany: jest.fn().mockResolvedValue([
         { id: "pos-employee", key: "employee" },
@@ -191,6 +210,10 @@ describe("ProjectVisibilityService", () => {
       "user-1",
       ["project-1"]
     )).resolves.toEqual(["project-1"]);
+    expect(tx.projectRosterMember.groupBy).toHaveBeenCalledWith({
+      by: ["projectId"],
+      where: { userId: "user-1", projectId: { in: ["project-1"] } }
+    });
     expect(tx.project.findMany).toHaveBeenCalledWith({
       where: { id: { in: ["project-1"] }, isActive: true },
       select: { id: true }
@@ -205,7 +228,7 @@ describe("ProjectVisibilityService", () => {
           .mockResolvedValueOnce([])
       },
       projectMember: { findMany: jest.fn().mockResolvedValue([]) },
-      projectRosterMember: { findMany: jest.fn().mockResolvedValue([]) },
+      projectRosterMember: { groupBy: jest.fn().mockResolvedValue([]) },
       project: {
         findMany: jest.fn().mockResolvedValue(
           Array.from({ length: 201 }, (_, index) => ({ id: `project-${index}` }))

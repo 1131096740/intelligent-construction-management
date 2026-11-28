@@ -17,22 +17,23 @@ interface SelectHarness {
 }
 
 describe("JgBusinessGrid searchable select editor", () => {
-  it("renders an opt-in searchable business selector and commits the selected value", async () => {
+  it.each(["schema", "bare"] as const)("renders the searchable selector and commits its value (%s column)", async (shape) => {
     const controls: SelectHarness[] = [];
     const save = vi.fn();
     const close = vi.fn();
+    const configuration = {
+      prop: "companyId",
+      businessSelectOptions: [
+        { label: "我方一公司", value: "company-internal-1" },
+        { label: "我方二公司", value: "company-internal-2" }
+      ]
+    };
     const app = createSSRApp(JgBusinessGridSelectEditor, {
       rowIndex: 0,
       model: { companyId: "我方一公司" },
       prop: "companyId",
       val: "我方一公司",
-      column: {
-        prop: "companyId",
-        businessSelectOptions: [
-          { label: "我方一公司", value: "company-internal-1" },
-          { label: "我方二公司", value: "company-internal-2" }
-        ]
-      },
+      column: shape === "schema" ? { column: configuration } : configuration,
       save,
       close
     });

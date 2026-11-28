@@ -1,0 +1,35 @@
+--- installer.cjs
++++ installer.cjs
+@@ -207 +207 @@
+-function runCommand(file, args, {stdin, timeoutMs = 120_000, extra, allowFailure} = {}) {
++function runCommand(file, args, {stdin, timeoutMs = 120_000, extra, allowFailure, cwd} = {}) {
+@@ -210 +210 @@
+-    cwd:process.env.JG_RUN_ROOT || '/tmp', env:{ ...baseEnv, HOME:'/tmp', ...extra },
++    cwd:cwd ?? (process.env.JG_RUN_ROOT || '/tmp'), env:{ ...baseEnv, HOME:'/tmp', ...extra },
+@@ -243 +243,2 @@
+-  if(purpose===installOnly290) need(!probeOnly && !consume && release===outsideRelease,'INSTALL_ONLY_290_PREDECESSOR');
++  if(purpose===installOnly290) need(!probeOnly && release===outsideRelease,'INSTALL_ONLY_290_PREDECESSOR');
++  let consumerLedger;
+@@ -584,0 +586 @@
++      consumerLedger=expected;
+@@ -619 +621 @@
+-      enter('EXACT_'+release.count+'_CONSUMER');
++      enter(consumerLedger ? 'EXACT_290_EXPENSE_APP_CONSUMER' : 'EXACT_'+release.count+'_CONSUMER');
+@@ -638 +640 @@
+-      need(equal(afterConsumer.ledger,ledger) && ['database','databaseOid','namespaceOid','systemIdentifier','ownerOid','actorOid','sessionActor'].every(key => afterConsumer[key] === roleIdentity[key]), 'CONSUMER_DATABASE_CONTINUITY');
++      need(equal(afterConsumer.ledger,consumerLedger ?? ledger) && ['database','databaseOid','namespaceOid','systemIdentifier','ownerOid','actorOid','sessionActor'].every(key => afterConsumer[key] === roleIdentity[key]), 'CONSUMER_DATABASE_CONTINUITY');
+@@ -639,0 +642,5 @@
++      if (consumerLedger) {
++        const successor=require('./successor.cjs');
++        assertOutsideWitness(289,await jsonSql(outsideWitnessSql(289)));
++        need(successor.exactCatalog(await jsonSql(successor.catalogSql)),'SETTLEMENT_290_CATALOG_CONTINUITY');
++      }
+@@ -929 +936,2 @@
+-module.exports.withOutside290InstallOnly = receipt => {
++module.exports.withOutside290Fresh = (receipt,lane) => {
++  need(['execution','finance','receipt'].includes(lane),'EXPENSE_290_APP_LANE');
+@@ -935 +943,3 @@
+-  return installer(receipt,false,undefined,outsideRelease,installOnly290);
++  return installer(receipt,false,context=>{
++    return require('./expense-app.cjs').runExpenseApp(lane,context,receipt,runCommand);
++  },outsideRelease,installOnly290);

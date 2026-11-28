@@ -1,0 +1,32 @@
+--- runner
++++ runner
+@@ -504 +504 @@
+- const modes=new Map([["cash-handover-329",["--cash-handover-real"]],["principal-return-329",["--principal-return-real"]],["cash-handover-295",["--cash-handover-real"]],["principal-return-295",["--principal-return-real"]],["standard-290",[]],["cash-handover-290",["--cash-handover-real"]],["principal-return-290",["--principal-return-real"]],["standard",[]],["principal-return",["--principal-return-real"]],["cash-handover",["--cash-handover-real"]],["correction-catalog",["--cash-handover-real"]]]);
++ const modes=new Map([["cash-handover-330",["--cash-handover-real"]],["principal-return-330",["--principal-return-real"]],["cash-handover-329",["--cash-handover-real"]],["principal-return-329",["--principal-return-real"]],["cash-handover-295",["--cash-handover-real"]],["principal-return-295",["--principal-return-real"]],["standard-290",[]],["cash-handover-290",["--cash-handover-real"]],["principal-return-290",["--principal-return-real"]],["standard",[]],["principal-return",["--principal-return-real"]],["cash-handover",["--cash-handover-real"]],["correction-catalog",["--cash-handover-real"]]]);
+@@ -508,3 +508,5 @@
+- const forward=exact320?receipt?.forward320:undefined;
+- if(exact320&&(receipt?.purpose!=="TASK398_CASH_PRINCIPAL_EXACT_329"||mode!==receipt.lane+"-329"
+-  ||forward?.count!==329||forward.sameIdentity!==true||forward.sameBaseB7!==true
++ const exact330=mode==="cash-handover-330"||mode==="principal-return-330";
++ const count=exact330?330:329;
++ const forward=exact330||exact320?receipt?.forward320:undefined;
++ if((exact330||exact320)&&(receipt?.purpose!=="TASK398_CASH_PRINCIPAL_EXACT_"+count||mode!==receipt.lane+"-"+count
++  ||forward?.count!==count||forward.sameIdentity!==true||forward.sameBaseB7!==true
+@@ -512 +514,3 @@
+-  ||forward.tails?.length!==34))throw Error("TASK398_CASH_PRINCIPAL_320_SCOPE");
++  ||forward.tails?.length!==count-295
++  ||(exact330&&(receipt.textDirectPredecessor?.count!==329||receipt.textDirectPredecessor.sameBaseB7!==true))))
++  throw Error("TASK398_CASH_PRINCIPAL_FORWARD_SCOPE");
+@@ -523 +527 @@
+- if(candidateTree!==(exact320?forward.sourceTree:exact295?"67644d9465a0ab4ee80ede099139d9c129d66f14":(mode==="correction-catalog"||exact290)?"23b1c98bc15f36e986d17059579e6673315b9be8":"8d3e50a0c525a68e717b74fbecbcceabc80840f7")||candidate!=="0a5b607cf912ffbb50237af2608ac8b2a5360c16"||containerName(runId)===""||database!==`jg_task01_${short}`
++ if(candidateTree!==(forward?forward.sourceTree:exact295?"67644d9465a0ab4ee80ede099139d9c129d66f14":(mode==="correction-catalog"||exact290)?"23b1c98bc15f36e986d17059579e6673315b9be8":"8d3e50a0c525a68e717b74fbecbcceabc80840f7")||candidate!=="0a5b607cf912ffbb50237af2608ac8b2a5360c16"||containerName(runId)===""||database!==`jg_task01_${short}`
+@@ -563,2 +567,2 @@
+-   ||readback.sameActor!==true||readback.tls!==true||readback.inactiveLedger!==0||ledger.length!==(exact320?329:exact295?295:(mode==="correction-catalog"||exact290)?290:282)
+-   ||createHash("sha256").update(JSON.stringify(ledger)).digest("hex")!==(exact320?forward.ledgerSha256:exact295?"b0d398a46c4c6a3209e1448ddd415938ea95425c3d823f1f8a77d81dde396f2d":(mode==="correction-catalog"||exact290)?"8741d9da09253efb803af9e132b4cde09de0dfef86da7edf952b6c0056a057a5":"be6d9aed22658af5e273010a2e1e839544fa27e74e998701fb3d9e9248f88cfc"))throw new Error("TASK398_OWNED_280_LEDGER");
++   ||readback.sameActor!==true||readback.tls!==true||readback.inactiveLedger!==0||ledger.length!==(forward?count:exact295?295:(mode==="correction-catalog"||exact290)?290:282)
++   ||createHash("sha256").update(JSON.stringify(ledger)).digest("hex")!==(forward?forward.ledgerSha256:exact295?"b0d398a46c4c6a3209e1448ddd415938ea95425c3d823f1f8a77d81dde396f2d":(mode==="correction-catalog"||exact290)?"8741d9da09253efb803af9e132b4cde09de0dfef86da7edf952b6c0056a057a5":"be6d9aed22658af5e273010a2e1e839544fa27e74e998701fb3d9e9248f88cfc"))throw new Error("TASK398_OWNED_280_LEDGER");
+@@ -580,2 +584,2 @@
+-  correctionCatalog:mode==="correction-catalog"?{context,receipt}:undefined,standard290:exact320||exact295||exact290?receipt:undefined,ownedMigrationBaseline:exact320?{
+-  expectedDirectoryCount:329,terminalMigration:forward.tails.at(-1).name,terminalMigrationChecksum:forward.tails.at(-1).sha256
++  correctionCatalog:mode==="correction-catalog"?{context,receipt}:undefined,standard290:forward||exact295||exact290?receipt:undefined,ownedMigrationBaseline:forward?{
++  expectedDirectoryCount:count,terminalMigration:forward.tails.at(-1).name,terminalMigrationChecksum:forward.tails.at(-1).sha256

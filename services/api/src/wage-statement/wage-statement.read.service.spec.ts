@@ -84,8 +84,8 @@ describe("WageStatementService aggregate reads", () => {
 
     expect(result).toEqual({
       capabilities: {
-        canPrepare: true,
-        canSubmit: true,
+        canPrepare: false,
+        canSubmit: false,
         canReturn: false,
         canConfirm: false,
         canReadSensitive: true,
@@ -141,8 +141,8 @@ describe("WageStatementService aggregate reads", () => {
 
     expect(summary).toEqual({
       capabilities: {
-        canPrepare: true,
-        canSubmit: true,
+        canPrepare: false,
+        canSubmit: false,
         canReturn: false,
         canConfirm: false,
         canReadSensitive: true,

@@ -19,11 +19,24 @@ if(leaked)process.exit(91);
 const args=process.argv.join(' ');
 if(args.includes('SELECT current_database()'))console.log('jiangkong_restore_fixture');
 else if(args.includes('SELECT COUNT(*) FROM pg_catalog.pg_tables'))console.log('0');
+else if(args.includes('to_regprocedure'))console.log(process.env.TEST_ARCHIVE_CLOSURE==='legacy'?'legacy':'present');
+else if(args.includes('BEGIN READ ONLY; SELECT public.jg_require_contract_direct_upward_source_v2()')){
+ if(process.env.TEST_ARCHIVE_CLOSURE==='stale')process.exit(1);
+ console.log('a'.repeat(64));
+}
 else if(args.includes('_prisma_migrations'))console.log('172|0|0');
 else if(args.includes('select '))console.log('fixture=0');
 `;
  for(const name of ['psql','pg_restore']){await writeFile(join(bin,name),client);await chmod(join(bin,name),0o700);}
- const r=spawnSync('bash',[resolve('scripts/ops/db-restore-drill.sh')],{encoding:'utf8',env:{...process.env,PATH:bin+':'+process.env.PATH,RESTORE_DATABASE_URL:'postgresql://fixture:'+password+'@127.0.0.1:5432/jiangkong_restore_fixture',PGDATABASE:'postgresql://fixture:'+password+'@127.0.0.1:5432/ignored',RESTORE_DATABASE_NAME_CONFIRMATION:'jiangkong_restore_fixture',BACKUP_FILE:file,APPLY_CANDIDATE_MIGRATIONS:'false'}});
- assert.equal(r.status,0,r.stderr);assert(!r.stdout.includes(password)&&!r.stderr.includes(password));
+ const run=archiveClosure=>spawnSync('bash',[resolve('scripts/ops/db-restore-drill.sh')],{encoding:'utf8',env:{...process.env,TEST_ARCHIVE_CLOSURE:archiveClosure,PATH:bin+':'+process.env.PATH,RESTORE_DATABASE_URL:'postgresql://fixture:'+password+'@127.0.0.1:5432/jiangkong_restore_fixture',PGDATABASE:'postgresql://fixture:'+password+'@127.0.0.1:5432/ignored',RESTORE_DATABASE_NAME_CONFIRMATION:'jiangkong_restore_fixture',BACKUP_FILE:file,APPLY_CANDIDATE_MIGRATIONS:'false'}});
+ const r=run('legacy');
+ assert.equal(r.status,0,r.stderr);assert.match(r.stdout,/archive_closure_status=not_applicable/);assert(!r.stdout.includes(password)&&!r.stderr.includes(password));
+ const verified=run('verified');
+ assert.equal(verified.status,0,verified.stderr);
+ assert.match(verified.stdout,/archive_closure_status=verified/);
+ const stale=run('stale');
+ assert.equal(stale.status,1);
+ assert.equal(stale.stdout,'');
+ assert.match(stale.stderr,/archive closure verification failed/);
  const checks=(await readFile(log,'utf8')).trim().split('\n');assert(checks.length>=12);assert(checks.every(v=>v==='false'));
 });

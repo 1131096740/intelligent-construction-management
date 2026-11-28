@@ -1,0 +1,121 @@
+--- a/installer.cjs
++++ b/installer.cjs
+@@ -366 +366 @@
+-  const pfqMode=['ORIGINAL_PFQ_EXACT_295','ORIGINAL_PFQ_EXACT_329','ORIGINAL_PFQ_EXACT_330','ORIGINAL_PFQ_EXACT_331','ORIGINAL_PFQ_EXACT_332','ORIGINAL_PFQ_EXACT_334','ORIGINAL_PFQ_EXACT_346'].includes(receipt.purpose)?'--pfq-'+receipt.lane+'-289-local':undefined;
++  const pfqMode=['ORIGINAL_PFQ_EXACT_295','ORIGINAL_PFQ_EXACT_329','ORIGINAL_PFQ_EXACT_330','ORIGINAL_PFQ_EXACT_331','ORIGINAL_PFQ_EXACT_332','ORIGINAL_PFQ_EXACT_334','ORIGINAL_PFQ_EXACT_346','ORIGINAL_PFQ_EXACT_349'].includes(receipt.purpose)?'--pfq-'+receipt.lane+'-289-local':undefined;
+@@ -906,0 +907 @@
++      const precision = forward320.expenseWitnessPrecision;
+@@ -907,0 +909 @@
++      const precisionCatalog = {};
+@@ -913,0 +916 @@
++          if (precision && qualifiedLedger.length>=expenseWitness.count) enter('EXPENSE_PRECISION_MIGRATE_'+(qualifiedLedger.length+1));
+@@ -983 +986 @@
+-          if (count>=334) expenseWitness.assertPrefix(count,hash(JSON.stringify(qualifiedLedger)));
++          if (count>=334) (precision ?? expenseWitness).assertPrefix(count,hash(JSON.stringify(qualifiedLedger)));
+@@ -996,0 +1000,13 @@
++          if (precision && count>=expenseWitness.count) {
++            const observed=await jsonSql(precision.catalogSql);
++            precision.assertCheckpoint(count,observed,precisionCatalog[346],precisionCatalog[347],precisionCatalog[348]);
++            precisionCatalog[count]=observed;
++            if (count===expenseWitness.count) {
++              receipt.expenseWitnessForward={count,ledgerSha256:expenseWitness.ledgerSha256,sameIdentity:true,sourceTree,
++                tails:tails.slice(39,expenseWitness.count-295)};
++              receipt.pfqObserved346={rows:current.ledger.length,sha256:hash(JSON.stringify(current.ledger))};
++            } else {
++              const expectedBody=count<348 ? priorExpenseCatalog.costValidator.body : precisionCatalog[346].expectedCostValidatorAfter348;
++              precision.assertExpenseCatalog(await jsonSql(expenseWitness.catalogSql),priorExpenseCatalog,expectedBody);
++            }
++          }
+@@ -1003 +1019,6 @@
+-      if (expenseWitness) {
++      if (precision) {
++        receipt.expenseWitnessPrecisionForward={count:qualifiedLedger.length,ledgerSha256:hash(JSON.stringify(qualifiedLedger)),
++          sameIdentity:true,sourceTree,tails:tails.slice(expenseWitness.count-295)};
++        receipt.expenseWitnessPrecisionCatalog=precisionCatalog;
++        receipt.pfqObserved349={rows:current.ledger.length,sha256:observedLedgerSha256};
++      } else if (expenseWitness) {
+@@ -1115 +1136,2 @@
+-        need(hash(JSON.stringify(qualifiedLedger))===(forward320.expenseWitness?.ledgerSha256 ?? signed?.ledgerSha256 ?? a28.ledgerSha256),'A28_LEDGER_AFTER_CONSUMER');
++        const precision=forward320.expenseWitnessPrecision;
++        need(hash(JSON.stringify(qualifiedLedger))===(precision?.ledgerSha256 ?? forward320.expenseWitness?.ledgerSha256 ?? signed?.ledgerSha256 ?? a28.ledgerSha256),'A28_LEDGER_AFTER_CONSUMER');
+@@ -1117,2 +1139,3 @@
+-        need(hash(JSON.stringify(afterConsumer.ledger))===(receipt.pfqObserved346?.sha256??receipt.forward320.observedLedgerSha256),
+-          forward320.expenseWitness?'PFQ_346_OBSERVED_LEDGER_AFTER_CONSUMER':'PFQ_334_OBSERVED_LEDGER_AFTER_CONSUMER');
++        need(hash(JSON.stringify(afterConsumer.ledger))===(receipt.pfqObserved349?.sha256??receipt.pfqObserved346?.sha256??receipt.forward320.observedLedgerSha256),
++          precision?'PFQ_349_OBSERVED_LEDGER_AFTER_CONSUMER':
++            forward320.expenseWitness?'PFQ_346_OBSERVED_LEDGER_AFTER_CONSUMER':'PFQ_334_OBSERVED_LEDGER_AFTER_CONSUMER');
+@@ -1126 +1149,10 @@
+-          need(equal(await jsonSql(profile.catalogSql),receipt.expenseWitnessCatalog[profile.count]),'EXPENSE_WITNESS_CATALOG_AFTER_CONSUMER');
++          const expenseCatalog=await jsonSql(profile.catalogSql);
++          const baseline=receipt.expenseWitnessCatalog[profile.count];
++          if (precision) {
++            const catalogs=receipt.expenseWitnessPrecisionCatalog;
++            precision.assertExpenseCatalog(expenseCatalog,baseline,catalogs[346].expectedCostValidatorAfter348);
++            need(equal(await jsonSql(precision.catalogSql),catalogs[precision.count]),'EXPENSE_PRECISION_349_CATALOG_AFTER_CONSUMER');
++            receipt.expenseWitnessPrecisionCatalogAfterBusiness=true;
++          } else {
++            need(equal(expenseCatalog,baseline),'EXPENSE_WITNESS_CATALOG_AFTER_CONSUMER');
++          }
+@@ -1539 +1571,2 @@
+-  const expenseWitness=target===346?require('./expense-witness-346-profile.cjs'):null;
++  const expenseWitnessPrecision=target===349?require('./expense-witness-349-profile.cjs'):null;
++  const expenseWitness=[346,349].includes(target)?require('./expense-witness-346-profile.cjs'):null;
+@@ -1578 +1611 @@
+-  return {sourceTree,tails:rows,sql,textDirect,paymentRemainder,upwardArchive,historicalTakeover,historicalSettlement,expenseWitness};
++  return {sourceTree,tails:rows,sql,textDirect,paymentRemainder,upwardArchive,historicalTakeover,historicalSettlement,expenseWitness,expenseWitnessPrecision};
+@@ -1685,0 +1719,7 @@
++module.exports.withCombinedExpenseWitness349 = (receipt,consume,material) => {
++  need(typeof consume==='function'&&material&&typeof material==='object','PFQ_349_ARGUMENTS');
++  const precision=require('./expense-witness-349-profile.cjs');
++  precision.assertSource(material,require('./multi-witness.cjs').final);
++  precision.assertRuntimeBaseline(require('./workspace/services/api/prisma/migration-baseline.cjs'));
++  return withCombinedOrdinaryLoan(receipt,consume,exactMultiWitness295,false,readForward320(material,precision.count));
++};
+@@ -1688 +1728 @@
+-  const count={'current-320':329,'text-direct-330':330,'payment-remainder-331':331,'upward-archive-332':332,'historical-settlement-334':334,'expense-witness-346':346}[material?.mode]??295;
++  const count={'current-320':329,'text-direct-330':330,'payment-remainder-331':331,'upward-archive-332':332,'historical-settlement-334':334,'expense-witness-346':346,'expense-witness-349':349}[material?.mode]??295;
+@@ -1699 +1739 @@
+-      const historyTails=count===346?source.tails.slice(0,source.predecessor334.migrationCount-source.predecessor.migrationCount):source.tails;
++      const historyTails=count>=346?source.tails.slice(0,source.predecessor334.migrationCount-source.predecessor.migrationCount):source.tails;
+@@ -1701 +1741,3 @@
+-      if(count===346) {
++      if(count>=346) {
++        const expense=require('./expense-witness-346-profile.cjs');
++        const witnessEnd=expense.count-source.predecessor.migrationCount;
+@@ -1703,2 +1745,2 @@
+-          count,ledgerSha256:source.ledgerSha256,sameIdentity:true,sourceTree:source.sourceTree,
+-          tails:source.tails.slice(historyTails.length).map(({name,sha256})=>({name,sha256}))
++          count:expense.count,ledgerSha256:expense.ledgerSha256,sameIdentity:true,sourceTree:source.sourceTree,
++          tails:source.tails.slice(historyTails.length,witnessEnd).map(({name,sha256})=>({name,sha256}))
+@@ -1706 +1748 @@
+-        need(receipt.pfqObserved346?.rows===count+Number(Boolean(pfqConflict))&&
++        need(receipt.pfqObserved346?.rows===expense.count+Number(Boolean(pfqConflict))&&
+@@ -1708 +1750,10 @@
+-          (receipt.pfqObserved346.sha256===source.ledgerSha256)===!pfqConflict,'PFQ_346_OBSERVED_LEDGER');
++          (receipt.pfqObserved346.sha256===expense.ledgerSha256)===!pfqConflict,'PFQ_346_OBSERVED_LEDGER');
++        if(count===349) {
++          need(equal(receipt.expenseWitnessPrecisionForward,{
++            count,ledgerSha256:source.ledgerSha256,sameIdentity:true,sourceTree:source.sourceTree,
++            tails:source.tails.slice(witnessEnd).map(({name,sha256})=>({name,sha256}))
++          }),'PFQ_349_SUCCESSOR');
++          need(receipt.pfqObserved349?.rows===count+Number(Boolean(pfqConflict))&&
++            /^[0-9a-f]{64}$/u.test(receipt.pfqObserved349.sha256)&&
++            (receipt.pfqObserved349.sha256===source.ledgerSha256)===!pfqConflict,'PFQ_349_OBSERVED_LEDGER');
++        }
+@@ -1738,0 +1790 @@
++  if(count===349) return module.exports.withCombinedExpenseWitness349(receipt,consume,material);
+--- a/entry.cjs
++++ b/entry.cjs
+@@ -6 +6 @@
+-const count={'--current-320':329,'--text-direct-330':330,'--payment-remainder-331':331,'--upward-archive-332':332,'--historical-settlement-334':334,'--expense-witness-346':346}[requestedMode]??295;
++const count={'--current-320':329,'--text-direct-330':330,'--payment-remainder-331':331,'--upward-archive-332':332,'--historical-settlement-334':334,'--expense-witness-346':346,'--expense-witness-349':349}[requestedMode]??295;
+@@ -9 +9,2 @@
+-const expenseWitness=count===346?require('./expense-witness-346-profile.cjs'):undefined;
++const precision=count===349?require('./expense-witness-349-profile.cjs'):undefined;
++const expenseWitness=precision??(count===346?require('./expense-witness-346-profile.cjs'):undefined);
+@@ -34 +35,2 @@
+-      mode:source.mode,sourceTree:source.sourceTree,migrations:'/qualification/workspace/services/api/prisma/migrations',tails:source.tails
++      ...(precision?source:{mode:source.mode,sourceTree:source.sourceTree,tails:source.tails}),
++      migrations:'/qualification/workspace/services/api/prisma/migrations'
+@@ -55,0 +58 @@
++        if(precision) assert.equal(receipt.expenseWitnessPrecisionCatalogAfterBusiness,true);

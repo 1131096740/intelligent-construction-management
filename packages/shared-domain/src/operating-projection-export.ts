@@ -25,11 +25,11 @@ export interface OperatingProjectionExportFilters {
 
 // Read-side catalog only: registering a source here does not authorize a writer.
 export const OPERATING_SOURCE_TYPES = Object.freeze([
-  "owner_settlement", "project_upstream_settlement", "project_upstream_fund_fact",
+  "owner_settlement", "project_upstream_settlement", "project_owner_settlement_entry", "project_upstream_fund_fact", "construction_enterprise_fee",
   "project_affiliate_contract_fact", "project_affiliate_settlement_fact",
-  "project_affiliate_payment_fact", "project_proxy_payment", "contract_version", "contract_economic_review", "contract_proxy_execution", "company_transfer_event", "upward_receipt_match",
+  "project_affiliate_payment_fact", "project_proxy_payment", "contract_version", "contract_economic_review", "contract_work_completion", "contract_proxy_execution", "company_transfer_event", "company_transfer_debt_correction", "upward_receipt_match",
   "fund_execution_counterparty",
-  "settlement", "payment_execution", "expense_claim_approval",
+  "settlement", "signed_contract_settlement", "payment_execution", "expense_claim_approval",
   "expense_claim_payment_execution", "employee_project_loan_entry",
   "spot_procurement_receipt_review", "spot_procurement_payment_execution",
   "spot_procurement_refund", "spot_procurement_invoice_record",
@@ -59,10 +59,10 @@ const flow = Object.freeze([ledger, cashflow] as const);
 const history = Object.freeze([takeover] as const);
 
 export const OPERATING_EXPORT_SOURCE_KINDS = Object.freeze({
-  owner_settlement: none, project_upstream_settlement: none, project_upstream_fund_fact: none,
+  owner_settlement: none, project_upstream_settlement: none, project_owner_settlement_entry: none, project_upstream_fund_fact: none, construction_enterprise_fee: none,
   project_affiliate_contract_fact: none, project_affiliate_settlement_fact: none,
-  project_affiliate_payment_fact: none, project_proxy_payment: none, contract_version: none, contract_economic_review: none, contract_proxy_execution: none, company_transfer_event:none, upward_receipt_match: none, fund_execution_counterparty:none,
-  settlement: none, payment_execution: none, expense_claim_approval: none,
+  project_affiliate_payment_fact: none, project_proxy_payment: none, contract_version: none, contract_economic_review: none, contract_work_completion: none, contract_proxy_execution: none, company_transfer_event:none, company_transfer_debt_correction:none, upward_receipt_match: none, fund_execution_counterparty:none,
+  settlement: none, signed_contract_settlement: none, payment_execution: none, expense_claim_approval: none,
   expense_claim_payment_execution: none, employee_project_loan_entry: none,
   spot_procurement_receipt_review: none, spot_procurement_payment_execution: none,
   spot_procurement_refund: none, spot_procurement_invoice_record: none,
@@ -86,6 +86,7 @@ export const OPERATING_EXPORT_IMPACT_KINDS = Object.freeze({
   payable_increase: flow, payable_decrease: flow, construction_enterprise_funds_increase: ceCash,
   construction_enterprise_funds_decrease: ceCash, construction_enterprise_funds_freeze: ce,
   construction_enterprise_funds_release: ce, company_project_funds_increase: coCash,
+  public_cash_funds_decrease: flow,
   company_project_funds_decrease: coCash, company_advance_for_project_increase: co,
   company_advance_for_project_decrease: co, company_returnable_to_project_increase: co,
   company_returnable_to_project_decrease: co, inter_subject_balance_increase: co,

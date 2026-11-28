@@ -1,6 +1,7 @@
 const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const path = require("node:path");
+const { tmpdir } = require("node:os");
 const test = require("node:test");
 
 const runnerPath = path.join(__dirname, "run-contract-settlement-governance-uat.cjs");
@@ -68,8 +69,8 @@ const selfArchiveFinalUploadSource = selfArchiveSource.slice(
   selfArchiveFinalUploadStart,
   selfArchiveFinalUploadEnd
 );
-const changeStart = runnerSource.indexOf("async function assertChangeBoundary");
-const changeEnd = runnerSource.indexOf("\nasync function createSettlementTemplate", changeStart);
+const changeStart = runnerSource.indexOf("async function approveSignedSupplement");
+const changeEnd = runnerSource.indexOf("\nasync function runSettlementScenario", changeStart);
 const changeSource = runnerSource.slice(changeStart, changeEnd);
 
 test("governance UAT prepares each personal signature through the domain route", () => {
@@ -153,7 +154,7 @@ test("governance UAT establishes document content through the public draft flow 
 
 test("governance UAT confirms counterparty files before every operational contract submission", () => {
   const contractSubmissions = [...runnerSource.matchAll(/await submitContractDraft\(/gu)];
-  assert.equal(contractSubmissions.length, 4);
+  assert.equal(contractSubmissions.length, 2);
   assert.doesNotMatch(runnerSource, /`\/contracts\/\$\{[^`]+\/approval-submission`/u);
   const helperStart = runnerSource.indexOf("async function submitContractDraft");
   const helperEnd = runnerSource.indexOf("\nasync function prepareSharedFixtures", helperStart);
@@ -167,20 +168,6 @@ test("governance UAT confirms counterparty files before every operational contra
     submitSource.indexOf("/formal-files/counterparty/confirmation`") <
       submitSource.lastIndexOf("const submitted = await submitContractDraft("),
     "正常合同提交必须发生在乙方签章整体确认之后"
-  );
-  assert.match(
-    changeSource,
-    /const changeCounterpartySignedPdf = await uploadContractDraftPdf\(\s*tokens\.contractStaff,\s*draft\.id,\s*`UAT-\$\{runId\}-change-\$\{suffix\}-counterparty-signed\.pdf`/u
-  );
-  assert.match(changeSource, /fileIds: \[changeCounterpartySignedPdf\.id\]/u);
-  assert.match(changeSource, /formalFileId: changeCounterpartySigned\.previewFormalFileId/u);
-  const changeCounterpartyUploadIndex = changeSource.indexOf("/formal-files/counterparty`");
-  const changeCounterpartyConfirmationIndex = changeSource.indexOf("/formal-files/counterparty/confirmation`");
-  const changeSubmissionIndex = changeSource.indexOf("await submitContractDraft(");
-  assert(
-    changeCounterpartyUploadIndex < changeCounterpartyConfirmationIndex &&
-      changeCounterpartyConfirmationIndex < changeSubmissionIndex,
-    "变更边界的允许和 10.01% 阻断提交都必须发生在乙方签章整体确认之后"
   );
 });
 
@@ -208,8 +195,15 @@ test("governance UAT formal-file request bodies conform to the current controlle
   }
   assert.match(finalConfirmationSource, /\.\.\.completion,[\s\S]*formalFileId: final\.id[\s\S]*onlyPermittedSignatureChanges: true[\s\S]*documentOrderConfirmed: true/u);
   assert.doesNotMatch(finalConfirmationSource, /confirmationPassword/u);
-  assert.match(changeSource, /fileIds: \[changeCounterpartySignedPdf\.id\][\s\S]*sourceRevision: current\.draftRevision/u);
-  assert.match(changeSource, /formalFileId: changeCounterpartySigned\.previewFormalFileId[\s\S]*expectedDraftRevision: current\.draftRevision/u);
+});
+
+test("governance UAT submits the signed supplement before director review", () => {
+  assert.match(changeSource, /\/signed-changes/u);
+  assert.match(changeSource, /uploadPdf\(tokens\.contractStaff/u);
+  assert.match(changeSource, /signedChangeRequest\("POST", path, tokens\.contractStaff/u);
+  assert.match(changeSource, /fileId: pdf\.id, summary: "UAT 已签补充协议", amountDeltaYuan, paymentAgreementText/u);
+  assert.match(changeSource, /\$\{change\.id\}\/review\x60, tokens\.contractDirector/u);
+  assert.match(changeSource, /currentPaymentAgreementText === agreement/u);
 });
 
 test("post-approval final files use the non-draft upload route", () => {
@@ -246,4 +240,29 @@ test("real browser acceptance completes the self-archive assertion in both brows
   assert.match(runnerSource, /browserContractIds/u);
   assert.match(browserRunnerSource, /REAL_BROWSER_SELF_ARCHIVE_CONTRACT_IDS/u);
   assert.match(browserTestSource, /REAL_BROWSER_SELF_ARCHIVE_CONTRACT_IDS/u);
+});
+
+
+test("dispatches stale signed review browsers only against the same exact passed governance receipt", (context) => {
+  const { resolveSignedSettlementReviewFixtures } = require("./run-real-role-browser-uat.cjs");
+  const directory = fs.mkdtempSync(path.join(tmpdir(), "jg-signed-review-receipt-"));
+  context.after(() => fs.rmSync(directory, { recursive: true, force: true }));
+  const governanceEvidencePath = path.join(directory, "receipt.json");
+  const runId = "synthetic-run";
+  const candidateSha = "a".repeat(40);
+  const first = { projectId: "seed-project-jgxm-001", settlementId: "00000000-0000-4000-8000-000000000001", revision: 2 };
+  const second = { ...first, settlementId: "00000000-0000-4000-8000-000000000002" };
+  const receipt = {
+    runId, candidateSha, cases: [
+      { id: "signed_settlement_material_confirmation", passed: true, evidenceIds: [`${runId}:${first.settlementId}`], signedSettlementReviewFixture: first },
+      { id: "signed_settlement_labor_confirmation", passed: true, evidenceIds: [`${runId}:${second.settlementId}`], signedSettlementReviewFixture: second }
+    ]
+  };
+  fs.writeFileSync(governanceEvidencePath, JSON.stringify(receipt));
+  assert.deepEqual(resolveSignedSettlementReviewFixtures({ governanceEvidencePath, runId, candidateSha }), { chromium: first, webkit: second });
+  assert.throws(() => resolveSignedSettlementReviewFixtures({ governanceEvidencePath, runId, candidateSha: "b".repeat(40) }), /证据身份不一致/u);
+
+  receipt.cases[0].evidenceIds = [`${runId}:${second.settlementId}`];
+  fs.writeFileSync(governanceEvidencePath, JSON.stringify(receipt));
+  assert.throws(() => resolveSignedSettlementReviewFixtures({ governanceEvidencePath, runId, candidateSha }), /chromium 缺少已签结算复核证据/u);
 });

@@ -1,6 +1,15 @@
+import { isPendingLegacyContractCutover } from "../contract/contract-approval-cutover";
+import { readFileBindingCatalog } from "../database/registered-payment-catalog";
+import { contractApprovalFormHasReaderRole, contractPendingApprovalSnapshot, pendingContractApprovalFormHasReaderRole } from "../contract/contract-parallel-duty-access";
+import { generalRequestActor, generalRequestCanRead } from "../general-procurement/general-procurement-request-access";
+import { ModuleRef } from "@nestjs/core";
+import { assertGeneratedContractFileAccess } from "../contract-document/contract-generated-file-access";
+import { sensitiveBusinessReadAllowed } from "../auth/sensitive-business-read";
 import { additionalApprovalFacts, ADDITIONAL_APPROVAL_TITLES } from "../approval/approval-business-facts";
 import { resolveLayoutTemplateFileAccess } from "../contract-template/layout-template-file-access";
 import {companyTransferRoles} from "../company-transfer/company-transfer.access";
+import { companyRepaymentApprovals } from "../company-transfer/company-transfer-repayment-approval";
+import { isParallelApprovalRound } from "../approval/parallel-approval-protocol";
 import { ProjectVisibilityService } from "../auth/project-visibility.service";
 import { canReadGeneralProcurement, generalProcurementActor } from "../general-procurement/general-procurement-access";
 import {
@@ -10,6 +19,7 @@ import {
   Injectable,
   InternalServerErrorException,
   Logger,
+  Optional,
   ServiceUnavailableException,
   type OnModuleInit
 } from "@nestjs/common";
@@ -34,8 +44,24 @@ import { activeScopedApprovalDelegatorIds } from "../approval/active-approval-de
 import {
   acquireFileBusinessBindingTransactionLock,
   hasNonReceiptBusinessFileBinding,
-  nonReceiptBusinessFileBindingIds
+  type ProcurementFileBindingScope,
+  type RegisteredVoucherBindingScope,
+  nonReceiptBusinessFileBindingIds,
+  registeredPaymentVoucherInstalled
 } from "./file-business-binding";
+import { hasExactLegacyCleanupKey, lockContractReviewCleanupCohort, reviewReferenceCatalog } from "./contract-review-file-retention";
+import { contractReviewTicketAccess, type ContractReviewFileAccess } from "./contract-review-file-access";
+import { readDirectArchiveGeneration } from "./contract-archive-generation-read";
+import { requiresGeneratedArchiveOriginals } from "../contract/contract-generated-archive-original-read";
+import { readGeneratedArchiveDownloadGeneration } from "../contract/contract-v2-archive-persistent-proof";
+import { assertDirectReviewQualification } from "../contract-ledger/contract-direct-review-qualification";
+import { fundBalanceWitnessBinding, signFundBalanceWitness } from "../fund-account/fund-balance-witness-signing";
+import { isSignedSettlementFileMime, isSignedSettlementObjectKey, signedSettlementUploadPrefix } from "./signed-settlement-file";
+import {
+  archivePackageFileName,
+  assertArchivePackageSelection,
+  buildArchivePackageBuffer
+} from "./archive-package";
 
 export interface UploadPrivateFileInput {
   originalName: string;
@@ -44,6 +70,7 @@ export interface UploadPrivateFileInput {
   uploadedByUserId: string;
   buffer: Buffer;
   idempotencyKey?: string;
+  signedSettlementProjectId?: string;
   approvalFormGenerationClaim?: {
     approvalInstanceId: string;
     claimToken: string;
@@ -75,6 +102,15 @@ export interface CreateFileDownloadTicketInput {
   downloadReason?: string;
   accessMode?: FileTicketAccessMode;
 }
+
+export interface SignedSettlementDownloadScope {
+  projectId: string;
+  settlementId: string;
+  fileId: string;
+}
+
+type SignedSettlementDownloadFile = Pick<FileObject,
+  "id" | "bucket" | "objectKey" | "originalName" | "mimeType" | "sizeBytes" | "contentSha256" | "storageStatus">;
 
 export interface LinkFileReplacementInput {
   newFileId: string;
@@ -255,6 +291,25 @@ function hasErrorCode(error: unknown, code: string): boolean {
   return typeof error === "object" && error !== null && "code" in error && error.code === code;
 }
 
+interface VerifiedVersionRead {
+  bucket: string;
+  objectKey: string;
+  sizeBytes: number;
+  contentSha256: string;
+  expectedGeneration?: string;
+}
+
+function isCosGeneration(value: string | null): value is string {
+  return typeof value === "string" && value.length <= 1024 && /^[\x21-\x7e]+$/u.test(value) &&
+    value.toLowerCase() !== "null" && !value.includes(",");
+}
+
+function encodeCosUriPart(value: string): string {
+  return encodeURIComponent(value).replace(/[!'()*]/gu, character =>
+    `%${character.charCodeAt(0).toString(16).toUpperCase()}`
+  );
+}
+
 @Injectable()
 export class PrivateFileStorage implements OnModuleInit {
   private readonly logger = new Logger(PrivateFileStorage.name);
@@ -279,6 +334,7 @@ export class PrivateFileStorage implements OnModuleInit {
       if (missingKeys.length) {
         throw new Error(`私有对象存储配置缺失：${missingKeys.join("、")}`);
       }
+      this.cosSessionToken();
       return;
     }
 
@@ -391,6 +447,57 @@ export class PrivateFileStorage implements OnModuleInit {
       throw new Error("本地文件读取失败");
     } finally {
       await handle?.close().catch(() => undefined);
+    }
+  }
+
+  /** Strict backend evidence read. A version and its verified bytes come from the same COS response. */
+  async readVerifiedVersion(input: VerifiedVersionRead): Promise<{ buffer: Buffer; objectGeneration: string }> {
+    const unavailable = () => new ServiceUnavailableException("资料文件版本或完整性暂无法核对，请保留原件");
+    try {
+      const limit = Number(process.env.FILE_UPLOAD_MAX_BYTES ?? 104_857_600);
+      if (!this.useCos() || input.bucket !== this.bucketName() ||
+        !Number.isSafeInteger(limit) || !Number.isSafeInteger(input.sizeBytes) || input.sizeBytes < 1 || input.sizeBytes > limit ||
+        !/^[0-9a-f]{64}$/u.test(input.contentSha256) ||
+        (input.expectedGeneration !== undefined && !isCosGeneration(input.expectedGeneration)) ||
+        Array.from(input.objectKey).some(character => character.charCodeAt(0) < 32 || character.charCodeAt(0) === 127)) {
+        throw unavailable();
+      }
+      this.resolveObjectKey(input.objectKey);
+
+      const response = await this.cosResponse("GET", input.objectKey, undefined, { generation: input.expectedGeneration });
+      const generation = response.headers.get("x-cos-version-id");
+      const length = response.headers.get("content-length");
+      const encoding = response.headers.get("content-encoding");
+      if (!isCosGeneration(generation) || (input.expectedGeneration !== undefined && generation !== input.expectedGeneration)
+        || response.headers.has("content-range") || (length !== null && length !== String(input.sizeBytes))
+        || (encoding !== null && encoding.toLowerCase() !== "identity") || !response.body) {
+        await response.body?.cancel().catch(() => undefined);
+        throw unavailable();
+      }
+
+      const reader = response.body.getReader();
+      let offset = 0;
+      let complete = false;
+      try {
+        const buffer = Buffer.allocUnsafe(input.sizeBytes);
+        for (;;) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          if (value.length > input.sizeBytes - offset) throw unavailable();
+          buffer.set(value, offset);
+          offset += value.length;
+        }
+        complete = true;
+        if (offset !== input.sizeBytes || createHash("sha256").update(buffer).digest("hex") !== input.contentSha256) {
+          throw unavailable();
+        }
+        return { buffer, objectGeneration: generation };
+      } finally {
+        if (!complete) await reader.cancel().catch(() => undefined);
+        reader.releaseLock();
+      }
+    } catch {
+      throw unavailable();
     }
   }
 
@@ -551,21 +658,38 @@ export class PrivateFileStorage implements OnModuleInit {
   }
 
   private async cosRequest(method: "DELETE" | "GET" | "PUT", objectKey: string, body?: Buffer) {
+    const response = await this.cosResponse(method, objectKey, body);
+    return Buffer.from(await response.arrayBuffer());
+  }
+
+  private async cosResponse(method: "DELETE" | "GET" | "PUT", objectKey: string, body?: Buffer,
+    versioned?: { generation?: string }) {
     // ponytail: direct COS XML operations; switch to SDK when multipart/resumable upload matters.
     const bucket = this.requiredEnv("COS_BUCKET");
     const region = this.requiredEnv("COS_REGION");
+    const sessionToken = this.cosSessionToken();
+    if ((versioned || sessionToken) &&
+        [bucket, region].some(label => label.length > 63 || !/^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/u.test(label))) {
+      throw new Error(this.cosFailureMessage(method));
+    }
     const host = `${bucket}.cos.${region}.myqcloud.com`;
     const canonicalPath = `/${objectKey}`;
-    const requestPath = encodeURI(canonicalPath);
+    const requestPath = versioned ? canonicalPath.split("/").map(encodeCosUriPart).join("/") : encodeURI(canonicalPath);
+    const encodedGeneration = versioned?.generation === undefined ? undefined : encodeCosUriPart(versioned.generation);
+    const query = encodedGeneration === undefined ? "" : `?versionId=${encodedGeneration}`;
     let response: Response;
     try {
-      response = await fetch(`https://${host}${requestPath}`, {
+      response = await fetch(`https://${host}${requestPath}${query}`, {
         method,
         headers: {
-          Authorization: this.cosAuthorization(method, canonicalPath, host),
-          Host: host
+          Authorization: this.cosAuthorization(method, canonicalPath, host, encodedGeneration),
+          Host: host,
+          ...(sessionToken ? { "x-cos-security-token": sessionToken } : {}),
+          ...(versioned ? { "Accept-Encoding": "identity" } : {})
         },
-        body: body ? new Uint8Array(body) : undefined
+        body: body ? new Uint8Array(body) : undefined,
+        ...(versioned || sessionToken ? { redirect: "error" as const } : {}),
+        ...(versioned ? { signal: AbortSignal.timeout(60_000) } : {})
       });
     } catch {
       this.logger.error({
@@ -577,6 +701,10 @@ export class PrivateFileStorage implements OnModuleInit {
       throw new Error(this.cosFailureMessage(method));
     }
 
+    if (versioned && (!response.ok || response.status !== 200 || response.redirected !== false)) {
+      await response.body?.cancel().catch(() => undefined);
+      throw new Error(this.cosFailureMessage("GET"));
+    }
     if (!response.ok && !(method === "DELETE" && response.status === 404)) {
       const diagnostics = await this.cosResponseDiagnostics(response);
       this.logger.error({
@@ -596,7 +724,15 @@ export class PrivateFileStorage implements OnModuleInit {
       throw new Error(this.cosFailureMessage(method));
     }
 
-    return Buffer.from(await response.arrayBuffer());
+    return response;
+  }
+
+  private cosSessionToken(): string | undefined {
+    const token = process.env.COS_SESSION_TOKEN;
+    if (token !== undefined && (token.length === 0 || /[^!-~]/u.test(token))) {
+      throw new Error("私有对象存储临时凭证格式无效");
+    }
+    return token;
   }
 
   private cosFailureMessage(method: "DELETE" | "GET" | "PUT") {
@@ -648,7 +784,7 @@ export class PrivateFileStorage implements OnModuleInit {
     return normalized;
   }
 
-  private cosAuthorization(method: "DELETE" | "GET" | "PUT", pathname: string, host: string) {
+  private cosAuthorization(method: "DELETE" | "GET" | "PUT", pathname: string, host: string, encodedGeneration?: string) {
     const secretId = this.requiredEnv("COS_SECRET_ID");
     const secretKey = this.requiredEnv("COS_SECRET_KEY");
     const now = Math.floor(Date.now() / 1000);
@@ -657,7 +793,7 @@ export class PrivateFileStorage implements OnModuleInit {
     const httpString = [
       method.toLowerCase(),
       pathname,
-      "",
+      encodedGeneration === undefined ? "" : `versionid=${encodedGeneration}`,
       `host=${encodeURIComponent(host)}`,
       ""
     ].join("\n");
@@ -676,7 +812,7 @@ export class PrivateFileStorage implements OnModuleInit {
       `q-sign-time=${keyTime}`,
       `q-key-time=${keyTime}`,
       `q-header-list=${headerList}`,
-      "q-url-param-list=",
+      `q-url-param-list=${encodedGeneration === undefined ? "" : "versionid"}`,
       `q-signature=${signature}`
     ].join("&");
   }
@@ -691,10 +827,24 @@ export class PrivateFileStorage implements OnModuleInit {
   }
 }
 
+const DEFAULT_DOWNLOAD_REASON = "单据可见权限内下载";
+
+function normalizePackageFileIds(fileIds: readonly string[]): string[] {
+  return [...new Set(fileIds.map((fileId) => fileId.trim()).filter(Boolean))];
+}
+
+function orderPackageFiles<T extends { id: string }>(ids: readonly string[], files: readonly T[]): T[] {
+  const byId = new Map(files.map((file) => [file.id, file]));
+  if (ids.some((id) => !byId.has(id)) || byId.size !== ids.length) {
+    throw new BadRequestException("部分资料文件不存在或已被移除，请刷新后重新选择");
+  }
+  return ids.map((id) => byId.get(id)!);
+}
+
 function normalizeDownloadReason(value: string | undefined): string {
   const reason = value?.trim();
   if (!reason) {
-    throw new BadRequestException("请填写下载原因，便于留痕审计");
+    return DEFAULT_DOWNLOAD_REASON;
   }
   if (reason.length > 200) {
     throw new BadRequestException("下载原因不能超过 200 个字，请精简后重新提交");
@@ -742,7 +892,8 @@ export class FileService {
     private readonly spotAccess: SpotProcurementAccessService =
       new SpotProcurementAccessService(prisma),
     private readonly companyRoles: CompanyRoleResolverService =
-      new CompanyRoleResolverService(prisma)
+      new CompanyRoleResolverService(prisma),
+    @Optional() private readonly moduleRef?: ModuleRef
   ) {
     this.assertDownloadSecret();
   }
@@ -751,6 +902,8 @@ export class FileService {
     return createHash("sha256").update(objectKey).digest("hex").slice(0, 16);
   }
 
+  async uploadPrivateFile(input: UploadPrivateFileInput & { signedSettlementProjectId: string }): Promise<Pick<FileObject, "id" | "originalName" | "mimeType">>;
+  async uploadPrivateFile(input: UploadPrivateFileInput & { signedSettlementProjectId?: undefined }): Promise<FileObject>;
   async uploadPrivateFile(input: UploadPrivateFileInput) {
     if (!input.uploadedByUserId.trim()) {
       throw new BadRequestException("上传人信息缺失，请重新登录后再上传资料");
@@ -791,7 +944,12 @@ export class FileService {
       throw new BadRequestException("结算签名合成任务令牌无效，请重新发起生成");
     }
     const contentSha256 = createHash("sha256").update(input.buffer).digest("hex");
-    const objectKey = settlementClaimToken
+    const signedSettlementPrefix = input.signedSettlementProjectId === undefined
+      ? null
+      : signedSettlementUploadPrefix(input.signedSettlementProjectId);
+    const objectKey = signedSettlementPrefix
+      ? `${signedSettlementPrefix}${randomUUID()}-${this.safeFileName(input.originalName)}`
+      : settlementClaimToken
       ? `uploads/settlement-signed-generation/${settlementClaimToken}.pdf`
       : idempotencyKey
         ? `uploads/idempotent/${idempotencyKey}/${randomUUID()}-${contentSha256}-${this.safeFileName(input.originalName)}`
@@ -808,14 +966,17 @@ export class FileService {
       file.uploadedByUserId === input.uploadedByUserId &&
       file.contentSha256 === contentSha256 &&
       file.storageStatus === "active" &&
-      file.supersedesFileObjectId === null;
+      file.supersedesFileObjectId === null &&
+      (signedSettlementPrefix ? file.objectKey.startsWith(signedSettlementPrefix) : !isSignedSettlementObjectKey(file.objectKey));
 
     if (idempotencyKey) {
       const existing = await this.prisma.fileObject.findUnique({
         where: { id: fileId }
       });
       if (existing) {
-        if (matchesExpectedUploadFingerprint(existing)) return existing;
+        if (matchesExpectedUploadFingerprint(existing)) {
+          return signedSettlementPrefix ? { id: existing.id, originalName: existing.originalName, mimeType: existing.mimeType } : existing;
+        }
         throw new ConflictException(UPLOAD_IDEMPOTENCY_CONFLICT_MESSAGE);
       }
     }
@@ -854,20 +1015,20 @@ export class FileService {
     let transactionCallbackCompleted = false;
     try {
       return await this.prisma.$transaction(async (tx) => {
-        const file = await tx.fileObject.create({
-          data: {
-            id: fileId,
-            bucket,
-            objectKey,
-            originalName: input.originalName,
-            mimeType: input.mimeType,
-            sizeBytes: input.sizeBytes,
-            uploadedByUserId: input.uploadedByUserId,
-            contentSha256,
-            storageStatus: "active",
-            supersedesFileObjectId: null
-          }
-        });
+        const data = {
+          id: fileId,
+          bucket,
+          objectKey,
+          originalName: input.originalName,
+          mimeType: input.mimeType,
+          sizeBytes: input.sizeBytes,
+          uploadedByUserId: input.uploadedByUserId,
+          contentSha256,
+          storageStatus: "active",
+          supersedesFileObjectId: null
+        };
+        const fullFile = signedSettlementPrefix ? null : await tx.fileObject.create({ data });
+        const file = fullFile ?? await tx.fileObject.create({ data, select: { id: true, originalName: true, mimeType: true } });
 
         await this.audit.record(tx, {
           actorUserId: input.uploadedByUserId,
@@ -875,10 +1036,10 @@ export class FileService {
           businessType: "file_object",
           businessId: file.id,
           metadata: {
-            bucket: file.bucket,
-            objectKey: file.objectKey,
+            bucket: fullFile?.bucket ?? bucket,
+            objectKey: fullFile?.objectKey ?? objectKey,
             originalName: file.originalName,
-            sizeBytes: file.sizeBytes
+            sizeBytes: fullFile?.sizeBytes ?? input.sizeBytes
           }
         });
 
@@ -987,7 +1148,9 @@ export class FileService {
           if (idempotencyKey && !physicalObjectMatches) {
             await cleanupWrittenObject(transactionError);
           }
-          return committedFile;
+          return signedSettlementPrefix
+            ? { id: committedFile.id, originalName: committedFile.originalName, mimeType: committedFile.mimeType }
+            : committedFile;
         }
         if (idempotencyKey) {
           if (!physicalObjectMatches) {
@@ -1118,6 +1281,73 @@ export class FileService {
     throw new BadRequestException("新文件已关联其他被替换文件");
   }
 
+  private async signedSettlementDownloadFile(tx: Prisma.TransactionClient, scope: SignedSettlementDownloadScope, actor: string) {
+    const key = process.env.SIGNED_SETTLEMENT_ATTACHMENT_WITNESS_KEY;
+    if (!key || !/^[a-f0-9]{64}$/u.test(key) ||
+        key === process.env.FUND_BALANCE_CORRECTION_WITNESS_KEY || key === process.env.FUND_BALANCE_NOTICE_WITNESS_KEY) {
+      throw new ServiceUnavailableException("已签结算附件查阅暂不可用");
+    }
+    const { database, role, xid, backend, expires } = await fundBalanceWitnessBinding(tx);
+    const { projectId, settlementId, fileId } = scope;
+    const proof = signFundBalanceWitness(key, [
+      "signed_settlement_attachment_download_v1", database, role, xid, backend, expires, projectId, settlementId, fileId, actor
+    ]);
+    const [file] = await tx.$queryRaw<SignedSettlementDownloadFile[]>`
+      SELECT * FROM public.jg_read_signed_settlement_attachment_download_v1(
+        ${projectId},${settlementId},${fileId},${actor},${expires},${proof}
+      )
+    `;
+    if (!file) throw new ForbiddenException("当前账号无权读取该已签结算附件");
+    return file;
+  }
+
+  async createSignedSettlementDownloadTicket(scope: SignedSettlementDownloadScope, input: CreateFileDownloadTicketInput) {
+    if (input.delegatorUserId) throw new BadRequestException("已签结算附件须由本人查阅");
+    const downloadReason = normalizeDownloadReason(input.downloadReason);
+    const accessMode = input.accessMode ?? "download";
+    return this.prisma.$transaction(async tx => {
+      const file = await this.signedSettlementDownloadFile(tx, scope, input.actorUserId);
+      const expiresAt = new Date(Date.now() + 5 * 60 * 1000).toISOString();
+      const token = this.signDownloadToken(file.id, input.actorUserId, expiresAt, downloadReason, accessMode, undefined, scope);
+      await this.audit.record(tx, {
+        actorUserId: input.actorUserId,
+        action: accessMode === "preview" ? "file.preview.ticket" : "file.download.ticket",
+        businessType: "file_object",
+        businessId: file.id,
+        metadata: { expiresAt, downloadReason, ...(accessMode === "preview" ? { accessMode } : {}) }
+      });
+      const query = new URLSearchParams({ expiresAt, downloadReason, accessMode, token });
+      const path = `/projects/${encodeURIComponent(scope.projectId)}/signed-contract-settlements/${encodeURIComponent(scope.settlementId)}/attachments/${encodeURIComponent(file.id)}/download`;
+      return { fileId: file.id, fileName: file.originalName, mimeType: file.mimeType, sizeBytes: file.sizeBytes,
+        expiresAt, downloadUrl: `${path}?${query}` };
+    });
+  }
+
+  async readSignedSettlementFile(scope: SignedSettlementDownloadScope, input: ReadPrivateFileInput) {
+    if (Number.isNaN(Date.parse(input.expiresAt)) || Date.parse(input.expiresAt) < Date.now()) {
+      throw new BadRequestException("下载链接已过期，请重新申请下载");
+    }
+    const downloadReason = normalizeDownloadReason(input.downloadReason);
+    const accessMode = input.accessMode ?? "download";
+    if (!this.verifyDownloadToken(scope.fileId, input.actorUserId, input.expiresAt, downloadReason, accessMode, undefined, input.token, scope)) {
+      throw new BadRequestException("下载链接校验失败，请重新申请下载");
+    }
+    const file = await this.prisma.$transaction(tx => this.signedSettlementDownloadFile(tx, scope, input.actorUserId));
+    if (!file.contentSha256 || file.bucket !== this.storage.bucketName()) {
+      throw new ServiceUnavailableException("资料文件版本或完整性暂无法核对，请保留原件");
+    }
+    const buffer = await this.readVerifiedFileBuffer(file);
+    if (buffer.length !== file.sizeBytes) {
+      throw new ServiceUnavailableException("资料文件版本或完整性暂无法核对，请保留原件");
+    }
+    await this.prisma.$transaction(tx => this.audit.record(tx, {
+      actorUserId: input.actorUserId, action: accessMode === "preview" ? "file.preview" : "file.download",
+      businessType: "file_object", businessId: file.id,
+      metadata: { originalName: file.originalName, sizeBytes: file.sizeBytes, downloadReason, ...(accessMode === "preview" ? { accessMode } : {}) }
+    }));
+    return { buffer, originalName: file.originalName, mimeType: file.mimeType, accessMode };
+  }
+
   async createDownloadTicket(fileId: string, input: CreateFileDownloadTicketInput) {
     if (!input.actorUserId.trim()) {
       throw new Error("下载人信息缺失，请重新登录后再下载资料");
@@ -1135,7 +1365,7 @@ export class FileService {
         throw new Error("资料文件不存在或已被移除");
       }
 
-      if (accessMode === "preview" && file.mimeType !== "application/pdf") {
+      if (accessMode === "preview" && !this.canPreviewPrivateFile(file)) {
         throw new BadRequestException("仅 PDF 文件支持在线预览，请下载原文件查看");
       }
 
@@ -1143,7 +1373,12 @@ export class FileService {
         tx,
         file,
         input.actorUserId,
-        delegatorUserId
+        delegatorUserId,
+        "ticket"
+      );
+
+      await this.archiveDownloadGeneration(
+        tx, file, input.actorUserId, "ticket", access?.businessType === "contract_economic_review"
       );
 
       const expiresAtMs = Date.now() + 5 * 60 * 1000;
@@ -1177,7 +1412,7 @@ export class FileService {
 
       return {
         fileId: file.id,
-        fileName: file.originalName,
+        fileName: access?.businessType === "contract_economic_review" ? access.fileName : file.originalName,
         mimeType: file.mimeType,
         sizeBytes: file.sizeBytes,
         expiresAt,
@@ -1210,7 +1445,10 @@ export class FileService {
       if (!file) {
         throw new Error("资料文件不存在或已被移除");
       }
-      await this.assertCanDownloadFileObject(tx, file, actorUserId, delegatorUserId);
+      const access = await this.assertCanDownloadFileObject(tx, file, actorUserId, delegatorUserId, "ticket");
+      await this.archiveDownloadGeneration(
+        tx, file, actorUserId, "ticket", access?.businessType === "contract_economic_review"
+      );
       return {
         availableActions: ["create_private_file_download_ticket" as const],
         action: {
@@ -1219,6 +1457,93 @@ export class FileService {
         }
       };
     }));
+  }
+
+  async getDownloadPackageCapability(fileIds: readonly string[], actorUserId: string) {
+    const ids = normalizePackageFileIds(fileIds);
+    assertArchivePackageSelection(ids.map((id) => ({ id, sizeBytes: 0 })));
+    const checked = await this.prisma.$transaction(async (tx) => {
+      const files = await tx.fileObject.findMany({ where: { id: { in: ids } } });
+      const ordered = orderPackageFiles(ids, files);
+      assertArchivePackageSelection(ordered);
+      for (const file of ordered) {
+        const access = await this.assertCanDownloadFileObject(tx, file, actorUserId, undefined, "ticket");
+        await this.archiveDownloadGeneration(
+          tx, file, actorUserId, "ticket", access?.businessType === "contract_economic_review"
+        );
+      }
+      return {
+        fileCount: ordered.length,
+        totalBytes: ordered.reduce((total, file) => total + file.sizeBytes, 0)
+      };
+    });
+    return {
+      availableActions: ["download_archive_package" as const],
+      action: {
+        key: "download_archive_package" as const,
+        enabled: true as const
+      },
+      fileCount: checked.fileCount,
+      totalBytes: checked.totalBytes
+    };
+  }
+
+  async createDownloadPackage(fileIds: readonly string[], actorUserId: string) {
+    if (!actorUserId.trim()) {
+      throw new ForbiddenException("下载人信息缺失，请重新登录后再打包下载资料");
+    }
+    const ids = normalizePackageFileIds(fileIds);
+    assertArchivePackageSelection(ids.map((id) => ({ id, sizeBytes: 0 })));
+    const checked = await this.prisma.$transaction(async (tx) => {
+      const files = await tx.fileObject.findMany({ where: { id: { in: ids } } });
+      const ordered = orderPackageFiles(ids, files);
+      assertArchivePackageSelection(ordered);
+      const generations = new Map<string, string | null>();
+      for (const file of ordered) {
+        const access = await this.assertCanDownloadFileObject(tx, file, actorUserId, undefined, "ticket");
+        generations.set(
+          file.id,
+          await this.archiveDownloadGeneration(
+            tx, file, actorUserId, "consume", access?.businessType === "contract_economic_review"
+          )
+        );
+      }
+      return { ordered, generations };
+    });
+    const entries: Array<{ fileName: string; buffer: Buffer }> = [];
+    for (const file of checked.ordered) {
+      const generation = checked.generations.get(file.id) ?? null;
+      const buffer = generation === null
+        ? await this.readVerifiedFileBuffer(file)
+        : await this.readPinnedArchiveBuffer(file, generation);
+      if (buffer.length !== file.sizeBytes) {
+        throw new ServiceUnavailableException("资料文件版本或完整性暂无法核对，请保留原件");
+      }
+      entries.push({ fileName: file.originalName, buffer });
+    }
+    const buffer = buildArchivePackageBuffer(entries);
+    const fileName = archivePackageFileName();
+    const totalBytes = checked.ordered.reduce((total, file) => total + file.sizeBytes, 0);
+    const packageId = randomUUID();
+    await this.prisma.$transaction((tx) => this.audit.record(tx, {
+      actorUserId,
+      action: "file.package.download",
+      businessType: "file_package",
+      businessId: packageId,
+      metadata: {
+        packageId,
+        fileName,
+        fileCount: checked.ordered.length,
+        totalBytes,
+        fileIds: checked.ordered.map((file) => file.id)
+      }
+    }));
+    return {
+      buffer,
+      fileName,
+      fileCount: checked.ordered.length,
+      totalBytes
+    };
   }
 
   async readPrivateFile(fileId: string, input: ReadPrivateFileInput) {
@@ -1273,16 +1598,22 @@ export class FileService {
         tx,
         found,
         input.actorUserId,
-        delegatorUserId
+        delegatorUserId,
+        "ticket"
       );
-      if (accessMode === "preview" && found.mimeType !== "application/pdf") {
+      if (accessMode === "preview" && !this.canPreviewPrivateFile(found)) {
         throw new BadRequestException("仅 PDF 文件支持在线预览，请下载原文件查看");
       }
-      return { file: found, access };
+      const generation = await this.archiveDownloadGeneration(
+        tx, found, input.actorUserId, "consume", access?.businessType === "contract_economic_review"
+      );
+      return { file: found, access, generation };
     }), downloadReason);
-    const { file, access } = authorized;
+    const { file, access, generation } = authorized;
 
-    const buffer = await this.readVerifiedFileBuffer(file);
+    const buffer = generation === null
+      ? await this.readVerifiedFileBuffer(file)
+      : await this.readPinnedArchiveBuffer(file, generation);
     const wageEvidence = await this.isWageEvidenceFile(file.id);
     await this.prisma.$transaction((tx) =>
       this.audit.record(tx, wageEvidence ? {
@@ -1301,7 +1632,7 @@ export class FileService {
         businessType: "file_object",
         businessId: file.id,
         metadata: {
-          originalName: file.originalName,
+          originalName: access?.businessType === "contract_economic_review" ? access.fileName : file.originalName,
           sizeBytes: file.sizeBytes,
           downloadReason,
           ...(access?.businessType === "global_invoice" ? {
@@ -1317,15 +1648,64 @@ export class FileService {
     );
 
     return {
-      file,
+      file: access?.businessType === "contract_economic_review" ? { ...file, originalName: access.fileName } : file,
       buffer,
       accessMode
     };
   }
 
+  private async archiveDownloadGeneration(
+    tx: Prisma.TransactionClient, file: FileObject, actorUserId: string, phase: "ticket" | "consume",
+    authorizedReviewHistory = false
+  ) {
+    // Also runs after the uploader shortcut and after consumption of tickets issued before archiving.
+    const evidence = await tx.contractArchiveEvidenceFile.findFirst({ where: { fileId: file.id } });
+    if (!evidence) return null;
+    const parent = await tx.contractArchiveFile.findUnique({ where: { id: evidence.archiveFileId } });
+    if (!parent) throw new BadRequestException("合同归档原件的绑定信息不完整，暂不能下载");
+    const unavailable = () => new ServiceUnavailableException("归档原件固定版本尚未完整核对，暂不能下载");
+    const bindings = await tx.contractArchiveEvidenceFile.findMany({ where: { fileId: file.id }, take: 2 });
+    if (bindings.length !== 1 || bindings[0].id !== evidence.id || evidence.fileId !== file.id
+      || parent.id !== evidence.archiveFileId || parent.contractVersionId !== evidence.contractVersionId
+      || parent.archiveProtocolVersion !== 2 || parent.status !== "confirmed") throw unavailable();
+    const direct = parent.archiveSource === "direct_signed";
+    if (direct ? parent.approvalInstanceId != null || parent.sealTaskId != null
+      : parent.archiveSource !== "generated_approval") throw unavailable();
+    const version = await tx.contractVersion.findUnique({ where: { id: evidence.contractVersionId } });
+    if (!version || version.id !== evidence.contractVersionId) throw unavailable();
+    const contract = await tx.contract.findUnique({ where: { id: version.contractId } });
+    const actor = await tx.user.findUnique({ where: { id: actorUserId }, select: { isActive: true } });
+    if (!contract || actor?.isActive !== true || (!(direct && authorizedReviewHistory)
+      && !await this.hasProjectRole(tx, actorUserId, contract.projectId, ARCHIVE_FILE_DOWNLOAD_ROLES))) {
+      throw new ForbiddenException("当前账号无权下载该合同归档原件");
+    }
+    if (direct) {
+      return phase === "ticket" ? null : readDirectArchiveGeneration(tx, parent, evidence, file);
+    }
+    if (!requiresGeneratedArchiveOriginals(version, parent)) {
+      if (version.signingSubjectType === "our_company") return null;
+      throw unavailable();
+    }
+    return readGeneratedArchiveDownloadGeneration(tx, contract, version, parent, evidence, file);
+  }
+
+  private async readPinnedArchiveBuffer(file: FileObject, generation: string) {
+    const unavailable = () => new ServiceUnavailableException("资料文件版本或完整性暂无法核对，请保留原件");
+    const pinned = await this.storage.readVerifiedVersion({
+      bucket: file.bucket, objectKey: file.objectKey, sizeBytes: file.sizeBytes,
+      contentSha256: file.contentSha256 ?? "", expectedGeneration: generation
+    }).catch(() => { throw unavailable(); });
+    if (pinned?.objectGeneration !== generation || !Buffer.isBuffer(pinned.buffer) || pinned.buffer.length !== file.sizeBytes
+      || createHash("sha256").update(pinned.buffer).digest("hex") !== file.contentSha256) throw unavailable();
+    return pinned.buffer;
+  }
+
   // 内部服务读取，不走用户下载权限与审计。
-  async getFileBuffer(fileId: string): Promise<InternalFileBuffer> {
-    const file = await this.prisma.fileObject.findUnique({ where: { id: fileId } });
+  async getFileBuffer(
+    fileId: string,
+    tx: Pick<Prisma.TransactionClient, "fileObject"> = this.prisma
+  ): Promise<InternalFileBuffer> {
+    const file = await tx.fileObject.findUnique({ where: { id: fileId } });
     if (!file) {
       throw new Error("资料文件不存在或已被移除");
     }
@@ -1334,12 +1714,22 @@ export class FileService {
 
   async discardUnlinkedGeneratedFile(fileId: string, actorUserId: string): Promise<void> {
     const discarded = await this.prisma.$transaction(async (tx) => {
-      await tx.$queryRaw(Prisma.sql`
-        SELECT "id" FROM "FileObject" WHERE "id" = ${fileId} FOR UPDATE
-      `);
+      const catalog = await reviewReferenceCatalog(tx);
+      if (catalog === "legacy") {
+        await tx.$queryRaw(Prisma.sql`
+          SELECT "id" FROM "FileObject" WHERE "id" = ${fileId} FOR UPDATE
+        `);
+      }
       const file = await tx.fileObject.findUnique({ where: { id: fileId } });
-      if (!file || file.uploadedByUserId !== actorUserId || file.storageStatus !== "active") {
+      if (!file || file.uploadedByUserId !== actorUserId || file.storageStatus !== "active" || file.purgeReceiptId) {
         return null;
+      }
+      if (!file.bucket || file.bucket !== this.storage.bucketName()) return null;
+      if (catalog === "legacy" && !(await hasExactLegacyCleanupKey(tx, file))) return null;
+      if (catalog === "ready") {
+        const locked = await lockContractReviewCleanupCohort(tx, [file], catalog);
+        if (!locked || locked[0]?.storageStatus !== "active" || locked[0]?.purgeReceiptId) return null;
+        await assertDirectReviewQualification(tx, "read");
       }
       if (await this.isFileReferenced(tx, fileId)) return null;
       const updated = await tx.fileObject.updateMany({
@@ -1354,7 +1744,7 @@ export class FileService {
         businessId: fileId
       });
       return { objectKey: file.objectKey };
-    });
+    }, { isolationLevel: Prisma.TransactionIsolationLevel.ReadCommitted });
     if (!discarded) return;
     try {
       await this.storage.delete(discarded.objectKey);
@@ -1384,11 +1774,28 @@ export class FileService {
     }
   }
 
-  private async isFileReferenced(tx: Prisma.TransactionClient, fileId: string): Promise<boolean> {
+  private async isFileReferenced(tx: Prisma.TransactionClient, fileId: string, normalArchiveVersionId?: string): Promise<boolean> {
+    const catalog = await readFileBindingCatalog(tx);
+    const registeredVoucher = catalog.registeredPayment
+      ? Prisma.sql`UNION ALL SELECT 1 FROM public."RegisteredPaymentVoucher" WHERE "fileId" = ${fileId}`
+      : Prisma.empty;
+    let ownerSettlementVoucher = Prisma.empty;
+    if (catalog.ownerSettlementVoucher) {
+      const scoped = normalArchiveVersionId ? await tx.$queryRaw<Array<{ installed: boolean }>>(Prisma.sql`
+        SELECT current_user=session_user AND current_user::text ~ '^jg_fixture_app_[a-f0-9]{24}$'
+          AND current_database() ~ '^jg_task01_[a-f0-9]{32}$'
+          AND coalesce(pg_catalog.has_function_privilege(current_user,
+            pg_catalog.to_regprocedure('public.jg_check_normal_archive_voucher_v1(text,text,text)'), 'EXECUTE'),false) AS installed
+      `) : [];
+      ownerSettlementVoucher = scoped[0]?.installed
+        ? Prisma.sql`UNION ALL SELECT 1 WHERE public.jg_check_normal_archive_voucher_v1(${normalArchiveVersionId},${fileId},NULL::text)`
+        : Prisma.sql`UNION ALL SELECT 1 WHERE public.jg_project_owner_settlement_voucher_bound(${fileId})`;
+    }
     const rows = await tx.$queryRaw<Array<{ referenced: boolean }>>(Prisma.sql`
       SELECT EXISTS (
         SELECT 1 FROM "User" WHERE "signatureFileId" = ${fileId}
         UNION ALL SELECT 1 FROM "HandwrittenSignatureVersion" WHERE "fileId" = ${fileId}
+        UNION ALL SELECT 1 FROM "ContractDraftAttachment" WHERE "fileId" = ${fileId} AND "slotKey" = 'direct_signed_originals_v1'
         UNION ALL SELECT 1 FROM "ContractVersion" WHERE "taxFactEvidenceFileId" = ${fileId}
         UNION ALL SELECT 1 FROM "ContractTaxFactRevision" WHERE "evidenceFileId" = ${fileId}
         UNION ALL SELECT 1 FROM "ContractTakeoverCorrection" WHERE "attachmentFileId" = ${fileId}
@@ -1401,6 +1808,7 @@ export class FileService {
         UNION ALL SELECT 1 FROM "ApprovalFormGenerationClaim" WHERE "uploadedFileId" = ${fileId}
         UNION ALL SELECT 1 FROM "SettlementArchiveFile" WHERE "fileId" = ${fileId}
         UNION ALL SELECT 1 FROM "ContractArchiveFile" WHERE "fileId" = ${fileId}
+        UNION ALL SELECT 1 FROM "ContractArchiveEvidenceFile" WHERE "fileId" = ${fileId}
         UNION ALL SELECT 1 FROM "ArchiveRecord" WHERE "fileId" = ${fileId}
         UNION ALL SELECT 1 FROM "PdfDocument" WHERE "fileId" = ${fileId}
         UNION ALL SELECT 1 FROM "ContractFormalFile" WHERE "fileId" = ${fileId}
@@ -1410,6 +1818,7 @@ export class FileService {
         UNION ALL SELECT 1 FROM "SettlementTemplatePreviewJob" WHERE "previewXlsxFileId" = ${fileId} OR "previewPdfFileId" = ${fileId}
         UNION ALL SELECT 1 FROM "ProjectOwnerContract" WHERE "fileId" = ${fileId}
         UNION ALL SELECT 1 FROM "PaymentExecution" WHERE "voucherFileId" = ${fileId}
+        ${registeredVoucher}
         UNION ALL SELECT 1 FROM "SpotProcurementAttachment" WHERE "fileId" = ${fileId}
         UNION ALL SELECT 1 FROM "SpotProcurementPayment" WHERE "supportingAttachmentFileId" = ${fileId} OR "merchantPaymentProofFileId" = ${fileId}
         UNION ALL SELECT 1 FROM "SpotProcurementPaymentExecution" WHERE "voucherFileId" = ${fileId}
@@ -1430,6 +1839,7 @@ export class FileService {
         UNION ALL SELECT 1 FROM "ProjectReceipt" WHERE "voucherFileId" = ${fileId}
         UNION ALL SELECT 1 FROM "ProjectProxyPayment" WHERE "voucherFileId" = ${fileId}
         UNION ALL SELECT 1 FROM "ProjectUpstreamSettlement" WHERE "voucherFileId" = ${fileId} OR "confirmationSignatureFileId" = ${fileId}
+        ${ownerSettlementVoucher}
         UNION ALL SELECT 1 FROM "ProjectUpstreamFundFact" WHERE "evidenceFileId" = ${fileId} OR "confirmationSignatureFileId" = ${fileId}
         UNION ALL SELECT 1 FROM "ProjectAffiliateContractFact" WHERE "evidenceFileId" = ${fileId} OR "confirmationSignatureFileId" = ${fileId}
         UNION ALL SELECT 1 FROM "ProjectAffiliateSettlementFact" WHERE "evidenceFileId" = ${fileId} OR "confirmationSignatureFileId" = ${fileId}
@@ -1557,7 +1967,9 @@ export class FileService {
   // 业务绑定前必须在同一事务内调用：文件行锁使“检查+写入绑定”串行化。
   async assertFileHasNoBusinessBinding(
     tx: Prisma.TransactionClient,
-    fileId: string
+    fileId: string,
+    registeredVoucher?: RegisteredVoucherBindingScope,
+    procurementBinding?: ProcurementFileBindingScope
   ): Promise<LockedUnboundFileRow> {
     const normalizedFileId = fileId.trim();
     if (!normalizedFileId) {
@@ -1589,7 +2001,7 @@ export class FileService {
         },
         select: { id: true }
       }),
-      hasNonReceiptBusinessFileBinding(tx, [normalizedFileId])
+      hasNonReceiptBusinessFileBinding(tx, [normalizedFileId], [], registeredVoucher, procurementBinding)
     ]);
     if (receiptPhotoBinding || hasOtherBinding) {
       throw new ConflictException(FILE_ALREADY_BOUND_MESSAGE);
@@ -1602,7 +2014,8 @@ export class FileService {
     tx: Prisma.TransactionClient,
     contractVersionId: string,
     fileIds: string[],
-    actorUserId: string
+    actorUserId: string,
+    scope?: "upward_direct" | "outside_material_pair"
   ) {
     const normalizedIds = [...new Set(fileIds.map((fileId) => fileId.trim()))].sort();
     if (normalizedIds.some((fileId) => !fileId)) {
@@ -1645,7 +2058,8 @@ export class FileService {
       }),
       nonReceiptBusinessFileBindingIds(tx, normalizedIds, [
         { table: "ContractDraftAttachment", column: "fileId" }
-      ])
+      ], scope === "upward_direct" ? contractVersionId : undefined, undefined, undefined,
+      scope === "outside_material_pair" && normalizedIds.length === 2 ? { contractVersionId, actorUserId, orderedFileIds: [fileIds[0].trim(), fileIds[1].trim()] } : undefined)
     ]);
     if (otherDraftBinding || receiptPhotoBinding || otherBindingIds.length) {
       throw new ConflictException(FILE_ALREADY_BOUND_MESSAGE);
@@ -1722,7 +2136,8 @@ export class FileService {
     await this.prisma.$transaction(async (tx) => {
       const version = await tx.contractVersion.findUnique({
         where: { id: contractVersionId },
-        select: { id: true, contractId: true, status: true }
+        select: { id: true, contractId: true, status: true, numericProtocolVersion: true,
+          draftRevision: true, documentContentRevision: true, documentContentFingerprint: true }
       });
       const contract = version ? await tx.contract.findUnique({
         where: { id: version.contractId },
@@ -1736,26 +2151,42 @@ export class FileService {
           businessType: "contract_version",
           businessId: version.id
         },
-        orderBy: [{ updatedAt: "desc" }, { id: "desc" }]
+        orderBy: version.status === "in_approval"
+          ? [{ createdAt: "desc" }, { id: "desc" }]
+          : [{ updatedAt: "desc" }, { id: "desc" }]
       });
+      const pendingLegacy = isPendingLegacyContractCutover(version, instance);
+      if (pendingLegacy) {
+        const activeRounds = await tx.approvalInstance.findMany({
+          where: { businessType: "contract_version", businessId: version.id, flowType: "contract.approve", status: "in_progress" },
+          select: { id: true }, take: 2
+        });
+        if (activeRounds.length !== 1 || activeRounds[0].id !== instance?.id) {
+          throw new ConflictException("合同审批轮次不唯一，暂不能下载审批单");
+        }
+      }
+      const pending = pendingLegacy || contractPendingApprovalSnapshot(version, instance);
       if (
         !instance ||
-        instance.status !== "approved" ||
-        !canUseCurrentContractApprovalForm(version.status)
+        (!pending && (instance.status !== "approved" || !canUseCurrentContractApprovalForm(version.status)))
       ) {
         throw new BadRequestException("当前合同尚未完成审批，暂不能下载审批单");
       }
+      if (pending && !(await tx.user.findUnique({ where: { id: actorUserId }, select: { isActive: true } }))?.isActive) {
+        throw new ForbiddenException("当前账号无权下载该合同审批单");
+      }
       if (contract.ownerUserId === actorUserId || instance.applicantUserId === actorUserId) return;
-      if (await tx.approvalActionLog.findFirst({
+      if (!pending && await tx.approvalActionLog.findFirst({
         where: { approvalInstanceId: instance.id, actorUserId, action: "approve" },
         select: { id: true }
       })) return;
-      const roles = await this.loadActorRoleKeys(tx, actorUserId, contract.projectId);
-      const exactReaders = new Set<RoleKey>([
-        "contract_staff", "contract_director", "project_manager", "finance_staff",
-        "finance_director", "comprehensive_director", "chairman", "general_manager"
-      ]);
-      if (roles.some((role) => exactReaders.has(role))) return;
+      if (pending) {
+        const scopes = await new ProjectVisibilityService(this.prisma)
+          .effectiveRoleScopesInTransaction(tx, actorUserId, contract.projectId);
+        if (pendingContractApprovalFormHasReaderRole(instance.frozenNodes, scopes, actorUserId)) return;
+      } else if (contractApprovalFormHasReaderRole(await this.loadActorRoleKeys(tx, actorUserId, contract.projectId))) {
+        return;
+      }
       throw new ForbiddenException("当前账号无权下载该合同审批单");
     });
   }
@@ -1764,6 +2195,33 @@ export class FileService {
     businessType: string,
     businessId: string,
     actorUserId: string
+  ) {
+    await this.assertApprovalFormBusinessAccess(businessType, businessId, actorUserId, true);
+  }
+
+  /**
+   * 审批中心“我可查看”与办理中审批单共用这一查看权：申请人、已处理人、
+   * 项目归档读取岗位和全局财务/领导可查看流程；查看权不等于办理权。
+   */
+  async assertCanViewApprovalFlow(businessType: string, businessId: string, actorUserId: string): Promise<void> {
+    await this.assertApprovalFormBusinessAccess(businessType, businessId, actorUserId, false);
+  }
+
+  async canViewApprovalFlow(businessType: string, businessId: string, actorUserId: string): Promise<boolean> {
+    try {
+      await this.assertApprovalFormBusinessAccess(businessType, businessId, actorUserId, false);
+      return true;
+    } catch (error) {
+      if (error instanceof ForbiddenException || error instanceof BadRequestException) return false;
+      throw error;
+    }
+  }
+
+  private async assertApprovalFormBusinessAccess(
+    businessType: string,
+    businessId: string,
+    actorUserId: string,
+    requireApproved: boolean
   ) {
     if (businessType === "contract_version") {
       return this.assertCanDownloadContractApprovalForm(businessId, actorUserId);
@@ -1782,14 +2240,14 @@ export class FileService {
         where: { businessType, businessId },
         orderBy: [{ createdAt: "desc" }, { id: "desc" }]
       });
-      if (!instance || instance.status !== "approved") {
+      if (!instance || (requireApproved && instance.status !== "approved")) {
         throw new BadRequestException("当前业务尚未完成审批，暂不能下载审批单");
       }
       // Company transfers expose both sides only to company finance/leaders or
       // finance authorized for BOTH projects, matching their source evidence.
       if (businessType === "company_transfer") {
         const row = await tx.companyTransfer.findUniqueOrThrow({ where: { id: businessId } });
-        if (row.status !== "approved") throw new BadRequestException("互转审批尚未通过");
+        if (requireApproved && row.status !== "approved") throw new BadRequestException("互转审批尚未通过");
         if ((await companyTransferRoles(tx, actorUserId)).some(role => ["finance_staff", "finance_director", "chairman", "general_manager"].includes(role))) return;
         const projects = [row.sourceProjectId, row.destinationProjectId];
         if (projects.every(Boolean) && (await Promise.all(projects.map(project => this.hasProjectRole(tx, actorUserId, project!, ["finance_staff", "finance_director"])))).every(Boolean)) return;
@@ -1857,7 +2315,8 @@ export class FileService {
   async assertCanAttachUnlinkedFile(
     tx: Prisma.TransactionClient,
     fileId: string,
-    actorUserId: string
+    actorUserId: string,
+    normalArchiveVersionId?: string
   ) {
     await tx.$queryRaw(Prisma.sql`
       SELECT "id" FROM "FileObject" WHERE "id" = ${fileId} FOR UPDATE
@@ -1872,7 +2331,7 @@ export class FileService {
     if (file.uploadedByUserId !== actorUserId) {
       throw new ForbiddenException("更正依据附件必须由当前合同员本人上传");
     }
-    if (await this.isFileReferenced(tx, fileId)) {
+    if (await this.isFileReferenced(tx, fileId, normalArchiveVersionId)) {
       throw new BadRequestException("该文件已用于其他业务，请重新上传专用的更正依据附件");
     }
     return file;
@@ -1911,7 +2370,7 @@ export class FileService {
     return name || "private-file";
   }
 
-  private async readVerifiedFileBuffer(file: FileObject): Promise<Buffer> {
+  private async readVerifiedFileBuffer(file: Pick<FileObject, "id" | "objectKey" | "storageStatus" | "contentSha256">): Promise<Buffer> {
     if (file.storageStatus !== "active") {
       throw new Error("资料文件当前不可用，请联系管理员核对文件状态");
     }
@@ -1939,12 +2398,68 @@ export class FileService {
     return buffer;
   }
 
+  private canPreviewPrivateFile(file: FileObject) {
+    return file.mimeType === "application/pdf" ||
+      (isSignedSettlementObjectKey(file.objectKey) && isSignedSettlementFileMime(file.mimeType));
+  }
+
+  private async assertSignedSettlementFileAccess(tx: Prisma.TransactionClient, file: FileObject, actorUserId: string) {
+    const denied = () => new ForbiddenException("当前账号无权读取该已签结算附件");
+    const attachment = await tx.signedContractSettlementAttachment.findUnique({
+      where: { fileId: file.id },
+      select: { sha256: true, settlement: { select: { projectId: true, ownerUserId: true, state: true } } }
+    });
+    if (!attachment || file.storageStatus !== "active" || attachment.sha256 !== file.contentSha256 ||
+      !file.objectKey.startsWith(signedSettlementUploadPrefix(attachment.settlement.projectId))) throw denied();
+    const actor = await tx.user.findUnique({ where: { id: actorUserId }, select: { isActive: true } });
+    if (actor?.isActive !== true) throw denied();
+    const { projectId, ownerUserId, state } = attachment.settlement;
+    const visibility = new ProjectVisibilityService(this.prisma);
+    if (!(await visibility.visibleProjectIdsInTransaction(tx, actorUserId)).includes(projectId)) throw denied();
+    const roles = (await visibility.effectiveRoleKeysByProjectInTransaction(tx, actorUserId, [projectId])).get(projectId) ?? [];
+    if (roles.includes("contract_director") || (roles.includes("contract_staff") && (ownerUserId === actorUserId || state === "confirmed"))) return;
+    throw denied();
+  }
+
   private async assertCanDownloadFileObject(
     tx: Prisma.TransactionClient,
     file: FileObject,
     actorUserId: string,
-    delegatorUserId?: string
-  ): Promise<GlobalInvoiceFileAccessContext | undefined> {
+    delegatorUserId?: string,
+    purpose?: "ticket"
+  ): Promise<GlobalInvoiceFileAccessContext | ContractReviewFileAccess | undefined> {
+    if (isSignedSettlementObjectKey(file.objectKey)) {
+      await this.assertSignedSettlementFileAccess(tx, file, actorUserId);
+      return;
+    }
+    const registeredVoucher = await registeredPaymentVoucherInstalled(tx)
+      ? await tx.$queryRaw<Array<{executionId:string;verifiedExecutionId:string|null;paymentRequestId:string|null;contentSha256:string}>>(Prisma.sql`
+      /* registered_payment_voucher_download */
+      SELECT voucher."executionId", funding."executionId" AS "verifiedExecutionId", execution."paymentRequestId", voucher."contentSha256"
+      FROM public."RegisteredPaymentVoucher" voucher
+      LEFT JOIN public."RegisteredPaymentFunding" funding ON funding."executionId" = voucher."executionId"
+      LEFT JOIN public."PaymentExecution" execution ON execution."id" = voucher."executionId"
+      WHERE voucher."fileId" = ${file.id}
+    `) : [];
+    if (registeredVoucher.length) {
+      const actor = await tx.user.findUnique({where:{id:actorUserId},select:{isActive:true}});
+      if (actor?.isActive !== true) throw new ForbiddenException("当前账号已停用或不存在，不能读取付款凭证");
+      const binding = registeredVoucher[0];
+      if (registeredVoucher.length !== 1 || !binding.verifiedExecutionId || !binding.paymentRequestId ||
+        file.storageStatus !== "active" || binding.contentSha256 !== file.contentSha256) {
+        throw new ForbiddenException("付款凭证正式来源或内容校验不一致，暂不能下载");
+      }
+      const payment = await tx.paymentRequest.findUnique({where:{id:binding.paymentRequestId}});
+      if (!payment || !(await new ProjectVisibilityService(this.prisma).visibleProjectIdsInTransaction(tx,actorUserId)).includes(payment.projectId) ||
+        !(await sensitiveBusinessReadAllowed(tx,"payment_request",payment.id,actorUserId,await this.loadActorRoleKeys(tx,actorUserId,payment.projectId)))) {
+        throw new ForbiddenException("当前账号无权读取该付款凭证");
+      }
+      if (await hasNonReceiptBusinessFileBinding(tx, [file.id], [{ table: "RegisteredPaymentVoucher", column: "fileId" }],
+        { executionId: binding.executionId, actorUserId, read: true })) {
+        throw new ForbiddenException("付款凭证正式来源或内容校验不一致，暂不能下载");
+      }
+      return;
+    }
     const wageEvidenceAccess = await this.resolveWageEvidenceFileAccess(
       tx,
       file.id,
@@ -2014,19 +2529,21 @@ export class FileService {
       return;
     }
     const takeoverCorrectionClient = (tx as unknown as {
-      contractTakeoverCorrection?: {
-        findFirst(args: {
-          where: { attachmentFileId: string };
-          select: { projectId: true };
-        }): Promise<{ projectId: string } | null>;
-      };
+      contractTakeoverCorrection?: Prisma.TransactionClient["contractTakeoverCorrection"];
     }).contractTakeoverCorrection;
-    const takeoverCorrection = takeoverCorrectionClient
-      ? await takeoverCorrectionClient.findFirst({
+    // A grouped projection uses only the two columns needed by this scope.
+    // Prisma findFirst also selects the correction's primary key.
+    const [takeoverCorrection, conflictingCorrection] = takeoverCorrectionClient
+      ? await takeoverCorrectionClient.groupBy({
+          by: ["projectId"],
           where: { attachmentFileId: file.id },
-          select: { projectId: true }
+          orderBy: { projectId: "asc" },
+          take: 2
         })
-      : null;
+      : [];
+    if (conflictingCorrection) {
+      throw new Error("资料文件存在跨业务绑定冲突，暂不能下载");
+    }
     const spotDecision = await this.spotAccess.resolveFileDownloadAccess(
       file.id,
       actorUserId,
@@ -2086,9 +2603,7 @@ export class FileService {
           () => INVOICE_EXCEPTION_PROOF_BINDING
         )
       ];
-      if (
-        takeoverCorrection !== null
-      ) {
+      if (takeoverCorrection) {
         throw new Error("资料文件存在跨业务绑定冲突，暂不能下载");
       }
       if (
@@ -2221,24 +2736,14 @@ export class FileService {
       throw new ForbiddenException("当前账号无权下载该结算模板文件");
     }
 
-    const offlineRevisionClient = (tx as unknown as {
-      contractOfflineRevision?: {
-        findFirst(args: {
-          where: {
-            OR: Array<{ fileId: string } | { previewPdfFileId: string }>;
-          };
-          select: { contractVersionId: true };
-        }): Promise<{ contractVersionId: string } | null>;
-      };
-    }).contractOfflineRevision;
-    const offlineRevisionPreview = offlineRevisionClient
-      ? await offlineRevisionClient.findFirst({
-          where: {
-            OR: [{ fileId: file.id }, { previewPdfFileId: file.id }]
-          },
-          select: { contractVersionId: true }
-        })
-      : null;
+    // Prisma may implicitly select the primary key when only contractVersionId is requested.
+    const [offlineRevisionPreview] = await tx.$queryRaw<Array<{ contractVersionId: string }>>(Prisma.sql`
+      /* private_file_offline_revision_binding */
+      SELECT "contractVersionId"
+      FROM public."ContractOfflineRevision"
+      WHERE "fileId" = ${file.id} OR "previewPdfFileId" = ${file.id}
+      LIMIT 1
+    `);
     if (offlineRevisionPreview) {
       const version = await tx.contractVersion.findUnique({
         where: { id: offlineRevisionPreview.contractVersionId },
@@ -2258,6 +2763,12 @@ export class FileService {
       ? await tx.generalProcurement.findFirst({ where: { archiveFileId: file.id } })
       : null;
     if (procurement) {
+      if (procurement.requestProtocolVersion === 2) {
+        const actor = await generalRequestActor(tx, new ProjectVisibilityService(this.prisma), actorUserId, procurement.projectId);
+        if (generalRequestCanRead(procurement, actor)) return;
+        throw new ForbiddenException("当前账号无权下载该采购归档资料");
+      }
+      if (!procurement.projectId) throw new ForbiddenException("当前账号无权下载该采购归档资料");
       const actor = await generalProcurementActor(tx, new ProjectVisibilityService(this.prisma), actorUserId, procurement.projectId);
       if (canReadGeneralProcurement(procurement, actor)) return;
       throw new ForbiddenException("当前账号无权下载该采购归档资料");
@@ -2273,36 +2784,68 @@ export class FileService {
       throw new ForbiddenException("当前账号无权下载该费用附件");
     }
 
-    const transferEvidence=await tx.companyTransfer?.findFirst({where:{evidenceFileId:file.id}});
-    if(transferEvidence){if((await companyTransferRoles(tx,actorUserId)).some(r=>["finance_staff","finance_director","chairman","general_manager"].includes(r)))return;const projects=[transferEvidence.sourceProjectId,transferEvidence.destinationProjectId];if(projects.every(Boolean)&&(await Promise.all(projects.map(p=>this.hasProjectRole(tx,actorUserId,p!,["finance_staff","finance_director"])))).every(Boolean))return;throw new ForbiddenException("无权查看互转申请依据");}
-    const bankVerificationEvidence=await tx.contractBankVerificationRequest?.findFirst({where:{OR:[{evidenceFileId:file.id},{holderEvidenceFileId:file.id}]},select:{projectId:true}});
-    if(bankVerificationEvidence){if(!bankVerificationEvidence.projectId){if((await companyTransferRoles(tx,actorUserId)).some(r=>["finance_staff","finance_director"].includes(r)))return;throw new ForbiddenException("无权访问公司自有资金核验依据");}if(await this.hasProjectRole(tx,actorUserId,bankVerificationEvidence.projectId,["finance_staff","finance_director"]))return;throw new ForbiddenException("当前账号无权访问银行核验依据");}
-    const classificationEvidence=await tx.contractProxyExecution?.findFirst({where:{evidenceFileId:file.id},select:{projectId:true}})
-      ??await tx.upwardContractAmountRevision?.findFirst({where:{evidenceFileId:file.id},select:{projectId:true}});
-    if(classificationEvidence){
-      if(await this.hasProjectRole(tx,actorUserId,classificationEvidence.projectId,["finance_staff","finance_director","contract_director"]))return;
+    const transferEvidence = await tx.companyTransfer?.findFirst({ where: { evidenceFileId: file.id }, select: {
+      id: true, sourceProjectId: true, destinationProjectId: true,
+      status: true, applicantUserId: true, approvalInstanceId: true,
+    } });
+    if (transferEvidence) {
+      const roles = await companyTransferRoles(tx, actorUserId);
+      if (roles.some(role => ["finance_staff", "finance_director", "chairman", "general_manager"].includes(role))) return;
+      const projects = [transferEvidence.sourceProjectId, transferEvidence.destinationProjectId];
+      if (projects.every(Boolean) &&
+          (await Promise.all(projects.map(p => this.hasProjectRole(tx, actorUserId, p!, ["finance_staff", "finance_director"])))).every(Boolean)) return;
+      const projectId = transferEvidence.sourceProjectId;
+      const comprehensiveCanQualify = roles.includes("comprehensive_director") &&
+        (transferEvidence.applicantUserId === actorUserId || transferEvidence.status === "approved");
+      if (projectId && projectId === transferEvidence.destinationProjectId && transferEvidence.approvalInstanceId &&
+          (comprehensiveCanQualify || transferEvidence.status === "submitted")) {
+        const parallel = await tx.companyTransfer.findFirst({
+          where: { ...transferEvidence, evidenceFileId: file.id },
+          select: { requiresParallelRepaymentApproval: true }
+        });
+        if (parallel?.requiresParallelRepaymentApproval !== true) {
+          throw new ForbiddenException("无权查看互转申请依据");
+        }
+        const visibility = new ProjectVisibilityService(this.prisma);
+        if (comprehensiveCanQualify &&
+            (await visibility.visibleProjectIdsInTransaction(tx, actorUserId)).includes(projectId)) return;
+        if (transferEvidence.status === "submitted") {
+          const approval = await tx.approvalInstance.findUnique({
+            where: { id: transferEvidence.approvalInstanceId }, select: { status: true, frozenNodes: true, currentNodeIndex: true },
+          });
+          if (approval?.status === "in_progress" && isParallelApprovalRound(approval.frozenNodes) &&
+              (await companyRepaymentApprovals(tx, visibility, actorUserId, projectId, transferEvidence.applicantUserId,
+                approval.frozenNodes, approval.currentNodeIndex)).length) return;
+        }
+      }
+      throw new ForbiddenException("无权查看互转申请依据");
+    }
+    // Binding lookups must not select the primary key implicitly under the archive reader's column grants.
+    const readBinding = async <Row>(query: Prisma.Sql): Promise<Row | undefined> =>
+      (await tx.$queryRaw<Row[]>(Prisma.sql`/* private_file_project_binding */ ${query}`))[0];
+    const bankVerificationEvidence = await readBinding<{ projectId: string | null }>(Prisma.sql`
+      SELECT "projectId" FROM public."ContractBankVerificationRequest"
+      WHERE "evidenceFileId" = ${file.id} OR "holderEvidenceFileId" = ${file.id} LIMIT 1
+    `);
+    const financeRoles = ["finance_staff", "finance_director"] as const;
+    if (bankVerificationEvidence) {
+      if (!bankVerificationEvidence.projectId) {
+        if ((await companyTransferRoles(tx, actorUserId)).some(role => role === "finance_staff" || role === "finance_director")) return;
+        throw new ForbiddenException("无权访问公司自有资金核验依据");
+      }
+      if (await this.hasProjectRole(tx, actorUserId, bankVerificationEvidence.projectId, financeRoles)) return;
+      throw new ForbiddenException("当前账号无权访问银行核验依据");
+    }
+    const classificationEvidence = await readBinding<{ projectId: string }>(Prisma.sql`
+      SELECT "projectId" FROM public."ContractProxyExecution" WHERE "evidenceFileId" = ${file.id} LIMIT 1
+    `) ?? await readBinding<{ projectId: string }>(Prisma.sql`
+      SELECT "projectId" FROM public."UpwardContractAmountRevision" WHERE "evidenceFileId" = ${file.id} LIMIT 1
+    `);
+    if (classificationEvidence) {
+      if (await this.hasProjectRole(tx, actorUserId, classificationEvidence.projectId, [...financeRoles, "contract_director"])) return;
       throw new ForbiddenException("当前账号无权访问本项目核验依据");
     }
 
-    const affiliateBusinessClients = tx as unknown as {
-      projectAffiliateContractFact?: {
-        findFirst(args: unknown): Promise<{ projectId: string } | null>;
-      };
-      projectAffiliateSettlementFact?: {
-        findFirst(args: unknown): Promise<{ projectId: string } | null>;
-      };
-      projectAffiliatePaymentFact?: {
-        findFirst(args: unknown): Promise<{ projectId: string } | null>;
-      };
-      projectAffiliateBusinessEvidence?: {
-        findFirst(
-          args: unknown
-        ): Promise<{ projectId: string; businessType: string } | null>;
-      };
-      projectAffiliateCompanyContract?: {
-        findFirst(args: unknown): Promise<{ projectId: string } | null>;
-      };
-    };
     const [
       affiliateContractFact,
       affiliateSettlementFact,
@@ -2310,43 +2853,26 @@ export class FileService {
       affiliateSupplementalEvidence,
       affiliateCompanyContract
     ] = await Promise.all([
-      affiliateBusinessClients.projectAffiliateContractFact?.findFirst({
-        where: {
-          OR: [
-            { evidenceFileId: file.id },
-            { confirmationSignatureFileId: file.id }
-          ]
-        },
-        select: { projectId: true }
-      }) ?? null,
-      affiliateBusinessClients.projectAffiliateSettlementFact?.findFirst({
-        where: {
-          OR: [
-            { evidenceFileId: file.id },
-            { confirmationSignatureFileId: file.id }
-          ]
-        },
-        select: { projectId: true }
-      }) ?? null,
-      affiliateBusinessClients.projectAffiliatePaymentFact?.findFirst({
-        where: {
-          OR: [
-            { evidenceFileId: file.id },
-            { confirmationSignatureFileId: file.id }
-          ]
-        },
-        select: { projectId: true }
-      }) ?? null,
-      affiliateBusinessClients.projectAffiliateBusinessEvidence?.findFirst({
-        where: { fileId: file.id },
-        select: { projectId: true, businessType: true }
-      }) ?? null,
-      affiliateBusinessClients.projectAffiliateCompanyContract?.findFirst({
-        where: {
-          OR: [{ fileId: file.id }, { confirmationSignatureFileId: file.id }]
-        },
-        select: { projectId: true }
-      }) ?? null
+      readBinding<{ projectId: string }>(Prisma.sql`
+        SELECT "projectId" FROM public."ProjectAffiliateContractFact"
+        WHERE "evidenceFileId" = ${file.id} OR "confirmationSignatureFileId" = ${file.id} LIMIT 1
+      `),
+      readBinding<{ projectId: string }>(Prisma.sql`
+        SELECT "projectId" FROM public."ProjectAffiliateSettlementFact"
+        WHERE "evidenceFileId" = ${file.id} OR "confirmationSignatureFileId" = ${file.id} LIMIT 1
+      `),
+      readBinding<{ projectId: string }>(Prisma.sql`
+        SELECT "projectId" FROM public."ProjectAffiliatePaymentFact"
+        WHERE "evidenceFileId" = ${file.id} OR "confirmationSignatureFileId" = ${file.id} LIMIT 1
+      `),
+      readBinding<{ projectId: string; businessType: string }>(Prisma.sql`
+        SELECT "projectId", "businessType" FROM public."ProjectAffiliateBusinessEvidence"
+        WHERE "fileId" = ${file.id} LIMIT 1
+      `),
+      readBinding<{ projectId: string }>(Prisma.sql`
+        SELECT "projectId" FROM public."ProjectAffiliateCompanyContract"
+        WHERE "fileId" = ${file.id} OR "confirmationSignatureFileId" = ${file.id} LIMIT 1
+      `)
     ]);
     const affiliateFileAccess = affiliateCompanyContract
       ? {
@@ -2393,45 +2919,19 @@ export class FileService {
       throw new ForbiddenException("当前账号无权下载该施工企业外部业务资料");
     }
 
-    const necessaryExpenseReserveClients = tx as unknown as {
-      projectNecessaryExpenseReserveEntry?: {
-        findFirst(args: {
-          where: { evidenceFileId: string };
-          select: { reserve: { select: { projectId: true } } };
-        }): Promise<{ reserve: { projectId: string } } | null>;
-      };
-      $queryRaw?: <T>(query: Prisma.Sql) => Promise<T>;
-    };
-    // A real Prisma transaction always exposes $queryRaw. Keep a raw-query
-    // fallback so a stale generated client cannot downgrade a bound reserve
-    // file to the uploader shortcut below. The final branch exists only for
-    // narrow structural unit doubles that expose neither Prisma seam.
-    const necessaryExpenseReserveEvidence =
-      necessaryExpenseReserveClients.projectNecessaryExpenseReserveEntry
-        ? await necessaryExpenseReserveClients.projectNecessaryExpenseReserveEntry.findFirst({
-            where: { evidenceFileId: file.id },
-            select: { reserve: { select: { projectId: true } } }
-          })
-        : necessaryExpenseReserveClients.$queryRaw
-          ? (await necessaryExpenseReserveClients.$queryRaw<Array<{ projectId: string }>>(
-              Prisma.sql`
-                SELECT reserve."projectId" AS "projectId"
-                FROM "ProjectNecessaryExpenseReserveEntry" entry
-                JOIN "ProjectNecessaryExpenseReserve" reserve ON reserve.id = entry."reserveId"
-                WHERE entry."evidenceFileId" = ${file.id}
-                LIMIT 1
-              `
-            ))[0] ?? null
-          : null;
+    const necessaryExpenseReserveEvidence = await readBinding<{ projectId: string }>(Prisma.sql`
+      SELECT reserve."projectId"
+      FROM public."ProjectNecessaryExpenseReserveEntry" entry
+      JOIN public."ProjectNecessaryExpenseReserve" reserve ON reserve.id = entry."reserveId"
+      WHERE entry."evidenceFileId" = ${file.id}
+      LIMIT 1
+    `);
     if (necessaryExpenseReserveEvidence) {
-      const projectId = "reserve" in necessaryExpenseReserveEvidence
-        ? necessaryExpenseReserveEvidence.reserve.projectId
-        : necessaryExpenseReserveEvidence.projectId;
       if (
         await this.hasProjectRole(
           tx,
           actorUserId,
-          projectId,
+          necessaryExpenseReserveEvidence.projectId,
           ACTION_REQUIRED_ROLES["necessary_expense_reserve.read"]
         )
       ) {
@@ -2440,42 +2940,19 @@ export class FileService {
       throw new ForbiddenException("当前账号无权下载该必要费用准备依据");
     }
 
-    const projectFundDisputeClients = tx as unknown as {
-      projectFundDisputeEntry?: {
-        findFirst(args: {
-          where: { evidenceFileId: string };
-          select: { dispute: { select: { projectId: true } } };
-        }): Promise<{ dispute: { projectId: string } } | null>;
-      };
-      $queryRaw?: <T>(query: Prisma.Sql) => Promise<T>;
-    };
-    // Bound dispute evidence must never fall through to the uploader shortcut,
-    // including when the generated Prisma client is stale during a migration.
-    const projectFundDisputeEvidence = projectFundDisputeClients.projectFundDisputeEntry
-      ? await projectFundDisputeClients.projectFundDisputeEntry.findFirst({
-          where: { evidenceFileId: file.id },
-          select: { dispute: { select: { projectId: true } } }
-        })
-      : projectFundDisputeClients.$queryRaw
-        ? (await projectFundDisputeClients.$queryRaw<Array<{ projectId: string }>>(
-            Prisma.sql`
-              SELECT dispute."projectId" AS "projectId"
-                FROM "ProjectFundDisputeEntry" entry
-                JOIN "ProjectFundDispute" dispute ON dispute.id = entry."disputeId"
-               WHERE entry."evidenceFileId" = ${file.id}
-               LIMIT 1
-            `
-          ))[0] ?? null
-        : null;
+    const projectFundDisputeEvidence = await readBinding<{ projectId: string }>(Prisma.sql`
+      SELECT dispute."projectId"
+      FROM public."ProjectFundDisputeEntry" entry
+      JOIN public."ProjectFundDispute" dispute ON dispute.id = entry."disputeId"
+      WHERE entry."evidenceFileId" = ${file.id}
+      LIMIT 1
+    `);
     if (projectFundDisputeEvidence) {
-      const projectId = "dispute" in projectFundDisputeEvidence
-        ? projectFundDisputeEvidence.dispute.projectId
-        : projectFundDisputeEvidence.projectId;
       if (
         await this.hasProjectRole(
           tx,
           actorUserId,
-          projectId,
+          projectFundDisputeEvidence.projectId,
           ACTION_REQUIRED_ROLES["project_fund_dispute.read"]
         )
       ) {
@@ -2484,14 +2961,46 @@ export class FileService {
       throw new ForbiddenException("当前账号无权下载该一般争议资金依据");
     }
 
-    const layoutAccess = await resolveLayoutTemplateFileAccess(tx, file.id, actorUserId, file.mimeType);
-    if (layoutAccess !== null) {
-      if (layoutAccess) return;
-      throw new ForbiddenException("当前账号无权查看该合同版式资料");
+    if (purpose === "ticket") {
+      const history = await contractReviewTicketAccess(tx, file, actorUserId,
+        new ProjectVisibilityService(this.prisma), () => this.storage.bucketName(), delegatorUserId);
+      if (history) return history;
     }
 
+    const layoutAccess = await resolveLayoutTemplateFileAccess(tx, file.id, actorUserId, file.mimeType);
+    if (layoutAccess === false) throw new ForbiddenException("当前账号无权查看该合同版式资料");
+    if (await assertGeneratedContractFileAccess(tx, file, actorUserId, this.moduleRef)) return;
+    if (layoutAccess === true) return;
+
+    const archiveRecordClient = (tx as unknown as {
+      archiveRecord?: {
+        findFirst: (args: {
+          where: { fileId: string; businessType?: string };
+          select: { businessType: true; businessId: true };
+        }) => Promise<{ businessType: string; businessId: string } | null>;
+      };
+    }).archiveRecord;
     if (file.uploadedByUserId === actorUserId && !projectOwnerContract) {
-      return;
+      const archive = await archiveRecordClient?.findFirst({
+        where: { fileId: file.id, businessType: "contract_version" },
+        select: { businessType: true, businessId: true }
+      });
+      if (!archive) return;
+      const projectId = await this.resolveApprovalProjectId(tx, archive.businessType, archive.businessId);
+      if (projectId && await this.hasProjectRole(tx, actorUserId, projectId, ARCHIVE_FILE_DOWNLOAD_ROLES)) return;
+      throw new ForbiddenException("当前账号无权下载该合同归档原件");
+    }
+
+    const contractArchiveEvidence = await tx.contractArchiveEvidenceFile.findFirst({ where: { fileId: file.id } });
+    if (contractArchiveEvidence) {
+      const parent = await tx.contractArchiveFile.findUnique({ where: { id: contractArchiveEvidence.archiveFileId } });
+      if (!parent || parent.archiveProtocolVersion !== 2 || parent.status !== "confirmed" || parent.contractVersionId !== contractArchiveEvidence.contractVersionId) {
+        throw new BadRequestException("合同归档原件的绑定信息不完整，暂不能下载");
+      }
+      const version = await tx.contractVersion.findUnique({ where: { id: parent.contractVersionId } });
+      const contract = version ? await tx.contract.findUnique({ where: { id: version.contractId } }) : null;
+      if (contract && await this.hasProjectRole(tx, actorUserId, contract.projectId, ARCHIVE_FILE_DOWNLOAD_ROLES)) return;
+      throw new ForbiddenException("当前账号无权下载该合同归档原件");
     }
 
     const contractArchiveFile = await tx.contractArchiveFile.findFirst({
@@ -2529,12 +3038,8 @@ export class FileService {
 
       if (
         settlement &&
-        (await this.hasProjectRole(
-          tx,
-          actorUserId,
-          settlement.projectId,
-          ARCHIVE_FILE_DOWNLOAD_ROLES
-        ))
+        (await sensitiveBusinessReadAllowed(tx, "settlement", settlement.id, actorUserId,
+          await this.loadActorRoleKeys(tx, actorUserId, settlement.projectId), settlement.preparedByUserId))
       ) {
         return;
       }
@@ -2550,7 +3055,7 @@ export class FileService {
 
       if (
         payment &&
-        (await this.hasProjectRole(tx, actorUserId, payment.projectId, PAYMENT_FILE_DOWNLOAD_ROLES))
+        (await sensitiveBusinessReadAllowed(tx, "payment_request", payment.id, actorUserId, await this.loadActorRoleKeys(tx, actorUserId, payment.projectId)))
       ) {
         return;
       }
@@ -2853,14 +3358,6 @@ export class FileService {
       }
     }
 
-    const archiveRecordClient = (tx as unknown as {
-      archiveRecord?: {
-        findFirst: (args: {
-          where: { fileId: string };
-          select: { businessType: true; businessId: true };
-        }) => Promise<{ businessType: string; businessId: string } | null>;
-      };
-    }).archiveRecord;
     const archiveRecord = archiveRecordClient
       ? await archiveRecordClient.findFirst({
           where: { fileId: file.id },
@@ -2890,19 +3387,17 @@ export class FileService {
     fileId: string,
     actorUserId: string
   ): Promise<boolean | null> {
-    const attachmentClient = (tx as unknown as {
-      expenseClaimAttachment?: {
-        findFirst: (args: {
-          where: { fileId: string };
-          select: { expenseClaimId: true; attachedByUserId: true; removedAt: true };
-        }) => Promise<{ expenseClaimId: string; attachedByUserId: string; removedAt: Date | null } | null>;
-      };
-    }).expenseClaimAttachment;
-    if (!attachmentClient) return null;
-    const attachment = await attachmentClient.findFirst({
-      where: { fileId },
-      select: { expenseClaimId: true, attachedByUserId: true, removedAt: true }
-    });
+    const [attachment] = await tx.$queryRaw<Array<{
+      expenseClaimId: string;
+      attachedByUserId: string;
+      removedAt: Date | null;
+    }>>(Prisma.sql`
+      /* private_file_expense_attachment_binding */
+      SELECT "expenseClaimId", "attachedByUserId", "removedAt"
+      FROM public."ExpenseClaimAttachment"
+      WHERE "fileId" = ${fileId}
+      LIMIT 1
+    `);
     if (!attachment || attachment.removedAt) return attachment ? false : null;
     const claimClient = (tx as unknown as {
       expenseClaim?: {
@@ -3016,6 +3511,8 @@ export class FileService {
     // The preparer must be able to deliver their frozen copy to the counterparty,
     // including project engineers who are not archive administrators.
     if (preparerUserId === actorUserId) return true;
+    if (document.settlementId) return sensitiveBusinessReadAllowed(tx, "settlement", document.settlementId, actorUserId,
+      await this.loadActorRoleKeys(tx, actorUserId, projectId), preparerUserId);
     return this.hasProjectRole(tx, actorUserId, projectId, ARCHIVE_FILE_DOWNLOAD_ROLES);
   }
 
@@ -3420,32 +3917,8 @@ export class FileService {
     actorUserId: string,
     projectId: string
   ): Promise<RoleKey[]> {
-    const [globalPositions, projectPositions, projectMembers] = await Promise.all([
-      tx.userPosition.findMany({ where: { userId: actorUserId, projectId: null } }),
-      tx.userPosition.findMany({ where: { userId: actorUserId, projectId } }),
-      tx.projectMember.findMany({ where: { userId: actorUserId, projectId } })
-    ]);
-    const positionIds = Array.from(
-      new Set([...globalPositions, ...projectPositions].map((position) => position.positionId))
-    );
-    const positions = positionIds.length
-      ? await tx.position.findMany({ where: { id: { in: positionIds } } })
-      : [];
-    const keyByPositionId = new Map(
-      positions.map((position) => [position.id, position.key as RoleKey])
-    );
-    const globalRoleKeys = globalPositions.flatMap((position) => {
-      const key = keyByPositionId.get(position.positionId);
-      return key ? [key] : [];
-    });
-    const projectRoleKeys = [
-      ...projectPositions.flatMap((position) => {
-        const key = keyByPositionId.get(position.positionId);
-        return key ? [key] : [];
-      }),
-      ...projectMembers.map((member) => member.positionKey as RoleKey)
-    ];
-
+    const { globalRoleKeys, projectRoleKeys } = await new ProjectVisibilityService(this.prisma)
+      .effectiveRoleScopesInTransaction(tx, actorUserId, projectId);
     return resolveEffectiveRoleKeys(globalRoleKeys, projectRoleKeys);
   }
 
@@ -3455,11 +3928,13 @@ export class FileService {
     expiresAt: string,
     downloadReason: string,
     accessMode: FileTicketAccessMode,
-    delegatorUserId?: string
+    delegatorUserId?: string,
+    scope?: SignedSettlementDownloadScope
   ) {
     return createHmac("sha256", this.downloadSecret())
-      .update(
-        `${fileId}.${actorUserId}.${expiresAt}.${downloadReason}.${accessMode}${
+      .update(scope
+        ? JSON.stringify(["signed-settlement-download-v1", scope.projectId, scope.settlementId, fileId, actorUserId, expiresAt, downloadReason, accessMode])
+        : `${fileId}.${actorUserId}.${expiresAt}.${downloadReason}.${accessMode}${
           delegatorUserId ? `.${delegatorUserId}` : ""
         }`
       )
@@ -3473,7 +3948,8 @@ export class FileService {
     downloadReason: string,
     accessMode: FileTicketAccessMode,
     delegatorUserId: string | undefined,
-    token: string
+    token: string,
+    scope?: SignedSettlementDownloadScope
   ) {
     const expected = Buffer.from(
       this.signDownloadToken(
@@ -3482,7 +3958,8 @@ export class FileService {
         expiresAt,
         downloadReason,
         accessMode,
-        delegatorUserId
+        delegatorUserId,
+        scope
       )
     );
     const actual = Buffer.from(token);

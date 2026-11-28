@@ -18,6 +18,7 @@ export interface ApprovalSelfReviewInput {
 }
 
 export interface ConfirmApprovalSelfReviewInput extends ApprovalSelfReviewInput {
+  originatorUserIds?: readonly string[];
   selfReviewReason?: string;
   confirmationPassword?: string;
   confirmPassword?: (password: string) => Promise<unknown>;
@@ -70,8 +71,9 @@ export function assertOrdinaryApplicantCannotReview(input: ApprovalSelfReviewInp
 export async function confirmApprovalSelfReview(
   input: ConfirmApprovalSelfReviewInput
 ): Promise<ApprovalSelfReviewResult> {
-  assertOrdinaryApplicantCannotReview(input);
-  if (input.applicantUserId !== input.actorUserId) {
+  const isOriginator = input.applicantUserId === input.actorUserId || Boolean(input.originatorUserIds?.includes(input.actorUserId));
+  assertOrdinaryApplicantCannotReview({...input, applicantUserId: isOriginator ? input.actorUserId : input.applicantUserId});
+  if (!isOriginator) {
     return { isSelfReview: false, metadata: {} };
   }
 

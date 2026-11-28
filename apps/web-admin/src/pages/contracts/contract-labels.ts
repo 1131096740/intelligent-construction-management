@@ -5,6 +5,7 @@ export function contractTypeLabel(value?: string | null) {
       equipment_rental: "工程机械设备租赁合同",
       labor_subcontract: "劳务分包合同",
       generic_contract: "通用合同",
+      other: "其他合同",
       professional_subcontract: "专业分包合同"
     }[value ?? ""] ?? value ?? "未知合同类型"
   );
@@ -43,4 +44,17 @@ export function templateStatusLabel(value?: string | null) {
     value ??
     "未知"
   );
+}
+
+export function resolveCurrentContractBusinessType(input: {
+  version?: { status?: string; signingSubjectType?: string };
+  parentType?: string;
+  contractBasics?: unknown;
+}): string | null | undefined {
+  if (input.version?.status !== "draft") return input.parentType;
+  const basics = input.contractBasics;
+  const rawType = basics && typeof basics === "object" && !Array.isArray(basics)
+    ? (basics as Record<string, unknown>).businessType : undefined;
+  if (typeof rawType === "string" && ["material_purchase", "equipment_rental", "labor_subcontract", "professional_subcontract", "other"].includes(rawType)) return rawType;
+  return rawType !== undefined || input.version.signingSubjectType === "draft_unconfirmed" ? null : input.parentType;
 }

@@ -1,0 +1,29 @@
+{
+  "bank/overlay/services/api/src/database/contract-finance-owned.test-support.ts": {
+    "kind": "full",
+    "material": "8e3c93993ca6bdba14b36bb10bb97650e68adebdf32ceaca1b8dd7841331d0a2.gz",
+    "sha256": "8e3c93993ca6bdba14b36bb10bb97650e68adebdf32ceaca1b8dd7841331d0a2"
+  },
+  "bank/overlay/services/api/src/database/project-affiliate-company-contract-db.spec.ts": {
+    "kind": "patch",
+    "material": "ec22072eac066137a0c91b30f19e8efbcbeeb18ff7a7732ef00f4ff021c6364b.gz",
+    "sha256": "cb8ea99707535ac6e0b430d9c7551ce0b3edd3e39a2432eac3f3e8437e7a7c14",
+    "source": "services/api/src/database/project-affiliate-company-contract-db.spec.ts",
+    "sourceSha256": "7b077c20dc18f85e96698f8f16d28c6e0377b2288fde8348c53772b03dd94bcf"
+  },
+  "bank/overlay/services/api/prisma/contract-finance-owned-ci.cjs": {
+    "kind": "full",
+    "material": "55aad1311c2f45285642c77fe4a21dcd622eeb2c8e1030651f2c3aba936b3af8.gz",
+    "sha256": "55aad1311c2f45285642c77fe4a21dcd622eeb2c8e1030651f2c3aba936b3af8"
+  },
+  "bank/execution-files.json": {
+    "kind": "execution-manifest",
+    "material": "db8782be2783ac8c1b21d9026ea45ccd0eb4f8c81298ebbb9a898ca37e4c29b2.gz",
+    "sha256": "390316bc29df19098a80158e8a2d2880487e0c08f7ad308b5d63f508fed12b7e"
+  },
+  "bank/overlay/services/api/prisma/contract-bank-runtime-fixture.cjs": {
+    "kind": "full",
+    "material": "cdac9917898157a3566ab460d4e534de25e519512f1e049eabe6930835216956.gz",
+    "sha256": "cdac9917898157a3566ab460d4e534de25e519512f1e049eabe6930835216956"
+  }
+}

@@ -20,8 +20,8 @@ describe("ContractDraftController", () => {
       takeOver: jest.fn().mockResolvedValue({ token: "replacement-token" }),
       release: jest.fn().mockResolvedValue({ released: true })
     };
-    const contracts = {
-      submitApproval: jest.fn().mockResolvedValue({
+    const v2Submission = {
+      submit: jest.fn().mockResolvedValue({
         contractVersionId: "cv-1",
         approvalInstanceId: "approval-1",
         formalCode: "HT-20260728-001",
@@ -45,15 +45,15 @@ describe("ContractDraftController", () => {
     return {
       aggregate,
       editLease,
-      contracts,
+      v2Submission,
       deletion,
       documents,
       controller: new ContractDraftController(
         aggregate as never,
         editLease as never,
-        contracts as never,
         deletion as never,
-        documents as never
+        documents as never,
+        v2Submission as never
       )
     };
   }
@@ -284,9 +284,20 @@ describe("ContractDraftController", () => {
     );
   });
 
-  it("delegates version-scoped submission with revision, idempotency and lease", async () => {
-    const { contracts, controller } = makeController();
+  it("rejects obsolete submission requests without a protocol", () => {
+    const { controller } = makeController();
     const body = {
+      expectedRevision: 8,
+      idempotencyKey: "7ea6e68d-18cd-4ca7-83b8-99e7d1457125"
+    };
+    expect(() => controller.submitDraft("cv-1", "opaque-lease-token", body, { id: "owner-1" } as never))
+      .toThrow(/旧合同提交入口已停止使用/u);
+  });
+
+  it("delegates version-scoped submission with revision, idempotency and lease", async () => {
+    const { v2Submission, controller } = makeController();
+    const body = {
+      submissionProtocolVersion: 2 as const,
       expectedRevision: 8,
       idempotencyKey: "7ea6e68d-18cd-4ca7-83b8-99e7d1457125"
     };
@@ -302,7 +313,7 @@ describe("ContractDraftController", () => {
       approvalInstanceId: "approval-1",
       formalCode: "HT-20260728-001"
     });
-    expect(contracts.submitApproval).toHaveBeenCalledWith(
+    expect(v2Submission.submit).toHaveBeenCalledWith(
       "cv-1",
       "owner-1",
       body,

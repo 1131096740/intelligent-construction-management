@@ -1,4 +1,6 @@
 import type {
+  WorkItemActionGroupKey,
+  WorkItemActionGroupReadModel,
   WorkItemReadModel,
   WorkItemsReadModel,
   WorkbenchSummaryCardReadModel,
@@ -20,10 +22,34 @@ export interface WorkbenchQueueViewModel {
 export interface WorkItemQueueViewModel {
   id: "pending" | "blocked" | "started" | "drafts";
   title: string;
+  tabLabel: string;
   description: string;
   items: WorkItemViewModel[];
   total: number;
   truncated: boolean;
+}
+
+export interface HomeActionGroupItem {
+  id: string;
+  title: string;
+  meta: string;
+  targetPath: string;
+}
+
+export interface HomeActionGroupCard {
+  key: Exclude<WorkItemActionGroupKey, "other">;
+  title: string;
+  description: string;
+  count: number;
+  countText: string;
+  targetPath: string;
+  items: HomeActionGroupItem[];
+}
+
+export interface HomeWorkItemQueryState {
+  queue: WorkItemQueueViewModel["id"];
+  filters: HomeWorkItemFilters;
+  showStaleDrafts: boolean;
 }
 
 export interface WorkItemViewModel extends WorkItemReadModel {
@@ -38,6 +64,7 @@ export interface HomeWorkItemFilters {
   status: string;
   keyword: string;
   sort: HomeWorkItemSort;
+  group: string;
 }
 
 export interface HomeWorkItemRow extends WorkItemViewModel {
@@ -117,10 +144,12 @@ export function toWorkItemQueues(
       toneClass: `tone-${item.tone}`
     }));
     const meta = workItems?.queueMeta?.[queue.id];
+    const total = meta?.total ?? items.length;
     return {
       ...queue,
+      tabLabel: `${queue.title} ${total}`,
       items,
-      total: meta?.total ?? items.length,
+      total,
       truncated: meta?.truncated ?? false
     };
   });
@@ -142,8 +171,29 @@ export function emptyHomeWorkItemFilters(): HomeWorkItemFilters {
     businessType: "",
     status: "",
     keyword: "",
-    sort: "blocker"
+    sort: "blocker",
+    group: ""
   };
+}
+
+/** 后端已按职责给出动作分组；缺失时返回空数组，首页退回四队列。 */
+export function toHomeActionGroups(
+  workItems: WorkItemsReadModel | null | undefined
+): HomeActionGroupCard[] {
+  return (workItems?.groups ?? []).map((group: WorkItemActionGroupReadModel) => ({
+    key: group.key,
+    title: group.title,
+    description: group.description,
+    count: group.count,
+    countText: String(group.count),
+    targetPath: group.targetPath,
+    items: group.items.map((item) => ({
+      id: item.id,
+      title: item.title,
+      meta: [item.projectName, item.businessCode].filter(Boolean).join(" · "),
+      targetPath: item.targetPath
+    }))
+  }));
 }
 
 export function homeWorkItemSummaryItems(
@@ -199,6 +249,7 @@ export function filterAndSortHomeWorkItemRows(
     ].join(" ").toLocaleLowerCase();
 
     return (
+      (!filters.group || row.actionGroup === filters.group) &&
       (!filters.project || row.projectName === filters.project) &&
       (!filters.businessType || row.businessTypeLabel === filters.businessType) &&
       (!filters.status || row.statusLabel === filters.status) &&
@@ -212,12 +263,75 @@ export function filterAndSortHomeWorkItemRows(
   });
 }
 
+const actionGroupLabels: Record<WorkItemActionGroupKey, string> = {
+  approval: "待审批",
+  review: "待复核",
+  procurement: "待采购",
+  payment: "待付款",
+  supplement: "待补资料",
+  other: "其他"
+};
+
 export function homeWorkItemFilterOptions(rows: readonly HomeWorkItemRow[]) {
+  const groupValues = Array.from(new Set(
+    rows
+      .map((row) => row.actionGroup)
+      .filter((value): value is WorkItemActionGroupKey => Boolean(value))
+  ));
   return {
     project: selectOptions(rows.map((row) => row.projectName), "全部项目"),
     businessType: selectOptions(rows.map((row) => row.businessTypeLabel), "全部类型"),
-    status: selectOptions(rows.map((row) => row.statusLabel), "全部状态")
+    status: selectOptions(rows.map((row) => row.statusLabel), "全部状态"),
+    group: [
+      { label: "全部分组", value: "" },
+      ...groupValues.map((value) => ({ label: actionGroupLabels[value], value }))
+    ]
   };
+}
+
+const queueIds: readonly WorkItemQueueViewModel["id"][] = ["pending", "blocked", "started", "drafts"];
+
+function queryValue(value: unknown): string {
+  return typeof value === "string" ? value : Array.isArray(value) && typeof value[0] === "string" ? value[0] : "";
+}
+
+/**
+ * 从路由 query 恢复首页列表状态（G7）。
+ *
+ * 办理完流程后浏览器后退会重新挂载首页；只要状态写入 query，
+ * 队列、筛选、分组与草稿折叠都会原样恢复。
+ */
+export function readHomeWorkItemQuery(query: Record<string, unknown>): HomeWorkItemQueryState {
+  const queue = queryValue(query.queue);
+  const sort = queryValue(query.sort);
+  return {
+    queue: queueIds.includes(queue as WorkItemQueueViewModel["id"])
+      ? (queue as WorkItemQueueViewModel["id"])
+      : "pending",
+    filters: {
+      project: queryValue(query.project),
+      businessType: queryValue(query.businessType),
+      status: queryValue(query.status),
+      keyword: queryValue(query.keyword),
+      sort: (["blocker", "overdue", "amount", "stayed"] as const).includes(sort as HomeWorkItemSort)
+        ? (sort as HomeWorkItemSort)
+        : "blocker",
+      group: queryValue(query.group)
+    },
+    showStaleDrafts: queryValue(query.stale) === "1"
+  };
+}
+
+/** 只把非默认值写进 query，避免首页地址被默认筛选污染。 */
+export function homeWorkItemQuery(state: HomeWorkItemQueryState): Record<string, string> {
+  const query: Record<string, string> = {};
+  if (state.queue !== "pending") query.queue = state.queue;
+  for (const key of ["project", "businessType", "status", "keyword", "group"] as const) {
+    if (state.filters[key]) query[key] = state.filters[key];
+  }
+  if (state.filters.sort !== "blocker") query.sort = state.filters.sort;
+  if (state.showStaleDrafts) query.stale = "1";
+  return query;
 }
 
 function queueIndexForCard(card: WorkbenchCardViewModel): number {
@@ -235,7 +349,7 @@ function queueIndexForCard(card: WorkbenchCardViewModel): number {
   return 0;
 }
 
-const queueDefs: Array<Omit<WorkItemQueueViewModel, "items" | "total" | "truncated">> = [
+const queueDefs: Array<Omit<WorkItemQueueViewModel, "items" | "total" | "truncated" | "tabLabel">> = [
   {
     id: "pending",
     title: "待我处理",
@@ -269,6 +383,7 @@ function workItemBusinessTypeLabel(item: WorkItemReadModel) {
     general_procurement: "综合采购审批",
     expense_claim: "费用申请审批",
     payment_execution: "付款实付",
+    procurement: "综合采购",
     blocker: "阻塞事项",
     contract: "合同",
     settlement: "结算",

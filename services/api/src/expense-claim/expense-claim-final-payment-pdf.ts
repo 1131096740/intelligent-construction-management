@@ -18,10 +18,11 @@ export type ExpenseClaimFinalPaymentPdfInput = {
   applicantName: string;
   reason: string;
   requestedAmountCents: bigint;
+  requestedAmountYuan?: string | null;
   loanOffsetAmountCents: bigint;
   companyPayableAmountCents: bigint;
   paidAmountCents: bigint;
-  payments: Array<{ paidAt: Date; paymentMethod: string; amountCents: bigint; note: string | null }>;
+  payments: Array<{ paidAt: Date; paymentMethod: string; amountCents: bigint; note: string | null; actualPayerName?: string }>;
 };
 
 /** 最终付讫版独立于审批完成版，冻结实际公司补付事实，不覆盖审批 PDF。 */
@@ -40,11 +41,15 @@ export async function renderExpenseClaimFinalPaymentPdf(input: ExpenseClaimFinal
   doc.fontSize(17).text(input.title ?? "费用报销付讫归档单", margin, 16, { width, align: "center" });
   let y = 44;
   y = row(doc, margin, y, [76, width - 76], 24, ["使用单位", input.companyName]);
-  y = row(doc, margin, y, [76, width - 76], 24, ["实际付款主体", input.paymentSubjectName]);
+  const hasRegisteredPayers = input.payments.some((payment) => payment.actualPayerName !== undefined);
+  y = row(doc, margin, y, [76, width - 76], 24, [
+    "实际付款主体",
+    hasRegisteredPayers ? "详见下方付款明细" : input.paymentSubjectName
+  ]);
   y = row(doc, margin, y, [64, 210, 64, width - 338], 24, ["单据编号", input.code, "项目", input.projectName || "非项目费用"]);
   y = row(doc, margin, y, [64, width - 64], 32, ["报销人 / 事由", `${input.applicantName}；${input.reason}`]);
   y = row(doc, margin, y, [64, 112, 64, 112, 64, width - 416], 24, [
-    "申请金额", `￥${formatMoneyCentsAsYuan(input.requestedAmountCents)}`,
+    "申请金额", `￥${input.requestedAmountYuan ?? formatMoneyCentsAsYuan(input.requestedAmountCents)}`,
     input.offsetLabel ?? "借款冲销", `￥${formatMoneyCentsAsYuan(input.loanOffsetAmountCents)}`,
     input.payableLabel ?? "公司补付", `￥${formatMoneyCentsAsYuan(input.companyPayableAmountCents)}`
   ]);
@@ -53,12 +58,16 @@ export async function renderExpenseClaimFinalPaymentPdf(input: ExpenseClaimFinal
     "大写", formatChineseUppercaseMoney(input.paidAmountCents)
   ]);
   y += 4;
-  y = row(doc, margin, y, [74, 106, 106, width - 286], 20, ["付款日期", "付款方式", "实际金额", "备注"], true);
+  const paymentWidths = hasRegisteredPayers ? [62, 80, 90, 145, width - 377] : [74, 106, 106, width - 286];
+  y = row(doc, margin, y, paymentWidths, 20, [
+    "付款日期", "付款方式", "实际金额", ...(hasRegisteredPayers ? ["实际付款主体"] : []), "备注"
+  ], true);
   for (const payment of input.payments) {
-    y = row(doc, margin, y, [74, 106, 106, width - 286], 24, [
+    y = row(doc, margin, y, paymentWidths, 24, [
       formatDate(payment.paidAt),
       payment.paymentMethod,
       `￥${formatMoneyCentsAsYuan(payment.amountCents)}`,
+      ...(hasRegisteredPayers ? [payment.actualPayerName ?? input.paymentSubjectName] : []),
       payment.note ?? ""
     ]);
   }

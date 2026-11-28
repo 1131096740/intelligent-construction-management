@@ -222,7 +222,7 @@ describe("ContractApprovalRouteService", () => {
     ).rejects.toThrow("仅允许该项目合同员、公司合同员或合同部主管发起新合同审批");
   });
 
-  it.each([null, "", "unknown_type"])("fails closed for an unsupported type: %p", async (contractTypeKey) => {
+  it.each([null, "", "unknown_type", "other"])("fails closed for an unsupported type: %p", async (contractTypeKey) => {
     const { tx } = txFor();
 
     await expect(

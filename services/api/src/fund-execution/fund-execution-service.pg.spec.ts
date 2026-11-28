@@ -2,6 +2,8 @@ import { ConflictException, ForbiddenException } from "@nestjs/common";
 import { Prisma, PrismaClient } from "@prisma/client";
 import { createHash, randomUUID } from "node:crypto";
 
+import { ApprovalFormService } from "../approval/approval-form.service";
+import { ApprovalProgressService } from "../approval/approval-progress.service";
 import { AuditService } from "../audit/audit.service";
 import { OperatingLedgerService } from "../operating-ledger/operating-ledger.service";
 import { ProjectFundingAvailabilityService } from "../project-funding/project-funding-availability.service";
@@ -101,8 +103,7 @@ describePostgres("FundExecutionService PostgreSQL 16 command boundary", () => {
   const operatingLedger = new OperatingLedgerService(prisma as never);
   const options = new FundExecutionSelectionOptionsService(
     prisma as never,
-    selectionRefs,
-    projectFunding
+    selectionRefs
   );
   const canonicalAdapter = new FundExecutionCanonicalAdapterService(
     projectFunding,
@@ -639,7 +640,7 @@ describePostgres("FundExecutionService PostgreSQL 16 command boundary", () => {
     const targets = await options.listReversalTargets(ACTOR_USER_ID);
     expect(targets.length).toBeGreaterThan(0);
     const observation = (
-      await options.listObservationCandidates(ACTOR_USER_ID)
+      await options.listObservationCandidates(ACTOR_USER_ID, new Date(), "fund_execution_reversal")
     ).find(({ summary }) => summary.includes("PG 测试其他账户公司"));
     if (!observation) throw new Error("holder mismatch observation missing");
     await expect(
@@ -1378,6 +1379,21 @@ describePostgres("FundExecutionService PostgreSQL 16 command boundary", () => {
   }
 
   async function createAndConfirmAppliedProjectFundOutflow() {
+    // Qualification mounts the exact pre-cutover classes only as historical
+    // setup. They run the same database guards while today's service handles
+    // every denial, replay and new reversal below.
+    const optionsFixture = "./fund-execution-selection-options.pre-cutover.fixture";
+    const serviceFixture = "./fund-execution.pre-cutover.fixture";
+    const { FundExecutionSelectionOptionsService: ArchivedOptions } =
+      await import(optionsFixture) as {
+        FundExecutionSelectionOptionsService: new (
+          db: never, refs: FundExecutionSelectionRefService, funding: ProjectFundingAvailabilityService
+        ) => FundExecutionSelectionOptionsService;
+      };
+    const { FundExecutionService: ArchivedService } =
+      await import(serviceFixture) as { FundExecutionService: typeof FundExecutionService };
+    const archiveOptions = new ArchivedOptions(prisma as never, selectionRefs, projectFunding);
+    const archiveService = new ArchivedService(prisma as never, audit, archiveOptions, canonicalAdapter);
     await observationService.record({
       reference: "PG-APPLIED-PROJECT-FUND-OUTFLOW",
       payerVerificationId: PAYER_VERIFICATION_ID,
@@ -1395,58 +1411,85 @@ describePostgres("FundExecutionService PostgreSQL 16 command boundary", () => {
       createdByUserId: ACTOR_USER_ID,
       auditRequestId: randomUUID()
     });
-    const observation = (
-      await options.listObservationCandidates(ACTOR_USER_ID)
-    ).find(
-      ({ summary }) =>
-        summary.startsWith("出账") && summary.includes("PG 测试参与公司")
-    );
+    const observation = (await archiveOptions.listObservationCandidates(ACTOR_USER_ID))
+      .find(({ summary }) => summary.startsWith("出账") && summary.includes("PG 测试参与公司"));
     if (!observation) throw new Error("applied project fund outflow missing");
-    const created = await service.createCase(ACTOR_USER_ID, {
+    expect((await options.listObservationCandidates(ACTOR_USER_ID))
+      .some(({ summary }) => summary.startsWith("出账"))).toBe(false);
+    const createInput = {
       observationSelectionRef: observation.selectionRef,
       reason: "独立 project_fund applied 部分反向源",
       idempotencyKey: randomUUID()
+    };
+    await expect(service.createCase(ACTOR_USER_ID, createInput)).rejects.toMatchObject({ status: 410 });
+    await expect(prisma.fundExecutionCommandReceipt.count({ where: { idempotencyKey: createInput.idempotencyKey } })).resolves.toBe(0);
+    const created = await archiveService.createCase(ACTOR_USER_ID, createInput);
+    await expect(service.createCase(ACTOR_USER_ID, createInput)).resolves.toEqual(created);
+    await expect(service.createCase(ACTOR_USER_ID, { ...createInput, reason: "不同原因" })).rejects.toMatchObject({ status: 409 });
+
+    const plans = await archiveOptions.listCasePlans(created.caseId, ACTOR_USER_ID);
+    const appliedPlan = plans.find((plan) => plan.lines.some((line) =>
+      line.axes.some(({ axis, status }) => axis === "project_fund" && status === "applied")
+    ));
+    if (!appliedPlan) throw new Error("archived project_fund applied plan missing");
+    await expect(options.listCasePlans(created.caseId, ACTOR_USER_ID)).resolves.toEqual([]);
+    await expect(service.getCase(ACTOR_USER_ID, created.caseId)).resolves.toMatchObject({
+      actions: expect.arrayContaining([
+        expect.objectContaining({ key: "update_case", enabled: false }),
+        expect.objectContaining({ key: "submit_case", enabled: false })
+      ])
     });
-    const plans = await options.listCasePlans(created.caseId, ACTOR_USER_ID);
-    const appliedPlan = plans.find((plan) =>
-      plan.lines.some((line) =>
-        line.axes.some(
-          ({ axis, status }) => axis === "project_fund" && status === "applied"
-        )
-      )
-    );
-    if (!appliedPlan) {
-      throw new Error("server did not offer an applied project_fund plan");
-    }
-    const updated = await service.updateCase(ACTOR_USER_ID, {
-      caseId: created.caseId,
-      expectedRevision: created.revision,
-      reason: "选择服务端 project_fund applied 方案",
-      selectionRefs: appliedPlan.lines.flatMap((line) =>
-        line.axes.map(({ selectionRef }) => selectionRef)
-      ),
+    const updateInput = {
+      caseId: created.caseId, expectedRevision: created.revision, reason: "选择服务端 project_fund applied 方案",
+      selectionRefs: appliedPlan.lines.flatMap((line) => line.axes.map(({ selectionRef }) => selectionRef)),
       idempotencyKey: randomUUID()
+    };
+    await expect(service.updateCase(ACTOR_USER_ID, updateInput)).rejects.toMatchObject({ status: 410 });
+    const updated = await archiveService.updateCase(ACTOR_USER_ID, updateInput);
+    await expect(service.updateCase(ACTOR_USER_ID, updateInput)).resolves.toEqual(updated);
+
+    const submitInput = { caseId: created.caseId, expectedRevision: updated.revision, idempotencyKey: randomUUID() };
+    await expect(service.submitCase(ACTOR_USER_ID, submitInput)).rejects.toMatchObject({ status: 410 });
+    const submitted = await archiveService.submitCase(ACTOR_USER_ID, submitInput);
+    await expect(service.submitCase(ACTOR_USER_ID, submitInput)).resolves.toEqual(submitted);
+    const approvalInstanceId = submitted.approvalInstanceId!;
+    const sms = { available: () => true, send: jest.fn(), sendDutyIntent: jest.fn() };
+    const progress = new ApprovalProgressService(prisma as never, sms as never);
+    const progressBefore = await progress.detail(approvalInstanceId, REVIEWER_USER_ID, true);
+    expect(progressBefore).toMatchObject({ canHandle: true, canRemind: false, remindableRecipients: [] });
+    const reminderRequest = randomUUID();
+    await expect(progress.remind(approvalInstanceId, ACTOR_USER_ID, reminderRequest, progressBefore.reminderToken))
+      .rejects.toMatchObject({ status: 410 });
+    await expect(prisma.approvalActionLog.count({ where: { id: reminderRequest } })).resolves.toBe(0);
+    expect(sms.send).not.toHaveBeenCalled();
+    expect(sms.sendDutyIntent).not.toHaveBeenCalled();
+
+    await expect(service.getCase(REVIEWER_USER_ID, created.caseId)).resolves.toMatchObject({
+      actions: expect.arrayContaining([
+        expect.objectContaining({ key: "approve", enabled: false }),
+        expect.objectContaining({ key: "return_approval", enabled: true })
+      ])
     });
-    const submitted = await service.submitCase(ACTOR_USER_ID, {
-      caseId: created.caseId,
-      expectedRevision: updated.revision,
-      idempotencyKey: randomUUID()
+    const approveInput = { caseId: created.caseId, action: "approve" as const, comment: "财务主管同意 applied project_fund 出账" };
+    await expect(service.reviewApproval(REVIEWER_USER_ID, approveInput)).rejects.toMatchObject({ status: 410 });
+    await archiveService.reviewApproval(REVIEWER_USER_ID, approveInput);
+    await archiveService.reviewApproval(CHAIRMAN_USER_ID, {
+      caseId: created.caseId, action: "approve", comment: "董事长同意 applied project_fund 出账"
     });
-    await service.reviewApproval(REVIEWER_USER_ID, {
-      caseId: created.caseId,
-      action: "approve",
-      comment: "财务主管同意 applied project_fund 出账"
-    });
-    await service.reviewApproval(CHAIRMAN_USER_ID, {
-      caseId: created.caseId,
-      action: "approve",
-      comment: "董事长同意 applied project_fund 出账"
-    });
-    return service.confirmCase(CONFIRMER_USER_ID, {
-      caseId: created.caseId,
-      expectedRevision: submitted.revision,
-      idempotencyKey: randomUUID()
-    });
+    const files = { uploadPrivateFile: jest.fn() };
+    const forms = new ApprovalFormService(prisma as never, files as never);
+    await expect(forms.generateForInstance(approvalInstanceId, REVIEWER_USER_ID)).rejects.toMatchObject({ status: 410 });
+    await expect(prisma.approvalFormGenerationClaim.count({ where: { approvalInstanceId } })).resolves.toBe(0);
+    await expect(prisma.pdfDocument.count({ where: { approvalInstanceId } })).resolves.toBe(0);
+    expect(files.uploadPrivateFile).not.toHaveBeenCalled();
+
+    const confirmInput = { caseId: created.caseId, expectedRevision: submitted.revision, idempotencyKey: randomUUID() };
+    await expect(service.confirmCase(CONFIRMER_USER_ID, confirmInput)).rejects.toMatchObject({ status: 410 });
+    const confirmed = await archiveService.confirmCase(CONFIRMER_USER_ID, confirmInput);
+    await expect(service.confirmCase(CONFIRMER_USER_ID, confirmInput)).resolves.toEqual(confirmed);
+    await expect(prisma.fundExecutionCase.count({ where: { caseKey: created.caseId } })).resolves.toBe(4);
+    await expect(prisma.fundExecutionCommandReceipt.count({ where: { fundExecutionId: created.fundExecutionId } })).resolves.toBe(4);
+    return confirmed;
   }
 
   async function createAndConfirmReversal(input: {
@@ -1481,7 +1524,7 @@ describePostgres("FundExecutionService PostgreSQL 16 command boundary", () => {
     );
     if (!target) throw new Error("reversal target missing");
     const observation = (
-      await options.listObservationCandidates(ACTOR_USER_ID)
+      await options.listObservationCandidates(ACTOR_USER_ID, new Date(), "fund_execution_reversal")
     ).find(
       ({ summary }) =>
         summary.startsWith(input.direction === "inflow" ? "入账" : "出账") &&

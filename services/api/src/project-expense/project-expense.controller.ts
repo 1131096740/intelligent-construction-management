@@ -4,6 +4,7 @@ import {
   Body,
   Controller,
   ForbiddenException,
+  GoneException,
   Get,
   Optional,
   Param,
@@ -33,6 +34,7 @@ import { RecordProjectExpensePurchaseExecutionDto } from "./dto/record-project-e
 import { ReviewProjectExpenseApprovalDto } from "./dto/review-project-expense-approval.dto";
 import { VoidProjectExpenseRequestDto } from "./dto/void-project-expense-request.dto";
 import { WithdrawProjectExpenseApprovalDto } from "./dto/withdraw-project-expense-approval.dto";
+import { PROJECT_EMPLOYEE_LOAN_RETIRED } from "./project-employee-loan-retirement";
 import { ProjectExpenseService } from "./project-expense.service";
 
 const FUNDS_OVERVIEW_POSITIONS = [
@@ -232,6 +234,7 @@ export class ProjectExpenseController {
       expenseRequestId,
       user.id
     );
+    if (detail.historicalEmployeeLoan) throw new GoneException(PROJECT_EMPLOYEE_LOAN_RETIRED);
     if (
       !detail.availableActions.some(
         (action) => action.key === "record_execution" && action.enabled

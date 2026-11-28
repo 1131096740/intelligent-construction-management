@@ -26,18 +26,6 @@ async function getDownloadTicketValidationResponse(
   throw new Error("Expected download ticket validation to reject the request");
 }
 
-async function expectControllerBadRequest(action: Promise<unknown>, message: string) {
-  try {
-    await action;
-  } catch (error) {
-    expect(error).toBeInstanceOf(BadRequestException);
-    expect((error as BadRequestException).getStatus()).toBe(400);
-    expect((error as BadRequestException).message).toBe(message);
-    return;
-  }
-  throw new Error("Expected controller validation to reject the request");
-}
-
 function contextWithUploadRequest(userId: string) {
   return {
     getHandler: () => FileController.prototype.upload,
@@ -86,13 +74,11 @@ function uploadRolePrisma(roleKey: string, events: string[] = []) {
 }
 
 describe("FileController authorization wiring", () => {
-  it("rejects an empty download ticket body through the API pipe", async () => {
-    const response = await getDownloadTicketValidationResponse({});
+  it("accepts an empty download ticket body without password or reason", async () => {
+    const result = await createApiValidationPipe().transform({}, downloadTicketBodyMetadata);
 
-    expect(response.message).toBe("提交内容格式不正确，请检查后重试");
-    expect(response.errors).toEqual(
-      expect.arrayContaining(["请输入当前登录密码", "请填写下载原因"])
-    );
+    expect(result).toBeInstanceOf(CreateDownloadTicketDto);
+    expect(result).toEqual({});
   });
 
   it("rejects an array download ticket body through the API pipe", async () => {
@@ -116,85 +102,59 @@ describe("FileController authorization wiring", () => {
   });
 
   it.each([
-    { label: "missing", value: undefined, include: false, expected: "请填写下载原因" },
-    { label: "undefined", value: undefined, include: true, expected: "请填写下载原因" },
-    { label: "null", value: null, include: true, expected: "请填写下载原因" },
-    { label: "empty", value: "", include: true, expected: "请填写下载原因" },
-    { label: "whitespace-only", value: "   ", include: true, expected: "请填写下载原因" },
-    { label: "number", value: 123, include: true, expected: "下载原因必须是文字" },
+    { label: "missing", value: undefined, include: false },
+    { label: "undefined", value: undefined, include: true },
+    { label: "null", value: null, include: true },
+    { label: "empty", value: "", include: true },
+    { label: "whitespace-only", value: "   ", include: true }
+  ])("accepts an optional $label download reason", async ({ value, include }) => {
+    const body: Record<string, unknown> = {};
+    if (include) {
+      body.downloadReason = value;
+    }
+
+    await expect(
+      createApiValidationPipe().transform(body, downloadTicketBodyMetadata)
+    ).resolves.toBeInstanceOf(CreateDownloadTicketDto);
+  });
+
+  it.each([
+    { label: "number", value: 123, expected: "下载原因必须是文字" },
     {
       label: "object",
       value: { secret: "TOP-SECRET" },
-      include: true,
       expected: "下载原因必须是文字"
     },
     {
       label: "201 ASCII characters",
       value: "a".repeat(201),
-      include: true,
       expected: "下载原因不能超过 200 个字"
     },
     {
       label: "201 Chinese characters",
       value: "中".repeat(201),
-      include: true,
       expected: "下载原因不能超过 200 个字"
     },
     {
       label: "201 emoji characters",
       value: "😀".repeat(201),
-      include: true,
       expected: "下载原因不能超过 200 个字"
-    },
-    {
-      label: "201 ASCII spaces",
-      value: " ".repeat(201),
-      include: true,
-      expected: "请填写下载原因"
-    },
-    {
-      label: "201 full-width spaces",
-      value: "　".repeat(201),
-      include: true,
-      expected: "请填写下载原因"
     }
-  ])("returns one exact error for a $label download reason", async ({ value, include, expected }) => {
-    const body: Record<string, unknown> = { confirmationPassword: "current-password" };
-    if (include) {
-      body.downloadReason = value;
-    }
-
-    const response = await getDownloadTicketValidationResponse(body);
+  ])("returns one exact error for an invalid $label download reason", async ({ value, expected }) => {
+    const response = await getDownloadTicketValidationResponse({ downloadReason: value });
 
     expect(response.errors).toEqual([expected]);
     expect(JSON.stringify(response)).not.toContain("TOP-SECRET");
   });
 
-  it.each([
-    { label: "missing", value: undefined, include: false, expected: "请输入当前登录密码" },
-    { label: "undefined", value: undefined, include: true, expected: "请输入当前登录密码" },
-    { label: "null", value: null, include: true, expected: "请输入当前登录密码" },
-    { label: "empty", value: "", include: true, expected: "请输入当前登录密码" },
-    { label: "whitespace-only", value: "   ", include: true, expected: "请输入当前登录密码" },
-    { label: "number", value: 123, include: true, expected: "当前登录密码必须是文字" },
-    { label: "object", value: {}, include: true, expected: "当前登录密码必须是文字" }
-  ])(
-    "returns one exact error for a $label confirmation password",
-    async ({ value, include, expected }) => {
-      const body: Record<string, unknown> = { downloadReason: "合同归档复核" };
-      if (include) {
-        body.confirmationPassword = value;
-      }
+  it("still rejects a non-text confirmation password when the legacy field is present", async () => {
+    const response = await getDownloadTicketValidationResponse({ confirmationPassword: 123 });
 
-      const response = await getDownloadTicketValidationResponse(body);
-
-      expect(response.errors).toEqual([expected]);
-    }
-  );
+    expect(response.errors).toEqual(["当前登录密码必须是文字"]);
+  });
 
   it("accepts and transforms a valid download ticket request", async () => {
     const value = {
-      confirmationPassword: "current-password",
       downloadReason: "合同归档复核"
     };
     const result = await createApiValidationPipe().transform(value, downloadTicketBodyMetadata);
@@ -205,7 +165,6 @@ describe("FileController authorization wiring", () => {
 
   it("accepts an explicit nonblank delegator for a resource-bound download ticket", async () => {
     const value = {
-      confirmationPassword: "current-password",
       downloadReason: "全局发票复核",
       delegatorUserId: "finance-director-1"
     };
@@ -217,7 +176,6 @@ describe("FileController authorization wiring", () => {
 
   it("accepts the explicit PDF preview ticket mode and rejects unknown modes", async () => {
     const preview = {
-      confirmationPassword: "current-password",
       downloadReason: "合同正式文件复核",
       accessMode: "preview"
     };
@@ -232,7 +190,7 @@ describe("FileController authorization wiring", () => {
     { label: "Chinese", downloadReason: "中".repeat(200) },
     { label: "emoji", downloadReason: "😀".repeat(200) }
   ])("accepts a 200-character $label download reason", async ({ downloadReason }) => {
-    const value = { confirmationPassword: "current-password", downloadReason };
+    const value = { downloadReason };
     const result = await createApiValidationPipe().transform(value, downloadTicketBodyMetadata);
 
     expect(result).toBeInstanceOf(CreateDownloadTicketDto);
@@ -266,7 +224,7 @@ describe("FileController authorization wiring", () => {
         return { id: "file-1" };
       })
     };
-    const controller = new FileController(files as never, { confirmPassword: jest.fn() } as never);
+    const controller = new FileController(files as never);
     await expect(guard.canActivate(contextWithUploadRequest("finance-1"))).resolves.toBe(true);
     const body = await createApiValidationPipe().transform(
       { idempotencyKey: "a43073f9-9731-4d71-9498-b9727344dbd4" },
@@ -296,7 +254,7 @@ describe("FileController authorization wiring", () => {
 
   it("stops an unapproved role at the route guard before the upload service", async () => {
     const files = { uploadPrivateFile: jest.fn() };
-    const controller = new FileController(files as never, { confirmPassword: jest.fn() } as never);
+    const controller = new FileController(files as never);
     const guard = new PermissionGuard(
       uploadReflector() as never,
       uploadRolePrisma("employee") as never
@@ -346,10 +304,7 @@ describe("FileController authorization wiring", () => {
     const files = {
       uploadPrivateFile: jest.fn().mockResolvedValue({ id: "file-1" })
     };
-    const auth = {
-      confirmPassword: jest.fn()
-    };
-    const controller = new FileController(files as never, auth as never);
+    const controller = new FileController(files as never);
 
     await controller.upload(
       {
@@ -374,10 +329,7 @@ describe("FileController authorization wiring", () => {
       const files = {
         uploadPrivateFile: jest.fn().mockResolvedValue({ id: "file-1" })
       };
-      const auth = {
-        confirmPassword: jest.fn()
-      };
-      const controller = new FileController(files as never, auth as never);
+      const controller = new FileController(files as never);
 
       await controller.upload(
         {
@@ -401,7 +353,7 @@ describe("FileController authorization wiring", () => {
     const files = {
       uploadPrivateFile: jest.fn().mockResolvedValue({ id: "file-1" })
     };
-    const controller = new FileController(files as never, { confirmPassword: jest.fn() } as never);
+    const controller = new FileController(files as never);
 
     await controller.upload(
       {
@@ -427,10 +379,7 @@ describe("FileController authorization wiring", () => {
     const files = {
       uploadPrivateFile: jest.fn().mockResolvedValue({ id: "file-1" })
     };
-    const controller = new FileController(
-      files as never,
-      { confirmPassword: jest.fn() } as never
-    );
+    const controller = new FileController(files as never);
 
     await controller.upload(
       {
@@ -453,48 +402,38 @@ describe("FileController authorization wiring", () => {
     });
   });
 
-  it("confirms password before issuing a private file download ticket", async () => {
+  it("issues a private file download ticket without a password or reason", async () => {
     const files = {
       createDownloadTicket: jest.fn().mockResolvedValue({ downloadUrl: "/files/file-1/download" })
     };
-    const auth = {
-      confirmPassword: jest.fn().mockResolvedValue({ ok: true })
-    };
-    const controller = new FileController(files as never, auth as never);
+    const controller = new FileController(files as never);
 
     await controller.createDownloadTicket(
       "file-1",
       { id: "user-1", name: "张三", phone: "13800000000" },
-      { confirmationPassword: "current-password", downloadReason: "合同归档复核" }
+      {}
     );
 
-    expect(auth.confirmPassword).toHaveBeenCalledWith("user-1", "current-password");
     expect(files.createDownloadTicket).toHaveBeenCalledWith("file-1", {
-      actorUserId: "user-1",
-      downloadReason: "合同归档复核"
+      actorUserId: "user-1"
     });
   });
 
-  it("forwards an explicit global-invoice delegator only after password confirmation", async () => {
+  it("forwards an explicit global-invoice delegator without a password", async () => {
     const files = {
       createDownloadTicket: jest.fn().mockResolvedValue({ downloadUrl: "/files/file-1/download" })
     };
-    const auth = {
-      confirmPassword: jest.fn().mockResolvedValue({ ok: true })
-    };
-    const controller = new FileController(files as never, auth as never);
+    const controller = new FileController(files as never);
 
     await controller.createDownloadTicket(
       "file-1",
       { id: "actual-actor", name: "经办人", phone: "13800000000" },
       {
-        confirmationPassword: "current-password",
-        downloadReason: "全局发票复核",
-        delegatorUserId: "finance-director-1"
+        delegatorUserId: "finance-director-1",
+        downloadReason: "全局发票复核"
       }
     );
 
-    expect(auth.confirmPassword).toHaveBeenCalledWith("actual-actor", "current-password");
     expect(files.createDownloadTicket).toHaveBeenCalledWith("file-1", {
       actorUserId: "actual-actor",
       delegatorUserId: "finance-director-1",
@@ -512,7 +451,7 @@ describe("FileController authorization wiring", () => {
         }
       })
     };
-    const controller = new FileController(files as never, {} as never);
+    const controller = new FileController(files as never);
 
     await controller.downloadTicketCapability(
       "file-1",
@@ -526,26 +465,21 @@ describe("FileController authorization wiring", () => {
     );
   });
 
-  it("forwards the explicit preview mode only after password confirmation", async () => {
+  it("forwards the explicit preview mode without a password", async () => {
     const files = {
       createDownloadTicket: jest.fn().mockResolvedValue({ downloadUrl: "/files/file-1/download" })
     };
-    const auth = {
-      confirmPassword: jest.fn().mockResolvedValue({ ok: true })
-    };
-    const controller = new FileController(files as never, auth as never);
+    const controller = new FileController(files as never);
 
     await controller.createDownloadTicket(
       "file-1",
       { id: "user-1", name: "张三", phone: "13800000000" },
       {
-        confirmationPassword: "current-password",
         downloadReason: "合同正式文件复核",
         accessMode: "preview"
       }
     );
 
-    expect(auth.confirmPassword).toHaveBeenCalledWith("user-1", "current-password");
     expect(files.createDownloadTicket).toHaveBeenCalledWith("file-1", {
       actorUserId: "user-1",
       downloadReason: "合同正式文件复核",
@@ -566,7 +500,7 @@ describe("FileController authorization wiring", () => {
       })
     };
     const response = { set: jest.fn() };
-    const controller = new FileController(files as never, { confirmPassword: jest.fn() } as never);
+    const controller = new FileController(files as never);
 
     await controller.download(
       "file-1",
@@ -591,68 +525,38 @@ describe("FileController authorization wiring", () => {
     }));
   });
 
-  it("does not issue a private file download ticket without confirmation password", async () => {
+  it("does not require a password confirmation before issuing a private file download ticket", async () => {
     const files = {
-      createDownloadTicket: jest.fn()
+      createDownloadTicket: jest.fn().mockResolvedValue({ downloadUrl: "/files/file-1/download" })
     };
-    const auth = {
-      confirmPassword: jest.fn()
-    };
-    const controller = new FileController(files as never, auth as never);
+    const controller = new FileController(files as never);
 
-    await expectControllerBadRequest(
-      controller.createDownloadTicket(
-        "file-1",
-        { id: "user-1", name: "张三", phone: "13800000000" },
-        { confirmationPassword: "   ", downloadReason: "合同归档复核" }
-      ),
-      "请输入当前登录密码后再下载资料"
+    await controller.createDownloadTicket(
+      "file-1",
+      { id: "user-1", name: "张三", phone: "13800000000" },
+      { downloadReason: "合同归档复核" }
     );
 
-    expect(auth.confirmPassword).not.toHaveBeenCalled();
-    expect(files.createDownloadTicket).not.toHaveBeenCalled();
+    expect(files.createDownloadTicket).toHaveBeenCalledWith("file-1", {
+      actorUserId: "user-1",
+      downloadReason: "合同归档复核"
+    });
   });
 
-  it("does not issue a private file download ticket without a download reason", async () => {
+  it("keeps a blank download reason optional for the backend audit default", async () => {
     const files = {
-      createDownloadTicket: jest.fn()
+      createDownloadTicket: jest.fn().mockResolvedValue({ downloadUrl: "/files/file-1/download" })
     };
-    const auth = {
-      confirmPassword: jest.fn()
-    };
-    const controller = new FileController(files as never, auth as never);
+    const controller = new FileController(files as never);
 
-    await expectControllerBadRequest(
-      controller.createDownloadTicket(
-        "file-1",
-        { id: "user-1", name: "张三", phone: "13800000000" },
-        { confirmationPassword: "current-password", downloadReason: "   " }
-      ),
-      "请填写下载原因，便于留痕审计"
+    await controller.createDownloadTicket(
+      "file-1",
+      { id: "user-1", name: "张三", phone: "13800000000" },
+      { downloadReason: "   " }
     );
 
-    expect(auth.confirmPassword).not.toHaveBeenCalled();
-    expect(files.createDownloadTicket).not.toHaveBeenCalled();
-  });
-
-  it("does not issue a private file download ticket when password confirmation fails", async () => {
-    const files = {
-      createDownloadTicket: jest.fn()
-    };
-    const auth = {
-      confirmPassword: jest.fn().mockRejectedValue(new Error("当前密码不正确，请重新输入"))
-    };
-    const controller = new FileController(files as never, auth as never);
-
-    await expect(
-      controller.createDownloadTicket(
-        "file-1",
-        { id: "user-1", name: "张三", phone: "13800000000" },
-        { confirmationPassword: "wrong-password", downloadReason: "历史接管资料复核" }
-      )
-    ).rejects.toThrow("当前密码不正确，请重新输入");
-
-    expect(auth.confirmPassword).toHaveBeenCalledWith("user-1", "wrong-password");
-    expect(files.createDownloadTicket).not.toHaveBeenCalled();
+    expect(files.createDownloadTicket).toHaveBeenCalledWith("file-1", {
+      actorUserId: "user-1"
+    });
   });
 });

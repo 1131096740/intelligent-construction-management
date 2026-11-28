@@ -1,10 +1,12 @@
+import { contractReminderIntent, independentFinancialReminderIntent } from "./approval-reminder-business-intent";
+import { settlementArchiveDutySmsIntent } from "../settlement/settlement-archive-notification.service";
 import { BadRequestException, ConflictException, Injectable, NotFoundException, Optional } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { resolveEffectiveRoleKeys, type RoleKey } from '@jiangkong/shared-domain';
 import { createHash } from 'node:crypto';
 import { PrismaService } from '../database/prisma.service';
 import { SpotProcurementPilotService } from '../spot-procurement/spot-procurement-pilot.service';
-import { ApprovalSmsService } from './approval-sms.service';
+import { ApprovalSmsService, approvalDutyRichTemplateEnabled } from './approval-sms.service';
 import { SOURCES, INDEPENDENT_REVIEW_LOCK_TABLES, type IndependentReviewNode, type IndependentReviewSubject } from './independent-approval-progress.sources';
 
 type Db = Prisma.TransactionClient;
@@ -12,7 +14,7 @@ const ID_PREFIX = 'independent:';
 const CURSOR_PREFIX = 'independent-cursor:';
 const REMINDER_BUSINESS = 'approval_progress_reminder';
 const ACTION = { request: 'approval_progress.sms_request', recipient: 'approval_progress.sms_recipient_result', result: 'approval_progress.sms_result' } as const;
-const COOLDOWN_MS = 10 * 60 * 1000;
+const COOLDOWN_MS = 60_000;
 const SCAN_LIMIT = 200;
 const object = (value: unknown): Record<string, unknown> => value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : {};
 const strings = (value: unknown): string[] => Array.isArray(value) ? value.filter((item): item is string => typeof item === 'string') : [];
@@ -63,7 +65,45 @@ export class IndependentApprovalProgressService {
 
   async detail(id: string, actorId: string) { return this.project(await this.context(this.prisma, id, actorId)); }
 
-  async remind(id: string, actorId: string, requestId: string, expectedToken: string) {
+  async recentPendingReminders(actorId: string, evaluatedAt: Date) {
+    const candidates = await this.prisma.auditLog.findMany({
+      where: {
+        businessType: REMINDER_BUSINESS, action: ACTION.request,
+        createdAt: { gte: new Date(evaluatedAt.getTime() - 24 * 60 * 60 * 1000), lte: evaluatedAt },
+        metadata: { path: ['recipientIds'], array_contains: [actorId] }
+      },
+      select: { id: true, businessId: true, metadata: true, createdAt: true },
+      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+      take: 60
+    });
+    if (!candidates.length) return [];
+    const directory = await this.directory(this.prisma);
+    if (!directory.byId.get(actorId)?.isActive) return [];
+    const matched = new Set<string>();
+    const notices: Array<{
+      id: string; businessId: string; kind: string; reminderId: string; remindedAt: Date;
+      title: string; currentNodeName: string; businessCode: string; projectName: string;
+    }> = [];
+    for (const row of candidates) {
+      if (!row.businessId || matched.has(row.businessId) || !strings(object(row.metadata).recipientIds).includes(actorId)) continue;
+      try {
+        const context = await this.context(this.prisma, row.businessId, actorId, directory);
+        if (!context.pendingIds.includes(actorId) || object(row.metadata).currentNodeIndex !== context.subject.currentNodeIndex) continue;
+        const current = this.project(context);
+        if (object(row.metadata).reminderToken !== current.reminderToken) continue;
+        matched.add(row.businessId);
+        notices.push({ id: current.id, businessId: current.businessId, kind: current.businessType,
+          title: current.title, currentNodeName: current.currentNodeName, businessCode: current.businessCode,
+          projectName: current.projectName, reminderId: row.id, remindedAt: row.createdAt });
+      } catch (error) {
+        if (!(error instanceof NotFoundException)) throw error;
+      }
+      if (notices.length === 10) break;
+    }
+    return notices;
+  }
+
+  async remind(id: string, actorId: string, requestId: string, expectedToken: string, selectedRecipientIds?: string[]) {
     if (!/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(requestId)) throw new BadRequestException('催办请求无效，请刷新后重试');
     const reservation = await this.prisma.$transaction(async tx => {
       const context = await this.lockedContext(tx, id, actorId);
@@ -75,26 +115,34 @@ export class IndependentApprovalProgressService {
       const progress = this.project(context);
       if (expectedToken !== progress.reminderToken) throw new ConflictException('审核进度或待审核人已变化，请刷新后重新确认催办对象');
       if (!progress.canRemind) throw new ConflictException(progress.reminderUnavailableReason ?? '当前不能催办');
-      const recipientIds = context.pendingIds;
-      await tx.auditLog.create({ data: { id: requestId, actorUserId: actorId, businessType: REMINDER_BUSINESS, businessId: id, action: ACTION.request, metadata: { recipientIds, reminderToken: progress.reminderToken } } });
+      const recipientIds = selectedRecipientIds ?? context.pendingIds;
+      if (!recipientIds.length || recipientIds.some(userId => !context.pendingIds.includes(userId))) {
+        throw new ConflictException('待审核人已变化，请刷新后重新选择');
+      }
+      await tx.auditLog.create({ data: { id: requestId, actorUserId: actorId, businessType: REMINDER_BUSINESS, businessId: id, action: ACTION.request, metadata: { recipientIds, reminderToken: progress.reminderToken, currentNodeIndex: context.subject.currentNodeIndex } } });
       return { recipientIds, reminderToken: progress.reminderToken };
     }, { maxWait: 15000, timeout: 20000 });
     if (!reservation) return this.detail(id, actorId);
     const results: Array<{ userId: string; status: string; message: string }> = [];
     for (const userId of reservation.recipientIds) {
-      const result = await this.prisma.$transaction(async tx => {
+      const message = await this.prisma.$transaction(async tx => {
         const context = await this.lockedContext(tx, id, actorId);
         const progress = this.project(context);
-        let outcome: { status: string; message: string; receipt?: string };
-        if (progress.reminderToken !== reservation.reminderToken || !context.pendingIds.includes(userId)) outcome = { status: 'cancelled', message: '审核节点或待审核人已变化，本次未发送' };
-        else {
-          try { outcome = await this.sms.send(context.directory.byId.get(userId)?.phone ?? '', context.subject.title, progress.currentNodeName, context.subject.businessCode); }
-          catch { outcome = { status: 'unknown', message: '短信发送结果待确认，请勿重复发送' }; }
-        }
-        const result = { userId, status: outcome.status, message: outcome.message };
-        await tx.auditLog.create({ data: { actorUserId: actorId, businessType: REMINDER_BUSINESS, businessId: id, action: ACTION.recipient, metadata: { requestId, ...result, ...(outcome.receipt ? { receipt: outcome.receipt } : {}) } } });
-        return result;
+        if (progress.reminderToken !== reservation.reminderToken || !context.pendingIds.includes(userId)) return null;
+        const {subject} = context;
+        const legacy = [context.directory.byId.get(userId)?.phone ?? "",subject.title,progress.currentNodeName,subject.businessCode] as const;
+        const rich = approvalDutyRichTemplateEnabled() ? await this.reminderIntent(tx,context,progress.currentNodeName) : null;
+        return {legacy,rich};
       }, { maxWait: 15000, timeout: 20000 });
+      let outcome: { status: string; message: string; receipt?: string };
+      if (message) {
+        try { outcome = message.rich ? await this.sms.sendDutyIntent(message.legacy[0],message.rich) : await this.sms.send(...message.legacy); }
+        catch { outcome = { status: 'unknown', message: '短信发送结果待确认，请勿重复发送' }; }
+      } else {
+        outcome = { status: 'cancelled', message: '审核节点或待审核人已变化，本次未发送' };
+      }
+      const result = { userId, status: outcome.status, message: outcome.message };
+      await this.prisma.auditLog.create({ data: { actorUserId: actorId, businessType: REMINDER_BUSINESS, businessId: id, action: ACTION.recipient, metadata: { requestId, ...result, ...(outcome.receipt ? { receipt: outcome.receipt } : {}) } } });
       results.push(result);
     }
     await this.prisma.auditLog.create({ data: { actorUserId: actorId, businessType: REMINDER_BUSINESS, businessId: id, action: ACTION.result, metadata: { requestId, results } } });
@@ -117,6 +165,19 @@ export class IndependentApprovalProgressService {
       if (typeof value.kind !== 'string' || !this.supports(value.kind) || (value.after !== undefined && typeof value.after !== 'string')) throw new Error('审核列表位置无效');
       return { kind: value.kind, after: value.after as string | undefined };
     } catch { throw new BadRequestException('审核列表位置无效，请重新加载'); }
+  }
+
+  private async reminderIntent(tx:Db,context:Awaited<ReturnType<IndependentApprovalProgressService["context"]>>,dutyName:string) {
+    const {subject,project,directory} = context;
+    const scope = {projectId:subject.projectId,projectName:project?.name,
+      applicantName:subject.applicantName || directory.byId.get(subject.applicantUserId)?.name,businessLabel:subject.title,dutyName};
+    if (["contract_seal","contract_archive"].includes(subject.kind)) return contractReminderIntent(tx,subject.id,scope);
+    if (subject.kind === "settlement_archive") {
+      const settlement = await tx.settlement.findUnique({where:{id:subject.id}});
+      return settlement?.governanceVersion === 1 && settlement.status === "pending_archive_confirm" && project
+        ? settlementArchiveDutySmsIntent(tx,settlement,project.name,subject.title,dutyName,subject.applicantUserId) : null;
+    }
+    return independentFinancialReminderIntent(tx,subject.kind,subject.id,scope,subject.businessCode);
   }
 
   private async directory(db: Db) {
@@ -195,7 +256,10 @@ export class IndependentApprovalProgressService {
     const { id, subject, directory, nodeIds, pendingIds, pendingByNode, logs, project, pilotBlocked, projectBlocked } = context;
     const person = (userId: string | null) => ({ id: userId ?? '', name: directory.byId.get(userId ?? '')?.name ?? '历史人员（未记录）' });
     const requests = logs.filter(log => log.action === ACTION.request);
-    const last = requests.at(-1);
+    const last = requests.filter(request => {
+      const index = object(request.metadata).currentNodeIndex;
+      return index === undefined || index === subject.currentNodeIndex;
+    }).at(-1);
     const nextRemindAt = last ? new Date(last.createdAt.getTime() + COOLDOWN_MS).toISOString() : null;
     const active = subject.status === 'in_progress';
     const reminderUnavailableReason = !active ? '流程已结束' : projectBlocked ? '项目已停用，暂不能催办' : pilotBlocked ? '该项目尚未启用零采办理，暂不能催办' : !pendingIds.length ? '当前没有有效待审核人' : !this.sms.available() ? '短信服务尚未启用' : nextRemindAt && Date.parse(nextRemindAt) > Date.now() ? '刚刚已催办，请稍后再试' : null;
@@ -204,8 +268,8 @@ export class IndependentApprovalProgressService {
       projectName: project?.name ?? '公司级审核', applicant: !subject.applicantUserId && subject.applicantName ? { id: '', name: subject.applicantName } : person(subject.applicantUserId), status: subject.status,
       createdAt: subject.createdAt.toISOString(), currentNodeIndex: subject.currentNodeIndex,
       currentNodeName: active ? subject.nodes[subject.currentNodeIndex]?.name ?? '待核对审核节点' : '流程已结束',
-      nodes: subject.nodes.map((node, index) => ({ name: node.name, mode: node.mode === 'all' ? '会签' : '或签', status: node.status, participants: nodeIds[index].map(person), legacyRoster: node.selectedUserIds === undefined, pending: pendingByNode[index].map(person) })),
-      pendingRecipients: pendingIds.map(person), canRemind: reminderUnavailableReason === null, reminderUnavailableReason, nextRemindAt,
+      nodes: subject.nodes.map((node, index) => ({ name: node.name, mode: node.mode === 'all' ? '会签' : '或签', status: node.status, participants: nodeIds[index].map(person), legacyRoster: node.selectedUserIds === undefined, pending: pendingByNode[index].map(person), signatures: [] })),
+      pendingRecipients: pendingIds.map(person), parallelCompletion: undefined, viewerOnly: false, canHandle: false, remindableRecipients: reminderUnavailableReason ? [] : pendingIds.map(person), canRemind: reminderUnavailableReason === null, reminderUnavailableReason, nextRemindAt,
       reminderToken: createHash('sha256').update(JSON.stringify([id, subject.status, subject.currentNodeIndex, subject.updatedAt.toISOString(), subject.nodes.map(node => [node.name, node.status]), [...pendingIds].sort()])).digest('hex'),
       history: [
         ...subject.history.map((event, index) => ({ id: `${id}:history:${index}`, actor: person(event.actorUserId), action: event.action, comment: event.comment, createdAt: event.createdAt.toISOString() })),

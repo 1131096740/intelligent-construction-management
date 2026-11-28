@@ -1,3 +1,7 @@
+import { Test } from "@nestjs/testing";
+import { SpotProcurementReadService } from "./spot-procurement-read.service";
+import { SpotProcurementSettlementService } from "./spot-procurement-settlement.service";
+import { FileService } from "../file/file.service";
 import { mockConfiguredApprovalAssignments } from "../../prisma/fixtures/project-approval-configuration";
 import "reflect-metadata";
 import {
@@ -16,6 +20,7 @@ import { ReviewSpotProcurementPaymentDto } from "./dto/review-spot-procurement-p
 import { UpdateSpotProcurementPaymentDraftDto } from "./dto/update-spot-procurement-payment-draft.dto";
 import { SpotProcurementPaymentController } from "./spot-procurement-payment.controller";
 import { SpotProcurementPaymentService } from "./spot-procurement-payment.service";
+import { paymentApprovalNodes } from "./spot-procurement-approval-nodes";
 
 const version = {
   id: "version-1",
@@ -507,6 +512,7 @@ function validExecutionInput(
 function executionHarness(
   options: {
     payment?: ReturnType<typeof approvedExecutionPayment>;
+    requestProtocolVersion?: number;
     receipts?: bigint[];
     activeExecutions?: Array<{ id: string; amountCents: bigint }>;
     projectRoles?: string[];
@@ -518,7 +524,7 @@ function executionHarness(
     options.payment ?? approvedExecutionPayment();
   const activeExecutions = options.activeExecutions ?? [];
   current.tx.$queryRaw
-    .mockResolvedValueOnce([version])
+    .mockResolvedValueOnce([{ ...version, requestProtocolVersion: options.requestProtocolVersion ?? 1 }])
     .mockResolvedValueOnce([payment])
     .mockResolvedValueOnce(activeExecutions);
   current.tx.spotProcurementPayment.findUnique.mockResolvedValue({
@@ -610,6 +616,8 @@ describe("SpotProcurementPaymentController", () => {
     const expectations = [
       ["list", RequestMethod.GET, "/", undefined],
       ["detail", RequestMethod.GET, ":paymentId", undefined],
+      ["dutySmsStatus", RequestMethod.GET, ":paymentId/duty-sms", "spot_procurement.payment.execute"],
+      ["retryDutySms", RequestMethod.POST, ":paymentId/duty-sms/retry", "spot_procurement.payment.execute"],
       [
         "updateDraft",
         RequestMethod.PATCH,
@@ -2962,7 +2970,52 @@ name: "签批人甲", id: "project-manager-1", isActive: true }
     }
   );
 
-  it("lets only the finance-director return node specify a lower balance amount and binds it to a new draft", async () => {
+  it("retains a signed original duty when a migrated finance duty approves before the earlier project manager duty", async () => {
+    const { service, tx } = harness();
+    const frozenNodes = paymentApprovalNodes().map((node, index) => ({
+      ...node,
+      ...(index === 0 ? { approvedRoleKeys: ["material_director"] } : {}),
+      protocolVersion: 1,
+      executionMode: "parallel",
+      legacySerialCutover: true
+    }));
+    tx.$queryRaw
+      .mockResolvedValueOnce([version])
+      .mockResolvedValueOnce([{ ...draftPayment, status: "approval_pending" }])
+      .mockResolvedValueOnce([{
+        id: "approval-1",
+        status: "approval_pending",
+        currentNodeIndex: 1,
+        applicantUserId: "material-1",
+        frozenNodes
+      }]);
+    role(tx, "finance_director");
+    queueActivePaymentApprovalSignature(tx.$queryRaw, "finance-1");
+
+    await service.review("payment-1", "finance-1", { decision: "approve" });
+
+    expect(tx.approvalActionLog.create).toHaveBeenCalledTimes(1);
+    expect(tx.approvalActionLog.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        action: "approve",
+        approvedRoleKey: "finance_director",
+        signatureVersionIdSnapshot: "payment-signature-version-1"
+      })
+    });
+    expect(tx.approvalInstance.update).toHaveBeenCalledWith({
+      where: { id: "approval-1" },
+      data: expect.objectContaining({
+        status: "approval_pending",
+        currentNodeIndex: 1,
+        frozenNodes: frozenNodes.map((node, index) =>
+          index === 2 ? { ...node, approvedRoleKeys: ["finance_director"] } : node
+        )
+      })
+    });
+    expect(tx.spotProcurementPayment.update).not.toHaveBeenCalled();
+  });
+
+  it.each([false, true])("lets the finance director return a payment and release its legacy reservation (cutover=%s)", async (legacySerialCutover) => {
     const { service, tx, balance, audit } = harness();
     const submitted = {
       ...draftPayment,
@@ -2980,20 +3033,20 @@ name: "签批人甲", id: "project-manager-1", isActive: true }
         {
           id: "approval-1",
           status: "approval_pending",
-          currentNodeIndex: 2,
+          currentNodeIndex: legacySerialCutover ? 1 : 2,
           applicantUserId: "material-1",
           frozenNodes: [
             {
-              name: "综合部主管审批",
+              name: legacySerialCutover ? "物资部主管审批" : "综合部主管审批",
               mode: "any",
-              roleKeys: ["comprehensive_director"],
-              approvedRoleKeys: ["comprehensive_director"]
+              roleKeys: [legacySerialCutover ? "material_director" : "comprehensive_director"],
+              approvedRoleKeys: [legacySerialCutover ? "material_director" : "comprehensive_director"]
             },
             {
               name: "项目经理审批",
               mode: "any",
               roleKeys: ["project_manager"],
-              approvedRoleKeys: ["project_manager"]
+              ...(legacySerialCutover ? {} : { approvedRoleKeys: ["project_manager"] })
             },
             {
               name: "财务主管审批",
@@ -3005,7 +3058,9 @@ name: "签批人甲", id: "project-manager-1", isActive: true }
               mode: "any",
               roleKeys: ["chairman", "general_manager"]
             }
-          ]
+          ].map((node) => legacySerialCutover
+            ? { ...node, protocolVersion: 1, executionMode: "parallel", legacySerialCutover: true }
+            : node)
         }
       ]);
     role(tx, "finance_director");
@@ -4035,6 +4090,25 @@ name: "签批人甲", id: "project-manager-1", isActive: true }
     ).toBeUndefined();
   });
 
+  it.each([["2026-11-05", "2026-11-04T16:00:00.000Z"], ["2026-11-04T11:15:00-05:00", "2026-11-04T16:15:00.000Z"]])("persists HTTP spot payment date %s through the existing synthetic transaction", async (paidAt, expected) => {
+    jest.useFakeTimers({ now: new Date("2026-11-04T16:30:00Z"), doNotFake: ["nextTick", "queueMicrotask", "setImmediate", "clearImmediate", "setTimeout", "clearTimeout", "setInterval", "clearInterval", "hrtime", "performance"] });
+    const current = executionHarness();
+    Reflect.set(current.service, "operatingSources", { appendConfirmedSourceIfEnabledInTransaction: jest.fn().mockResolvedValue(null) });
+    current.tx.spotProcurementPaymentExecution.create.mockImplementation(async ({ data }) => ({ id: "execution-1", ...data, voidedAt: null, voidedByUserId: null, voidReason: null, createdAt: new Date() }));
+    const module = await Test.createTestingModule({ controllers: [SpotProcurementPaymentController], providers: [{ provide: SpotProcurementPaymentService, useValue: current.service }, { provide: SpotProcurementReadService, useValue: {} }, { provide: SpotProcurementSettlementService, useValue: {} }, { provide: FileService, useValue: current.files }] }).compile();
+    const app = module.createNestApplication({ logger: false }); app.use((request: { user?: unknown }, _response: unknown, next: () => void) => { request.user = { id: "finance-1" }; next(); });
+    try {
+      await app.listen(0, "127.0.0.1"); const url = `${await app.getUrl()}/spot-procurement-payments/payment-1/executions`;
+      const body = { ...validExecutionInput(), paidAt };
+      const response = await fetch(url, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
+      expect(response.status).toBe(201); expect((await response.json()).execution.paidAt).toBe(expected);
+      expect(current.tx.spotProcurementPaymentExecution.create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ paidAt: new Date(expected) }) }));
+      current.tx.spotProcurementPaymentExecution.create.mockClear(); current.prisma.$transaction.mockClear();
+      const future = await fetch(url, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ ...body, paidAt: "2026-11-05T00:31:00+08:00" }) });
+      expect(future.status).toBe(400); expect(current.tx.spotProcurementPaymentExecution.create).not.toHaveBeenCalled(); expect(current.prisma.$transaction).not.toHaveBeenCalled();
+    } finally { await app.close(); jest.useRealTimers(); }
+  });
+
   it("records a partial company payment by current-project finance staff and preserves supplier-balance facts", async () => {
     const current = executionHarness();
     const input = validExecutionInput();
@@ -4188,14 +4262,14 @@ name: "签批人甲", id: "project-manager-1", isActive: true }
     );
   });
 
-  it("records one real-form execution against an approved channel with multiple vouchers", async () => {
+  it("records current actual-purchase payment without opening or closing a legacy receipt", async () => {
     const payment = approvedExecutionPayment({
       paymentType: "company_direct",
       payerCompanyEntityId: "company-1",
       payerCompanyNameSnapshot: "云南建工集团",
       payeeNameSnapshot: "昆明建材商行"
     });
-    const current = executionHarness({ payment });
+    const current = executionHarness({ payment, requestProtocolVersion: 2 });
     const input = validExecutionInput({
       voucherFileId: undefined,
       voucherFileIds: ["file-voucher-a", "file-voucher-b"],
@@ -4247,6 +4321,7 @@ name: "签批人甲", id: "project-manager-1", isActive: true }
         }
       ]
     });
+    expect(current.closure.recalculateAndClose).not.toHaveBeenCalled();
     expect(result.execution).toEqual(
       expect.objectContaining({
         paymentChannelId: "channel-bank",

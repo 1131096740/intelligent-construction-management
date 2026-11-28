@@ -1,9 +1,12 @@
 <script setup lang="ts">
+import { useAuthStore } from "../auth/auth.store";
+import DutySmsStatusPanel from "./DutySmsStatusPanel.vue";
 import ApprovalDocumentDownload from "./approval/ApprovalDocumentDownload.vue";
 import { computed,onBeforeUnmount,ref,watch } from "vue";
 import { fetchEconomicReviews,prepareEconomicSettlement,prepareEconomicReview,decideEconomicReview,type EconomicReviewData } from "../api/contract-economic-review.api";
 import { formatUnknownApiError } from "../api/error-message";
 import { centsTextToYuanText,yuanTextToCentsText } from "../lib/money";
+const auth = useAuthStore();
 const props=defineProps<{projectId:string}>();
 const emit=defineEmits<{changed:[]}>();
 const data=ref<EconomicReviewData|null>(null),error=ref("");const busy=ref(false),show=ref(false);
@@ -129,6 +132,12 @@ async function prepareEconomicSettlementWithCapability(arg0: Parameters<typeof p
           退回补充
         </t-button>
       </template>
+      <DutySmsStatusPanel
+        v-if="auth.user?.id && data?.canReview && r.canFinanceReview"
+        :key="`${auth.user.id}:${r.id}:${r.revision}`"
+        domain="contract-economic-reviews"
+        :business-id="r.id"
+      />
       <ApprovalDocumentDownload business-type="contract_economic_review" :business-id="r.id" :refresh-key="r.status" />
     </article>
     <article

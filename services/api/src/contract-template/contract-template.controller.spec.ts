@@ -404,7 +404,7 @@ describe("ContractTemplateController authorization wiring", () => {
   it.each(maintenanceMethods)("guards %s with contract template maintenance positions", (method) => {
     const handler = (ContractTemplateController.prototype as unknown as Record<string, object>)[method];
 
-    expect(Reflect.getMetadata(REQUIRED_POSITIONS_KEY, handler)).toEqual(maintenancePositions);
+    expect(Reflect.getMetadata(REQUIRED_POSITIONS_KEY, handler)).toEqual(["getLayoutTemplate", "getLayoutPreview", "getTemplate"].includes(method) ? maintenancePositions : publicationPositions);
   });
 
   it.each(publicationMethods)("guards %s with contract director publication positions", (method) => {

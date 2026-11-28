@@ -1,0 +1,101 @@
+{
+  "schemaVersion": 1,
+  "engine": "docx4j-17.3.5-jdk17",
+  "adapterSourceSha256": "5f8b5fa2eca7e4e9251df0a12545b79700b01b0e447306a76fc3eb9e809794da",
+  "jdkTreeSha256": "aa3d7e0b9574a8d26d9e1b7dbc46b96bc2289450d79466380a44f6c9d534cde7",
+  "jdkTreeEntries": 456,
+  "jars": [
+    {
+      "name": "docx4j-bundle-17.3.5.jar",
+      "sha256": "77aa1fe1da4873946766204aabc9ba47ef66f89a46f4bea0e4c49c2994114a63"
+    },
+    {
+      "name": "docx4j-bundle-extras-17.3.5.jar",
+      "sha256": "9e5ed5bdd1f3e88787bc138ca654b23f8c9ed9c1e83bf884687f7a140242d964"
+    }
+  ],
+  "classes": [
+    {
+      "name": "ContractDocxPdf$1.class",
+      "sha256": "c2813247065a05452fa29270c89a8eee00541884f1fced691b62719c8de390c0"
+    },
+    {
+      "name": "ContractDocxPdf$BoundedPdfOutputStream.class",
+      "sha256": "1d854b7399b9a8f0952952d36c386cacef40fe82cb1c4acca7a7eddee9fad96c"
+    },
+    {
+      "name": "ContractDocxPdf$Row.class",
+      "sha256": "cc16a45cd82ff517cd38757218166e3367928eb6dbf358e0b6eaad7ac5c6c14d"
+    },
+    {
+      "name": "ContractDocxPdf$Scope.class",
+      "sha256": "86c9b2f72f15fbcef4dc803d5966bf9422409d4ebd0bdfd5c37ed47b377d2626"
+    },
+    {
+      "name": "ContractDocxPdf$ScopedFoRenderer.class",
+      "sha256": "9303ce0e3ef322af9a09a3cd88a1daace37c617fddf9a2132472b0d40fc012f3"
+    },
+    {
+      "name": "ContractDocxPdf.class",
+      "sha256": "6ea8deef7cb8e63f7ae6cdd764ea2134005ce9617d91a9809e92262b78a5d4d8"
+    }
+  ],
+  "fonts": [
+    {
+      "name": "fangsong",
+      "sha256": "fef7cf991b458cabd184b73378918d9d15429010e1d6c804f08d394395c3c3b4"
+    },
+    {
+      "name": "title",
+      "sha256": "da8112c147eb8839666fdbec9522d282eff972cf5ac6a03f14fffe0454bb0b4e"
+    },
+    {
+      "name": "kaiti",
+      "sha256": "99092cbb0df301625f46509e85854db8685556551742097ab3fbbc2e2ca0778b"
+    },
+    {
+      "name": "heiti",
+      "sha256": "aa4560dd8fe5645745fed3ffa301c3ca4d6c03cbd738145b613303961ba733b8"
+    },
+    {
+      "name": "times",
+      "sha256": "f3b4ffff71c2a0c7227d37497683b2498fb2d0a4e8beae26f022e3ccfcaabfa3"
+    },
+    {
+      "name": "times-bold",
+      "sha256": "50f5b1f27b7d34621090e437e8b1dd4510a22d2823fc876b3286bed327b64bbb"
+    },
+    {
+      "name": "times-italic",
+      "sha256": "7bb99c3a67697fbce15ab66d806d9a2151432ce1dab2eaba4156e1251da486c0"
+    },
+    {
+      "name": "times-bolditalic",
+      "sha256": "906157e8294fdf168d83002eaabde01c2d30fc3f44977be89e33fa22f262002a"
+    },
+    {
+      "name": "wingdings",
+      "sha256": "709d5848799239f0c51c0544c471c8d02bcbf9f2bcdc49702ebca1691a4c760e"
+    },
+    {
+      "name": "wingdings2",
+      "sha256": "6fce8b535724253e294c88f272613ad4b796c4181bae18b3e49775be63d02dcd"
+    }
+  ],
+  "qualification": {
+    "profile": "TASK12_OFFICIAL_TEMURIN17_0_17_10_CODEX26_1112_V2",
+    "status": "PENDING_NOT_RUNTIME_AUTHORITY",
+    "archiveSha256": "856059de21518c2ff6eba6126ffc93390affe363c3ee205b3146a3bac3be0aa5",
+    "archiveBytes": 185617580
+  },
+  "officialInstalledTrees": {
+    "libreOffice": {
+      "entries": 3449,
+      "sha256": "322091508777c837d5a45b364ef8b388a3d715aa869d84286e4b85f93c5b18b6"
+    },
+    "python": {
+      "entries": 3098,
+      "sha256": "c9689686026ca1a97c014d5684b843485ee58b37a49e103690e8e3bc7ebcde3f"
+    }
+  }
+}

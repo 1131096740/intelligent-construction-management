@@ -1,0 +1,37 @@
+'use strict';
+const fs=require('node:fs');
+const assert=require('node:assert/strict');
+const path=require('node:path');
+const {execFileSync}=require('node:child_process');
+const {createRequire}=require('node:module');
+const root='/qualification',src=root+'/source',product=root+'/product';
+const installer=require('./installer.cjs');
+const {verifyMaterialized,contract289}=require('./checkout.cjs');
+const {verifySql,expectedLedger,scope}=require('./successor.cjs');
+assert.equal(typeof installer.withInstalled290Onboarding,'function');
+assert.equal(typeof require('./onboarding-full.cjs').run,'function');
+assert.equal(typeof require('./task12-onboarding-role-fixture.cjs').renderOriginalSetup,'function');
+assert.equal(typeof require('./task12-onboarding-metadata-alias.cjs').renderTemporaryMetadataAlias,'function');
+assert.equal(typeof require('./owner-observation.cjs').projectPsql,'function');
+verifyMaterialized(product,contract289);
+verifySql(root+'/successor.sql');
+const seal=fs.readFileSync(root+'/source-seal.txt','utf8').trim();
+const sourceRecord=JSON.parse(execFileSync(process.execPath,[root+'/installer.cjs','--verify-sealed',src,root+'/source-admission.json'],{encoding:'utf8'}));
+const {ledger,profile,fromHistory}=installer.verifyOutside289Inputs(src+'/services/api/prisma',product+'/services/api/prisma',seal);
+assert.equal(expectedLedger(ledger).length,290);
+const cli=fs.realpathSync(fromHistory.resolve('prisma/build/index.js'));
+const engines=fs.realpathSync(createRequire(cli).resolve('@prisma/engines/package.json'));
+assert.equal(JSON.parse(fs.readFileSync(engines)).version,'5.22.0');
+const engine=path.join(path.dirname(engines),'schema-engine-debian-openssl-3.0.x');
+assert.equal(execFileSync(engine,['--version'],{encoding:'utf8'}).trim(),'schema-engine-cli 605197351a3c8bdd595af2d2a9bc3025bca48ea2');
+assert.equal(require('./task12-onboarding-282-admission.cjs').hbaLine('jg_task01_'+'0'.repeat(32)).includes('onboarding_runtime'),true);
+const compiled=['dist/main.js','dist/src/main.js'].map(file=>root+'/workspace/services/api/'+file);
+assert.ok(compiled.some(file=>fs.existsSync(file)&&fs.statSync(file).isFile()),'ONBOARDING_290_COMPILED_APP');
+execFileSync('soffice',['--version'],{encoding:'utf8'});
+assert.match(execFileSync('fc-match',['--format=%{family}','Noto Sans CJK SC'],{encoding:'utf8'}),/^Noto Sans CJK SC$/u);
+const webRequire=createRequire(root+'/workspace/apps/web-admin/package.json');
+const {chromium,webkit}=webRequire('@playwright/test');
+for(const browser of [chromium,webkit]) fs.accessSync(browser.executablePath(),fs.constants.X_OK);
+console.log(JSON.stringify({status:'ONBOARDING_290_CONTEXT_NO_DATABASE_VERIFIED',
+  application:require('./verify-application-source.cjs').verify(),ledgerCount:290,
+  ledgerSha256:scope.expectedLedgerSha256,profile:profile.profile,historyFiles:sourceRecord.verifiedFiles}));

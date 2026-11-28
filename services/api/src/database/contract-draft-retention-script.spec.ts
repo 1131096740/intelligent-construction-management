@@ -3,6 +3,7 @@ import { createRequire } from "node:module";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { PrismaClient } from "@prisma/client";
+import { reviewReferenceCatalog } from "../file/contract-review-file-retention";
 
 type RetentionModule = {
   parseArgs(argv: string[]): Record<string, unknown>;
@@ -377,17 +378,18 @@ describe("contract draft retention execution", () => {
     ].forEach((guard) => expect(source).toContain(guard));
   });
 
-  integrationTest(
-    "deletes expired unbound files and autosave receipts once against PostgreSQL",
-    async () => {
-      const databaseUrl = process.env.CONTRACT_DRAFT_AGGREGATE_DATABASE_URL;
+  integrationTest("blocks current-catalog physical cleanup and deletes expired legacy files and receipts once", async () => {
+    async function verifyRetention(legacy: boolean) {
+      const databaseUrl = legacy ? process.env.CONTRACT_LEGACY_CLEANUP_DATABASE_URL : process.env.CONTRACT_DRAFT_AGGREGATE_DATABASE_URL;
       if (!databaseUrl || process.env.NODE_ENV === "production") {
         throw new Error("retention PostgreSQL test requires its local test database");
       }
       const parsed = new URL(databaseUrl);
+      const database = legacy ? "jiangkong_contract_cleanup_pre_m206_test" : "jiangkong_contract_draft_aggregate_test";
       if (
+        !["postgresql:", "postgres:"].includes(parsed.protocol) ||
         !["127.0.0.1", "localhost", "::1"].includes(parsed.hostname) ||
-        parsed.pathname !== "/jiangkong_contract_draft_aggregate_test"
+        parsed.pathname !== `/${database}`
       ) {
         throw new Error("retention PostgreSQL test rejected a non-local database");
       }
@@ -411,6 +413,7 @@ describe("contract draft retention execution", () => {
       const importObjectKey = `temporary/retention-import-${suffix}.xlsx`;
       const old = new Date(Date.now() - 8 * 86_400_000);
       try {
+        await expect(reviewReferenceCatalog(client)).resolves.toBe(legacy ? "legacy" : "ready");
         await client.user.create({
           data: { id: actorId, name: "保留策略本地验证用户" }
         });
@@ -525,7 +528,7 @@ describe("contract draft retention execution", () => {
           summary: { candidateCount: 3, candidateBytes: "384" }
         });
         const deleteObject = jest.fn().mockResolvedValue(undefined);
-        const first = await tool.executeRetention({
+        const firstExecution = tool.executeRetention({
           store: tool.createSqlStore(client, {
             batchId: `retention-first-${suffix}`,
             reportSha256: String(firstReport.reportSha256)
@@ -538,6 +541,17 @@ describe("contract draft retention execution", () => {
             now: new Date()
           }
         });
+        if (!legacy) {
+          await expect(firstExecution).rejects.toThrow("当前清理流程无法确认履约复核原件保留，已停止物理清理");
+          expect(deleteObject).not.toHaveBeenCalled();
+          await expect(client.fileObject.count({
+            where: { id: { in: [fileId, importFileId] }, storageStatus: "active", purgeReceiptId: null }
+          })).resolves.toBe(2);
+          await expect(client.contractBillImport.count({ where: { id: importId } })).resolves.toBe(1);
+          await expect(client.contractDraftSaveRequest.count({ where: { idempotencyKey: receiptId } })).resolves.toBe(1);
+          return;
+        }
+        const first = await firstExecution;
         expect(first).toMatchObject({
           status: "applied",
           deletedCount: 3,
@@ -672,7 +686,9 @@ describe("contract draft retention execution", () => {
           process.env.DATABASE_URL = previousDatabaseUrl;
         }
       }
-    },
-    30_000
-  );
+    }
+
+    await verifyRetention(false);
+    await verifyRetention(true);
+  }, 30_000);
 });

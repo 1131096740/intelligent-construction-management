@@ -71,14 +71,15 @@ describe("direct payment capacity database concurrency", () => {
         );
         const assertCapacity = (
           service as unknown as {
-            assertGenericContractPaymentStageCapacity(
+            assertDirectPaymentApplicationCapacity(
               tx: unknown,
               contractVersion: unknown,
               stage: unknown,
-              requestedAmountCents: bigint
+              requestedAmountCents: bigint,
+              textAgreementLimit: bigint | null
             ): Promise<void>;
           }
-        ).assertGenericContractPaymentStageCapacity.bind(service);
+        ).assertDirectPaymentApplicationCapacity.bind(service);
         const stage = {
           id: "stage-fixed",
           paymentTermsVersionId: "terms-fixed",
@@ -132,7 +133,8 @@ describe("direct payment capacity database concurrency", () => {
               tx,
               contractVersion,
               stage,
-              600n
+              600n,
+              null
             );
             await rawTx.$executeRaw(Prisma.sql`
               INSERT INTO "PaymentRequest" (

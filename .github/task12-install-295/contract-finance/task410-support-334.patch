@@ -1,0 +1,14 @@
+--- fixture
++++ fixture
+@@ -26,7 +26,8 @@
+   const paymentRemainder = process.env.TASK410_OWNED_PAYMENT_REMAINDER_331 === "1";
+   const upwardArchive = process.env.TASK410_OWNED_UPWARD_ARCHIVE_332 === "1";
+-  const count = upwardArchive ? 332 : paymentRemainder ? 331 : textDirect ? 330 : current320 ? 329 : 295;
+-  const migration = upwardArchive ? "20261129001000_contract_upward_archive_verifier_pin_forward" : paymentRemainder ? "20261129000000_payment_remaining_withdrawal" : textDirect ? "20261128000000_text_agreement_direct_payment" : current320 ? "20261127000000_contract_takeover_pending_finance" : terminalMigration;
+-  const checksum = upwardArchive ? "4e8e6e23267f525ca2bff68719e2989126fff82e5bd0d0ba344abc2c4c8d4da3" : paymentRemainder ? "67593637957ba372cbba7633334fb9896ba6adf472b0c1b9b6f1482c0d645fc2" : textDirect ? "4d99963155b37e091f37db7a1648d2fed6e6464aee7c643002a3297b4120991c" : current320 ? "0bfe144cae30a7a29973c06dfb51737965fb9709e408db412f8d137d0663db4e" : terminalChecksum;
++  const historicalSettlement = process.env.TASK410_OWNED_HISTORICAL_SETTLEMENT_334 === "1";
++  const count = historicalSettlement ? 334 : upwardArchive ? 332 : paymentRemainder ? 331 : textDirect ? 330 : current320 ? 329 : 295;
++  const migration = historicalSettlement ? "20261129003000_historical_signed_settlement_continuation" : upwardArchive ? "20261129001000_contract_upward_archive_verifier_pin_forward" : paymentRemainder ? "20261129000000_payment_remaining_withdrawal" : textDirect ? "20261128000000_text_agreement_direct_payment" : current320 ? "20261127000000_contract_takeover_pending_finance" : terminalMigration;
++  const checksum = historicalSettlement ? "9df6dc654b8b0ea21713cc1c1dbcc73a8a74fd49f0df84da3b1556e85215ad5f" : upwardArchive ? "4e8e6e23267f525ca2bff68719e2989126fff82e5bd0d0ba344abc2c4c8d4da3" : paymentRemainder ? "67593637957ba372cbba7633334fb9896ba6adf472b0c1b9b6f1482c0d645fc2" : textDirect ? "4d99963155b37e091f37db7a1648d2fed6e6464aee7c643002a3297b4120991c" : current320 ? "0bfe144cae30a7a29973c06dfb51737965fb9709e408db412f8d137d0663db4e" : terminalChecksum;
+   const [result] = await db.$queryRaw<Array<{ accepted: boolean }>>`
+     SELECT

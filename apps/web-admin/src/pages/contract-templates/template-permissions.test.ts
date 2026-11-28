@@ -5,8 +5,8 @@ import {
 } from "./template-permissions";
 
 describe("template permissions", () => {
-  it("allows contract staff and directors to maintain template drafts", () => {
-    expect(canMaintainContractTemplates(["contract_staff"])).toBe(true);
+  it("keeps template draft maintenance with contract directors", () => {
+    expect(canMaintainContractTemplates(["contract_staff"])).toBe(false);
     expect(canMaintainContractTemplates(["contract_director"])).toBe(true);
     expect(canMaintainContractTemplates(["super_admin"])).toBe(false);
     expect(canMaintainContractTemplates(["finance_staff"])).toBe(false);

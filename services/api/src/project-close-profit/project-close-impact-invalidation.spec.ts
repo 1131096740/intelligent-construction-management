@@ -32,6 +32,15 @@ describe("project close automatic impact invalidation", () => {
         affectedStages: ["profit_distribution_completed", "project_funds_cleared"]
       })
     });
+    expect(tx.projectCloseStageVersion.findMany).toHaveBeenCalledWith({
+      where: { projectId: "project-1", stageKey: { in: ["profit_distribution_completed", "project_funds_cleared"] } },
+      select: { id: true, stageKey: true, revision: true, status: true, projectionReadAt: true, projectionCutoffAt: true, projectionFingerprint: true, amountSnapshot: true, stateSnapshot: true },
+      orderBy: [{ stageKey: "asc" }, { revision: "desc" }]
+    });
+    expect(tx.projectCloseStageVersion.create).toHaveBeenCalledWith({ data: expect.objectContaining({
+      previousVersionId: "stage-profit_distribution_completed", projectionReadAt: cutoff, projectionCutoffAt: cutoff,
+      projectionFingerprint: "projection-v1", amountSnapshot: {}, stateSnapshot: {}
+    }) });
     expect(tx.projectCloseStageVersion.create).toHaveBeenCalledTimes(2);
     expect(tx.projectCloseAggregate.upsert.mock.invocationCallOrder[0]).toBeLessThan(
       tx.$executeRaw.mock.invocationCallOrder[0]

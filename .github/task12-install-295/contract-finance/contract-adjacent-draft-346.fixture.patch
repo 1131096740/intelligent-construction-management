@@ -1,0 +1,12 @@
+--- a/settlement-draft-lifecycle-concurrency.spec.ts
++++ b/settlement-draft-lifecycle-concurrency.spec.ts
+@@ -29 +29 @@
+-    loadCanonicalMigrationBaseline: () => { expectedDirectoryCount: number };
++    deriveMigrationBaseline: () => { expectedDirectoryCount: number };
+@@ -31 +31,5 @@
+-).loadCanonicalMigrationBaseline().expectedDirectoryCount;
++).deriveMigrationBaseline().expectedDirectoryCount;
++// The Draft 346 runner validates the exact source ledger before mounting this fixture.
++if (EXPECTED_MIGRATION_COUNT !== 346) {
++  throw new Error("结算草稿生命周期并发测试要求完整 346 个迁移");
++}

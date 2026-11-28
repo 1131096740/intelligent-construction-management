@@ -1,0 +1,55 @@
+--- a/contract-ci.cjs
++++ b/contract-ci.cjs
+@@ -5 +5 @@
+-const { mkdirSync, readFileSync } = require('node:fs');
++const { mkdirSync, readFileSync, statSync } = require('node:fs');
+@@ -6,0 +7 @@
++const { stripVTControlCharacters } = require('node:util');
+@@ -30,0 +32,43 @@
++function summarizeDraftFailure(report) {
++  let size;
++  try {
++    size = statSync(report).size;
++  } catch (error) {
++    return { category: error.code === 'ENOENT' ? 'NO_REPORT' : 'UNREADABLE_REPORT' };
++  }
++  if (size > 256 * 1024) return { category: 'OVERSIZE_REPORT' };
++  let result;
++  try {
++    result = JSON.parse(readFileSync(report, 'utf8'));
++  } catch {
++    return { category: 'UNREADABLE_REPORT' };
++  }
++  const summary = { category: 'UNCLASSIFIED' };
++  for (const [key, value] of Object.entries({
++    registered: result?.numTotalTests, passed: result?.numPassedTests,
++    failed: result?.numFailedTests, skipped: result?.numPendingTests,
++  })) {
++    if (value === 0 || value === 1) summary[key] = value;
++  }
++  const suite = Array.isArray(result?.testResults) && result.testResults.find(item =>
++    typeof item?.name === 'string' && item.name.endsWith('/src/database/settlement-draft-lifecycle-concurrency.spec.ts'));
++  const test = Array.isArray(suite?.assertionResults) && suite.assertionResults.find(item => item?.status === 'failed');
++  const message = Array.isArray(test?.failureMessages) ? test.failureMessages[0] : suite?.message;
++  if (typeof message !== 'string') return summary;
++  const text = stripVTControlCharacters(message.slice(0, 16 * 1024));
++  const line = /^\s*at (?:[^()\r\n]*\()?(?:\/qualification\/workspace\/services\/api\/)?src\/database\/settlement-draft-lifecycle-concurrency\.spec\.ts:(\d{1,4}):\d{1,4}\)?\s*$/mu.exec(text)?.[1];
++  const sqlstate = /\b(?:code|SQLSTATE)[\s:`"']+(42501|23502|23503|23505|23514|40001|40P01|55P03|57014|42P01|42703|08006)\b/iu.exec(text)?.[1];
++  const prismaCode = /\b(P1000|P1001|P1002|P1017|P2002|P2003|P2010|P2028|P2034|P2037)\b/u.exec(text)?.[1];
++  if (line && Number(line) >= 1 && Number(line) <= 1027) summary.line = Number(line);
++  if (sqlstate) summary.sqlstate = sqlstate.toUpperCase();
++  if (prismaCode) summary.prismaCode = prismaCode;
++  if (sqlstate || prismaCode) summary.category = 'DATABASE_ERROR';
++  else if (text.includes('loser 未在时限内进入 PostgreSQL 锁等待')) summary.category = 'LOCK_WAIT_TIMEOUT';
++  else if (/Exceeded timeout of \d{1,6} ms for a test\b/u.test(text)) summary.category = 'TEST_TIMEOUT';
++  else if (/\berror TS\d{4}\b/u.test(text)) summary.category = 'TYPESCRIPT_ERROR';
++  else if (text.includes('结算草稿生命周期并发测试只允许') || text.includes('结算草稿生命周期并发测试必须连接')) summary.category = 'DATABASE_SCOPE';
++  else if (text.includes('结算草稿生命周期并发测试要求完整')) summary.category = 'MIGRATION_COUNT';
++  else if (/\bexpect\(/u.test(text) && /\bExpected(?:\s+\w+)?\s*:/u.test(text)) summary.category = 'ASSERTION';
++  return summary;
++}
++
+@@ -48,0 +93,3 @@
++      if (mode === '--settlement-draft-282-ci' && stage === 'OWNED_280_CONTRACT_JEST') {
++        throw Object.assign(new Error(stage), { exit:result.status, draftFailure:summarizeDraftFailure(report) });
++      }

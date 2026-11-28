@@ -62,6 +62,7 @@ export const OPERATING_IMPACT_KINDS = Object.freeze([
   "construction_enterprise_funds_release",
   "company_project_funds_increase",
   "company_project_funds_decrease",
+  "public_cash_funds_decrease",
   "company_advance_for_project_increase",
   "company_advance_for_project_decrease",
   "company_returnable_to_project_increase",
@@ -96,6 +97,7 @@ export const OPERATING_IMPACT_KIND_LABELS = Object.freeze({
   construction_enterprise_funds_release: "施工企业项目资金解除冻结",
   company_project_funds_increase: "我方公司项目资金增加",
   company_project_funds_decrease: "我方公司项目资金减少",
+  public_cash_funds_decrease: "公共现金支付项目资金减少",
   company_advance_for_project_increase: "公司为项目垫资增加",
   company_advance_for_project_decrease: "公司为项目垫资减少",
   company_returnable_to_project_increase: "公司应归还项目款增加",
@@ -115,7 +117,8 @@ export const OPERATING_SUBJECT_KINDS = Object.freeze([
   "participating_company",
   "downstream_counterparty",
   "employee",
-  "wage_external_creditor"
+  "wage_external_creditor",
+  "public_cash"
 ] as const);
 
 export type OperatingSubjectKind = (typeof OPERATING_SUBJECT_KINDS)[number];
@@ -126,7 +129,8 @@ export const OPERATING_SUBJECT_KIND_LABELS = Object.freeze({
   participating_company: "我方参与公司",
   downstream_counterparty: "下游相对方",
   employee: "员工或其他个人",
-  wage_external_creditor: "工资外部债权人"
+  wage_external_creditor: "工资外部债权人",
+  public_cash: "公共现金"
 } as const satisfies Readonly<Record<OperatingSubjectKind, string>>);
 
 export const OPERATING_SUBJECT_ROLES = Object.freeze([

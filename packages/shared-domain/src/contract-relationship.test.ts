@@ -22,6 +22,9 @@ describe("签约关系独立于付款主体", () => {
     expect(operatingContractRelationship("settlement", { authority: "contract_takeover_append_only_correction", originalSnapshot: { sourceType: "settlement", sourceSnapshot: { signingSubjectType: "our_company", companyEntityVersionId: "c1" } } })).toBe("inside");
     expect(operatingContractRelationship("settlement", { signingSubjectType: "affiliate", affiliate: {} })).toBe("unclassified");
     expect(operatingContractRelationship("unknown_source", {})).toBe("unclassified");
+  expect(operatingContractRelationship("signed_contract_settlement", { relationship: "upward" })).toBe("upward");
+  expect(operatingContractRelationship("signed_contract_settlement", { relationship: "outside" })).toBe("outside");
+  expect(operatingContractRelationship("signed_contract_settlement", { relationship: "inside" })).toBe("inside");
   });
 
 });

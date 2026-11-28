@@ -1,0 +1,57 @@
+--- original
++++ ported
+@@ -5,12 +5,12 @@
+ const {randomUUID,createHash}=require("node:crypto");
+ const fs=require("node:fs");
+ const path=require("node:path");
+-const {withOutside289ProjectProcurement}=require("./installer.cjs");
+-const {createOwnerSql,attemptCleanup}=require("./owner-observation.cjs");
++const {withCombined295ProjectProcurement}=require("./installer.cjs");
++const {createOwnerSql,attemptCleanup}=require("./procurement-owner-observation.cjs");
+ const {readProjectHttpObservation}=require("./project-scope-http-report.cjs");
+ const {assertProjectBrowserInputs,observeProjectBrowserReport}=require("./project-scope-browser-report.cjs");
+-const {roleSetup,roleTeardown}=require("./procurement289-nodb/services/api/prisma/general-procurement-owned-ci.cjs");
+-const receipt={schemaVersion:1,purpose:"PROJECT_BUSINESS_SCOPE_ORIGINAL_11_289",stages:[],status:"STOPPED"};
++const {roleSetup,roleTeardown}=require("./workspace/services/api/prisma/general-procurement-owned-ci.cjs");
++const receipt={schemaVersion:1,sourceSha:require("./contract-finance-source.json").sourceSha,purpose:"PROJECT_BUSINESS_SCOPE_ORIGINAL_11_289",stages:[],status:"STOPPED"};
+ const role="project_business_scope_runtime";
+ const alias="public.jg_file_business_binding_columns_before_registered_payment()";
+ const raw="public.jg_project_owner_settlement_voucher_bound(text)";
+@@ -39,9 +39,9 @@
+     sqlstate:/\b(42501|23514|23503|40P01|40001)\b/u.exec(assertion)?.[1],
+   };
+ }
+-withOutside289ProjectProcurement(receipt,async context=>{
++withCombined295ProjectProcurement(receipt,async context=>{
+   const {database,runId,workDir}=context;
+-  condition(context.candidateTree==="a1be083076018686dd8afba68c44ff9c75502014" &&
++  condition(context.candidateTree===require("./scope.json").tree &&
+     database==="jg_task01_"+runId.replaceAll("-",""),"PROJECT_SCOPE_SIGNATURE_CONTEXT");
+   const ownerSql=createOwnerSql(context.sql,receipt);
+   const password=randomUUID();
+@@ -89,7 +89,7 @@
+     const report=path.join(workDir,"project-scope-signatures-jest.json");
+     const spec="src/database/project-business-scope-http-postgres.spec.ts";
+     child=spawn("pnpm",["--filter","@jiangkong/api","exec","jest","--runInBand","--runTestsByPath",spec,"--json","--outputFile",report],{
+-      cwd:"/qualification/procurement289-nodb",stdio:["ignore","pipe","pipe"],
++      cwd:"/qualification/workspace",stdio:["ignore","pipe","pipe"],
+       env:{PATH:"/usr/local/bin:/usr/bin:/bin",HOME:workDir,TMPDIR:workDir,COREPACK_HOME:"/opt/corepack",
+         COREPACK_ENABLE_NETWORK:"0",COREPACK_DEFAULT_TO_LATEST:"0",NODE_ENV:"test",CI:"true",DATABASE_URL:runtime.toString(),
+         PROJECT_BUSINESS_SCOPE_FIXTURE_DATABASE_URL:ownerTarget.toString(),SPOT_PROCUREMENT_PILOT_PROJECT_IDS:"*",
+@@ -353,7 +353,15 @@
+     ]);
+   }
+   if(receipt.consumerFailure||receipt.cleanupFailures)throw new Error("PROJECT_SCOPE_DRAFT_STOPPED");
+-}).then(()=>{receipt.status="PROJECT_SCOPE_ORIGINAL_11_289_PASSED";}).catch(error=>{
++ }).then(()=>{
++     const terminal=require('./multi-witness.cjs');
++     condition(receipt.installOnly295?.ledgerSha256===terminal.final &&
++       receipt.combinedAfterBusiness?.ledgerSha256===terminal.final &&
++       receipt.combinedAfterBusiness?.sameIdentity===true && receipt.combinedAfterBusiness?.exactB7===true &&
++       receipt.multiWitnessCatalogAfterBusiness===true && receipt.business==='CALLBACK_COMPLETED' &&
++       receipt.cleanup==='POSTMASTER_STOPPED_TMPFS_REMOVED_BY_CONTAINER_EXIT', 'PROCUREMENT_295_FINAL_WITNESS');
++     receipt.status='PROJECT_SCOPE_ORIGINAL_11_295_PASSED';
++   }).catch(error=>{
+   receipt.status="STOPPED";
+   receipt.failure={stage:receipt.stages.at(-1),code:/^[A-Z0-9_]+$/u.test(error.message)?error.message:"UNCLASSIFIED",
+     command:error.command,exit:error.exit,signal:error.signal,sqlstate:error.sqlstate,prismaCode:error.prismaCode,

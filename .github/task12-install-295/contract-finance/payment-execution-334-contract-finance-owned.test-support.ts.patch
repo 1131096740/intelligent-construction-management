@@ -1,0 +1,27 @@
+--- contract-finance-owned.test-support.ts
++++ contract-finance-owned.test-support.ts
+@@ -41,7 +41,7 @@
+   `;
+   const ledger = observed?.ledger.map(({ name, sha256, finished, rolledBack }) => ({ name, sha256, finished, rolledBack }));
+   const configured = process.env.JG_CONTRACT_FINANCE_LEDGER;
+-  if (configured !== undefined && configured !== "329" && configured !== "330" && configured !== "331" && configured !== "332") {
++  if (configured !== undefined && configured !== "329" && configured !== "330" && configured !== "331" && configured !== "332" && configured !== "334") {
+     throw new Error("CONTRACT_FINANCE_LEDGER_MODE");
+   }
+   const count = Number(configured ?? 295);
+@@ -59,8 +59,13 @@
+         "12a3ffa7cae1b9a54294ebaf38f71788ff4ccb2670a8d539148c84597b5aa99f") ||
+       (count >= 331 && createHash("sha256").update(JSON.stringify(ledger.slice(0,331))).digest("hex") !==
+         "0ad8b165cbf5c974596c4da840ab327e438ef84fd1beb3788ef980c8f28dd014") ||
+-      (count === 332 && createHash("sha256").update(JSON.stringify(ledger)).digest("hex") !==
+-        "b9cd72d795d2ae6d9d61f038c8c89b2391375bc5fdc56337c9dab6d3a18858f4")) {
++      (count >= 332 && createHash("sha256").update(JSON.stringify(ledger.slice(0,332))).digest("hex") !==
++        "b9cd72d795d2ae6d9d61f038c8c89b2391375bc5fdc56337c9dab6d3a18858f4") ||
++      (count === 334 && (
++        createHash("sha256").update(JSON.stringify(ledger.slice(0,333))).digest("hex") !==
++          "a00af648da634cce25c27c796171ca21cfa93d17679bfd8176f961b45ecf4fca" ||
++        createHash("sha256").update(JSON.stringify(ledger)).digest("hex") !==
++          "27f3af946003d07582efb288b443362fcf61bed0281feb548f9978b739fb5411"))) {
+     throw new Error("CONTRACT_FINANCE_OWNED_LEDGER_MISMATCH");
+   }
+   return true;

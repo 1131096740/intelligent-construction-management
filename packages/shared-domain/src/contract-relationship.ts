@@ -38,9 +38,14 @@ export function operatingContractRelationship(sourceType: string, snapshot: unkn
     return operatingContractRelationship(typeof original.sourceType === "string" ? original.sourceType : sourceType, original.sourceSnapshot, depth + 1);
   }
   if (isContractRelationship(source.contractRelationship)) return source.contractRelationship;
-  if (["project_upstream_settlement", "owner_settlement"].includes(sourceType) || source.factType === "owner_payment_to_affiliate") return "owner";
+  if (["project_upstream_settlement", "project_owner_settlement_entry", "owner_settlement"].includes(sourceType) || source.factType === "owner_payment_to_affiliate") return "owner";
   if (source.affiliateCompanyContractId || source.factType === "affiliate_remittance_to_company") return "upward";
   if (["project_affiliate_contract_fact", "project_affiliate_settlement_fact", "project_affiliate_payment_fact"].includes(sourceType)) return "outside";
+  if (sourceType === "signed_contract_settlement" && typeof source.relationship === "string") {
+    if (source.relationship === "upward") return "upward";
+    if (source.relationship === "outside") return "outside";
+    if (source.relationship === "inside") return "inside";
+  }
   const affiliate = source.affiliate && typeof source.affiliate === "object" ? source.affiliate as Record<string, unknown> : {};
   if (["contract_version", "settlement", "payment_execution", "contract_takeover_historical_payment", "project_proxy_payment"].includes(sourceType)) {
     return downstreamContractRelationship({

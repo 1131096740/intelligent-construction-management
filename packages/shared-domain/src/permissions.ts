@@ -7,6 +7,8 @@ import { GLOBAL_BUSINESS_ROLE_KEYS, RoleKey } from "./roles";
  * 这些是后端写接口真正要守的关口。
  */
 export const BUSINESS_ACTIONS = [
+  "fund_account.balance.review",
+  "fund_account.principal_return.review",
   "business_party.create",
   "contract.create",
   "contract.draft.delete",
@@ -33,6 +35,7 @@ export const BUSINESS_ACTIONS = [
   "settlement.archive.upload",
   "settlement.archive.confirm",
   "project.receipt.record",
+  "project.owner_settlement.record",
   "project.upstream_fund_fact.record",
   "project.upstream_fund_fact.confirm",
   "project.affiliate_contract_fact.record",
@@ -41,6 +44,8 @@ export const BUSINESS_ACTIONS = [
   "project.affiliate_settlement_fact.confirm",
   "project.affiliate_payment_fact.record",
   "project.affiliate_payment_fact.confirm",
+  "project.construction_payment_correction.request",
+  "project.construction_payment_correction.confirm",
   "project.affiliate_business_fact.evidence_supplement",
   "project.affiliate_company_contract.record",
   "project.affiliate_company_contract.confirm",
@@ -55,6 +60,7 @@ export const BUSINESS_ACTIONS = [
   "project.financing_quota.approve",
   "project.financing_quota.terminate",
   "project.operating_profile.manage",
+  "project.basics.manage",
   "project.master_data.manage",
   "operating_projection.detail.read",
   "necessary_expense_reserve.read",
@@ -93,6 +99,11 @@ export const BUSINESS_ACTIONS = [
   "operating_takeover.confirm",
   "operating_takeover.activate",
   "operating_takeover.file.upload",
+  "history_expense.manage",
+  "history_expense.verify",
+  "history_expense.confirm",
+  "history_expense.activate",
+  "history_expense.correct",
   "payment.create",
   "payment.approve",
   "payment.execution",
@@ -111,10 +122,12 @@ export const BUSINESS_ACTIONS = [
   "expense_claim.attachment.append",
   "expense_claim.disburse",
   "expense_claim.payment.execute",
+  "expense_claim.public_cash_payment.execute",
   "expense_claim.repayment.record",
   "expense_claim.repayment.confirm",
   "expense_claim.repayment.reverse",
   "spot_procurement.create",
+  "general_procurement.approve",
   "spot_procurement.approve",
   "spot_procurement.payment.submit",
   "spot_procurement.payment.approve",
@@ -133,7 +146,10 @@ export const BUSINESS_ACTIONS = [
   "spot_procurement.invoice.manage",
   "spot_procurement.invoice_exception.confirm",
   "spot_procurement.vat_rate.manage",
-  "spot_procurement.void"
+  "spot_procurement.void",
+  "operating_cost_attribution.request",
+  "operating_cost_attribution.review",
+  "fund_flow.read"
 ] as const;
 
 export type BusinessAction = (typeof BUSINESS_ACTIONS)[number];
@@ -162,6 +178,8 @@ export const FINAL_APPROVAL_ROLES: readonly RoleKey[] = [
  * - `settlement.approve` / `payment.approve` 这里只做粗放行；具体节点顺序、会签与路由由后端审批实例校验。
  */
 export const ACTION_REQUIRED_ROLES: Record<BusinessAction, readonly RoleKey[]> = {
+  "fund_account.balance.review": ["finance_director"],
+  "fund_account.principal_return.review": ["comprehensive_director", "project_manager", "finance_director", "general_manager", "chairman"],
   "business_party.create": ["comprehensive_director", "chairman"],
   "contract.create": ["contract_staff", "contract_director"],
   "contract.draft.delete": ["contract_staff", "contract_director"],
@@ -190,7 +208,7 @@ export const ACTION_REQUIRED_ROLES: Record<BusinessAction, readonly RoleKey[]> =
   "contract.takeover.contract_facts.edit": ["contract_staff", "contract_director"],
   "contract.takeover.contract_facts.confirm": ["contract_director"],
   "contract.takeover.finance_facts.edit": ["finance_staff", "finance_director"],
-  "contract.takeover.finance_facts.confirm": ["finance_director"],
+  "contract.takeover.finance_facts.confirm": ["finance_staff", "finance_director"],
   "contract.takeover.confirmation.withdraw": [
     "contract_director",
     "finance_director"
@@ -224,14 +242,29 @@ export const ACTION_REQUIRED_ROLES: Record<BusinessAction, readonly RoleKey[]> =
   "settlement.archive.upload": ["contract_staff"],
   "settlement.archive.confirm": ["contract_director"],
   "project.receipt.record": ["finance_staff", "finance_director"],
-  "project.upstream_fund_fact.record": ["finance_staff", "finance_director"],
+  "project.owner_settlement.record": ["comprehensive_director", "finance_staff", "finance_director"],
+  "project.upstream_fund_fact.record": [
+    "comprehensive_director",
+    "finance_staff",
+    "finance_director"
+  ],
   "project.upstream_fund_fact.confirm": ["finance_staff", "finance_director"],
   "project.affiliate_contract_fact.record": ["contract_staff"],
   "project.affiliate_contract_fact.confirm": ["contract_director"],
   "project.affiliate_settlement_fact.record": ["budget_staff"],
   "project.affiliate_settlement_fact.confirm": ["budget_staff"],
-  "project.affiliate_payment_fact.record": ["finance_staff", "finance_director"],
+  "project.affiliate_payment_fact.record": [
+    "comprehensive_director",
+    "finance_staff",
+    "finance_director"
+  ],
   "project.affiliate_payment_fact.confirm": ["finance_staff", "finance_director"],
+  "project.construction_payment_correction.request": [
+    "comprehensive_director",
+    "finance_staff",
+    "finance_director"
+  ],
+  "project.construction_payment_correction.confirm": ["finance_director"],
   "project.affiliate_business_fact.evidence_supplement": [
     "contract_staff",
     "contract_director",
@@ -262,6 +295,7 @@ export const ACTION_REQUIRED_ROLES: Record<BusinessAction, readonly RoleKey[]> =
   ],
   "project.financing_quota.terminate": ["finance_director"],
   "project.operating_profile.manage": ["finance_staff", "finance_director"],
+  "project.basics.manage": ["comprehensive_director", "chairman", "general_manager"],
   "project.master_data.manage": ["comprehensive_director", "chairman"],
   "operating_projection.detail.read": ["finance_staff", "finance_director"],
   "necessary_expense_reserve.read": [
@@ -330,10 +364,21 @@ export const ACTION_REQUIRED_ROLES: Record<BusinessAction, readonly RoleKey[]> =
     "finance_staff",
     "finance_director"
   ],
-  "payment.create": ["contract_staff", "contract_director", "project_manager"],
+  "history_expense.manage": ["comprehensive_director"],
+  "history_expense.verify": ["finance_staff", "finance_director"],
+  "history_expense.confirm": ["finance_director"],
+  "history_expense.activate": ["finance_director"],
+  "history_expense.correct": ["finance_director"],
+  "payment.create": [
+    "contract_staff",
+    "contract_director",
+    "project_manager",
+    "comprehensive_director"
+  ],
   "payment.approve": [
     "comprehensive_director",
     "project_manager",
+    "contract_director",
     "finance_director",
     "chairman",
     "general_manager"
@@ -416,10 +461,12 @@ export const ACTION_REQUIRED_ROLES: Record<BusinessAction, readonly RoleKey[]> =
   ],
   "expense_claim.disburse": ["finance_staff"],
   "expense_claim.payment.execute": ["finance_staff"],
+  "expense_claim.public_cash_payment.execute": ["comprehensive_director"],
   "expense_claim.repayment.record": ["finance_staff"],
   "expense_claim.repayment.confirm": ["finance_director"],
   "expense_claim.repayment.reverse": ["finance_director"],
-  "spot_procurement.create": ["material_staff"],
+  "spot_procurement.create": ["material_staff", "material_director"],
+  "general_procurement.approve": ["comprehensive_director", "project_manager"],
   "spot_procurement.approve": ["material_director", "project_manager"],
   "spot_procurement.payment.submit": ["material_staff", "material_director"],
   "spot_procurement.payment.approve": [
@@ -477,7 +524,17 @@ export const ACTION_REQUIRED_ROLES: Record<BusinessAction, readonly RoleKey[]> =
   ],
   "spot_procurement.invoice_exception.confirm": ["finance_director"],
   "spot_procurement.vat_rate.manage": ["finance_director"],
-  "spot_procurement.void": ["project_manager", "finance_director"]
+  "spot_procurement.void": ["project_manager", "finance_director"],
+  "operating_cost_attribution.request": ["comprehensive_director", "finance_staff", "finance_director"],
+  "operating_cost_attribution.review": ["finance_director"],
+  "fund_flow.read": [
+    "finance_staff",
+    "finance_director",
+    "comprehensive_director",
+    "general_manager",
+    "chairman",
+    "project_manager"
+  ]
 };
 
 /**

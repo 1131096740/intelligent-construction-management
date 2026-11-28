@@ -1,0 +1,70 @@
+--- a/installer.cjs
++++ b/installer.cjs
+@@ -826,0 +827 @@
++      const signedPrecision = forward320.signedSettlementPrecision;
+@@ -832 +833,3 @@
+-        if (precision && qualifiedLedger.length >= expenseWitness.count) {
++        if (signedPrecision && qualifiedLedger.length === precision.count) {
++          enter('SIGNED_SETTLEMENT_PRECISION_MIGRATE_350');
++        } else if (precision && qualifiedLedger.length >= expenseWitness.count) {
+@@ -904 +907 @@
+-          if (count>=334) (precision ?? expenseWitness).assertPrefix(count,hash(JSON.stringify(current.ledger)));
++          if (count>=334) (signedPrecision ?? precision ?? expenseWitness).assertPrefix(count,hash(JSON.stringify(current.ledger)));
+@@ -918 +921 @@
+-          if (precision && count>=expenseWitness.count) {
++          if (precision && count>=expenseWitness.count && count<=precision.count) {
+@@ -928,0 +932,6 @@
++            if (signedPrecision && count===precision.count) {
++              const before=await jsonSql(signedPrecision.catalogSql);
++              need(equal(before.expense,observed)&&equal(before.historical,receipt.historicalSettlement334Catalog),
++                'SIGNED_SETTLEMENT_350_CATALOG_PREIMAGE');
++              receipt.signedSettlementCatalogBefore=before;
++            }
+@@ -929,0 +939,7 @@
++          if (signedPrecision && count===signedPrecision.count) {
++            const after=await jsonSql(signedPrecision.catalogSql);
++            signedPrecision.assertCatalog(after,receipt.signedSettlementCatalogBefore);
++            receipt.signedSettlementCatalog=after;
++            receipt.signedSettlementForward={count,ledgerSha256:signedPrecision.ledgerSha256,
++              sameIdentity:true,sourceTree,tails:tails.slice(precision.count-295)};
++          }
+@@ -936,2 +952,2 @@
+-        receipt.expenseWitnessPrecisionForward={count:current.ledger.length,ledgerSha256:hash(JSON.stringify(current.ledger)),
+-          sameIdentity:true,sourceTree,tails:tails.slice(expenseWitness.count-295)};
++        receipt.expenseWitnessPrecisionForward={count:precision.count,ledgerSha256:precision.ledgerSha256,
++          sameIdentity:true,sourceTree,tails:tails.slice(expenseWitness.count-295,precision.count-295)};
+@@ -1040 +1056,2 @@
+-        need(hash(JSON.stringify(afterConsumer.ledger))===(precision?.ledgerSha256 ?? forward320.expenseWitness?.ledgerSha256 ?? signed?.ledgerSha256 ?? a28.ledgerSha256),'A28_LEDGER_AFTER_CONSUMER');
++        const signedPrecision=forward320.signedSettlementPrecision;
++        need(hash(JSON.stringify(afterConsumer.ledger))===(signedPrecision?.ledgerSha256 ?? precision?.ledgerSha256 ?? forward320.expenseWitness?.ledgerSha256 ?? signed?.ledgerSha256 ?? a28.ledgerSha256),'A28_LEDGER_AFTER_CONSUMER');
+@@ -1044 +1061,2 @@
+-          need(equal(await jsonSql(signed.catalogSql),receipt.historicalSettlement334Catalog),'A28_334_CATALOG_AFTER_CONSUMER');
++          need(equal(await jsonSql(signed.catalogSql),signedPrecision
++            ? receipt.signedSettlementCatalog.historical : receipt.historicalSettlement334Catalog),'A28_334_CATALOG_AFTER_CONSUMER');
+@@ -1054 +1072,7 @@
+-            need(equal(await jsonSql(precision.catalogSql),catalogs[precision.count]),'EXPENSE_PRECISION_349_CATALOG_AFTER_CONSUMER');
++            if (signedPrecision) {
++              const after=await jsonSql(signedPrecision.catalogSql);
++              need(equal(after,receipt.signedSettlementCatalog),'SIGNED_SETTLEMENT_350_CATALOG_AFTER_CONSUMER');
++              receipt.signedSettlementCatalogAfterBusiness=true;
++            } else {
++              need(equal(await jsonSql(precision.catalogSql),catalogs[precision.count]),'EXPENSE_PRECISION_349_CATALOG_AFTER_CONSUMER');
++            }
+@@ -1463,2 +1487,3 @@
+-  const expenseWitnessPrecision=target===349 ? require('./expense-witness-349-profile.cjs') : null;
+-  const expenseWitness=[346,349].includes(target) ? require('./expense-witness-346-profile.cjs')
++  const signedSettlementPrecision=target===350 ? require('./signed-settlement-350-profile.cjs') : null;
++  const expenseWitnessPrecision=[349,350].includes(target) ? require('./expense-witness-349-profile.cjs') : null;
++  const expenseWitness=[346,349,350].includes(target) ? require('./expense-witness-346-profile.cjs')
+@@ -1504 +1529 @@
+-  return {sourceTree,tails:rows,sql,textDirect,paymentRemainder,upwardArchive,historicalTakeover,historicalSettlement,expenseWitness,expenseWitnessPrecision};
++  return {sourceTree,tails:rows,sql,textDirect,paymentRemainder,upwardArchive,historicalTakeover,historicalSettlement,expenseWitness,expenseWitnessPrecision,signedSettlementPrecision};
+@@ -1622,0 +1648,8 @@
++
++
++module.exports.withCombinedSignedSettlement350 = (receipt,consume,material) => {
++  need(typeof consume==='function' && material && typeof material==='object','SIGNED_SETTLEMENT_350_ARGUMENTS');
++  const selected=require('./signed-settlement-350-profile.cjs');
++  selected.assertSource(material,require('./multi-witness.cjs').final);
++  return withCombinedOrdinaryLoan(receipt,consume,exactMultiWitness295,false,readForward320(material,selected.count));
++};

@@ -1,10 +1,13 @@
 <script setup lang="ts">
+import { useAuthStore } from "../auth/auth.store";
+import DutySmsStatusPanel from "./DutySmsStatusPanel.vue";
 import ApprovalDocumentDownload from "./approval/ApprovalDocumentDownload.vue";
 import { onBeforeUnmount,ref,watch } from "vue";
 import { fetchUpwardAmounts,prepareUpwardAmount,decideUpwardAmount,type UpwardAmountData } from "../api/upward-contract-amount.api";
 import { uploadPrivateFile } from "../api/core-flow-read.api";
 import { formatUnknownApiError } from "../api/error-message";
 import { yuanTextToCentsText,centsTextToYuanText } from "../lib/money";
+const auth = useAuthStore();
 const props=defineProps<{projectId:string}>(),emit=defineEmits<{changed:[]}>();
 const data=ref<UpwardAmountData|null>(null),show=ref(false),busy=ref(false),error=ref("");
 const contract=ref(""),nature=ref("fixed"),amount=ref(""),date=ref(new Date().toISOString().slice(0,10)),reason=ref(""),password=ref("");
@@ -79,6 +82,12 @@ async function uploadPrivateFileWithCapability(arg0: Parameters<typeof uploadPri
           退回补充
         </t-button>
       </template>
+      <DutySmsStatusPanel
+        v-if="auth.user?.id && data?.canReview && row.canConfirm"
+        :key="`${auth.user.id}:${row.id}`"
+        domain="upward-contract-amount-revisions"
+        :business-id="row.id"
+      />
           <ApprovalDocumentDownload business-type="upward_contract_amount_revision" :business-id="row.id" :refresh-key="row.status" />
 </div>
     <t-drawer

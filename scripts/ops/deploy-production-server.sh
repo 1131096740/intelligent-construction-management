@@ -253,6 +253,9 @@ DATABASE_OWNER_URL="$database_migration_url" \
   ALLOW_PROJECT_PARTICIPANT_FENCE_ROLE_GRANT=true \
   "$repo_root/scripts/ops/grant-project-participating-company-fence-runtime-role.sh"
 DATABASE_OWNER_URL="$database_migration_url" OPERATING_LEDGER_RUNTIME_ROLE="$operating_ledger_runtime_role" \
+  "$repo_root/scripts/ops/operating-ledger-owner-psql.sh" --set=ON_ERROR_STOP=1 \
+  --file="$repo_root/services/api/prisma/operating-ledger-v2-runtime-grants.sql"
+DATABASE_OWNER_URL="$database_migration_url" OPERATING_LEDGER_RUNTIME_ROLE="$operating_ledger_runtime_role" \
   "$repo_root/scripts/ops/verify-operating-ledger-runtime-role.sh"
 ROOT_MIGRATION
 }

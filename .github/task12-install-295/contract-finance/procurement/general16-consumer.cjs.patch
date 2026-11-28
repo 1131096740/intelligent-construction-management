@@ -1,0 +1,55 @@
+--- original
++++ ported
+@@ -5,10 +5,10 @@
+ const fs=require("node:fs");
+ const path=require("node:path");
+ const {setTimeout:delay}=require("node:timers/promises");
+-const {withOutside289GeneralProcurement}=require("./installer.cjs");
+-const {createOwnerSql,attemptCleanup}=require("./owner-observation.cjs");
+-const {roleSetup,roleTeardown}=require("./procurement289-nodb/services/api/prisma/general-procurement-owned-ci.cjs");
+-const receipt={schemaVersion:1,purpose:"GENERAL_PROCUREMENT_ORIGINAL_15_PLUS_1_ON_289",stages:[],status:"STOPPED"};
++const {withCombined295GeneralProcurement}=require("./installer.cjs");
++const {createOwnerSql,attemptCleanup}=require("./procurement-owner-observation.cjs");
++const {roleSetup,roleTeardown}=require("./workspace/services/api/prisma/general-procurement-owned-ci.cjs");
++const receipt={schemaVersion:1,sourceSha:require("./contract-finance-source.json").sourceSha,purpose:"GENERAL_PROCUREMENT_ORIGINAL_15_PLUS_1_ON_289",stages:[],status:"STOPPED"};
+ const helper="public.jg_check_general_procurement_archive_voucher_v1(text,text,text,text,integer)";
+ const raw="public.jg_project_owner_settlement_voucher_bound(text)";
+ const expenseHelper="public.jg_check_legacy_procurement_expense_voucher_v1(text,text,text,text)";
+@@ -18,9 +18,9 @@
+ const fixturePngSha=createHash("sha256").update(Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Y9Zl1sAAAAASUVORK5CYII=","base64")).digest("hex");
+ const condition=(result,message)=>{if(!result)throw new Error(message);};
+ 
+-withOutside289GeneralProcurement(receipt,async context=>{
++withCombined295GeneralProcurement(receipt,async context=>{
+   const {database,runId,workDir}=context;
+-  condition(context.candidateTree==="a1be083076018686dd8afba68c44ff9c75502014" && uuid.test(runId) && database==="jg_task01_"+runId.replaceAll("-",""),"PROCUREMENT_ARCHIVE_CONTEXT");
++  condition(context.candidateTree===require("./scope.json").tree && uuid.test(runId) && database==="jg_task01_"+runId.replaceAll("-",""),"PROCUREMENT_ARCHIVE_CONTEXT");
+   const ownerSql=createOwnerSql(context.sql,receipt);
+   const password=randomUUID();
+   await ownerSql("ROLE_SETUP",roleSetup("procurement",database,password));
+@@ -36,7 +36,7 @@
+   const spec="src/database/general-procurement-http-postgres.spec.ts";
+   const migrationSpec="src/database/approval-v6-migration-postgres.spec.ts";
+   const child=spawn("pnpm",["--filter","@jiangkong/api","exec","jest","--runInBand","--runTestsByPath",spec,migrationSpec,"--json","--outputFile",resultPath],{
+-    cwd:"/qualification/procurement289-nodb",env:{PATH:"/usr/local/bin:/usr/bin:/bin",HOME:workDir,TMPDIR:workDir,
++    cwd:"/qualification/workspace",env:{PATH:"/usr/local/bin:/usr/bin:/bin",HOME:workDir,TMPDIR:workDir,
+       COREPACK_HOME:"/opt/corepack",COREPACK_ENABLE_NETWORK:"0",COREPACK_DEFAULT_TO_LATEST:"0",NODE_ENV:"test",CI:"true",
+       DATABASE_URL:runtime.toString(),FILE_STORAGE_DRIVER:"local",FILE_STORAGE_ROOT:storage,
+       INITIAL_USER_TEMPORARY_PASSWORD:"Local-Initial-Only-01",SMS_ENABLED:"false",
+@@ -259,7 +259,15 @@
+     ]);
+   }
+   if(receipt.consumerFailure||receipt.cleanupFailures)throw new Error("PROCUREMENT_ARCHIVE_ORIGINAL_STOPPED");
+-}).then(()=>{receipt.status="GENERAL_PROCUREMENT_ORIGINAL_15_PLUS_1_289_PASSED";}).catch(error=>{
++ }).then(()=>{
++     const terminal=require('./multi-witness.cjs');
++     condition(receipt.installOnly295?.ledgerSha256===terminal.final &&
++       receipt.combinedAfterBusiness?.ledgerSha256===terminal.final &&
++       receipt.combinedAfterBusiness?.sameIdentity===true && receipt.combinedAfterBusiness?.exactB7===true &&
++       receipt.multiWitnessCatalogAfterBusiness===true && receipt.business==='CALLBACK_COMPLETED' &&
++       receipt.cleanup==='POSTMASTER_STOPPED_TMPFS_REMOVED_BY_CONTAINER_EXIT', 'PROCUREMENT_295_FINAL_WITNESS');
++     receipt.status='GENERAL_PROCUREMENT_ORIGINAL_15_PLUS_1_295_PASSED';
++   }).catch(error=>{
+   receipt.status="STOPPED";
+   receipt.failure={stage:receipt.stages.at(-1),code:/^[A-Z0-9_]+$/u.test(error.message)?error.message:"UNCLASSIFIED",
+     command:error.command,exit:error.exit,signal:error.signal};

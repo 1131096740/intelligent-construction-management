@@ -1,12 +1,30 @@
 import { appendLegacyProxyBalances } from "./company-transfer-legacy-balances";
 import type { CompanyTransfer, CompanyTransferEvent, Prisma } from "@prisma/client";
 import { transferTotals } from "./company-transfer.domain";
-export interface CompanyTransferBalance { companyId: string; companyName: string; projectId: string | null; projectName?: string; cashChangeCents: string; inTransitCents: string; receivableCents: string; payableCents: string; legacyReceivableCents?: string; legacyPayableCents?: string }
+export interface CompanyTransferBalance { companyId: string; companyName: string; projectId: string | null; projectName?: string; cashChangeCents: string; inTransitCents: string; receivableCents: string; payableCents: string; legacyReceivableCents?: string; legacyPayableCents?: string; onBehalfReceivableCents?: string; onBehalfPayableCents?: string }
+type MutableBalance = { companyId: string; companyName: string; projectId: string | null; cashChangeCents: bigint; inTransitCents: bigint; receivableCents: bigint; payableCents: bigint; onBehalfReceivableCents: bigint; onBehalfPayableCents: bigint };
 export function summarizeCompanyTransfers(rows: CompanyTransfer[], events: CompanyTransferEvent[], scope: { projectIds?: string[]; includeOwn: boolean; companyId?: string }): CompanyTransferBalance[] {
-  const balances = new Map<string, { companyId: string; companyName: string; projectId: string | null; cashChangeCents: bigint; inTransitCents: bigint; receivableCents: bigint; payableCents: bigint }>();
-  const side = (id: string, p: string | null, name: string) => { if (scope.companyId && scope.companyId !== id || p === null && !scope.includeOwn || p !== null && scope.projectIds && !scope.projectIds.includes(p)) return null; const key = `${id}:${p ?? "own"}`; if (!balances.has(key)) balances.set(key, { companyId: id, companyName: name, projectId: p, cashChangeCents: 0n, inTransitCents: 0n, receivableCents: 0n, payableCents: 0n }); return balances.get(key)!; };
-  for (const r of rows) { const t = transferTotals(events.filter(e => e.transferId === r.id)), names = r.frozenParties as { source: { name: string }; destination: { name: string } }, source = side(r.sourceCompanyId, r.sourceProjectId, names.source.name), dest = side(r.destinationCompanyId, r.destinationProjectId, names.destination.name); if (source) { source.cashChangeCents += -t.sent + t.returned; source.inTransitCents += t.inTransit; } if (dest) dest.cashChangeCents += t.received; if (r.kind === "loan") { if (source) source.receivableCents += t.received; if (dest) dest.payableCents += t.received; } if (r.kind === "repayment" && r.originalTransferId) { if (source) source.payableCents -= t.received; if (dest) dest.receivableCents -= t.received; } }
-  return [...balances.values()].map(b => ({ ...b, cashChangeCents: String(b.cashChangeCents), inTransitCents: String(b.inTransitCents), receivableCents: String(b.receivableCents), payableCents: String(b.payableCents) }));
+  const balances = new Map<string, MutableBalance>();
+  const side = (id: string, p: string | null, name: string) => { if (scope.companyId && scope.companyId !== id || p === null && !scope.includeOwn || p !== null && scope.projectIds && !scope.projectIds.includes(p)) return null; const key = `${id}:${p ?? "own"}`; if (!balances.has(key)) balances.set(key, { companyId: id, companyName: name, projectId: p, cashChangeCents: 0n, inTransitCents: 0n, receivableCents: 0n, payableCents: 0n, onBehalfReceivableCents: 0n, onBehalfPayableCents: 0n }); return balances.get(key)!; };
+  for (const r of rows) {
+    const t = transferTotals(events.filter(e => e.transferId === r.id)), parties = r.frozenParties as { source: { name: string }; destination: { name: string }; debtor?: { name: string } }, source = side(r.sourceCompanyId, r.sourceProjectId, parties.source.name), dest = side(r.destinationCompanyId, r.destinationProjectId, parties.destination.name);
+    const thirdParty = r.kind === "repayment" && !!r.repaymentDebtorCompanyId && r.repaymentDebtorCompanyId !== r.sourceCompanyId;
+    const netReceived = t.netReceived;
+    const debtor = thirdParty ? side(r.repaymentDebtorCompanyId!, r.sourceProjectId, parties.debtor?.name ?? "原债务公司") : source;
+    if (source) { source.cashChangeCents += -t.sent + t.returned; source.inTransitCents += t.inTransit; }
+    if (dest) dest.cashChangeCents += netReceived;
+    if (thirdParty) {
+      // The payer settles the old A-B debt and becomes A's new creditor. Only the
+      // received amount creates the A-C debt, and the same payment is never
+      // counted twice as cash or as a project cost. Returned cash keeps the
+      // existing reservation-release semantics in the transfer ledger.
+      if (debtor) { debtor.payableCents += netReceived; debtor.onBehalfPayableCents += netReceived; }
+      if (source) { source.receivableCents += netReceived; source.onBehalfReceivableCents += netReceived; }
+    }
+    if (r.kind === "loan") { if (source) source.receivableCents += t.received; if (dest) dest.payableCents += t.received; }
+    if (r.kind === "repayment" && r.originalTransferId) { if (debtor) debtor.payableCents -= netReceived; if (dest) dest.receivableCents -= netReceived; }
+  }
+  return [...balances.values()].map(({ onBehalfReceivableCents, onBehalfPayableCents, ...b }) => ({ ...b, cashChangeCents: String(b.cashChangeCents), inTransitCents: String(b.inTransitCents), receivableCents: String(b.receivableCents), payableCents: String(b.payableCents), ...(onBehalfReceivableCents ? { onBehalfReceivableCents: String(onBehalfReceivableCents) } : {}), ...(onBehalfPayableCents ? { onBehalfPayableCents: String(onBehalfPayableCents) } : {}) }));
 }
 /** Called inside the financial projection's existing repeatable-read transaction. */
 export async function readCompanyTransferBalances(tx: Prisma.TransactionClient, projectIds: string[], cutoffAt: Date, companyId?: string) { const rows = await tx.companyTransfer.findMany({ where: { OR: [{ sourceProjectId: { in: projectIds } }, { destinationProjectId: { in: projectIds } }] } }); const events = await tx.companyTransferEvent.findMany({ where: { transferId: { in: rows.map(r => r.id) }, occurredAt: { lte: cutoffAt } } }); const projects = await tx.project.findMany({ where: { id: { in: projectIds } }, select: { id: true, name: true } }); return (await appendLegacyProxyBalances(tx, summarizeCompanyTransfers(rows, events, { projectIds, companyId, includeOwn: false }), cutoffAt, { projectIds, companyId })).map(b => ({ ...b, projectName: projects.find(p => p.id === b.projectId)?.name ?? "项目资金" })); }

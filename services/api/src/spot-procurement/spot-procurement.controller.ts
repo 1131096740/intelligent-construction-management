@@ -3,17 +3,24 @@ import {
   Body,
   Controller,
   Get,
+  GoneException,
   Optional,
   Param,
   Patch,
   Post,
   Query,
+  Res,
+  ServiceUnavailableException,
+  StreamableFile,
   UploadedFile,
   UseInterceptors
 } from "@nestjs/common";
+import { RetryDutyNotificationDto } from "../approval/retry-duty-notification.dto";
+import { SpotProcurementApprovalNotificationService } from "./spot-procurement-approval-notification.service";
 import { CurrentUser } from "../auth/decorators/current-user.decorator";
 import { RequireProjectRole } from "../auth/decorators/require-project-role.decorator";
 import type { AuthenticatedUser } from "../auth/auth.types";
+import { ledgerExportHeaders } from "../core-flow/business-ledger-export";
 import { FileService } from "../file/file.service";
 import { FileInterceptor, type MemoryUploadedFile, normalizeUploadedOriginalName } from "../file/uploaded-file";
 import { AbandonSpotProcurementDraftDto } from "./dto/abandon-spot-procurement-draft.dto";
@@ -25,7 +32,7 @@ import { ExecuteSupplierBalanceDto } from "./dto/execute-supplier-balance.dto";
 import { RecordProcurementRefundDto } from "./dto/record-procurement-refund.dto";
 import { RequestAbnormalTerminationDto } from "./dto/request-abnormal-termination.dto";
 import { ReviewSpotProcurementDto } from "./dto/review-spot-procurement.dto";
-import { UpdateSpotProcurementDraftDto } from "./dto/update-spot-procurement-draft.dto";
+import { SpotProcurementSubmissionDto, UpdateSpotProcurementDraftDto } from "./dto/update-spot-procurement-draft.dto";
 import { VoidSpotProcurementDto } from "./dto/void-spot-procurement.dto";
 import { WithdrawSpotProcurementApprovalDto } from "./dto/withdraw-spot-procurement-approval.dto";
 import { SpotProcurementApplicationService } from "./spot-procurement-application.service";
@@ -40,7 +47,8 @@ export class SpotProcurementController {
     private readonly reads: SpotProcurementReadService,
     private readonly settlements: SpotProcurementSettlementService,
     private readonly payments: SpotProcurementPaymentService,
-    @Optional() private readonly files?: FileService
+    @Optional() private readonly files?: FileService,
+    @Optional() private readonly approvalNotifications?: SpotProcurementApprovalNotificationService
   ) {}
 
   @Get("capabilities")
@@ -59,23 +67,25 @@ export class SpotProcurementController {
   @Get()
   list(
     @CurrentUser() user: AuthenticatedUser,
-    @Query("projectId") projectId?: string,
-    @Query("status") status?: string,
-    @Query("keyword") keyword?: string,
-    @Query("page") page?: string,
-    @Query("pageSize") pageSize?: string,
-    @Query("view") view?: string,
-    @Query("surface") surface?: string
+    @Query() query: Record<string, string | string[] | undefined> = {}
   ) {
-    return this.reads.listProcurements(user.id, {
-      projectId,
-      status,
-      keyword,
-      page,
-      pageSize,
-      view,
-      surface
-    });
+    return this.reads.listProcurements(user.id, query);
+  }
+
+  /**
+   * 零星采购台账导出：与列表共用逐行访问判定与筛选，
+   * 导出全部筛选后的可见记录，不是当前页。
+   */
+  @Get("ledger-export")
+  async exportLedger(
+    @CurrentUser() user: AuthenticatedUser,
+    @Res({ passthrough: true })
+    response: { set: (headers: Record<string, string>) => void },
+    @Query() query: Record<string, string | string[] | undefined> = {}
+  ) {
+    const result = await this.reads.exportLedger(user.id, query);
+    response.set(ledgerExportHeaders(result));
+    return new StreamableFile(result.buffer);
   }
 
   @Get("application-text-suggestions")
@@ -98,6 +108,18 @@ export class SpotProcurementController {
     @CurrentUser() user: AuthenticatedUser
   ) {
     return this.applications.getCreateEntryDefinitions(user.id, projectId);
+  }
+
+  @Get(":procurementId/duty-sms")
+  dutySms(@Param("procurementId") id: string, @CurrentUser() user: AuthenticatedUser) {
+    if (!this.approvalNotifications) throw new ServiceUnavailableException("零采短信状态暂不可用");
+    return this.approvalNotifications.status(id, user.id);
+  }
+
+  @Post(":procurementId/duty-sms/retry")
+  retryDutySms(@Param("procurementId") id: string, @CurrentUser() user: AuthenticatedUser, @Body() body: RetryDutyNotificationDto) {
+    if (!this.approvalNotifications) throw new ServiceUnavailableException("零采短信状态暂不可用");
+    return this.approvalNotifications.retry(id, user.id, body.attemptId);
   }
 
   @Get(":procurementId")
@@ -190,9 +212,10 @@ export class SpotProcurementController {
   @RequireProjectRole("spot_procurement.create")
   submit(
     @Param("procurementId") procurementId: string,
-    @CurrentUser() user: AuthenticatedUser
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() body: SpotProcurementSubmissionDto = {}
   ) {
-    return this.applications.submit(procurementId, user.id);
+    return this.applications.submit(procurementId, user.id, body);
   }
 
   @Post(":procurementId/payment-drafts")
@@ -286,6 +309,13 @@ export class SpotProcurementController {
     @CurrentUser() user: AuthenticatedUser,
     @Body() body: CreateProcurementDiscrepancyDto
   ) {
+    if (body.operation === "initiate") {
+      throw new GoneException({
+        statusCode: 410,
+        code: "OLD_WRITE_ENTRY_RETIRED",
+        message: "该旧办理入口已停止使用，请返回当前业务页面办理"
+      });
+    }
     return this.settlements.createOrConfirmDiscrepancy(
       procurementId,
       user.id,

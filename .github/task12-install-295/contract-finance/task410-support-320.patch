@@ -1,0 +1,24 @@
+--- support
++++ support
+@@ -21,6 +21,10 @@
+ }
+
+ export async function assertTask410Owner290(db: PrismaService, target: URL) {
++  const current320 = process.env.TASK410_OWNED_320 === "1";
++  const count = current320 ?329:295;
++  const migration = current320 ? "20261127000000_contract_takeover_pending_finance" : terminalMigration;
++  const checksum = current320 ? "0bfe144cae30a7a29973c06dfb51737965fb9709e408db412f8d137d0663db4e" : terminalChecksum;
+   const [result] = await db.$queryRaw<Array<{ accepted: boolean }>>`
+     SELECT
+       current_database() = ${target.pathname.slice(1)}
+@@ -34,8 +38,8 @@
+         JOIN pg_catalog.pg_database d ON d.datdba = r.oid
+         WHERE d.datname = current_database() AND r.oid = 10 AND r.rolsuper AND r.rolname = current_user
+       )
+-      AND (SELECT count(*) = 295 AND count(*) FILTER (
+-        WHERE migration_name = ${terminalMigration} AND checksum = ${terminalChecksum}
++      AND (SELECT count(*) = ${count} AND count(*) FILTER (
++        WHERE migration_name = ${migration} AND checksum = ${checksum}
+       ) = 1 FROM public._prisma_migrations WHERE finished_at IS NOT NULL AND rolled_back_at IS NULL) AS accepted
+   `;
+   if (result?.accepted !== true) throw new Error("TASK410_OWNED_290_OWNER_REQUIRED");

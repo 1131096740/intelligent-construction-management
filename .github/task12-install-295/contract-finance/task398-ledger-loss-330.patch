@@ -1,0 +1,18 @@
+--- runner
++++ runner
+@@ -356 +356 @@
+-  const knownTitle="rejects a project source gap, then shares three valid instalments and supplements the voucher";
++  const knownTitle=ledgerLossScenario?"recovers and replays cross-company project payment after losing a committed response":"rejects a project source gap, then shares three valid instalments and supplements the voucher";
+@@ -541 +541 @@
+- const modes=new Map([["text-direct-330",["--text-direct-finance"]],["standard-330",[]],["standard-329",[]],["standard-295",[]],["standard-290",[]],["standard",[]],["principal-return",["--principal-return-real"]],["cash-handover",["--cash-handover-real"]],["correction-catalog",["--cash-handover-real"]]]);
++ const modes=new Map([["text-direct-330",["--text-direct-finance"]],["standard-330",[]],["ledger-loss-330",["--ledger-loss-real"]],["standard-329",[]],["standard-295",[]],["standard-290",[]],["standard",[]],["principal-return",["--principal-return-real"]],["cash-handover",["--cash-handover-real"]],["correction-catalog",["--cash-handover-real"]]]);
+@@ -544,0 +545 @@
++ const ledgerLoss330=mode==="ledger-loss-330";
+@@ -545,0 +547 @@
++ if(ledgerLoss330&&receipt?.purpose!=="TASK398_LEDGER_LOSS_EXACT_330")throw Error("TASK398_LEDGER_LOSS_330_SCOPE");
+@@ -547 +549 @@
+- const current330=textDirect||standard330;
++ const current330=textDirect||standard330||ledgerLoss330;
+@@ -615 +617 @@
+-  correctionCatalog:mode==="correction-catalog"?{context,receipt}:undefined,standard290:standard330||standard320||standard295||mode==="standard-290"?receipt:undefined,
++  correctionCatalog:mode==="correction-catalog"?{context,receipt}:undefined,standard290:ledgerLoss330||standard330||standard320||standard295||mode==="standard-290"?receipt:undefined,

@@ -1,0 +1,23 @@
+--- spec
++++ spec
+@@ -0,0 +1 @@
++import { disconnectIsolatedPaymentCommit, withDeferredPaymentCommitFault } from "./task426-deferred-payment-fault.test-support";
+@@ -697,0 +699,18 @@
++     const beforeAttempt=await observe();
++     await withDeferredPaymentCommitFault(owner,key,"reject",async assertFaultReached=>{
++      const failed=await json(registrationRoute,"POST",attempt,finance);
++      await assertFaultReached();
++      expect(failed).toMatchObject({status:409,body:{code:"PAYMENT_RESULT_UNCONFIRMED",resultStatus:"unconfirmed"}});
++      expect(await observe()).toEqual(beforeAttempt);
++      expect(await json(`/payment-executions/results/${key}`,"GET",undefined,finance))
++       .toMatchObject({status:200,body:{status:"unconfirmed"}});
++     });
++     const interrupted = { ...attempt, idempotencyKey: randomUUID() };
++     await withDeferredPaymentCommitFault(owner,interrupted.idempotencyKey,"disconnect",async assertFaultReached=>{
++      const failed=await disconnectIsolatedPaymentCommit(owner,()=>json(registrationRoute,"POST",interrupted,finance));
++      expect([409,500]).toContain(failed.status);
++      await assertFaultReached();
++      expect(await observe()).toEqual(beforeAttempt);
++      expect(await json(`/payment-executions/results/${interrupted.idempotencyKey}`,"GET",undefined,finance))
++       .toMatchObject({status:200,body:{status:"unconfirmed"}});
++     });

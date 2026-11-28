@@ -1,6 +1,9 @@
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
+import { runInNewContext } from "node:vm";
+import { computed } from "vue";
 import { describe, expect, it } from "vitest";
+import { centsTextToYuanText } from "../../lib/money";
 
 const source = readFileSync(
   fileURLToPath(new URL("./ProjectOperatingOverviewPage.vue", import.meta.url)),
@@ -42,6 +45,14 @@ describe("project operating overview structure", () => {
     expect(source).toContain("auth.user?.globalRoleKeys.some");
   });
 
+  it("exposes the named construction enterprise deduction entry and drawer", () => {
+    expect(source).toContain("登记施工企业扣费");
+    expect(source).toContain("ConstructionEnterpriseDeductionDrawer");
+    expect(source).toContain("registerConstructionDeduction === \"1\"");
+    expect(source).toContain(':can-confirm-written="canConfirmConstructionDeductionWritten"');
+    expect(source).toContain(':can-confirm-oral="canConfirmConstructionDeductionOral"');
+  });
+
   it("serializes the close-profit projection after companion reads complete", () => {
     const companionReadsCompleted = source.indexOf("] = await companionRequests;");
     const closeProfitRead = source.indexOf(
@@ -52,7 +63,7 @@ describe("project operating overview structure", () => {
   });
 
   it("loads the cross-project executive total through one project-set projection", () => {
-    expect(source).toContain("await fetchProjectSetOperatingProjection()");
+    expect(source).toContain("await fetchProjectSetOperatingProjection(undefined, 2)");
     expect(source).not.toContain("fetchProjectSetOperatingProjection(\n      projects.value.map");
     expect(source).toContain("buildExecutiveProjectOverview(projection, projects.value)");
     expect(source).not.toContain("projects.value.map((project) => fetchProjectOperatingOverview(project.id))");
@@ -97,6 +108,84 @@ describe("project operating overview structure", () => {
     expect(source).toContain("<t-select");
     expect(source).toContain("<t-collapse");
     expect(source).toContain("项目维护");
+  });
+
+  it("defines construction-enterprise paid and project external paid as a non-additive pair", () => {
+    expect(source).toContain("施工企业已付金额（与项目对外支付不可相加）");
+    expect(source).toContain("项目对外支付（施工企业直接付下游 + 我方付下游）");
+    expect(source).toContain("business?.projectExternalPaidCents");
+  });
+
+  it("shows confirmed cost by bearing company with an explicit unattributed group and public cash source", () => {
+    expect(source).toContain("costAttribution?.byBearingCompany");
+    expect(source).toContain("待归属成本（承担公司未明）");
+    expect(source).toContain("公共现金支付成本");
+  });
+
+  it("drills down downstream unpaid by contract without adding pending states", () => {
+    expect(source).toContain("按合同查看下游未付");
+    expect(source).toContain("审批中申请");
+    expect(source).toContain("已批准待付");
+    expect(source).toContain("不额外相加");
+    expect(source).toContain("overview.contractDrilldown");
+    expect(source).toContain("不同合同预付与欠款不自动抵扣");
+  });
+
+  it("confirms public-cash cost attribution without creating a second cost", () => {
+    expect(source).toContain("公共现金成本待归属");
+    expect(source).toContain("发起归属");
+    expect(source).toContain("确认归属");
+    expect(source).toContain("fetchCostAttributions");
+    expect(source).toContain("reviewCostAttribution");
+  });
+
+  it("marks incomplete data as known-only and never as final profit", () => {
+    expect(source).toContain("当前经营盈亏（已知数，资料待补充）");
+    expect(source).toContain("（已知数，不作为最终利润）");
+    expect(source).toContain("暂不可确认（资料待补充）");
+    expect(source).toContain("projection?.profitAndLoss.finalConfirmable");
+  });
+
+  it.each([
+    {
+      currentYuan: "40.0000",
+      label: "当前经营盈亏（已知数，资料待补充）",
+      value: "¥40.0000（已知数，不作为最终利润）"
+    },
+    {
+      currentYuan: null,
+      label: "当前经营盈亏",
+      value: "暂不可确认（资料待核对）"
+    }
+  ])("shows V2 current profit only when the amount is known ($currentYuan)", ({ currentYuan, label, value }) => {
+    const profitMetrics = source.slice(
+      source.indexOf("const profitIncomplete ="),
+      source.indexOf("const evidenceItems =")
+    );
+    const formatCents = source
+      .slice(source.indexOf("function formatCents("), source.indexOf("function upstreamFundStatusLabel("))
+      .replace("(value: string | null): string", "(value)");
+    const v2Overview = {
+      operatingProjection: {
+        numericProtocolVersion: 2,
+        integrity: { moneyComplete: false },
+        profitAndLoss: {
+          currentOperatingProfitCents: null,
+          currentOperatingProfitYuan: currentYuan,
+          finalConfirmedProfitCents: null,
+          finalConfirmable: false
+        }
+      }
+    };
+    const items = runInNewContext(
+      formatCents + profitMetrics + "\nprofitAndLossItems.value",
+      { overview: { value: v2Overview }, computed, centsTextToYuanText }
+    );
+    expect(items).toContainEqual({ label, value });
+    expect(items).toContainEqual({
+      label: "最终确认盈亏",
+      value: "暂不可确认（资料待补充）"
+    });
   });
 
   it("renders the unified projection layers without exposing source identifiers", () => {

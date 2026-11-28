@@ -82,6 +82,18 @@
           :title="currentUserText"
         >{{ currentUserText }}</span>
       </t-header>
+      <WorkItemNotifications
+        v-if="auth.user?.id"
+        :key="auth.user.id"
+        :pending="pendingNotifications"
+        :count="navigationBadgeCounts['/首页'] ?? 0"
+        :newest="newWorkItemNotices"
+        :newest-count="newWorkItemNoticeCount"
+        :offset="workItemNoticePage.offset"
+        :page-size="workItemNoticePage.size"
+        @page="loadWorkItemPage"
+        @dismiss="dismissWorkItemNotices"
+      />
       <t-content
         id="main-content"
         class="content"
@@ -132,7 +144,7 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
-import { fetchWorkItems } from "../api/core-flow-read.api";
+import { fetchWorkItemNoticeDetails, fetchWorkItemNoticeKeys, fetchWorkItems, type WorkItemReadModel, type WorkItemsReadModel } from "../api/core-flow-read.api";
 import { useAuthStore } from "../auth/auth.store";
 import BusinessNavigation from "../components/BusinessNavigation.vue";
 import SiteFilingFooter from "../components/SiteFilingFooter.vue";
@@ -140,6 +152,10 @@ import { roleLabels } from "../pages/settings/approval-flow-readonly.config";
 import { visibleAdminNavigationGroups } from "../routes/route-records";
 import { clearLegacyRecentBusinessRoutes } from "./legacy-layout-storage";
 import { navigationWorkItemBadgeCounts } from "./navigation-work-item-badges";
+import WorkItemNotifications from "./WorkItemNotifications.vue";
+import {
+  addedWorkItemNoticeKeys, collectWorkItemNotices, persistWorkItemNoticeIndex, readWorkItemNoticeIndex, type WorkItemNoticeIndex
+} from "./work-item-notifications";
 
 const route = useRoute();
 const router = useRouter();
@@ -153,6 +169,14 @@ let navigationFocusFrame: number | undefined;
 let navigationReturnTarget: HTMLElement | null = null;
 const navigationBadgeCounts = ref<Record<string, number>>({});
 let workItemBadgeRequestId = 0;
+let notificationRefreshTimer: number | undefined;
+const pendingNotifications = ref<WorkItemReadModel[]>([]);
+const workItemNoticePage = ref({ offset: 0, size: 30 });
+const newWorkItemNotices = ref<WorkItemReadModel[]>([]);
+const newWorkItemNoticeCount = ref(0);
+const activeNoticeKeys = new Set<string>();
+let noticeIndex: WorkItemNoticeIndex | null = null;
+const seenNotices = new Set<string>();
 const adminNavigationGroups = computed(() => visibleAdminNavigationGroups(auth.user?.roleKeys, auth.user?.globalRoleKeys));
 const items = computed(() => adminNavigationGroups.value.flatMap((group) => group.items));
 const activePath = computed(() => {
@@ -173,17 +197,29 @@ const currentUserText = computed(() => {
 
 onMounted(() => {
   compactNavigationQuery.addEventListener("change", updateNavigationLayout);
+  document.addEventListener("visibilitychange", refreshVisibleWorkItems);
+  notificationRefreshTimer = window.setInterval(refreshVisibleWorkItems, 30_000);
   try { clearLegacyRecentBusinessRoutes(window.localStorage); } catch { /* Storage may be unavailable. */ }
 });
 onBeforeUnmount(() => {
   compactNavigationQuery.removeEventListener("change", updateNavigationLayout);
+  document.removeEventListener("visibilitychange", refreshVisibleWorkItems);
+  window.clearInterval(notificationRefreshTimer);
+  workItemBadgeRequestId += 1;
   window.cancelAnimationFrame(navigationFocusFrame ?? 0);
 });
+watch(() => auth.user?.id, () => {
+  workItemBadgeRequestId += 1;
+  navigationBadgeCounts.value = {};
+  workItemNoticePage.value = { offset: 0, size: 30 };
+  pendingNotifications.value = [];
+  dismissWorkItemNotices();
+  noticeIndex = null;
+  seenNotices.clear();
+}, { flush: "sync" });
 watch(() => [auth.user?.id, route.fullPath], () => {
   closeNavigation();
-  const requestId = ++workItemBadgeRequestId;
-  if (!auth.user?.id) { navigationBadgeCounts.value = {}; return; }
-  void loadNavigationBadges(requestId);
+  refreshVisibleWorkItems();
 }, { immediate: true });
 watch(navigationOpen, async (open) => {
   window.cancelAnimationFrame(navigationFocusFrame ?? 0);
@@ -248,13 +284,88 @@ async function go(path: string) {
   const failure = await router.push(path);
   if (!failure) closeNavigation();
 }
-async function loadNavigationBadges(requestId: number) {
-  try {
-    const workItems = await fetchWorkItems();
-    if (requestId === workItemBadgeRequestId) navigationBadgeCounts.value = navigationWorkItemBadgeCounts(workItems);
-  } catch {
-    if (requestId === workItemBadgeRequestId) navigationBadgeCounts.value = {};
+function refreshVisibleWorkItems() {
+  loadWorkItemPage(workItemNoticePage.value.offset);
+}
+function loadWorkItemPage(offset: number) {
+  const userId = auth.user?.id;
+  if (userId && document.visibilityState === "visible") void loadNavigationBadges(++workItemBadgeRequestId, userId, offset);
+}
+function dismissWorkItemNotices() {
+  newWorkItemNotices.value = [];
+  newWorkItemNoticeCount.value = 0;
+  activeNoticeKeys.clear();
+}
+
+async function syncNoticeIndex(workItems: WorkItemsReadModel, requestId: number, userId: string, storage: Storage | null) {
+  const version = workItems.noticeIndexVersion;
+  if (!version) return;
+  const saved = readWorkItemNoticeIndex(storage, userId);
+  const previous = noticeIndex ?? saved;
+  if (previous?.version === version) {
+    noticeIndex = previous;
+    return;
   }
+  newWorkItemNotices.value = [];
+  newWorkItemNoticeCount.value = 0;
+  const isCurrent = () => requestId === workItemBadgeRequestId && document.visibilityState === "visible";
+  const keys: string[] = [];
+  let cursor: string | undefined;
+  while (isCurrent()) {
+    const page = await fetchWorkItemNoticeKeys(version, cursor);
+    if (!isCurrent()) return;
+    if (page.version !== version) return;
+    keys.push(...page.keys);
+    if (!page.nextCursor) break;
+    cursor = page.nextCursor;
+  }
+  if (!isCurrent()) return;
+  const next = { version, keys };
+  const currentKeys = new Set(keys);
+  const initial = previous ? [] : collectWorkItemNotices(storage, userId, seenNotices, workItems.recentNotices ?? []);
+  const added = previous ? addedWorkItemNoticeKeys(previous, next) : initial.flatMap(item => item.noticeKey ? [item.noticeKey] : []);
+  const nextActive = new Set([...activeNoticeKeys].filter(key => currentKeys.has(key)));
+  for (const key of added) nextActive.add(key);
+  const [only] = nextActive;
+  let details: WorkItemReadModel[] = [];
+  if (nextActive.size === 1) {
+    const response = await fetchWorkItemNoticeDetails(version, [only]);
+    if (!isCurrent() || response.version !== version) return;
+    details = response.items;
+  }
+  if (!isCurrent()) return;
+  noticeIndex = next;
+  persistWorkItemNoticeIndex(storage, userId, next);
+  activeNoticeKeys.clear();
+  for (const key of nextActive) activeNoticeKeys.add(key);
+  newWorkItemNoticeCount.value = nextActive.size;
+  newWorkItemNotices.value = details;
+}
+
+async function loadNavigationBadges(requestId: number, userId: string, offset: number) {
+  try {
+    const workItems = await fetchWorkItems(offset);
+    if (requestId === workItemBadgeRequestId) {
+      navigationBadgeCounts.value = navigationWorkItemBadgeCounts(workItems);
+      pendingNotifications.value = workItems.queues.pending;
+      workItemNoticePage.value = workItems.noticePage ?? { offset: 0, size: 30 };
+      if (document.visibilityState !== "visible") return;
+      let storage: Storage | null = null;
+      try { storage = window.localStorage; } catch { /* Storage may be unavailable. */ }
+      if (workItems.noticeIndexVersion) {
+        await syncNoticeIndex(workItems, requestId, userId, storage);
+        return;
+      }
+      const recent = workItems.recentNotices ?? pendingNotifications.value;
+      const latest = collectWorkItemNotices(storage, userId, seenNotices, recent);
+      if (latest.length) newWorkItemNotices.value = latest;
+      else {
+        const pendingIds = new Set([...recent, ...pendingNotifications.value].map(item => item.id));
+        newWorkItemNotices.value = newWorkItemNotices.value.filter(item => pendingIds.has(item.id));
+      }
+      newWorkItemNoticeCount.value = newWorkItemNotices.value.length;
+    }
+  } catch { /* Keep the last successful work-item snapshot during a temporary refresh failure. */ }
 }
 </script>
 
@@ -270,8 +381,8 @@ async function loadNavigationBadges(requestId: number) {
 .header-title { min-width: 0; overflow-wrap: anywhere; font-size: var(--jg-font-size-body); color: var(--jg-color-text-secondary); }
 .header-user { flex: 1 1 220px; margin-left: auto; min-width: 0; max-width: 100%; overflow-wrap: anywhere; font-size: var(--jg-font-size-meta); color: var(--jg-color-text-tertiary); text-align: right; }
 .navigation-toggle { flex: 0 0 auto; }
-.navigation-drawer :deep(.t-drawer__body) { padding: 0; }
-.navigation-dialog { min-width: 0; }
+.navigation-drawer :deep(.t-drawer__body) { padding: 0; height: 100%; overflow-y: auto; overscroll-behavior: contain; }
+.navigation-dialog { min-width: 0; min-height: 100%; }
 .navigation-dialog__header { position: sticky; top: 0; z-index: 1; display: flex; align-items: center; justify-content: space-between; min-height: var(--jg-layout-header-height); padding: var(--jg-space-sm) var(--jg-space-lg); border-bottom: var(--jg-border-width-base) solid var(--jg-color-border); background: var(--jg-color-bg-surface); color: var(--jg-color-text-primary); }
 .content { width: 100%; max-width: 100%; min-width: 0; min-height: 0; flex: 1; padding: var(--jg-layout-content-padding); overflow-x: clip; background: var(--jg-color-bg-page); container-name: jg-content; container-type: inline-size; }
 .mobile-bottom { display: none; }
@@ -280,11 +391,19 @@ async function loadNavigationBadges(requestId: number) {
   .main-shell { position: fixed; inset-inline: 0; top: var(--jg-visible-top, 0px); height: var(--jg-visible-height, 100dvh); min-height: 0; overflow: hidden; display: flex; flex-direction: column; }
   .header { flex: 0 0 auto; min-height: 56px; padding: var(--jg-space-sm) var(--jg-space-md); gap: var(--jg-space-sm); }
   .header-title { flex: 1; }
-  .header-user { flex-basis: 100%; margin-left: 0; text-align: left; }
+  .header-user {
+    flex-basis: 100%;
+    margin-left: 0;
+    text-align: left;
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    overflow: hidden;
+  }
   .content { overflow-y: auto; overscroll-behavior-y: contain; -webkit-overflow-scrolling: touch; padding: var(--jg-space-section) var(--jg-space-lg); }
   .mobile-bottom { flex: 0 0 auto; display: flex; gap: var(--jg-space-xs); padding: var(--jg-space-xs) var(--jg-space-sm) max(var(--jg-space-xs), env(safe-area-inset-bottom)); border-top: var(--jg-border-width-base) solid var(--jg-color-border); background: var(--jg-color-bg-surface); }
   .mobile-bottom .t-button { flex: 1; padding: var(--jg-space-sm) var(--jg-space-xs); color: var(--jg-color-text-tertiary); font-size: var(--jg-font-size-meta); }
   .mobile-bottom .is-active { color: var(--jg-color-brand); background: var(--jg-color-bg-brand-soft); }
-  :global(html[data-keyboard="open"]) .mobile-bottom { display: none; }
+  html[data-keyboard="open"] .mobile-bottom { display: none; }
 }
 </style>

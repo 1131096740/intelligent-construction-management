@@ -10,6 +10,6 @@ import { FileService, PrivateFileStorage } from "./file.service";
   imports: [AuditModule, AuthModule, SpotProcurementAccessModule],
   controllers: [FileController],
   providers: [FileService, PrivateFileStorage, FileCleanupSeamService],
-  exports: [FileService, FileCleanupSeamService]
+  exports: [FileService, PrivateFileStorage, FileCleanupSeamService]
 })
 export class FileModule {}

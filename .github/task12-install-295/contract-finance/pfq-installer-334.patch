@@ -1,0 +1,86 @@
+--- a/installer.cjs
++++ b/installer.cjs
+@@ -366 +366 @@
+-  const pfqMode=['ORIGINAL_PFQ_EXACT_295','ORIGINAL_PFQ_EXACT_329','ORIGINAL_PFQ_EXACT_330','ORIGINAL_PFQ_EXACT_331','ORIGINAL_PFQ_EXACT_332'].includes(receipt.purpose)?'--pfq-'+receipt.lane+'-289-local':undefined;
++  const pfqMode=['ORIGINAL_PFQ_EXACT_295','ORIGINAL_PFQ_EXACT_329','ORIGINAL_PFQ_EXACT_330','ORIGINAL_PFQ_EXACT_331','ORIGINAL_PFQ_EXACT_332','ORIGINAL_PFQ_EXACT_334'].includes(receipt.purpose)?'--pfq-'+receipt.lane+'-289-local':undefined;
+@@ -903 +903,5 @@
+-      if (forward320.upwardArchive) batches.push(tails.slice(36));
++      if (forward320.upwardArchive) batches.push(tails.slice(36,37));
++      const a28 = forward320.historicalTakeover ? require('./historical-takeover-333-profile.cjs') : null;
++      const signed = forward320.historicalSettlement ? require('./historical-settlement-334-profile.cjs') : null;
++      if (a28) batches.push(tails.slice(37,38));
++      if (signed) batches.push(tails.slice(38));
+@@ -945,0 +950,25 @@
++        }
++        if (a28 && qualifiedLedger.length===332) {
++          const digest=hash(JSON.stringify(qualifiedLedger));
++          need(digest===a28.predecessor332 && equal(await jsonSql(finalSql),final),'A28_333_PREDECESSOR_CONTINUITY');
++          const catalog=await jsonSql(a28.catalogSql);
++          a28.assertCatalog(catalog,false);
++          receipt.historicalTakeoverPredecessor={count:332,ledgerSha256:digest,sameIdentity:true,sameBaseB7:true,catalog};
++        }
++        if (a28 && qualifiedLedger.length===333) {
++          need(hash(JSON.stringify(qualifiedLedger))===a28.ledgerSha256,'A28_333_LEDGER_DIGEST');
++          const catalog=await jsonSql(a28.catalogSql);
++          a28.assertCatalog(catalog,true);
++          receipt.historicalTakeover333Catalog=catalog;
++          if (signed) {
++            const routineCatalog=await jsonSql(signed.catalogSql);
++            signed.assertCatalog(routineCatalog);
++            receipt.historicalSettlementPredecessor={count:333,ledgerSha256:a28.ledgerSha256,routineCatalog};
++          }
++        }
++        if (signed && qualifiedLedger.length===334) {
++          need(hash(JSON.stringify(qualifiedLedger))===signed.ledgerSha256,'A28_334_LEDGER_DIGEST');
++          need(equal(await jsonSql(a28.catalogSql),receipt.historicalTakeover333Catalog),'A28_334_333_CHECKS_PRESERVED');
++          const catalog=await jsonSql(signed.catalogSql);
++          signed.assertCatalog(catalog,receipt.historicalSettlementPredecessor.routineCatalog);
++          receipt.historicalSettlement334Catalog=catalog;
+@@ -1053,0 +1083,12 @@
++      if (forward320?.historicalTakeover) {
++        const a28=require('./historical-takeover-333-profile.cjs');
++        const signed=forward320.historicalSettlement ? require('./historical-settlement-334-profile.cjs') : null;
++        need(hash(JSON.stringify(qualifiedLedger))===(signed?.ledgerSha256 ?? a28.ledgerSha256),'A28_LEDGER_AFTER_CONSUMER');
++        need(equal(await jsonSql(a28.catalogSql),receipt.historicalTakeover333Catalog),'A28_333_CATALOG_AFTER_CONSUMER');
++        need(hash(JSON.stringify(afterConsumer.ledger))===receipt.forward320.observedLedgerSha256,'PFQ_334_OBSERVED_LEDGER_AFTER_CONSUMER');
++        receipt.historicalTakeoverCatalogAfterBusiness=true;
++        if (signed) {
++          need(equal(await jsonSql(signed.catalogSql),receipt.historicalSettlement334Catalog),'A28_334_CATALOG_AFTER_CONSUMER');
++          receipt.historicalSettlementCatalogAfterBusiness=true;
++        }
++      }
+@@ -1459 +1500,3 @@
+-  const upwardArchive=target===332;
++  const upwardArchive=target>=332;
++  const historicalTakeover=target===334;
++  const historicalSettlement=target===334;
+@@ -1477,0 +1521,8 @@
++  if(historicalTakeover) {
++    const {terminal}=require('./historical-takeover-333-profile.cjs');
++    need(tails[37]?.name===terminal.name && tails[37]?.sha256===terminal.sha256,'A28_333_TERMINAL');
++  }
++  if(historicalSettlement) {
++    const {terminal}=require('./historical-settlement-334-profile.cjs');
++    need(tails[38]?.name===terminal.name && tails[38]?.sha256===terminal.sha256,'A28_334_TERMINAL');
++  }
+@@ -1490 +1541 @@
+-  return {sourceTree,tails:rows,sql,textDirect,paymentRemainder,upwardArchive};
++  return {sourceTree,tails:rows,sql,textDirect,paymentRemainder,upwardArchive,historicalTakeover,historicalSettlement};
+@@ -1512,0 +1564,5 @@
++};
++
++module.exports.withCombined334HistoricalSettlement = (receipt,consume,material) => {
++  need(typeof consume==='function' && material && typeof material==='object','A28_334_ARGUMENTS');
++  return withCombinedOrdinaryLoan(receipt,consume,exactMultiWitness295,false,readForward320(material,334));
+@@ -1590 +1646 @@
+-  const count={'current-320':329,'text-direct-330':330,'payment-remainder-331':331,'upward-archive-332':332}[material?.mode]??295;
++  const count={'current-320':329,'text-direct-330':330,'payment-remainder-331':331,'upward-archive-332':332,'historical-settlement-334':334}[material?.mode]??295;
+@@ -1597,0 +1654,2 @@
++    if(count===334) require('./historical-settlement-334-profile.cjs')
++      .assertFinanceInstallation(receipt,require('./contract-finance-source.json'));
+@@ -1623 +1681 @@
+-    assertOutsideWitness(289,JSON.parse((await context.sql(outsideWitnessSql(289,current320,count===332))).stdout.trim()));
++    assertOutsideWitness(289,JSON.parse((await context.sql(outsideWitnessSql(289,current320,count>=332))).stdout.trim()));
+@@ -1626 +1684 @@
+-  const install=count===332?module.exports.withCombined332UpwardArchive:
++  const install=count===334?module.exports.withCombined334HistoricalSettlement:count===332?module.exports.withCombined332UpwardArchive:

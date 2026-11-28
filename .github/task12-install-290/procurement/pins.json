@@ -1,0 +1,121 @@
+{
+  "general16": {
+    "runtime": {
+      "entry.cjs": "06c0be6a1336999b9dbd4392a695043f453a18727d59e692bb655dce8dc49a7f",
+      "stage-procurement.cjs": "f14d9c829afe86929915e52e1b4ee703002c3a382c16a0ac975868d596434303",
+      "owner-observation.cjs": "0a40cbccd54f827051462f15c7f1887017b4d984169cb3e1c961b78757dfbef0",
+      "image.id": "bbec1daf1ba0a8407c248473b86fbd4e95556548e9369982abfeafc0bc1cc7ee",
+      "Dockerfile": "6a496611f69529592a14de55b37a6d1c1481886301bc95ce484a0bef5df4058a",
+      "successor.cjs": "939c2fdc239dc50cf8a64dd79c6d64a84f767df9c9ce9edeb2928d4a88da9b5e",
+      "successor.sql": "8ea8b2a9c78210a7c4e42f4ddf7224fada84b2c4692dfbecc41477d3a8704f60",
+      "scope.json": "f118765e22c642d2773bdc3c9da4f5b6f3edcad4f8445055dfbf28908ed8c2bc",
+      "installer.cjs": "6d22a0592a3dc0be78144cbff7bed7bd3ea4cf26b7b6458f910cbf2a78b9d380",
+      "stage-browser.cjs": "54456814ce83dcf0f982f721a520bdffafcdbd4023e895c5b0c5934d12aa8d1f",
+      "input-check.cjs": "475911739b063ebe47b60a293c5c81745e15bc9ff92694e6d5736198d67adeae",
+      "consumer.cjs": "31c0f9db4ec443efe44c5d43472a566f455d94245f79e5022af0217c7d5f8ccc",
+      "source-inputs.json": "d87d82719b517871b161011ae666349a34e65b0f37fd8fe4941e78829a018e0d",
+      "checkout.cjs": "7dcddf0e61402c00772ed9e727bd90a8b94cf1fc1a21c34bf2416501fa3adf1f"
+    },
+    "overlays": {
+      "services/api/prisma/database-dynamic-gate-manifest.json": {
+        "after": "945ae553d511df229336f33fbbb360a60b75930835c086beab6accf549d2455c",
+        "candidate": "8e475695a75f7bf0ac2cec4e93bfb715eccc3c25866acd9f348ef896cf13afa5"
+      },
+      "services/api/prisma/general-procurement-owned-ci.cjs": {
+        "after": "3c3faa127c6be4742ecf0986bf53cf89f436af45e5ccbad89e42b2284569ba4c",
+        "candidate": null
+      },
+      "services/api/prisma/run-database-dynamic-gate-local.cjs": {
+        "after": "ec39311717c5e8a4bc93910fe5a0443c3fdb45a1b40477ce39222a79effe8a89",
+        "candidate": "0e7546cf4b23519621f12ba7431e15f4bdd2d171568e628ad9b8adfbbfae7657"
+      },
+      "services/api/prisma/task398-owned-280-business-read-baseline.json": {
+        "after": "88b44411322e857b9c1b3f6a562ca7655d998a41fd15db8449b8e79ae4b309b2",
+        "candidate": null
+      },
+      "services/api/src/database/approval-v6-migration-postgres.spec.ts": {
+        "after": "3b86b7f9c08c992e175cb3703f3535c8920486e92c1c6991760ba66a0ed9389f",
+        "candidate": "31048f1f3f0ca557dc945de5de2adf0acb5dad8265f810328fa815afabb32430"
+      },
+      "services/api/src/database/general-procurement-http-postgres.spec.ts": {
+        "after": "3ce1fa518856776aff97bc860c542a21e74732fbead2139cdd577013f1d29b52",
+        "candidate": "531b35667e2a714d8c72a56aae88f4122f47ffc0853d4f82b12c0935a9046a0b"
+      },
+      "services/api/src/database/procurement-owned.test-support.ts": {
+        "after": "92ffc129e38ae7f642ab9fd7ab081875bff078438d6e79f24a21a4d0b21c695a",
+        "candidate": null
+      },
+      "services/api/src/database/project-business-scope-http-postgres.spec.ts": {
+        "after": "58901077599d29a5db83e55e0619048ec044317abf7519c3292639b0ab4add36",
+        "candidate": "77f97a77b010bf08d0a25b190ac9b8de4d6ad61a3238f22c9bfc9f416b0e4782"
+      },
+      "services/api/src/database/task12-owned-280.test-support.ts": {
+        "after": "0653380689b72c974ab8abf63aa19dcd2fda7e8dc48114ccdd7a6d38793d5ba7",
+        "candidate": null
+      }
+    }
+  },
+  "project11": {
+    "runtime": {
+      "entry.cjs": "5be98b17ef2b7252ca599c30aaba67f0cf23c3e9cb0c2925e4de5327e06ce153",
+      "stage-procurement.cjs": "87585e4874d409a0693f886c24364385643819c82d30484113f031ed40edfb41",
+      "owner-observation.cjs": "afae6546e3a5cc38df24031dc3e0996640470cb56443bf81c00ecd4e0d94dd3c",
+      "project-scope-browser-report.cjs": "d3746a6f5263f35434c28f2bee538866f4f222beacd4385c9e676f971a92ba00",
+      "image.id": "bbec1daf1ba0a8407c248473b86fbd4e95556548e9369982abfeafc0bc1cc7ee",
+      "Dockerfile": "e0cc6d3a7f7bc6adae0563535c2558309c550a64f1bc2c57b1b2734c8f74959b",
+      "successor.cjs": "939c2fdc239dc50cf8a64dd79c6d64a84f767df9c9ce9edeb2928d4a88da9b5e",
+      "successor.sql": "8ea8b2a9c78210a7c4e42f4ddf7224fada84b2c4692dfbecc41477d3a8704f60",
+      "scope.json": "f118765e22c642d2773bdc3c9da4f5b6f3edcad4f8445055dfbf28908ed8c2bc",
+      "installer.cjs": "6d22a0592a3dc0be78144cbff7bed7bd3ea4cf26b7b6458f910cbf2a78b9d380",
+      "project-scope-browser-pins.json": "02d883cac40a9923d03af1f56cf3a1dfd50043a798fb5da9ef729ca3d9819ef0",
+      "stage-browser.cjs": "54456814ce83dcf0f982f721a520bdffafcdbd4023e895c5b0c5934d12aa8d1f",
+      "input-check.cjs": "98fb9fffbb9356bd4c69ef42469b65fda37786003a553caee932e7be3710ee9c",
+      "consumer.cjs": "b7fae1d98881c2d87453ad61212ca842628e0127810e408f84c8f7ba33a7cdb4",
+      "project-scope-http-report.cjs": "91ebfd5473105c651a20619fba87e5f3e0f5184012a2fc5c79ef3a835587e132",
+      "source-inputs.json": "f0b485a797786e2f305dd9420feccea2bde9eaa1ab795db7233546bb28f99443",
+      "checkout.cjs": "7dcddf0e61402c00772ed9e727bd90a8b94cf1fc1a21c34bf2416501fa3adf1f"
+    },
+    "overlays": {
+      "services/api/prisma/database-dynamic-gate-manifest.json": {
+        "after": "945ae553d511df229336f33fbbb360a60b75930835c086beab6accf549d2455c",
+        "candidate": "8e475695a75f7bf0ac2cec4e93bfb715eccc3c25866acd9f348ef896cf13afa5"
+      },
+      "services/api/prisma/general-procurement-owned-ci.cjs": {
+        "after": "3c3faa127c6be4742ecf0986bf53cf89f436af45e5ccbad89e42b2284569ba4c",
+        "candidate": null
+      },
+      "services/api/prisma/run-database-dynamic-gate-local.cjs": {
+        "after": "ec39311717c5e8a4bc93910fe5a0443c3fdb45a1b40477ce39222a79effe8a89",
+        "candidate": "0e7546cf4b23519621f12ba7431e15f4bdd2d171568e628ad9b8adfbbfae7657"
+      },
+      "services/api/prisma/task398-owned-280-business-read-baseline.json": {
+        "after": "88b44411322e857b9c1b3f6a562ca7655d998a41fd15db8449b8e79ae4b309b2",
+        "candidate": null
+      },
+      "services/api/src/database/approval-v6-migration-postgres.spec.ts": {
+        "after": "3b86b7f9c08c992e175cb3703f3535c8920486e92c1c6991760ba66a0ed9389f",
+        "candidate": "31048f1f3f0ca557dc945de5de2adf0acb5dad8265f810328fa815afabb32430"
+      },
+      "services/api/src/database/general-procurement-http-postgres.spec.ts": {
+        "after": "3ce1fa518856776aff97bc860c542a21e74732fbead2139cdd577013f1d29b52",
+        "candidate": "531b35667e2a714d8c72a56aae88f4122f47ffc0853d4f82b12c0935a9046a0b"
+      },
+      "services/api/src/database/procurement-owned.test-support.ts": {
+        "after": "92ffc129e38ae7f642ab9fd7ab081875bff078438d6e79f24a21a4d0b21c695a",
+        "candidate": null
+      },
+      "services/api/src/database/project-business-scope-http-postgres.spec.ts": {
+        "after": "0692b080530be247e2b06be7ab599eedd5fa99f49ae1eec7fd87f9a2c4b84128",
+        "candidate": "77f97a77b010bf08d0a25b190ac9b8de4d6ad61a3238f22c9bfc9f416b0e4782"
+      },
+      "services/api/src/database/project-scope-http-observation.ts": {
+        "after": "766432c8477b8a6beec2433532782ec0f21c152286177865bbd9a2a53054a600",
+        "candidate": null
+      },
+      "services/api/src/database/task12-owned-280.test-support.ts": {
+        "after": "0653380689b72c974ab8abf63aa19dcd2fda7e8dc48114ccdd7a6d38793d5ba7",
+        "candidate": null
+      }
+    }
+  }
+}

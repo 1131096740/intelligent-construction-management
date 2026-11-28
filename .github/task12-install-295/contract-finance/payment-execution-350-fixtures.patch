@@ -1,0 +1,21 @@
+--- fresh.cjs
++++ fresh.cjs
+@@ -11 +11 @@
+-const expenseWitness=source.mode==='expense-witness-349' ? require('./payment-execution-349.cjs') : null;
++const expenseWitness=source.mode==='signed-settlement-350' ? require('./payment-execution-350.cjs') : null;
+@@ -16 +16 @@
+-const count=expenseWitness?349:historicalSettlement?334:upwardArchive?332:paymentRemainder?331:source.mode==='text-direct-330'?330:forward?329:295;
++const count=expenseWitness?350:historicalSettlement?334:upwardArchive?332:paymentRemainder?331:source.mode==='text-direct-330'?330:forward?329:295;
+--- valid.cjs
++++ valid.cjs
+@@ -5 +5 @@
+-const expenseWitness=source.mode==='expense-witness-349' ? require('./payment-execution-349.cjs') : null;
++const expenseWitness=source.mode==='signed-settlement-350' ? require('./payment-execution-350.cjs') : null;
+@@ -10 +10 @@
+-const count=expenseWitness?349:historicalSettlement?334:upwardArchive?332:paymentRemainder?331:source.mode==='text-direct-330'?330:forward?329:295;
++const count=expenseWitness?350:historicalSettlement?334:upwardArchive?332:paymentRemainder?331:source.mode==='text-direct-330'?330:forward?329:295;
+--- payment-execution-concurrency.spec.ts
++++ payment-execution-concurrency.spec.ts
+@@ -195 +195 @@
+-    if (["332", "334", "346", "349"].includes(process.env.JG_CONTRACT_FINANCE_LEDGER ?? "")) {
++    if (["332", "334", "346", "349", "350"].includes(process.env.JG_CONTRACT_FINANCE_LEDGER ?? "")) {

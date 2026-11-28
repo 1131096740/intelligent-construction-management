@@ -7,6 +7,7 @@ export interface ExpenseClaimLineDraft extends Record<string, string> {
   expenseCategory: string;
   occurredOn: string;
   purpose: string;
+  quantity: string;
   receiptCount: string;
   amountYuan: string;
   evidenceType: "invoice" | "receipt_or_other" | "none";
@@ -14,7 +15,7 @@ export interface ExpenseClaimLineDraft extends Record<string, string> {
   remark: string;
 }
 
-const props = defineProps<{ definition: BusinessEntrySceneDefinition; modelValue: ExpenseClaimLineDraft[]; readonly?: boolean }>();
+const props = defineProps<{ definition: BusinessEntrySceneDefinition; modelValue: ExpenseClaimLineDraft[]; readonly?: boolean; amountDerivedFromLines?: boolean }>();
 const emit = defineEmits<{ "update:modelValue": [value: ExpenseClaimLineDraft[]] }>();
 
 const definition = computed(() => ({ ...props.definition, fields: props.definition.fields.filter((field) => field.scope === "line") }));
@@ -30,6 +31,7 @@ function emptyLine(): ExpenseClaimLineDraft {
     expenseCategory: "",
     occurredOn: new Date().toISOString().slice(0, 10),
     purpose: "",
+    quantity: "",
     receiptCount: "0",
     amountYuan: "",
     evidenceType: "invoice",
@@ -50,6 +52,7 @@ function replaceLines(value: Record<string, string>[]) {
     expenseCategory: line.expenseCategory ?? "",
     occurredOn: line.occurredOn ?? "",
     purpose: line.purpose ?? "",
+    quantity: line.quantity ?? "",
     receiptCount: line.receiptCount ?? "0",
     amountYuan: line.amountYuan ?? "",
     evidenceType: line.evidenceType === "none" || line.evidenceType === "receipt_or_other" ? line.evidenceType : "invoice",
@@ -66,7 +69,11 @@ defineExpose({ emptyLine });
     <header>
       <div>
         <h3>费用明细</h3>
-        <p>每行金额最多两位小数；保存时系统校验费用明细合计与申请金额完全一致。</p>
+        <p>
+          {{ amountDerivedFromLines
+            ? "每行金额最多四位小数，申请金额由费用明细加总。"
+            : "每行金额最多四位小数；保存时系统校验费用明细合计与申请金额完全一致。" }}
+        </p>
       </div>
       <t-button
         v-if="!readonly"

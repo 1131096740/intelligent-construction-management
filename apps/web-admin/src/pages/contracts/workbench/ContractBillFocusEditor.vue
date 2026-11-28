@@ -16,6 +16,7 @@ import {
 import {
   addBillCandidateRow,
   authoritativeBillTotals,
+  previewBillGross,
   copyBillCandidateRow,
   fromWorkbenchBill,
   invalidateChangedAuthoritativePricing,
@@ -28,11 +29,13 @@ import {
   type ContractBillCellError
 } from "./contract-bill-grid";
 import type { WorkbenchBill } from "./contract-bill-editor";
+import { formatApiErrorMessage, formatUnknownApiError } from "../../../api/error-message";
 
 async function uploadContractBillImportFileWithCapability(
   contractVersionId: string,
   file: Blob,
-  fileName: string
+  fileName: string,
+  idempotencyKey?: string
 ) {
   const capability = await fetchContractDraftOperationCapabilities(contractVersionId);
   const matchesRequestedVersion = capability.version.id === contractVersionId;
@@ -45,13 +48,13 @@ async function uploadContractBillImportFileWithCapability(
   if (!operationAllowed) {
     throw new Error("当前用户不能上传合同清单文件");
   }
-  return uploadContractWorkbenchPrivateFile(contractVersionId, file, fileName);
+  return uploadContractWorkbenchPrivateFile(contractVersionId, file, fileName, idempotencyKey);
 }
 
 async function previewContractDraftBillExcelImportWithCapability(
   contractVersionId: string,
   billKey: string,
-  body: { fileId: string }
+  body: { fileId: string; mode?: "append" | "replace" }
 ) {
   const capability = await fetchContractDraftOperationCapabilities(contractVersionId);
   const matchesRequestedVersion = capability.version.id === contractVersionId;
@@ -96,12 +99,13 @@ interface FocusControllerDependencies {
   uploadFile: (
     contractVersionId: string,
     file: Blob,
-    fileName: string
+    fileName: string,
+    idempotencyKey?: string
   ) => Promise<UploadedFileReadModel>;
   previewImport: (
     contractVersionId: string,
     billKey: string,
-    body: { fileId: string }
+    body: { fileId: string; mode?: "append" | "replace" }
   ) => Promise<ContractDraftBillExcelImportPreview>;
 }
 
@@ -127,6 +131,9 @@ export interface ContractBillFocusController {
   message: Ref<string>;
   messageDanger: Ref<boolean>;
   preview: Ref<BillImportPreview | null>;
+  importMode: Ref<"append" | "replace">;
+  importUndoAvailable: ComputedRef<boolean>;
+  undoImport: () => void;
   replaceConfirmVisible: Ref<boolean>;
   pendingImportRows: Ref<ContractBillCandidateRow[] | null>;
   selectedClientRowKey: Ref<string>;
@@ -149,6 +156,7 @@ export interface ContractBillFocusController {
   setRows: (rows: ContractBillCandidateRow[]) => void;
   previewExcel: (file: File) => Promise<void>;
   cancelImportReplace: () => void;
+  cancelImportFile: () => void;
   confirmImportReplace: () => void;
   downloadTemplate: () => Promise<void>;
   syncBill: (bill: WorkbenchBill) => void;
@@ -159,7 +167,9 @@ interface BillImportPreview {
   targetBillRevision: number;
   added: number;
   skipped: number;
-  errors: Array<{ message: string }>;
+  errors: Array<{ message: string; sheet?: string; row?: number; column?: string }>;
+  sourceColumns: NonNullable<ContractDraftBillExcelImportPreview["sourceColumns"]>;
+  sourceRows: NonNullable<ContractDraftBillExcelImportPreview["sourceRows"]>;
   candidateRows: ContractBillCandidateRow[];
 }
 
@@ -179,6 +189,10 @@ export function createContractBillFocusController(
   const message = ref("");
   const messageDanger = ref(false);
   const preview = ref<BillImportPreview | null>(null);
+  const importMode = ref<"append" | "replace">("append");
+  let importUpload: { file: File; versionId: string; billKey: string; requestKey: string; id?: string } | null = null;
+  const lastImport = ref<{ before: ContractBillCandidateRow[]; importedKeys: string[] } | null>(null);
+  const importUndoAvailable = computed(() => lastImport.value !== null);
   const replaceConfirmVisible = ref(false);
   const pendingImportRows = ref<ContractBillCandidateRow[] | null>(null);
   const selectedClientRowKey = ref(rows.value[0]?.clientRowKey ?? "");
@@ -228,7 +242,9 @@ export function createContractBillFocusController(
   const totals = computed(() => authoritativeBillTotals(billSnapshot.value));
   const replacePrompt = computed(
     () =>
-      `将以预检结果替换当前 ${rows.value.length} 行本地候选；确认后由右上角统一保存合同草稿。`
+      importMode.value === "append"
+        ? `将把预检行追加到现有 ${rows.value.length} 行之后，确认后自动保存草稿，不会提交审批。`
+        : `将替换当前 ${rows.value.length} 行清单，请核对后再确认；只保存草稿，不会提交审批。`
   );
 
   function locked(): boolean {
@@ -237,16 +253,18 @@ export function createContractBillFocusController(
 
   function addRow() {
     if (locked()) return;
-    replaceCandidateRows(addBillCandidateRow(rows.value));
+    const next = addBillCandidateRow(rows.value);
+    next.at(-1)!.clientRowKey = crypto.randomUUID();
+    replaceCandidateRows(next);
     selectedClientRowKey.value = rows.value.at(-1)?.clientRowKey ?? "";
   }
 
   function copySelectedRow() {
     if (locked()) return;
     const beforeLength = rows.value.length;
-    replaceCandidateRows(
-      copyBillCandidateRow(rows.value, selectedClientRowKey.value)
-    );
+    const next = copyBillCandidateRow(rows.value, selectedClientRowKey.value);
+    if (next.length > beforeLength) next.at(-1)!.clientRowKey = crypto.randomUUID();
+    replaceCandidateRows(next);
     if (rows.value.length > beforeLength) {
       selectedClientRowKey.value = rows.value.at(-1)?.clientRowKey ?? "";
     }
@@ -363,7 +381,7 @@ export function createContractBillFocusController(
       messageDanger.value = false;
     } catch (error) {
       if (generation !== remainderCancellationDialogGeneration) return;
-      remainderCancellationError.value = errorMessage(
+      remainderCancellationError.value = formatUnknownApiError(
         error,
         "取消未实施余量失败，请核对服务端最新状态"
       );
@@ -402,16 +420,19 @@ export function createContractBillFocusController(
     }
     busy.value = true;
     try {
-      const uploaded = await dependencies.uploadFile(
-        contractVersionId,
-        file,
-        file.name
-      );
+      if (!importUpload || importUpload.file !== file || importUpload.versionId !== contractVersionId || importUpload.billKey !== billSnapshot.value.billKey) {
+        importUpload = { file, versionId: contractVersionId, billKey: billSnapshot.value.billKey, requestKey: crypto.randomUUID() };
+      }
+      if (!importUpload.id) {
+        const uploaded = await dependencies.uploadFile(contractVersionId, file, file.name, importUpload.requestKey);
+        importUpload.id = uploaded.id;
+      }
+      const uploaded = { id: importUpload.id };
       const result = normalizeImportPreview(
         await dependencies.previewImport(
           contractVersionId,
           billSnapshot.value.billKey,
-          { fileId: uploaded.id }
+          { fileId: uploaded.id, mode: importMode.value }
         )
       );
       preview.value = result;
@@ -427,10 +448,10 @@ export function createContractBillFocusController(
       if (result.errors.length) {
         pendingImportRows.value = null;
         replaceConfirmVisible.value = false;
-        setError(result.errors.map((error) => error.message).join("；"));
+        setError(result.errors.map((issue) => issue.message).join("；"));
         return;
       }
-      if (!preservesGovernedBillRowKeys(rows.value, result.candidateRows)) {
+      if (importMode.value === "replace" && !preservesGovernedBillRowKeys(rows.value, result.candidateRows)) {
         pendingImportRows.value = null;
         replaceConfirmVisible.value = false;
         setError(
@@ -442,10 +463,22 @@ export function createContractBillFocusController(
       replaceConfirmVisible.value = true;
       message.value = "Excel 预检完成，请确认是否载入当前合同草稿";
     } catch (error) {
-      setError(errorMessage(error, "导入预检失败"));
+      const unavailable = error instanceof Error && "status" in error && typeof error.status === "number" && error.status >= 500;
+      setError(unavailable
+        ? "上传或预检结果暂时无法确认，已保留选中文件；请检查网络或稍后重试。"
+        : `${formatUnknownApiError(error, "导入预检失败")}；已保留选中文件，可修改后重选或重试预检。`);
     } finally {
       busy.value = false;
     }
+  }
+
+  function cancelImportFile() {
+    importUpload = null;
+    preview.value = null;
+    pendingImportRows.value = null;
+    replaceConfirmVisible.value = false;
+    clearMessage();
+    message.value = "已取消本次文件预检，当前草稿未改变";
   }
 
   function cancelImportReplace() {
@@ -457,7 +490,7 @@ export function createContractBillFocusController(
 
   function confirmImportReplace() {
     if (!pendingImportRows.value || locked()) return;
-    if (!preservesGovernedBillRowKeys(rows.value, pendingImportRows.value)) {
+    if (importMode.value === "replace" && !preservesGovernedBillRowKeys(rows.value, pendingImportRows.value)) {
       pendingImportRows.value = null;
       replaceConfirmVisible.value = false;
       setError(
@@ -465,12 +498,25 @@ export function createContractBillFocusController(
       );
       return;
     }
-    replaceCandidateRows(pendingImportRows.value);
+    lastImport.value = { before: cloneRows(rows.value), importedKeys: pendingImportRows.value.map(row => row.clientRowKey) };
+    replaceCandidateRows(importMode.value === "append" ? [...rows.value, ...pendingImportRows.value] : pendingImportRows.value);
     selectedClientRowKey.value = rows.value[0]?.clientRowKey ?? "";
     pendingImportRows.value = null;
     replaceConfirmVisible.value = false;
-    message.value = "Excel 预检结果已载入合同草稿，等待右上角统一保存";
+    message.value = "Excel 预检结果已载入当前填写，请查看保存状态；尚未提交业务";
     messageDanger.value = false;
+  }
+
+  function undoImport() {
+    if (locked() || !lastImport.value) return;
+    const { before, importedKeys } = lastImport.value;
+    const next = rows.value.filter(row => !importedKeys.includes(row.clientRowKey));
+    before.forEach((row, index) => {
+      if (!next.some(current => current.clientRowKey === row.clientRowKey)) next.splice(Math.min(index, next.length), 0, row);
+    });
+    replaceCandidateRows(next);
+    lastImport.value = null;
+    message.value = "已撤销本次导入，其他填写保持不变，等待保存草稿";
   }
 
   async function downloadTemplate() {
@@ -489,19 +535,22 @@ export function createContractBillFocusController(
       );
       message.value = "标准模板已下载";
     } catch (error) {
-      setError(errorMessage(error, "下载标准模板失败"));
+      setError(formatUnknownApiError(error, "下载标准模板失败"));
     } finally {
       busy.value = false;
     }
   }
 
   function syncBill(nextBill: WorkbenchBill) {
+    const bindings = nextBill.acknowledgedRowKeys ?? {};
+    if (lastImport.value) lastImport.value.before = lastImport.value.before.map(row =>
+      reconcileUndoRowReceipt(row, bindings, nextBill.acknowledgedDeletions));
     const nextSnapshot = cloneBill(nextBill);
     const nextRows = fromWorkbenchBill(nextSnapshot);
     billSnapshot.value = nextSnapshot;
     if (candidateDigest(nextRows) !== candidateDigest(rows.value)) {
       rows.value = cloneRows(nextRows);
-      selectedClientRowKey.value = rows.value[0]?.clientRowKey ?? "";
+      if (!rows.value.some(row => row.clientRowKey === selectedClientRowKey.value)) selectedClientRowKey.value = rows.value[0]?.clientRowKey ?? "";
     }
     errors.value = validateBillCandidateRows(rows.value, billSnapshot.value);
     if (pendingRemainderCancellation) {
@@ -550,6 +599,9 @@ export function createContractBillFocusController(
     message,
     messageDanger,
     preview,
+    importMode,
+    importUndoAvailable,
+    undoImport,
     replaceConfirmVisible,
     pendingImportRows,
     selectedClientRowKey,
@@ -570,6 +622,7 @@ export function createContractBillFocusController(
     setRows,
     previewExcel,
     cancelImportReplace,
+    cancelImportFile,
     confirmImportReplace,
     downloadTemplate,
     syncBill
@@ -580,7 +633,17 @@ function normalizeImportPreview(
   value: ContractDraftBillExcelImportPreview
 ): BillImportPreview {
   const candidateRows: ContractBillCandidateRow[] = [];
-  const errors = value.errors.map((error) => ({ message: error.message }));
+  const errors: BillImportPreview["errors"] = value.errors.map((issue) => {
+    const message = issue.message === "Excel数值单元格超过15位有效数字，无法确认原输入精度；请将该格改为文本格式后重新填写并上传"
+      ? "该数字超过15位有效数字，无法确认原输入精度。请将该单元格改为文本格式后重新填写并上传。"
+      : formatApiErrorMessage(issue.message, 0, "请核对清单中的填写内容");
+    return {
+      ...issue,
+      message: issue.sheet && issue.row && issue.column
+        ? `${issue.sheet} 第 ${issue.row} 行 ${issue.column} 列：${message}`
+        : message
+    };
+  });
   value.rows.forEach((row, index) => {
     const candidate = importCandidateRow(row);
     if (candidate) {
@@ -597,6 +660,8 @@ function normalizeImportPreview(
     added: value.added,
     skipped: value.skipped,
     errors,
+    sourceColumns: value.sourceColumns ?? [],
+    sourceRows: value.sourceRows ?? [],
     candidateRows: errors.length ? [] : candidateRows
   };
 }
@@ -606,12 +671,12 @@ function importCandidateRow(value: unknown): ContractBillCandidateRow | null {
   const clientRowKey = requiredText(value["clientRowKey"]);
   const itemName = requiredText(value["itemName"]);
   const unit = requiredText(value["unit"]);
-  const unitPrice = requiredText(value["unitPrice"]);
+  const unitPrice = typeof value["unitPrice"] === "string" ? value["unitPrice"] : null;
   if (
     !clientRowKey ||
     !itemName ||
     !unit ||
-    !unitPrice ||
+    unitPrice === null ||
     !isRecord(value["customData"])
   ) {
     return null;
@@ -650,6 +715,26 @@ function importCandidateRow(value: unknown): ContractBillCandidateRow | null {
   };
 }
 
+function reconcileUndoRowReceipt(
+  row: ContractBillCandidateRow,
+  bindings: Record<string, string>,
+  deletions: WorkbenchBill["acknowledgedDeletions"]
+): ContractBillCandidateRow {
+  const next = { ...row };
+  if (!next.rowKey && bindings[next.clientRowKey]) {
+    next.rowKey = bindings[next.clientRowKey];
+    delete next.restoreRef;
+    delete next.restoreOriginalValues;
+  }
+  const deletion = deletions?.find(ref => ref.oldRowKey === next.rowKey);
+  if (deletion) {
+    next.restoreRef = { saveIntentKey: deletion.saveIntentKey, oldRowKey: deletion.oldRowKey };
+    next.restoreOriginalValues = JSON.parse(JSON.stringify(deletion.originalValues)) as Record<string, unknown>;
+    delete next.rowKey;
+  }
+  return next;
+}
+
 function cloneRows(
   rows: readonly ContractBillCandidateRow[]
 ): ContractBillCandidateRow[] {
@@ -668,6 +753,7 @@ function cloneRows(
 function cloneBill(bill: WorkbenchBill): WorkbenchBill {
   return {
     ...bill,
+    inputNumericProtocolVersion: 2,
     schemaSnapshot: bill.schemaSnapshot
       ? { ...bill.schemaSnapshot }
       : bill.schemaSnapshot,
@@ -748,12 +834,6 @@ function optionalText(value: unknown): string {
 function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === "object" && !Array.isArray(value);
 }
-
-function errorMessage(error: unknown, fallback: string) {
-  return error instanceof Error && error.message.trim()
-    ? error.message
-    : fallback;
-}
 </script>
 
 <script setup lang="ts">
@@ -762,12 +842,15 @@ import { nextTick, watch } from "vue";
 import SensitiveActionDialog from "../../../components/SensitiveActionDialog.vue";
 import { centsTextToYuanText } from "../../../lib/money";
 import ContractBillGrid from "./ContractBillGrid.vue";
+import JgBusinessGrid from "../../../components/JgBusinessGrid.vue";
+import type { ColumnRegular } from "@revolist/vue3-datagrid";
 
 const props = defineProps<{
   bill: WorkbenchBill;
   contractVersionId: string;
   disabled: boolean;
   actionDisabled?: boolean;
+  remoteDisabled?: boolean;
   actionHandler?: (
     request: ContractBillRemainderCancellationRequest
   ) => Promise<ContractBillRemainderCancellationExecutionResult | void>;
@@ -776,12 +859,19 @@ const props = defineProps<{
 const emit = defineEmits<{
   close: [];
   "update:rows": [rows: ContractBillCandidateRow[]];
+  "editor-input": [state: { pending: boolean; edited: boolean }];
   edited: [];
 }>();
 
 const importFiles = ref<UploadFile[]>([]);
+const retainedImportFile = ref<File | null>(null);
 const uploadRef = ref<{ $el?: HTMLElement } | null>(null);
 const billGridRef = ref<InstanceType<typeof ContractBillGrid> | null>(null);
+const importSourceGridRef = ref<InstanceType<typeof JgBusinessGrid> | null>(null);
+const importTarget = ref<{ row: number; column: string } | null>(null);
+const selectedKeys = ref<string[]>([]);
+const selectionAnchor = ref<string | null>(null);
+const deletedRows = ref<Array<{ row: ContractBillCandidateRow; index: number }> | null>(null);
 const controller = createContractBillFocusController({
   bill: () => props.bill,
   contractVersionId: () => props.contractVersionId,
@@ -799,6 +889,115 @@ const controller = createContractBillFocusController({
   }
 });
 
+function toggleSelection(key: string | null, shift: boolean) {
+  if (props.disabled || controller.busy.value) return;
+  if (key === null) {
+    selectedKeys.value = selectedKeys.value.length === controller.rows.value.length ? [] : controller.rows.value.map(row => row.clientRowKey);
+    return;
+  }
+  const selected = new Set(selectedKeys.value);
+  const include = !selected.has(key);
+  const keys = controller.rows.value.map(row => row.clientRowKey);
+  const from = selectionAnchor.value === null ? -1 : keys.indexOf(selectionAnchor.value);
+  const to = keys.indexOf(key);
+  const affected = shift && from >= 0 ? keys.slice(Math.min(from, to), Math.max(from, to) + 1) : [key];
+  for (const candidate of affected) include ? selected.add(candidate) : selected.delete(candidate);
+  selectedKeys.value = [...selected];
+  selectionAnchor.value = key;
+}
+
+async function copySelection() {
+  if (props.disabled || controller.busy.value) return;
+  const current = controller.rows.value;
+  const selected = current.filter(row => selectedKeys.value.includes(row.clientRowKey));
+  const copies: ContractBillCandidateRow[] = [];
+  for (const row of selected) copies.push({ ...copyBillCandidateRow([...current, ...copies], row.clientRowKey).at(-1)!, clientRowKey: crypto.randomUUID() });
+  if (!copies.length) return;
+  const index = Math.max(...selected.map(row => current.indexOf(row))) + 1;
+  controller.setRows([...current.slice(0, index), ...copies, ...current.slice(index)]);
+  selectedKeys.value = copies.map(row => row.clientRowKey);
+  const newKey = copies[0]!.clientRowKey;
+  controller.selectedClientRowKey.value = newKey;
+  await nextTick();
+  await billGridRef.value?.focusReadinessCell(newKey, "itemName", true);
+}
+
+function deleteRowsByKeys(keys: string[]) {
+  if (props.disabled || controller.busy.value) return;
+  const current = controller.rows.value;
+  if (current.some(row => keys.includes(row.clientRowKey) && rowHasRemainderCancellationCapability(row))) return;
+  deletedRows.value = current.flatMap((row, index) => keys.includes(row.clientRowKey) ? [{ row: { ...row, customData: { ...row.customData } }, index }] : []);
+  controller.setRows(current.filter(row => !keys.includes(row.clientRowKey)));
+  selectedKeys.value = selectedKeys.value.filter(key => !keys.includes(key));
+}
+function deleteSelection() { deleteRowsByKeys(selectedKeys.value); }
+async function addRowAndFocus() {
+  controller.addRow();
+  const newKey = controller.selectedClientRowKey.value;
+  await nextTick();
+  await billGridRef.value?.focusReadinessCell(newKey, "itemName", true);
+}
+async function copySelectedRowAndFocus() {
+  if (props.disabled || controller.busy.value) return;
+  controller.copySelectedRow();
+  const newKey = controller.selectedClientRowKey.value;
+  await nextTick();
+  await billGridRef.value?.focusReadinessCell(newKey, "itemName", true);
+}
+async function copyRow(index: number) {
+  const row = controller.rows.value[index];
+  if (!row || props.disabled || controller.busy.value) return;
+  controller.selectedClientRowKey.value = row.clientRowKey;
+  await copySelectedRowAndFocus();
+}
+function deleteRow(index: number) {
+  const row = controller.rows.value[index];
+  if (row) deleteRowsByKeys([row.clientRowKey]);
+}
+async function moveRow(index: number, offset: -1 | 1) {
+  const row = controller.rows.value[index];
+  if (!row || props.disabled || controller.busy.value) return;
+  controller.selectedClientRowKey.value = row.clientRowKey;
+  controller.moveSelectedRow(offset);
+  await nextTick();
+  await billGridRef.value?.focusReadinessCell(row.clientRowKey, "itemName");
+}
+
+function undoDeletion() {
+  if (props.disabled || controller.busy.value || !deletedRows.value) return;
+  const next = [...controller.rows.value];
+  for (const { row, index } of deletedRows.value) {
+    if (!next.some(current => current.clientRowKey === row.clientRowKey)) next.splice(Math.min(index, next.length), 0, row);
+  }
+  selectedKeys.value = deletedRows.value.map(item => item.row.clientRowKey);
+  controller.setRows(next);
+  deletedRows.value = null;
+}
+
+const importSourceRows = computed(() => (controller.preview.value?.sourceRows ?? []).map(source => ({ ...source.values, __excelRow: String(source.row) })));
+const importSourceColumns = computed<ColumnRegular[]>(() => [
+  { prop: "__excelRow", name: "Excel行", size: 80, pin: "colPinStart", readonly: true },
+  ...(controller.preview.value?.sourceColumns ?? []).map(column => ({
+    prop: column.key, name: `${column.column} ${column.label}`, size: 150, readonly: true,
+    cellProperties: ({ model }: { model: unknown }) => {
+      const row = Number((model as Record<string, unknown>)["__excelRow"]);
+      const invalid = controller.preview.value?.errors.some(error => error.row === row && error.column === column.column);
+      const target = importTarget.value?.row === row && importTarget.value.column === column.column;
+      return { className: `${invalid ? "import-source--error" : ""} ${target ? "import-source--target" : ""}` };
+    }
+  }))
+]);
+async function locateImportCell(error: BillImportPreview["errors"][number]) {
+  const source = controller.preview.value;
+  const row = source?.sourceRows.findIndex(item => item.row === error.row) ?? -1;
+  const column = source?.sourceColumns.find(item => item.column === error.column);
+  if (row < 0 || !column || error.row === undefined || error.column === undefined) return;
+  importTarget.value = { row: error.row, column: error.column };
+  await nextTick();
+  await importSourceGridRef.value?.focusCell(row, column.key);
+}
+watch(() => controller.preview.value, () => { importTarget.value = null; });
+
 const {
   billSnapshot,
   rows,
@@ -807,6 +1006,8 @@ const {
   message,
   messageDanger,
   preview,
+  importMode,
+  importUndoAvailable,
   replaceConfirmVisible,
   selectedClientRowKey,
   selectedRowCapability,
@@ -819,8 +1020,16 @@ const {
   replacePrompt
 } = controller;
 
+const enteredBasisLabel = computed(() => billSnapshot.value.pricingMode === "tax_exclusive" ? "不含税" : "含税");
+const currentTotal = computed(() => previewBillGross(rows.value, billSnapshot.value));
+const selectedTotal = computed(() => previewBillGross(rows.value.filter(row => selectedKeys.value.includes(row.clientRowKey)), billSnapshot.value));
+
 const totalsText = computed(() =>
-  totals.value.kind === "authoritative"
+  totals.value.kind === "decimal" ? {
+    exclusive: totals.value.taxExclusiveAmountYuan === null ? "待确定" : `${totals.value.taxExclusiveAmountYuan} 元`,
+    tax: totals.value.taxAmountYuan === null ? "待确定" : `${totals.value.taxAmountYuan} 元`,
+    inclusive: totals.value.taxInclusiveAmountYuan === null ? "待确定" : `${totals.value.taxInclusiveAmountYuan} 元`
+  } : totals.value.kind === "authoritative"
     ? {
         exclusive: moneyText(totals.value.taxExclusiveAmountCents),
         tax: moneyText(totals.value.taxAmountCents),
@@ -839,12 +1048,20 @@ const remainderCancellationDescription = computed(() => {
 
 watch(
   () => props.bill,
-  (bill) => controller.syncBill(bill),
+  (bill) => {
+    const bindings = bill.acknowledgedRowKeys ?? {};
+    if (deletedRows.value) deletedRows.value = deletedRows.value.map(entry => ({
+      ...entry, row: reconcileUndoRowReceipt(entry.row, bindings, bill.acknowledgedDeletions)
+    }));
+    controller.syncBill(bill);
+    const currentKeys = new Set(controller.rows.value.map(row => row.clientRowKey));
+    selectedKeys.value = selectedKeys.value.filter(key => currentKeys.has(key));
+  },
   { deep: true }
 );
 
 function openImportPicker() {
-  if (props.disabled || busy.value) return;
+  if (props.disabled || props.remoteDisabled || busy.value) return;
   const input = uploadRef.value?.$el?.querySelector<HTMLInputElement>(
     'input[type="file"]'
   );
@@ -856,10 +1073,25 @@ function requestClose() {
 }
 
 async function onFileSelected(files: UploadFile[]) {
-  const raw = files[0]?.raw ?? importFiles.value[0]?.raw;
-  const file = raw instanceof File ? raw : null;
+  const raw = files[0]?.raw;
+  retainedImportFile.value = raw instanceof File ? raw : null;
+  if (retainedImportFile.value) await retryImportFileSelection();
+}
+
+async function retryImportFileSelection() {
+  const file = retainedImportFile.value;
+  if (!file || props.disabled || props.remoteDisabled || busy.value) return;
+  await controller.previewExcel(file);
+  if (!messageDanger.value) {
+    importFiles.value = [];
+    retainedImportFile.value = null;
+  }
+}
+
+function cancelImportFileSelection() {
   importFiles.value = [];
-  if (file) await controller.previewExcel(file);
+  retainedImportFile.value = null;
+  controller.cancelImportFile();
 }
 
 async function confirmRemainderCancellation(values: {
@@ -912,14 +1144,14 @@ defineExpose({ openImportPicker, focusReadinessIssue });
       <t-button
         data-testid="bill-add-row"
         :disabled="disabled || busy"
-        @click="controller.addRow"
+        @click="addRowAndFocus"
       >
         新增行
       </t-button>
       <t-button
         data-testid="bill-copy-row"
         :disabled="disabled || busy || !selectedClientRowKey"
-        @click="controller.copySelectedRow"
+        @click="copySelectedRowAndFocus"
       >
         复制行
       </t-button>
@@ -956,7 +1188,7 @@ defineExpose({ openImportPicker, focusReadinessIssue });
       </t-button>
       <t-button
         variant="outline"
-        :disabled="disabled || busy"
+        :disabled="disabled || remoteDisabled || busy"
         @click="controller.downloadTemplate"
       >
         下载标准模板
@@ -969,11 +1201,29 @@ defineExpose({ openImportPicker, focusReadinessIssue });
         accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         :auto-upload="false"
         :max="1"
-        :disabled="disabled || busy"
+        :disabled="disabled || remoteDisabled || busy"
         :loading="busy"
         placeholder="导入 Excel"
         @change="onFileSelected"
+        @remove="cancelImportFileSelection"
       />
+      <template v-if="retainedImportFile && messageDanger">
+        <t-button
+          data-testid="bill-import-retry"
+          :disabled="disabled || remoteDisabled || busy"
+          @click="retryImportFileSelection"
+        >
+          重试预检已选文件
+        </t-button>
+        <t-button
+          data-testid="bill-import-file-cancel"
+          variant="text"
+          :disabled="busy"
+          @click="cancelImportFileSelection"
+        >
+          取消已选文件
+        </t-button>
+      </template>
     </div>
 
     <t-alert
@@ -981,6 +1231,33 @@ defineExpose({ openImportPicker, focusReadinessIssue });
       :theme="messageDanger ? 'error' : 'success'"
       :message="message"
     />
+
+    <section
+      v-if="preview?.sourceRows.length"
+      aria-label="Excel 源文件预览"
+      class="import-source-preview"
+    >
+      <strong>源文件预览（只读，请在 Excel 修改后重新上传）</strong>
+      <div class="focus-toolbar">
+        <t-button
+          v-for="(issue, index) in preview.errors"
+          :key="index"
+          variant="outline"
+          :aria-label="`定位 ${issue.sheet} ${issue.column}${issue.row}`"
+          @click="locateImportCell(issue)"
+        >
+          {{ issue.column }}{{ issue.row }}：{{ issue.message }}
+        </t-button>
+      </div>
+      <JgBusinessGrid
+        ref="importSourceGridRef"
+        data-testid="bill-import-source-grid"
+        :source="importSourceRows"
+        :columns="importSourceColumns"
+        readonly
+        :min-height="240"
+      />
+    </section>
 
     <div
       v-if="errors.length"
@@ -990,6 +1267,43 @@ defineExpose({ openImportPicker, focusReadinessIssue });
       <span>{{ errors[0]?.message }}</span>
     </div>
 
+    <p class="bill-precision-note">
+      数量、{{ enteredBasisLabel }}单价最多填写4位小数；空白表示待确定，0表示已约定零值。历史原值保留，需核对后再修改。
+    </p>
+    <div class="focus-toolbar">
+      <span>{{ selectedKeys.length ? `已选择 ${selectedKeys.length} 行` : '勾选行后可批量操作；单元格焦点不改变勾选' }}</span>
+      <span data-testid="bill-selected-total">所选{{ enteredBasisLabel }}已知金额 {{ selectedTotal }}</span>
+      <t-button
+        :disabled="disabled || busy || !selectedKeys.length"
+        @click="copySelection"
+      >
+        复制所选
+      </t-button>
+      <t-button
+        :disabled="disabled || busy || !selectedKeys.length"
+        @click="deleteSelection"
+      >
+        删除所选
+      </t-button>
+      <t-button
+        :disabled="!selectedKeys.length"
+        @click="selectedKeys = []"
+      >
+        取消选择
+      </t-button>
+      <t-button
+        :disabled="disabled || busy || !deletedRows"
+        @click="undoDeletion"
+      >
+        撤销删除
+      </t-button>
+      <t-button
+        :disabled="disabled || busy || !importUndoAvailable"
+        @click="controller.undoImport"
+      >
+        撤销本次导入
+      </t-button>
+    </div>
     <ContractBillGrid
       ref="billGridRef"
       data-testid="contract-bill-grid"
@@ -997,11 +1311,26 @@ defineExpose({ openImportPicker, focusReadinessIssue });
       :rows="rows"
       :errors="errors"
       :readonly="disabled || busy"
+      :selected-keys="selectedKeys"
+      @toggle-selection="toggleSelection"
+      @select-rows="selectedKeys = $event ? rows.map(row => row.clientRowKey) : []"
+      @copy-row="copyRow"
+      @delete-row="deleteRow"
+      @move-row="moveRow"
       @update:rows="controller.setRows"
+      @editor-input="emit('editor-input', $event)"
       @select-row="selectedClientRowKey = $event"
     />
 
+    <t-button
+      data-testid="bill-add-bottom"
+      :disabled="disabled || busy"
+      @click="addRowAndFocus"
+    >
+      新增一行
+    </t-button>
     <footer class="focus-summary">
+      <span data-testid="bill-current-total">当前清单{{ enteredBasisLabel }}已知金额 <strong>{{ currentTotal }}</strong></span>
       <span>候选行数 <strong>{{ rows.length }}</strong></span>
       <span>上次保存不含税合计 <strong>{{ totalsText.exclusive }}</strong></span>
       <span>上次保存税额 <strong>{{ totalsText.tax }}</strong></span>
@@ -1011,10 +1340,24 @@ defineExpose({ openImportPicker, focusReadinessIssue });
     <t-dialog
       v-model:visible="replaceConfirmVisible"
       header="确认载入 Excel 清单"
+      role="dialog"
+      aria-modal="true"
+      aria-label="确认载入 Excel 清单"
       width="560px"
       :close-on-overlay-click="false"
       @close="controller.cancelImportReplace"
     >
+      <t-radio-group
+        v-model="importMode"
+        aria-label="导入方式"
+      >
+        <t-radio value="append">
+          追加到现有清单
+        </t-radio>
+        <t-radio value="replace">
+          替换现有清单
+        </t-radio>
+      </t-radio-group>
       <p>{{ replacePrompt }}</p>
       <p v-if="preview">
         预检得到 {{ preview.candidateRows.length }} 行，新增 {{ preview.added }} 行，
@@ -1103,7 +1446,7 @@ defineExpose({ openImportPicker, focusReadinessIssue });
   bottom: 0;
   justify-content: flex-end;
   padding: var(--jg-space-md);
-  background: var(--jg-color-bg-container);
+  background: var(--jg-color-bg-surface);
   border-top: var(--jg-border-width-base) solid var(--jg-color-border);
   color: var(--jg-color-text-secondary);
   font-size: var(--jg-font-size-meta);
@@ -1120,5 +1463,21 @@ defineExpose({ openImportPicker, focusReadinessIssue });
   gap: var(--jg-space-sm);
   color: var(--jg-color-danger);
   font-size: var(--jg-font-size-meta);
+}
+</style>
+
+<style scoped>
+.import-source-preview { min-width: 0; display: grid; gap: var(--jg-space-2); }
+.import-source-preview :deep(.import-source--error) { background: var(--jg-color-danger-soft); }
+.import-source-preview :deep(.import-source--target) { outline: 2px solid var(--jg-color-danger); outline-offset: -2px; }
+</style>
+
+<style scoped>
+@media (max-width: 1080px), (max-height: 600px) {
+  .focus-summary {
+    position: static;
+    justify-content: flex-start;
+    background: var(--jg-color-bg-surface);
+  }
 }
 </style>

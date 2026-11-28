@@ -2,6 +2,7 @@ import {
   Body,
   Controller,
   Get,
+  Headers,
   Param,
   Patch,
   Post,
@@ -33,14 +34,15 @@ export class ContractWorkbenchController {
   @Get()
   list(
     @CurrentUser() user: AuthenticatedUser,
-    @Query("scope") scope: "my" | "voided" = "my"
+    @Query("scope") scope: "my" | "voided" = "my",
+    @Headers("x-contract-numeric-protocol") protocol?: string
   ) {
-    return this.workbench.listDrafts(user.id, scope);
+    return protocol === undefined ? this.workbench.listDrafts(user.id, scope) : this.workbench.listDrafts(user.id, scope, protocol);
   }
 
   @Get(":contractId")
-  get(@Param("contractId") contractId: string, @CurrentUser() user: AuthenticatedUser) {
-    return this.workbench.getDraft(contractId, user.id);
+  get(@Param("contractId") contractId: string, @CurrentUser() user: AuthenticatedUser, @Headers("x-contract-numeric-protocol") protocol?: string) {
+    return protocol === undefined ? this.workbench.getDraft(contractId, user.id) : this.workbench.getDraft(contractId, user.id, protocol);
   }
 
   @Patch(":contractVersionId")
@@ -58,9 +60,10 @@ export class ContractWorkbenchController {
   confirmSettlementMode(
     @Param("contractVersionId") contractVersionId: string,
     @CurrentUser() user: AuthenticatedUser,
-    @Body() body: ConfirmContractSettlementModeDto
+    @Body() body: ConfirmContractSettlementModeDto,
+    @Headers("x-contract-numeric-protocol") protocol?: string
   ) {
-    return this.workbench.confirmSettlementMode(contractVersionId, user.id, body);
+    return protocol === undefined ? this.workbench.confirmSettlementMode(contractVersionId, user.id, body) : this.workbench.confirmSettlementMode(contractVersionId, user.id, body, protocol);
   }
 
   @Post(":contractVersionId/checkpoints")
@@ -98,9 +101,10 @@ export class ContractWorkbenchController {
   applyTypeChange(
     @Param("contractVersionId") contractVersionId: string,
     @CurrentUser() user: AuthenticatedUser,
-    @Body() body: ApplyContractTypeChangeDto
+    @Body() body: ApplyContractTypeChangeDto,
+    @Headers("x-contract-numeric-protocol") protocol?: string
   ) {
-    return this.workbench.applyTypeChange(contractVersionId, user.id, body);
+    return protocol === undefined ? this.workbench.applyTypeChange(contractVersionId, user.id, body) : this.workbench.applyTypeChange(contractVersionId, user.id, body, protocol);
   }
 
   @Get(":contractId/transfer-capability")

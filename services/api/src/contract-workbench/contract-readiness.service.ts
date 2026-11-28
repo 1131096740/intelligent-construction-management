@@ -1,3 +1,4 @@
+import { assertNotDirectPendingVersion } from "../contract/contract-direct-pending-policy";
 import {
   BadRequestException,
   Injectable,
@@ -256,6 +257,7 @@ export class ContractReadinessService {
       if (contract.voidedAt) {
         throw new BadRequestException("合同草稿已作废，不能继续检查资料");
       }
+      assertNotDirectPendingVersion(version);
       const result = await this.check(tx, version, contract);
       const updated = await tx.contractVersion.updateMany({
         where: {

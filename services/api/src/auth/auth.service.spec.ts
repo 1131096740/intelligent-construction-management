@@ -1,4 +1,7 @@
 import * as bcrypt from "bcryptjs";
+import { createHmac } from "node:crypto";
+import { SmsVerificationService } from "./sms-verification.service";
+import { AuthRateLimitService } from "./auth-rate-limit.service";
 import { BadRequestException, Logger } from "@nestjs/common";
 import { createApiValidationPipe } from "../validation/api-validation";
 import { AuthService } from "./auth.service";
@@ -222,6 +225,22 @@ describe("AuthService", () => {
     tokens = new JwtTokenService();
     service = new AuthService(prisma as never, tokens);
   });
+
+  function useVerifiedNewPhone() {
+    const originalEnvironment = { ...process.env };
+    const code = "000000";
+    const secret = "synthetic-profile-sms-signing-key-only";
+    for (const key of ["SMS_SECRET_ID", "SMS_SECRET_KEY", "SMS_SDK_APP_ID", "SMS_SIGN_NAME", "SMS_TEMPLATE_ID"]) process.env[key] = "synthetic";
+    process.env.SMS_ENABLED = "true"; process.env.SMS_CODE_SECRET = secret;
+    const challenge = { id: "synthetic-profile-challenge", phone: "13900000001", purpose: "change_phone", binding: "user:user-1:0",
+      delivered: true, consumedAt: null, attempts: 0, expiresAt: new Date(Date.now() + 300_000),
+      codeHash: createHmac("sha256", secret).update("synthetic-profile-challenge:13900000001:change_phone:000000").digest("hex") };
+    const persistence = { ...prisma, $queryRaw: async () => [], smsChallenge: { findUnique: async () => challenge, update: async () => ({}) } };
+    persistence.$transaction = jest.fn(async callback => callback(persistence));
+    const sms = new SmsVerificationService(persistence as never, new AuthRateLimitService(persistence as never), { send: async () => {} } as never);
+    service = new AuthService(prisma as never, tokens, undefined, sms);
+    return { code, restore: () => { process.env = originalEnvironment; } };
+  }
 
   it("logs in with phone and password, records audit, and stores refresh token hash", async () => {
     prisma.user.findUnique.mockResolvedValue({
@@ -569,6 +588,8 @@ describe("AuthService", () => {
   });
 
   it("updates the signed-in user's real name and login phone after password confirmation", async () => {
+    const verified = useVerifiedNewPhone();
+    try {
     prisma.user.findUnique.mockResolvedValue({
       id: "user-1",
       name: "旧姓名",
@@ -590,7 +611,7 @@ describe("AuthService", () => {
 
     const result = await service.updateMyProfile(
       { id: "user-1", name: "旧姓名", phone: "13800000001" },
-      { name: " 杨济旭 ", phone: "13900000001", currentPassword: "current-password" }
+      { name: " 杨济旭 ", phone: "13900000001", currentPassword: "current-password", code: verified.code }
     );
 
     expect(prisma.user.update).toHaveBeenCalledWith({
@@ -601,9 +622,12 @@ describe("AuthService", () => {
       user: { name: "杨济旭", phone: "13900000001" },
       tokens: { accessToken: expect.any(String), refreshToken: expect.any(String) }
     });
+    } finally { verified.restore(); }
   });
 
   it("rejects a duplicate self-service login phone with a fixed Chinese conflict", async () => {
+    const verified = useVerifiedNewPhone();
+    try {
     prisma.user.findUnique.mockResolvedValue({
       id: "user-1",
       name: "旧姓名",
@@ -618,12 +642,13 @@ describe("AuthService", () => {
     await expect(
       service.updateMyProfile(
         { id: "user-1", name: "旧姓名", phone: "13800000001" },
-        { name: "杨济旭", phone: "13900000001", currentPassword: "current-password" }
+        { name: "杨济旭", phone: "13900000001", currentPassword: "current-password", code: verified.code }
       )
     ).rejects.toMatchObject({ status: 409, message: "该手机号已被其他账号使用" });
 
     expect(prisma.refreshToken.updateMany).not.toHaveBeenCalled();
     expect(prisma.auditLog.create).not.toHaveBeenCalled();
+    } finally { verified.restore(); }
   });
 
   it("rejects an invalid profile confirmation password without writing", async () => {

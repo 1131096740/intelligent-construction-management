@@ -1,0 +1,87 @@
+import { createHash } from "node:crypto";
+import { readFile, writeFile } from "node:fs/promises";
+import { resolve } from "node:path";
+import { expect, test } from "@playwright/test";
+
+test("正式正文可在选定普通条款后新增条款", async ({ page }, testInfo) => {
+  const input = JSON.parse(process.env.TASK10_BODY_BROWSER_INPUT ?? "{}");
+  const draft = input.drafts[testInfo.project.name];
+  const target = "/合同工作台/" + draft.contract.id + "?versionId=" + draft.version.id;
+  await page.goto("/login?redirect=" + encodeURIComponent(target));
+  await page.getByPlaceholder("请输入手机号").fill(input.staff.phone);
+  await page.getByPlaceholder("请输入密码").fill(input.staff.password);
+  await page.getByRole("button", { name: "登录", exact: true }).click();
+  await page.getByText("合同正文", { exact: true }).click();
+  const editor = page.getByRole("region", { name: "完整合同正文", exact: true });
+  await expect(editor).toBeVisible();
+  const sources = [];
+  for (const file of ["src/pages/contracts/ContractWorkbenchPage.vue", "src/pages/contracts/workbench/ContractBodyEditor.vue", "src/pages/contracts/workbench/ContractBodyFlow.vue"]) {
+    const response = await page.request.get("/" + file);
+    expect(response.status()).toBe(200);
+    const bytes = await response.body();
+    await writeFile(testInfo.outputPath(file.split("/").at(-1)! + ".served.js"), bytes);
+    sources.push({ file, diskSha256: createHash("sha256").update(await readFile(resolve(file))).digest("hex"), publicServedJavaScriptSha256: createHash("sha256").update(bytes).digest("hex"), additionMarkerPresent: bytes.toString().includes("新增条款") });
+  }
+  await writeFile(testInfo.outputPath("public-source-freshness.json"), JSON.stringify(sources, null, 2));
+  const login = await page.request.post("/api/auth/login", { data: input.staff });
+  expect(login.status()).toBe(201);
+  const headers = { authorization: "Bearer " + (await login.json()).tokens.accessToken, "x-contract-numeric-protocol": "2" };
+  const response = await page.request.get("/api/contract-drafts/" + draft.version.id + "/document-body", { headers });
+  expect(response.status()).toBe(200);
+  const body = await response.json();
+  expect(body.sourceSha256).toBe(input.sourceSha256);
+  const ordinary = body.blocks.find((block: { editable: boolean; text: string }) => block.editable && block.text.includes("4.若卖方违背"));
+  expect(ordinary).toBeDefined();
+  expect(ordinary.text).toContain("原有人工条款需保留。");
+  const tables = editor.getByRole("region", { name: "合同正文表格", exact: true });
+  await expect(tables).toHaveCount(2);
+  await expect(tables.nth(0).getByRole("table").getByRole("row").nth(1).getByRole("cell").nth(7)).toHaveText("6.5000");
+  await writeFile(testInfo.outputPath("public-before-addition.json"), JSON.stringify({ sourceSha256: body.sourceSha256, documentContentRevision: body.documentContentRevision, insertionCandidate: ordinary, scope: "actual formal source/full app/public HTTP; first entry RED only, no insertion product implementation yet" }, null, 2));
+  await expect(editor.getByRole("button", { name: "新增条款", exact: true })).toBeVisible();
+  await expect(editor.getByRole("button", { name: "新增条款", exact: true })).toBeEnabled();
+  await editor.getByRole("button", { name: "新增条款", exact: true }).click();
+  const dialog = page.locator(".t-dialog").filter({ has: page.getByText("新增条款", { exact: true }) });
+  await expect(dialog).toBeVisible();
+  await dialog.locator(".t-select").click();
+  const topLevelIds = body.flow.filter((node: { kind: string }) => node.kind === "paragraph").map((node: { paragraphId: string }) => node.paragraphId);
+  const allowed = body.blocks.filter((block: { id: string; editable: boolean }) => block.editable && topLevelIds.includes(block.id) && !block.id.startsWith("added:"));
+  expect(allowed.some((block: { id: string }) => block.id === ordinary.id)).toBe(true);
+  for (const block of allowed) {
+    const number = body.blocks.findIndex((item: { id: string }) => item.id === block.id) + 1;
+    await expect(page.getByText("段落" + number + "后：" + (block.text.slice(0, 48) || "空白段落"), { exact: true }).last()).toBeVisible();
+  }
+  const number = body.blocks.findIndex((block: { id: string }) => block.id === ordinary.id) + 1;
+  await page.getByText("段落" + number + "后：" + ordinary.text.slice(0, 48), { exact: true }).last().click();
+  const addition = testInfo.project.name + "端新增：验收后按双方书面约定办理。";
+  const text = dialog.getByRole("textbox").last();
+  await text.fill(addition);
+  const savedResponse = page.waitForResponse(value => value.request().method() === "PUT" && value.url().endsWith("/contract-drafts/" + draft.version.id) &&
+    value.request().postDataJSON()?.draft?.draftData?.documentBody?.additions?.some((item: { afterPositionId: string; text: string }) => item.afterPositionId === ordinary.id && item.text === addition));
+  await dialog.getByRole("button", { name: "加入正文", exact: true }).click();
+  await expect(dialog).not.toBeVisible();
+  await expect(editor.getByRole("status")).toHaveText("新增条款已加入当前草稿，请以正文保存回执为准。");
+  await editor.getByRole("button", { name: "保存正文", exact: true }).click();
+  expect((await savedResponse).status()).toBe(200);
+  const reread = await page.request.get("/api/contract-drafts/" + draft.version.id + "/document-body", { headers });
+  expect(reread.status()).toBe(200);
+  const saved = await reread.json();
+  expect(saved.sourceSha256).toBe(input.sourceSha256);
+  const added = saved.blocks.filter((block: { text: string }) => block.text === "补充条款1：" + addition);
+  expect(added).toHaveLength(1);
+  expect(saved.blocks.find((block: { id: string }) => block.id === ordinary.id).text).toBe(ordinary.text);
+  const anchorIndex = saved.flow.findIndex((node: { kind: string; paragraphId?: string }) => node.kind === "paragraph" && node.paragraphId === ordinary.id);
+  expect(anchorIndex).toBeGreaterThanOrEqual(0);
+  expect(saved.flow[anchorIndex + 1]).toMatchObject({ kind: "paragraph", paragraphId: added[0].id });
+  await page.reload();
+  await page.getByText("合同正文", { exact: true }).click();
+  const addedNumber = saved.blocks.findIndex((block: { id: string }) => block.id === added[0].id) + 1;
+  await expect(editor.getByRole("textbox", { name: "编辑普通条款" + addedNumber, exact: true })).toHaveValue("补充条款1：" + addition);
+  await expect(editor.getByRole("textbox", { name: "编辑普通条款" + number, exact: true })).toHaveValue(ordinary.text);
+  const reloadedTables = editor.getByRole("region", { name: "合同正文表格", exact: true });
+  await expect(reloadedTables.nth(0).getByRole("table").getByRole("row").nth(1).getByRole("cell").nth(7)).toHaveText("6.5000");
+  await expect(reloadedTables.nth(0).getByRole("table").getByRole("row").nth(1).getByRole("cell").nth(7).getByRole("textbox")).toHaveCount(0);
+  const dimensions = await page.evaluate(() => ({ viewport: innerWidth, documentWidth: document.documentElement.scrollWidth }));
+  expect(dimensions.documentWidth).toBeLessThanOrEqual(dimensions.viewport + 1);
+  await page.screenshot({ path: testInfo.outputPath("added-clause.png"), fullPage: true });
+  await writeFile(testInfo.outputPath("receipt.json"), JSON.stringify({ sourceSha256: saved.sourceSha256, documentContentRevision: saved.documentContentRevision, anchorId: ordinary.id, addedId: added[0].id, addedText: added[0].text, oldManualClause: ordinary.text, dimensions, scope: "actual public ordinary top-level insertion/save/read/reload; no delete/reorder/regeneration/native proof" }, null, 2));
+});

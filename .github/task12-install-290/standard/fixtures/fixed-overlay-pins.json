@@ -1,0 +1,36 @@
+{
+  "services/api/src/database/task16-shared-standard.http.pg.spec.ts": {
+    "base": "0e8cea4b115d71631300e9ea79dff48ab05fc81b937a7f89dfcb19c5e534c6d7",
+    "patch": "04625a6bd9b76c8d76a1d095458a2ee11649930859b6814b648b1d409e8c74cf",
+    "result": "e70aa4d7364f7232f694881bb96fce88bfa57a89bd24fc6f527b4d85dfa6b901"
+  },
+  "services/api/src/database/task25-public-cash-handover.http.pg.spec.ts": {
+    "base": "2ca2cdde5695dc5ffbc65ce7bc46adf7bfd21d54643ce3f844deb143e6eacca2",
+    "patch": "d87fc0dabc937a770db42084eb51502d6c683eb3d6d6b0cfb0c7fe57b82c441b",
+    "result": "e1e257e269942c3659a8a407efe77467f73697265e5fab94c12c92456787f6fd"
+  },
+  "services/api/src/database/task27-principal-return.http.pg.spec.ts": {
+    "base": "b65d21d49f34822f2730734438ece64c82251f8ec9ab0d24adc631c9ae7319f9",
+    "patch": "7c1c8db4434663863cc9a11f348548a9b6038b2f5c0f2779e4f688ef28f243a0",
+    "result": "c541006fafbe750c4d8d1f5ee94c1fab74acc33083d4761b0167f5c3c2b85ca9"
+  },
+  "services/api/src/database/task398-owned-database.test-support.ts": {
+    "verbatim": "e8cab9ed9d2e1822e3d75023b91f404f409ef9baf4dca779789d745adb37ae3a"
+  },
+  "services/api/src/database/task398-voucher281.test-support.ts": {
+    "verbatim": "27262f4a6c6166b797b7da68faa7f9d401f0d76e0c2f3053f39de8adb996c355"
+  },
+  "services/api/prisma/run-task398-shared-standard-local.cjs": {
+    "base": "2764fa86dbf04307ca4282df6228b384710a66de5db726ec8761a42df1515e27",
+    "patch": "7aac3ca351b72d499b84e13f1b891e93b3b691a9d45b9141d6e80c95b4e9274d",
+    "result": "02926806d5a2c92276ccb37a210a279fb61c7c491ddf5f2e77c8d671e92986ae"
+  },
+  "services/api/prisma/contract-bank-runtime-fixture.cjs": {
+    "base": "5a66b1783cc597983a08e8381f9df34afeacf36e71681bd5e982a363247fd171",
+    "patch": "29f20d644720472f75dd634f51f3c69fa99b4a13818e0704f89a935c517c73da",
+    "result": "594c180e22acc8453dc5ea5f758baa03e95b98047019a676d34db7b505d503b8"
+  },
+  "services/api/prisma/task398-owned-280-business-read-baseline.json": {
+    "verbatim": "88b44411322e857b9c1b3f6a562ca7655d998a41fd15db8449b8e79ae4b309b2"
+  }
+}

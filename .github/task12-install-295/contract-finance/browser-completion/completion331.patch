@@ -1,0 +1,35 @@
+--- runner
++++ runner
+@@ -215,7 +215,7 @@
+  const requirements=require("./task16-current259-voucher-acl.requirements.json");
+  const plan=runtimePlan();
+  // The current browser reads use late-migration facts projected by the API.
+- const browserReads=browserScenario&&[329,330].includes(ownedMigrationBaseline?.expectedDirectoryCount)?{
++ const browserReads=browserScenario&&[329,330,331].includes(ownedMigrationBaseline?.expectedDirectoryCount)?{
+   PaymentExecutionRefund:["id","paymentRequestId","paymentExecutionId","amountCents","receivedAt","fundRegistrationId"],
+   PaymentExecutionCorrection:["id","paymentRequestId","amountDeltaCents","status"],
+   OperatingCostAttributionConfirmation:["id","projectId","status","operatingFactId","companyEntityVersionId","companyNameSnapshot"]
+@@ -358,7 +358,7 @@
+   const knownTitle="rejects a project source gap, then shares three valid instalments and supplements the voucher";
+   const reportFile=path.join(privateLogDir,"standard-290-jest.json");
+   const selection=standard290||browser290?["--json","--outputFile",reportFile]:[];
+-  const browserDiagnostics=browser290 && /_EXACT_(?:329|330)$/u.test(browser290.purpose)?require("/qualification/task398-browser-diagnostics.cjs"):undefined;
++  const browserDiagnostics=browser290 && /_EXACT_(?:329|330|331)$/u.test(browser290.purpose)?require("/qualification/task398-browser-diagnostics.cjs"):undefined;
+   browserDiagnostics?.markBrowserPhase(browser290,"JEST_SCENARIO");
+   const output=command("pnpm",["--filter","@jiangkong/api","exec","jest","--runInBand",...scenarios,...selection],{
+    env,timeout:300000,onFailure:browserDiagnostics?result=>browserDiagnostics.recordBrowserJestFailure(browser290,reportFile,scenario,result):undefined
+@@ -538,10 +538,11 @@
+  `);
+ }
+ async function runTask398Owned282Voucher(context, mode="standard", receipt){
+- const modes=new Map([["browser-completion-330",["--browser-completion-real"]],["browser-completion-329",["--browser-completion-real"]],["browser-completion-295",["--browser-completion-real"]],["browser-completion-290",["--browser-completion-real"]],["standard-290",[]],["standard",[]],["principal-return",["--principal-return-real"]],["cash-handover",["--cash-handover-real"]],["correction-catalog",["--cash-handover-real"]]]);
++ const modes=new Map([["browser-completion-331",["--browser-completion-real"]],["browser-completion-330",["--browser-completion-real"]],["browser-completion-329",["--browser-completion-real"]],["browser-completion-295",["--browser-completion-real"]],["browser-completion-290",["--browser-completion-real"]],["standard-290",[]],["standard",[]],["principal-return",["--principal-return-real"]],["cash-handover",["--cash-handover-real"]],["correction-catalog",["--cash-handover-real"]]]);
+  const completion295=mode==="browser-completion-295";
+- const current320=mode==="browser-completion-329"||mode==="browser-completion-330";
+- const count=mode==="browser-completion-330"?330:329;
++ const paymentRemainder=mode==="browser-completion-331";
++ const current320=paymentRemainder||mode==="browser-completion-329"||mode==="browser-completion-330";
++ const count=paymentRemainder?331:mode==="browser-completion-330"?330:329;
+  const forward=current320?receipt?.forward320:undefined;
+  if(current320&&(receipt?.purpose!=="TASK398_BROWSER_COMPLETION_EXACT_"+count||
+   !/^[a-f0-9]{40}$/u.test(receipt.sourceSha)||forward?.count!==count||forward.sameIdentity!==true||

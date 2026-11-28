@@ -35,6 +35,11 @@ const SPOT_PROCUREMENT_SCENE_KEYS = [
   "spot_procurement.application_line"
 ] as const;
 
+const SPOT_PROCUREMENT_REQUEST_V2_SCENE_KEYS = [
+  "spot_procurement.request_v2",
+  "spot_procurement.request_line_v2"
+] as const;
+
 describe("BusinessEntrySceneAccessRegistry", () => {
   it("binds every production scene to its backend target and domain action", () => {
     for (const definition of BUSINESS_ENTRY_SCENE_DEFINITIONS) {
@@ -58,8 +63,12 @@ describe("BusinessEntrySceneAccessRegistry", () => {
               action: "spot_procurement.create",
               roleScope: "project"
             }
+          : SPOT_PROCUREMENT_REQUEST_V2_SCENE_KEYS.includes(
+            definition.key as typeof SPOT_PROCUREMENT_REQUEST_V2_SCENE_KEYS[number]
+          )
+          ? { kind: "business_action", action: "spot_procurement.create", roleScope: "effective" }
           : ["project_rename", "project_create"].includes(definition.key)
-          ? { kind: "role_keys", roleKeys: ["comprehensive_director", "chairman"], roleScope: "effective" }
+          ? { kind: "role_keys", roleKeys: ["comprehensive_director", "chairman", "general_manager"], roleScope: "effective" }
           : ["project_construction_enterprise", "project_participating_company_add", "project_participating_company_deactivate"].includes(definition.key)
           ? { kind: "business_action", action: "project.master_data.manage", roleScope: "effective" }
           : definition.key === "project_operating_profile"
@@ -102,6 +111,7 @@ describe("BusinessEntrySceneAccessRegistry", () => {
       "project_create",
       "project_participating_company_deactivate",
       ...SPOT_PROCUREMENT_SCENE_KEYS,
+      ...SPOT_PROCUREMENT_REQUEST_V2_SCENE_KEYS,
       "project_operating_profile",
       ...OPERATING_TAKEOVER_SCENE_DEFINITIONS.map((definition) => definition.key),
       ...POL19P3_SCENE_KEYS

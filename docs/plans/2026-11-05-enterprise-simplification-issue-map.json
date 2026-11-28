@@ -1,0 +1,519 @@
+{
+  "parent": {
+    "number": 382,
+    "url": "https://github.com/1131096740/intelligent-construction-management/issues/382"
+  },
+  "integration_base_sha": "2f474055bd018b3e454b458038d91080203ad5dc",
+  "source_sha256": {
+    "docs/specs/2026-11-05-enterprise-simplification-spec.md": "e7553e614392a34b03e7d75715d4ef7084d37e004a71fed18ffcd8457c01b997",
+    "docs/plans/2026-11-05-enterprise-simplification-technical-plan.md": "8ab91fa9e0c0abe8ca5c8fcb81f6f3144ed2cf2ec342084ca69ddb56c648ad44",
+    "docs/plans/2026-11-05-enterprise-simplification-acceptance.md": "55ff1cc018641793f47eba400647ff2fc2cf3cd3fcb8072824786a70e8faf7c3",
+    "docs/plans/2026-11-05-enterprise-simplification-evidence-and-gaps.md": "d1028ef9cd352e092f6afbf8d4641ec8ee36cf7f0efeef806fa2c9fee1c22b01",
+    "docs/plans/2026-11-05-enterprise-simplification-tasks/01-baseline.md": "2852644b6ea16077d8b8fc795d0a4b23d06512357c34c0baacc0e086742c0dc2",
+    "docs/plans/2026-11-05-enterprise-simplification-tasks/02-precision-expand.md": "1a076ab3484b9e8e39396b68d4e9f83faab61cadfe2c5f9fa9ff7ef1b55ba5c2",
+    "docs/plans/2026-11-05-enterprise-simplification-tasks/03-parallel-core.md": "a9c7d06a8bba96ff985d5734b479f7f4ff6536667fc44511df1d3cedb69be532",
+    "docs/plans/2026-11-05-enterprise-simplification-tasks/04-identity.md": "b34e7562caef71359a31727ad9f6cf8b0d96de8b7de915bc3de904f9afd07c46",
+    "docs/plans/2026-11-05-enterprise-simplification-tasks/05-personnel.md": "e823b108d82b01a399027896e6bf6a1004425e3cd5749e84a484280a4cf6be69",
+    "docs/plans/2026-11-05-enterprise-simplification-tasks/06-grid-drafts.md": "0038dbe31fdc8d8626b6c1c7e0b2acdcd57d5c41931bcbaa87112171843060fd",
+    "docs/plans/2026-11-05-enterprise-simplification-tasks/07-projects-units.md": "2a7d5e86266a9174d97b63425b0c906e40e62bbc96adad04b076d9e1079c0603",
+    "docs/plans/2026-11-05-enterprise-simplification-tasks/08-document-proof.md": "cde66ecdbe9e11efd568ef246ecee21740591a5e8e62a05540247047bfd8c38b",
+    "docs/plans/2026-11-05-enterprise-simplification-tasks/09-contract-form.md": "d01eb565a92f07e24462d477b5a2754902c3e4d08bfc6c1e6df564e48b311ba8",
+    "docs/plans/2026-11-05-enterprise-simplification-tasks/10-contract-document.md": "aa80ac0f10d44a01543cc0d260bb7b0eda4be81c966098952e4923cd03a4b544",
+    "docs/plans/2026-11-05-enterprise-simplification-tasks/11-templates.md": "a113cbd0bf8e42b4ba5997b7a959c738d6af9bf1e0c711885be5897ffadf863c",
+    "docs/plans/2026-11-05-enterprise-simplification-tasks/12-contract-lifecycle.md": "ad89d81a11302d11a2aeff7b00cc37b876a3992a62502c13d571b892f6818070",
+    "docs/plans/2026-11-05-enterprise-simplification-tasks/13-contract-changes.md": "9b0137553e70d27e982af5a6acdd507d5ac72350ea3eb9fc8c8f70dc85e77570",
+    "docs/plans/2026-11-05-enterprise-simplification-tasks/14-settlements.md": "db23ca26b9dc91772f46ded07d3e02f82dba5ccbf83bfa2096717798eb7a4a6c",
+    "docs/plans/2026-11-05-enterprise-simplification-tasks/15-fund-accounts.md": "c7afbf2b86e023c4f4cafd5e1355145204edd66eede143d02e056a550f51a65c",
+    "docs/plans/2026-11-05-enterprise-simplification-tasks/16-payment-execution.md": "5608433adaff8b2760216c485127efe3d50140947371826c68c294785abb383d",
+    "docs/plans/2026-11-05-enterprise-simplification-tasks/17-contract-payment.md": "16979e80c2e6bc39ccabb02bb4e4d6192dbc2676a4c5f7deec74a6f268cce1e6",
+    "docs/plans/2026-11-05-enterprise-simplification-tasks/18-financial-correction.md": "3d803b00fe0cac0cc5af8c017acbc9c94b9b5da24f4f96b118f8ef5bd1da0d81",
+    "docs/plans/2026-11-05-enterprise-simplification-tasks/19-spot-request.md": "3677a1c0e327b229be095a89765dd33ecf5463b6b654cfd0eed20cf7e6e48dca",
+    "docs/plans/2026-11-05-enterprise-simplification-tasks/20-general-request.md": "97b59c7d6929975e7b603c81e2bdca4c3e13276317809084dfa56144de092829",
+    "docs/plans/2026-11-05-enterprise-simplification-tasks/21-actual-procurement.md": "1a0311598ebe07cd47683888fb0e20ee468a2ed1ce588ddcb92042c31e0bb3dc",
+    "docs/plans/2026-11-05-enterprise-simplification-tasks/22-reimbursement.md": "19be29d1691a12da33e4503f3efbbb705b8f59cf884168a17bd768a7830f66a4",
+    "docs/plans/2026-11-05-enterprise-simplification-tasks/23-other-project-payment.md": "32c169fc79be0ee5de0d6352af838feb65ddc0a4b9b804dbabf3506dc3d8aea8",
+    "docs/plans/2026-11-05-enterprise-simplification-tasks/24-cash-transfers.md": "ea826c8aff90a14dd23b85c48aa867a794517c5959c6c92ba57d3428a969cb47",
+    "docs/plans/2026-11-05-enterprise-simplification-tasks/25-cash-handover.md": "0b74751f42572a87eb17d6daaa5b48e2fb0560663b00ca0856d734142c5ad0ab",
+    "docs/plans/2026-11-05-enterprise-simplification-tasks/26-funding-receipt.md": "9ce1267ad7ed09ea2fa6d27ce3257d8bf339f3117667d506b93889da90212252",
+    "docs/plans/2026-11-05-enterprise-simplification-tasks/27-funding-return.md": "38716b784c74e2de10d6c9bcc9e437f130031e352420ec876dcb16b25b2588fa",
+    "docs/plans/2026-11-05-enterprise-simplification-tasks/28-intercompany.md": "94f24f626faf84931622bc590d51f2cf02a0552f9a388e47e773ec111ac4c1ee",
+    "docs/plans/2026-11-05-enterprise-simplification-tasks/29-third-company-return.md": "6fab3c268b2a11b60ee4261e8e56d0072dcc61dfb5a39b01d210a0b17ab802bf",
+    "docs/plans/2026-11-05-enterprise-simplification-tasks/30-owner-business.md": "b88f160371bf85ae145566e001936b2cdcf8b54bc902f141e60c2d6a7b27c467",
+    "docs/plans/2026-11-05-enterprise-simplification-tasks/31-construction-payments.md": "a4012c8c5da5ea99c165d5c8f6fd25763f597262fb1c15659705f77ebb714c59",
+    "docs/plans/2026-11-05-enterprise-simplification-tasks/32-construction-fees.md": "b023adc362568f88092586895f70963e3db05d46e6569d1da8858896aebea52f",
+    "docs/plans/2026-11-05-enterprise-simplification-tasks/33-other-contract-cost.md": "570dfff0948f76197028668f0c10b386c70cb74ec7925fea00548eaa450a74fe",
+    "docs/plans/2026-11-05-enterprise-simplification-tasks/34-history-contracts.md": "4390b635e7399f143de985a0e2b491a4b90c0afeaa4b97e4dc8500f540284edb",
+    "docs/plans/2026-11-05-enterprise-simplification-tasks/35-history-expenses.md": "6a491d809007f4e29c41f94cf6f8f3a9b9c62e67b7316abfeb755d56ff0b6706",
+    "docs/plans/2026-11-05-enterprise-simplification-tasks/36-operating-projections.md": "4ace3725e952bea76c15ca9a5b9333704ee7960bbeac7d12c4405ad2fb1d9a1b",
+    "docs/plans/2026-11-05-enterprise-simplification-tasks/37-notifications.md": "184be8adf18c6604c02bef8277950b466f6a70c9b5ed5d99e4e7cadadbd47c75",
+    "docs/plans/2026-11-05-enterprise-simplification-tasks/38-approval-center.md": "7f38e5819d3e4ad2e4f0cbb6d8dfe289415efa98a9a989f79193896ab1763775",
+    "docs/plans/2026-11-05-enterprise-simplification-tasks/39-ledgers.md": "0d64938c9d5139d456b8b53ed94fccc20ab5ce5493f78474a746f9f5c9fa9545",
+    "docs/plans/2026-11-05-enterprise-simplification-tasks/40-archives-search.md": "e751c9f1aadad889ba50d79f1bb189b9a61df177899d0d8ac4ba9a2e4cc0d8fb",
+    "docs/plans/2026-11-05-enterprise-simplification-tasks/41-navigation.md": "ea12759e2a637cd248d4c33df23fed5e32ca1d62ccb4b6110a1f4f76c871b60a",
+    "docs/plans/2026-11-05-enterprise-simplification-tasks/42-migration-rehearsal.md": "f4017db97199b96c1ef084e921c2f28792a298820c6977b572391a3489792f45",
+    "docs/plans/2026-11-05-enterprise-simplification-tasks/43-retire-old.md": "ed5ade9e78a6bc7aa366a07d2612d3b6040b823363dad7be89dce127aff2ca1d",
+    "docs/plans/2026-11-05-enterprise-simplification-tasks/44-final-acceptance.md": "08697c742303384665563cabf7469a3c56d2225e74dca6acd8ecb9dba49086f1",
+    "docs/plans/2026-11-05-enterprise-simplification-tasks/45-cutover-packet.md": "94a27d8ff3f930cd76833d054d78f8e87df964f771c4db5d1d093a672d0866d4",
+    "docs/plans/2026-11-05-enterprise-simplification-tasks/README.md": "55f553dd4a0b7b0369e091047b081ef84439d8e153be5608e38d37d3f4a3b0be"
+  },
+  "tasks": {
+    "01": {
+      "number": 383,
+      "url": "https://github.com/1131096740/intelligent-construction-management/issues/383",
+      "title": "[业务简化-01] 固定现状与受控公开验收入口",
+      "source": "docs/plans/2026-11-05-enterprise-simplification-tasks/01-baseline.md",
+      "blocked_by": []
+    },
+    "02": {
+      "number": 384,
+      "url": "https://github.com/1131096740/intelligent-construction-management/issues/384",
+      "title": "[业务简化-02] 扩展四位精度与空值兼容协议",
+      "source": "docs/plans/2026-11-05-enterprise-simplification-tasks/02-precision-expand.md",
+      "blocked_by": [
+        383
+      ]
+    },
+    "03": {
+      "number": 385,
+      "url": "https://github.com/1131096740/intelligent-construction-management/issues/385",
+      "title": "[业务简化-03] 先打通零星申请的并联职责办理",
+      "source": "docs/plans/2026-11-05-enterprise-simplification-tasks/03-parallel-core.md",
+      "blocked_by": [
+        383
+      ]
+    },
+    "04": {
+      "number": 386,
+      "url": "https://github.com/1131096740/intelligent-construction-management/issues/386",
+      "title": "[业务简化-04] 手机号账号与首次改密自助闭环",
+      "source": "docs/plans/2026-11-05-enterprise-simplification-tasks/04-identity.md",
+      "blocked_by": [
+        383
+      ]
+    },
+    "05": {
+      "number": 387,
+      "url": "https://github.com/1131096740/intelligent-construction-management/issues/387",
+      "title": "[业务简化-05] 统一岗位配置、自审和委托权限",
+      "source": "docs/plans/2026-11-05-enterprise-simplification-tasks/05-personnel.md",
+      "blocked_by": [
+        385,
+        386
+      ]
+    },
+    "06": {
+      "number": 388,
+      "url": "https://github.com/1131096740/intelligent-construction-management/issues/388",
+      "title": "[业务简化-06] 合同草稿先实现统一表格与保存导入",
+      "source": "docs/plans/2026-11-05-enterprise-simplification-tasks/06-grid-drafts.md",
+      "blocked_by": [
+        384
+      ]
+    },
+    "07": {
+      "number": 389,
+      "url": "https://github.com/1131096740/intelligent-construction-management/issues/389",
+      "title": "[业务简化-07] 项目与单位主信息按新角色简化",
+      "source": "docs/plans/2026-11-05-enterprise-simplification-tasks/07-projects-units.md",
+      "blocked_by": [
+        387
+      ]
+    },
+    "08": {
+      "number": 390,
+      "url": "https://github.com/1131096740/intelligent-construction-management/issues/390",
+      "title": "[业务简化-08] 用既有样张验证可编辑合同文书方案",
+      "source": "docs/plans/2026-11-05-enterprise-simplification-tasks/08-document-proof.md",
+      "blocked_by": [
+        383
+      ]
+    },
+    "09": {
+      "number": 391,
+      "url": "https://github.com/1131096740/intelligent-construction-management/issues/391",
+      "title": "[业务简化-09] 合同单页基础资料与手动选模板",
+      "source": "docs/plans/2026-11-05-enterprise-simplification-tasks/09-contract-form.md",
+      "blocked_by": [
+        388,
+        389
+      ]
+    },
+    "10": {
+      "number": 392,
+      "url": "https://github.com/1131096740/intelligent-construction-management/issues/392",
+      "title": "[业务简化-10] 完整合同独立标签编辑同步及双格式导出",
+      "source": "docs/plans/2026-11-05-enterprise-simplification-tasks/10-contract-document.md",
+      "blocked_by": [
+        390,
+        391
+      ]
+    },
+    "11": {
+      "number": 393,
+      "url": "https://github.com/1131096740/intelligent-construction-management/issues/393",
+      "title": "[业务简化-11] 合同模板主管维护与版本隔离",
+      "source": "docs/plans/2026-11-05-enterprise-simplification-tasks/11-templates.md",
+      "blocked_by": [
+        390,
+        387
+      ]
+    },
+    "12": {
+      "number": 394,
+      "url": "https://github.com/1131096740/intelligent-construction-management/issues/394",
+      "title": "[业务简化-12] 合同并联审批、盖章和签署归档",
+      "source": "docs/plans/2026-11-05-enterprise-simplification-tasks/12-contract-lifecycle.md",
+      "blocked_by": [
+        392,
+        387
+      ]
+    },
+    "13": {
+      "number": 395,
+      "url": "https://github.com/1131096740/intelligent-construction-management/issues/395",
+      "title": "[业务简化-13] 补充协议和税务补充更正统一入口",
+      "source": "docs/plans/2026-11-05-enterprise-simplification-tasks/13-contract-changes.md",
+      "blocked_by": [
+        394
+      ]
+    },
+    "14": {
+      "number": 396,
+      "url": "https://github.com/1131096740/intelligent-construction-management/issues/396",
+      "title": "[业务简化-14] 三类合同统一正负结算单复核入账",
+      "source": "docs/plans/2026-11-05-enterprise-simplification-tasks/14-settlements.md",
+      "blocked_by": [
+        384,
+        394,
+        387
+      ]
+    },
+    "15": {
+      "number": 397,
+      "url": "https://github.com/1131096740/intelligent-construction-management/issues/397",
+      "title": "[业务简化-15] 公司登记余额与公共现金期初闭环",
+      "source": "docs/plans/2026-11-05-enterprise-simplification-tasks/15-fund-accounts.md",
+      "blocked_by": [
+        384,
+        389
+      ]
+    },
+    "16": {
+      "number": 398,
+      "url": "https://github.com/1131096740/intelligent-construction-management/issues/398",
+      "title": "[业务简化-16] 财务与综合主管共办实付及资金提交安全",
+      "source": "docs/plans/2026-11-05-enterprise-simplification-tasks/16-payment-execution.md",
+      "blocked_by": [
+        397,
+        385,
+        387
+      ]
+    },
+    "17": {
+      "number": 399,
+      "url": "https://github.com/1131096740/intelligent-construction-management/issues/399",
+      "title": "[业务简化-17] 合同付款累计容量、预付与调减暂停",
+      "source": "docs/plans/2026-11-05-enterprise-simplification-tasks/17-contract-payment.md",
+      "blocked_by": [
+        396,
+        395,
+        398
+      ]
+    },
+    "18": {
+      "number": 400,
+      "url": "https://github.com/1131096740/intelligent-construction-management/issues/400",
+      "title": "[业务简化-18] 统一财务更正和实际退款登记",
+      "source": "docs/plans/2026-11-05-enterprise-simplification-tasks/18-financial-correction.md",
+      "blocked_by": [
+        399
+      ]
+    },
+    "19": {
+      "number": 401,
+      "url": "https://github.com/1131096740/intelligent-construction-management/issues/401",
+      "title": "[业务简化-19] 生产零星材料申请与物资采购待办",
+      "source": "docs/plans/2026-11-05-enterprise-simplification-tasks/19-spot-request.md",
+      "blocked_by": [
+        388,
+        387,
+        389,
+        385
+      ]
+    },
+    "20": {
+      "number": 402,
+      "url": "https://github.com/1131096740/intelligent-construction-management/issues/402",
+      "title": "[业务简化-20] 全员项目或公司日常综合采购申请",
+      "source": "docs/plans/2026-11-05-enterprise-simplification-tasks/20-general-request.md",
+      "blocked_by": [
+        388,
+        387,
+        389,
+        385
+      ]
+    },
+    "21": {
+      "number": 403,
+      "url": "https://github.com/1131096740/intelligent-construction-management/issues/403",
+      "title": "[业务简化-21] 两类原采购单分批实际采购与付款",
+      "source": "docs/plans/2026-11-05-enterprise-simplification-tasks/21-actual-procurement.md",
+      "blocked_by": [
+        401,
+        402,
+        398,
+        400
+      ]
+    },
+    "22": {
+      "number": 404,
+      "url": "https://github.com/1131096740/intelligent-construction-management/issues/404",
+      "title": "[业务简化-22] 全员多类别报销及原采购单垫付报销",
+      "source": "docs/plans/2026-11-05-enterprise-simplification-tasks/22-reimbursement.md",
+      "blocked_by": [
+        403,
+        388
+      ]
+    },
+    "23": {
+      "number": 405,
+      "url": "https://github.com/1131096740/intelligent-construction-management/issues/405",
+      "title": "[业务简化-23] 无合同特殊项目付款与费用",
+      "source": "docs/plans/2026-11-05-enterprise-simplification-tasks/23-other-project-payment.md",
+      "blocked_by": [
+        398,
+        400,
+        388
+      ]
+    },
+    "24": {
+      "number": 406,
+      "url": "https://github.com/1131096740/intelligent-construction-management/issues/406",
+      "title": "[业务简化-24] 公共现金与公司资金双向转款接力",
+      "source": "docs/plans/2026-11-05-enterprise-simplification-tasks/24-cash-transfers.md",
+      "blocked_by": [
+        397,
+        398
+      ]
+    },
+    "25": {
+      "number": 407,
+      "url": "https://github.com/1131096740/intelligent-construction-management/issues/407",
+      "title": "[业务简化-25] 现金保管交接与差额待核对",
+      "source": "docs/plans/2026-11-05-enterprise-simplification-tasks/25-cash-handover.md",
+      "blocked_by": [
+        406,
+        387
+      ]
+    },
+    "26": {
+      "number": 408,
+      "url": "https://github.com/1131096740/intelligent-construction-management/issues/408",
+      "title": "[业务简化-26] 按真实来源登记垫资到账和使用",
+      "source": "docs/plans/2026-11-05-enterprise-simplification-tasks/26-funding-receipt.md",
+      "blocked_by": [
+        397,
+        406
+      ]
+    },
+    "27": {
+      "number": 409,
+      "url": "https://github.com/1131096740/intelligent-construction-management/issues/409",
+      "title": "[业务简化-27] 垫资本金归还申请和待归还账",
+      "source": "docs/plans/2026-11-05-enterprise-simplification-tasks/27-funding-return.md",
+      "blocked_by": [
+        408,
+        398,
+        387
+      ]
+    },
+    "28": {
+      "number": 410,
+      "url": "https://github.com/1131096740/intelligent-construction-management/issues/410",
+      "title": "[业务简化-28] 公司间代付及归还防重复计账",
+      "source": "docs/plans/2026-11-05-enterprise-simplification-tasks/28-intercompany.md",
+      "blocked_by": [
+        409
+      ]
+    },
+    "29": {
+      "number": 411,
+      "url": "https://github.com/1131096740/intelligent-construction-management/issues/411",
+      "title": "[业务简化-29] 第三家公司代还与往来更正",
+      "source": "docs/plans/2026-11-05-enterprise-simplification-tasks/29-third-company-return.md",
+      "blocked_by": [
+        410,
+        400
+      ]
+    },
+    "30": {
+      "number": 412,
+      "url": "https://github.com/1131096740/intelligent-construction-management/issues/412",
+      "title": "[业务简化-30] 业主正负结算、到账和预付款登记",
+      "source": "docs/plans/2026-11-05-enterprise-simplification-tasks/30-owner-business.md",
+      "blocked_by": [
+        384,
+        389,
+        398
+      ]
+    },
+    "31": {
+      "number": 413,
+      "url": "https://github.com/1131096740/intelligent-construction-management/issues/413",
+      "title": "[业务简化-31] 施工企业已付和我方到账同事实登记",
+      "source": "docs/plans/2026-11-05-enterprise-simplification-tasks/31-construction-payments.md",
+      "blocked_by": [
+        412,
+        396
+      ]
+    },
+    "32": {
+      "number": 414,
+      "url": "https://github.com/1131096740/intelligent-construction-management/issues/414",
+      "title": "[业务简化-32] 施工企业扣费简单登记",
+      "source": "docs/plans/2026-11-05-enterprise-simplification-tasks/32-construction-fees.md",
+      "blocked_by": [
+        413
+      ]
+    },
+    "33": {
+      "number": 415,
+      "url": "https://github.com/1131096740/intelligent-construction-management/issues/415",
+      "title": "[业务简化-33] 其他合同履约金额三职责确认",
+      "source": "docs/plans/2026-11-05-enterprise-simplification-tasks/33-other-contract-cost.md",
+      "blocked_by": [
+        394,
+        384
+      ]
+    },
+    "34": {
+      "number": 416,
+      "url": "https://github.com/1131096740/intelligent-construction-management/issues/416",
+      "title": "[业务简化-34] 无等级历史合同分工接管后继续办理",
+      "source": "docs/plans/2026-11-05-enterprise-simplification-tasks/34-history-contracts.md",
+      "blocked_by": [
+        396,
+        399,
+        395
+      ]
+    },
+    "35": {
+      "number": 417,
+      "url": "https://github.com/1131096740/intelligent-construction-management/issues/417",
+      "title": "[业务简化-35] 历史无合同费用批量分行核实入账",
+      "source": "docs/plans/2026-11-05-enterprise-simplification-tasks/35-history-expenses.md",
+      "blocked_by": [
+        404,
+        397
+      ]
+    },
+    "36": {
+      "number": 418,
+      "url": "https://github.com/1131096740/intelligent-construction-management/issues/418",
+      "title": "[业务简化-36] 经营总览与成本主体归属统一去重",
+      "source": "docs/plans/2026-11-05-enterprise-simplification-tasks/36-operating-projections.md",
+      "blocked_by": [
+        414,
+        415,
+        416,
+        417,
+        405,
+        411
+      ]
+    },
+    "37": {
+      "number": 419,
+      "url": "https://github.com/1131096740/intelligent-construction-management/issues/419",
+      "title": "[业务简化-37] 自动及非审批待办通知与60秒短信催办",
+      "source": "docs/plans/2026-11-05-enterprise-simplification-tasks/37-notifications.md",
+      "blocked_by": [
+        387,
+        398
+      ]
+    },
+    "38": {
+      "number": 420,
+      "url": "https://github.com/1131096740/intelligent-construction-management/issues/420",
+      "title": "[业务简化-38] 四视图进度和当前轮审批单PDF",
+      "source": "docs/plans/2026-11-05-enterprise-simplification-tasks/38-approval-center.md",
+      "blocked_by": [
+        387,
+        419,
+        394
+      ]
+    },
+    "39": {
+      "number": 421,
+      "url": "https://github.com/1131096740/intelligent-construction-management/issues/421",
+      "title": "[业务简化-39] 六独立台账与业务Excel视图导出",
+      "source": "docs/plans/2026-11-05-enterprise-simplification-tasks/39-ledgers.md",
+      "blocked_by": [
+        399,
+        403,
+        404,
+        416,
+        388
+      ]
+    },
+    "40": {
+      "number": 422,
+      "url": "https://github.com/1131096740/intelligent-construction-management/issues/422",
+      "title": "[业务简化-40] 档案搜索、附件私有访问与批量包",
+      "source": "docs/plans/2026-11-05-enterprise-simplification-tasks/40-archives-search.md",
+      "blocked_by": [
+        388,
+        420
+      ]
+    },
+    "41": {
+      "number": 423,
+      "url": "https://github.com/1131096740/intelligent-construction-management/issues/423",
+      "title": "[业务简化-41] 个人待办首页与各岗位固定入口",
+      "source": "docs/plans/2026-11-05-enterprise-simplification-tasks/41-navigation.md",
+      "blocked_by": [
+        419,
+        421,
+        422
+      ]
+    },
+    "42": {
+      "number": 424,
+      "url": "https://github.com/1131096740/intelligent-construction-management/issues/424",
+      "title": "[业务简化-42] 真实副本无损迁移与恢复切换演练",
+      "source": "docs/plans/2026-11-05-enterprise-simplification-tasks/42-migration-rehearsal.md",
+      "blocked_by": [
+        423,
+        407,
+        418,
+        393
+      ]
+    },
+    "43": {
+      "number": 425,
+      "url": "https://github.com/1131096740/intelligent-construction-management/issues/425",
+      "title": "[业务简化-43] 核齐调用者后退出旧协议和已取消功能",
+      "source": "docs/plans/2026-11-05-enterprise-simplification-tasks/43-retire-old.md",
+      "blocked_by": [
+        424
+      ]
+    },
+    "44": {
+      "number": 426,
+      "url": "https://github.com/1131096740/intelligent-construction-management/issues/426",
+      "title": "[业务简化-44] 固定最终候选完成全链仿真验收",
+      "source": "docs/plans/2026-11-05-enterprise-simplification-tasks/44-final-acceptance.md",
+      "blocked_by": [
+        425
+      ]
+    },
+    "45": {
+      "number": 427,
+      "url": "https://github.com/1131096740/intelligent-construction-management/issues/427",
+      "title": "[业务简化-45] 交付上线切换包与发布前待核事项",
+      "source": "docs/plans/2026-11-05-enterprise-simplification-tasks/45-cutover-packet.md",
+      "blocked_by": [
+        426
+      ]
+    }
+  }
+}

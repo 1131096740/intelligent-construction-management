@@ -273,9 +273,10 @@ describe("ProjectService", () => {
 
   it("creates a project and records an audit log", async () => {
     const tx = {
+      user: { findUnique: jest.fn().mockResolvedValue({ isActive: true }) },
       $queryRaw: jest.fn().mockResolvedValue([]),
       userPosition: { findMany: jest.fn().mockResolvedValue([{ positionId: "chairman-position" }]) },
-      position: { findMany: jest.fn().mockResolvedValue([{ key: "chairman" }]) },
+      position: { findMany: jest.fn().mockResolvedValue([{ id: "chairman-position", key: "chairman" }]) },
       businessEntrySubmissionSnapshot: { create: jest.fn().mockResolvedValue({ id: "snapshot-1" }) },
       project: {
         create: jest.fn().mockResolvedValue({ id: "project-1", code: "KM-2023-001", name: "昆明项目" })
@@ -307,9 +308,10 @@ describe("ProjectService", () => {
 
   it("updates a project name and records an audit log", async () => {
     const tx = {
+      user: { findUnique: jest.fn().mockResolvedValue({ isActive: true }) },
       $queryRaw: jest.fn().mockResolvedValue([]),
       userPosition: { findMany: jest.fn().mockResolvedValue([{ positionId: "chairman-position" }]) },
-      position: { findMany: jest.fn().mockResolvedValue([{ key: "chairman" }]) },
+      position: { findMany: jest.fn().mockResolvedValue([{ id: "chairman-position", key: "chairman" }]) },
       project: {
         update: jest.fn().mockResolvedValue({ id: "project-1", code: "KM-2023-001", name: "昆明项目" })
       }
@@ -349,7 +351,7 @@ describe("ProjectService", () => {
       position: {
         findMany: jest.fn().mockResolvedValue([{ id: "position-finance", key: "finance_director" }])
       },
-      projectRosterMember: { findMany: jest.fn().mockResolvedValue([]) },
+      projectRosterMember: { groupBy: jest.fn().mockResolvedValue([]) },
       projectMember: {
         findMany: jest.fn().mockResolvedValue([])
       },
@@ -385,7 +387,7 @@ describe("ProjectService", () => {
       position: {
         findMany: jest.fn().mockResolvedValue([{ id: "position-manager", key: "project_manager" }])
       },
-      projectRosterMember: { findMany: jest.fn().mockResolvedValue([]) },
+      projectRosterMember: { groupBy: jest.fn().mockResolvedValue([]) },
       projectMember: {
         findMany: jest.fn().mockResolvedValue([
           { projectId: "project-1", positionKey: "employee" },
@@ -422,7 +424,7 @@ describe("ProjectService", () => {
           { id: "position-contract-director", key: "contract_director" }
         ])
       },
-      projectRosterMember: { findMany: jest.fn().mockResolvedValue([]) },
+      projectRosterMember: { groupBy: jest.fn().mockResolvedValue([]) },
       projectMember: {
         findMany: jest.fn().mockResolvedValue([])
       },
@@ -452,7 +454,7 @@ describe("ProjectService", () => {
       position: {
         findMany: jest.fn().mockResolvedValue([{ id: "position-budget", key: "budget_staff" }])
       },
-      projectRosterMember: { findMany: jest.fn().mockResolvedValue([]) },
+      projectRosterMember: { groupBy: jest.fn().mockResolvedValue([]) },
       projectMember: {
         findMany: jest.fn().mockResolvedValue([])
       },
@@ -475,7 +477,7 @@ describe("ProjectService", () => {
       position: {
         findMany: jest.fn().mockResolvedValue([])
       },
-      projectRosterMember: { findMany: jest.fn().mockResolvedValue([]) },
+      projectRosterMember: { groupBy: jest.fn().mockResolvedValue([]) },
       projectMember: {
         findMany: jest.fn().mockResolvedValue([
           { projectId: "project-1", positionKey: "contract_staff" },
@@ -517,7 +519,7 @@ describe("ProjectService", () => {
           { id: "position-project-manager", key: "project_manager" }
         ])
       },
-      projectRosterMember: { findMany: jest.fn().mockResolvedValue([]) },
+      projectRosterMember: { groupBy: jest.fn().mockResolvedValue([]) },
       projectMember: {
         findMany: jest.fn().mockResolvedValue([
           { projectId: "project-3", positionKey: "contract_director" },
@@ -557,7 +559,7 @@ describe("ProjectService", () => {
       position: {
         findMany: jest.fn().mockResolvedValue([{ id: "position-employee", key: "employee" }])
       },
-      projectRosterMember: { findMany: jest.fn().mockResolvedValue([]) },
+      projectRosterMember: { groupBy: jest.fn().mockResolvedValue([]) },
       projectMember: {
         findMany: jest.fn().mockResolvedValue([{ projectId: "project-2", positionKey: "employee" }])
       },
@@ -581,6 +583,7 @@ describe("ProjectService", () => {
         })
       },
       projectRosterMember: {
+        groupBy: jest.fn().mockResolvedValue([]),
         findMany: jest.fn(({ where }) => {
           if (where.userId === "leader") return Promise.resolve([]);
           return Promise.resolve([
@@ -669,6 +672,7 @@ describe("ProjectService", () => {
         })
       },
       projectRosterMember: {
+        groupBy: jest.fn().mockResolvedValue([{ projectId: "project-2" }]),
         findMany: jest.fn(({ where }) => {
           if (where.userId === "employee") {
             return Promise.resolve([{ projectId: "project-2", userId: "employee" }]);
@@ -725,7 +729,13 @@ describe("ProjectService", () => {
   });
 
   it("adapts the legacy overview to the unified projection without reading source amount tables", async () => {
+    const cutoffAt = new Date("2026-09-10T15:59:59.999Z");
+    const readAt = new Date("2026-09-11T00:00:00.000Z");
     const prisma = {
+      $queryRaw: jest.fn().mockResolvedValue([
+        { kind: "settlement", ownerId: "owner", constructionEnterpriseId: "enterprise", amountYuan: "100.0000" },
+        { kind: "receipt", ownerId: "owner", constructionEnterpriseId: "enterprise", amountYuan: "20.0000" }
+      ]),
       project: {
         findFirst: jest.fn().mockResolvedValue({
           id: "project-1",
@@ -736,11 +746,22 @@ describe("ProjectService", () => {
       projectUpstreamFundFact: {
         count: jest.fn()
           .mockResolvedValueOnce(2)
-          .mockResolvedValueOnce(1)
+          .mockResolvedValueOnce(1),
+        findMany: jest.fn().mockResolvedValue([])
       },
-      contract: { count: jest.fn().mockResolvedValue(2) },
+      projectAffiliatePaymentFact: { findMany: jest.fn().mockResolvedValue([]) },
+      projectAffiliateSettlementFact: { findMany: jest.fn().mockResolvedValue([]) },
+      projectAffiliateContractFact: { findMany: jest.fn().mockResolvedValue([]) },
+      projectAffiliateCompanyContract: { findMany: jest.fn().mockResolvedValue([]) },
+      contract: {
+        count: jest.fn().mockResolvedValue(2),
+        findMany: jest.fn().mockResolvedValue([])
+      },
       settlement: { count: jest.fn().mockResolvedValue(3) },
-      paymentRequest: { count: jest.fn().mockResolvedValue(4) }
+      paymentRequest: {
+        count: jest.fn().mockResolvedValue(4),
+        findMany: jest.fn().mockResolvedValue([])
+      }
     };
     const aggregate = {
         scope: { label: "单项目经营口径", projectCount: 1 },
@@ -765,13 +786,14 @@ describe("ProjectService", () => {
         profitAndLoss: { currentOperatingProfitCents: "21200000" },
         distribution: { cashCeilingCents: "4500000" },
         evidence: { gapFactCount: 0 },
-        sources: []
+        sources: [],
+        contractDrilldown: []
     };
     const projection = {
       readProjectCompatibilitySnapshot: jest.fn().mockImplementation(
         async (_actorUserId, _input, readAdditional) => ({
           projection: aggregate,
-          additional: await readAdditional(prisma, ["project-1"]),
+          additional: await readAdditional(prisma, ["project-1"], { moneyComplete: true, cutoffAt, readAt }),
           canExportDetail: true
         })
       )
@@ -809,19 +831,29 @@ describe("ProjectService", () => {
         effectiveSettlementAmountCents: null,
         payableSettlementAmountCents: null,
         operatingIncomeCents: "30000000",
-        affiliateDownstreamPaymentCents: null,
+        affiliateDownstreamPaymentCents: "0",
         operatingCostCents: "8800000",
         grossProfitCents: "21200000"
       }),
+      ownerBalance: { settlementYuan: "100.0000", receivedYuan: "20.0000", outstandingYuan: "80.0000", advanceYuan: "0.0000" },
+      constructionEnterprisePaid: {
+        paidCents: "0",
+        downstreamCents: "0",
+        remittanceCents: "0",
+        overpaidCents: "0",
+        externalPaymentMetric: "project_external_payment"
+      },
       upstreamFunds: expect.objectContaining({
         unreconciledReceiptDifferenceCents: "5000",
         writtenCount: 2,
         oralCount: 1
       }),
       counts: { contracts: 2, settlements: 3, payments: 4 },
+      contractDrilldown: [],
       operatingProjection: aggregate,
       canExportOperatingProjection: true
     }));
+    expect(prisma.$queryRaw.mock.calls[0]?.[1]).toBe("project-1");
     expect(result).not.toHaveProperty("schema");
     expect(result.upstreamFunds).not.toHaveProperty("rows");
     expect(prisma).not.toHaveProperty("projectReceipt");
@@ -2215,6 +2247,7 @@ describe("ProjectService", () => {
           storageStatus: "active",
           contentSha256: attachmentFileSha256Snapshot
         }])
+        .mockResolvedValueOnce([{ state: "absent" }])
         .mockResolvedValueOnce([]),
       user: { findFirst: jest.fn().mockResolvedValue({ id: "finance-staff-1" }) },
       userPosition: { findMany: jest.fn().mockResolvedValue([]) },

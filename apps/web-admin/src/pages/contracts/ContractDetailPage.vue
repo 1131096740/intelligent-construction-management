@@ -15,17 +15,19 @@
       @primary-action="openPrimaryAction"
     >
       <template #actions>
-<ApprovalDocumentDownload v-if="contractDetail?.sealTask" business-type="contract_seal" :business-id="contractDetail.sealTask.id" :refresh-key="contractDetail.sealTask" />
-        <t-button
-          v-if="changeEligibility && contractChangeActionEnabled()"
-          variant="outline"
-          :loading="changeEligibilityLoading"
-          :disabled="detailLoading || !changeEligibility.eligible"
-          :title="changeEligibility.reason ?? '从当前生效版本发起合同变更'"
-          @click="openChangeDialog"
-        >
-          发起合同变更
-        </t-button>
+<ApprovalDocumentDownload v-if="contractDetail?.sealTask && !contractDetail.v2Lifecycle" business-type="contract_seal" :business-id="contractDetail.sealTask.id" :refresh-key="contractDetail.sealTask" />
+        <EffectiveContractTaxFacts
+          v-if="contractDetail && !contractDetail.historyReadOnly && normalizedChangeVersions.some(row => row.status === 'effective')
+            && canRequestContractChangeEligibility(auth.user?.roleKeys ?? [])"
+          :version-id="contractDetail.contractVersionId"
+        />
+        <SignedContractChanges
+          v-if="contractDetail && !contractDetail.historyReadOnly && normalizedChangeVersions.some(row => row.status === 'effective')
+            && canRequestContractChangeEligibility(auth.user?.roleKeys ?? [])"
+          :version-id="contractDetail.contractVersionId"
+          :disabled="detailLoading"
+          :open-requested="route.query.signedChange === '1'"
+        />
         <t-button
           variant="outline"
           :disabled="detailLoading"
@@ -42,14 +44,6 @@
         </t-button>
       </template>
     </JgPageHeader>
-
-    <t-alert
-      v-if="changeEligibility && !changeEligibility.eligible"
-      theme="warning"
-      class="change-eligibility-alert"
-      title="当前不能发起合同变更"
-      :message="changeEligibility.reason || '请核对合同当前状态后重试'"
-    />
 
     <section
       v-if="detailLoading && !contractDetail"
@@ -77,6 +71,13 @@
     </section>
 
     <BusinessFeedback
+      v-if="v2ConfirmedRefreshWarning"
+      state="success"
+      title="本次办理结果已核对"
+      :description="v2ConfirmedRefreshWarning"
+    />
+
+    <BusinessFeedback
       v-if="contractDetailError"
       :state="loadErrorState"
       :title="loadErrorState === 'permission' ? '当前账号无权查看此合同' : '合同详情读取失败'"
@@ -93,6 +94,21 @@
     />
 
     <template v-if="contractDetail">
+      <MultiDutySmsStatusPanel
+        v-if="auth.user?.id && !contractDetail.historyReadOnly"
+        :key="`${auth.user.id}:${contractDetail.contractVersionId}`"
+        domain="contracts"
+        :business-id="contractDetail.contractVersionId"
+      />
+      <ContractSignedArchiveSection
+        v-if="contractDetail.v2Lifecycle"
+        :detail="contractDetail"
+        :actor-user-id="auth.user?.id"
+        :route-contract-id="routeContractId()"
+        :external-busy="Boolean(archiveActionBusy)"
+        @completed="onV2SigningCompleted"
+        @lock="v2LifecycleLocked = $event"
+      />
       <t-alert
         v-if="contractDetail.historyReadOnly"
         theme="info"
@@ -110,6 +126,11 @@
         class="tab-content"
         aria-label="合同概览"
       >
+        <ContractWorkCompletionSection
+          v-if="!contractDetail.historyReadOnly"
+          :key="contractDetail.contractVersionId"
+          :version-id="contractDetail.contractVersionId"
+        />
         <section
           v-if="contractDetail.businessEntrySubmissions?.length"
           class="content-panel"
@@ -181,7 +202,7 @@
             <header class="section-heading">
               <div>
                 <h2>生效进度</h2>
-                <p>审批、用章、归档上传、主管确认和版本生效分开记录。</p>
+                <p>{{ contractDetail?.v2Lifecycle ? "审批、确认我方盖章、双方签章原件归档和版本生效分开记录。" : "审批、用章、归档上传、主管确认和版本生效分开记录。" }}</p>
               </div>
             </header>
             <div class="flow-list">
@@ -227,7 +248,7 @@
             </div>
           </header>
 
-          <JgTaskCard :actions="contractDetail.availableActions" />
+          <JgTaskCard :actions="contractTaskCardActions" />
 
           <t-alert
             v-if="contractDetail.disabledReasons.length"
@@ -384,41 +405,10 @@
               class="action-group"
             >
               <div class="action-title">
-                <strong>用章与归档文件生成</strong>
+                <strong>签署材料与归档文件</strong>
                 <span>只执行后端已授权的当前动作</span>
               </div>
-              <t-checkbox-group
-                v-if="isContractActionEnabled('complete_seal')"
-                v-model="sealCompletionConfirmations"
-                class="confirmation-list"
-              >
-                <t-checkbox
-                  v-for="item in sealCompletionOptions"
-                  :key="item.value"
-                  :value="item.value"
-                >
-                  {{ item.label }}
-                </t-checkbox>
-              </t-checkbox-group>
               <div class="action-buttons action-buttons--end">
-                <t-button
-                  v-if="isContractActionEnabled('approve_seal')"
-                  :theme="buttonTheme('approve_seal')"
-                  :variant="buttonVariant('approve_seal')"
-                  :loading="archiveActionBusy === 'seal'"
-                  @click="requestContractSealApproval"
-                >
-                  {{ displayContractActionLabel('approve_seal') }}
-                </t-button>
-                <t-button
-                  v-if="isContractActionEnabled('complete_seal')"
-                  :theme="buttonTheme('complete_seal')"
-                  :variant="buttonVariant('complete_seal')"
-                  :loading="archiveActionBusy === 'sealComplete'"
-                  @click="requestContractSealCompletion"
-                >
-                  {{ displayContractActionLabel('complete_seal') }}
-                </t-button>
                 <t-button
                   v-if="signingMaterialChangeActionEnabled()"
                   theme="danger"
@@ -528,7 +518,7 @@
         class="tab-content"
         aria-label="合同凭证资料"
       >
-        <section class="content-panel content-panel--plain">
+        <section v-if="!contractDetail.v2Lifecycle" class="content-panel content-panel--plain">
           <header class="section-heading">
             <div>
               <h2>签署与归档证据</h2>
@@ -1047,31 +1037,6 @@
     />
 
     <SensitiveActionDialog
-      v-if="sensitiveAction.kind === 'governedSealApprove' && isContractActionEnabled('approve_seal')"
-      v-model="sensitiveAction.visible"
-      :title="sensitiveAction.title"
-      :description="sensitiveAction.description"
-      :confirm-text="sensitiveAction.confirmText"
-      :confirm-theme="sensitiveAction.confirmTheme"
-      :require-password="sensitiveAction.requirePassword"
-      :loading="Boolean(archiveActionBusy)"
-      :error="sensitiveAction.error"
-      @confirm="confirmContractSealApproval"
-    />
-
-    <SensitiveActionDialog
-      v-if="sensitiveAction.kind === 'governedSealComplete' && isContractActionEnabled('complete_seal')"
-      v-model="sensitiveAction.visible"
-      :title="sensitiveAction.title"
-      :description="sensitiveAction.description"
-      :confirm-text="sensitiveAction.confirmText"
-      :confirm-theme="sensitiveAction.confirmTheme"
-      :loading="Boolean(archiveActionBusy)"
-      :error="sensitiveAction.error"
-      @confirm="confirmContractSealCompletion"
-    />
-
-    <SensitiveActionDialog
       v-if="sensitiveAction.kind === 'finalUpload' && isContractActionEnabled('upload_final_contract')"
       v-model="sensitiveAction.visible"
       :title="sensitiveAction.title"
@@ -1162,65 +1127,6 @@
       @confirm="confirmSigningMaterialChange"
     />
 
-    <t-dialog
-      v-if="contractChangeActionEnabled()"
-      v-model:visible="changeDialogVisible"
-      header="发起合同变更"
-      :confirm-btn="{ content: '创建变更草稿', loading: changeSubmitting }"
-      cancel-btn="取消"
-      :close-on-overlay-click="false"
-      @confirm="submitChangeDraft"
-    >
-      <t-alert
-        theme="info"
-        class="change-dialog-alert"
-      >
-        变更草稿、审批和用章不会改变当前有效合同；只有新版本归档确认后才会替代旧版本生效。
-      </t-alert>
-      <dl
-        v-if="changeEligibility?.currentEffective"
-        class="change-base-summary"
-      >
-        <dt>当前有效基版</dt>
-        <dd>合同 v{{ changeEligibility.currentEffective.versionNo }}</dd>
-        <dt>当前合同金额</dt>
-        <dd>{{ moneyText(changeEligibility.currentEffective.amountCents) }}</dd>
-        <dt>金额上限性质</dt>
-        <dd>{{ changeEligibility.currentEffective.amountLimitType === 'unlimited' ? '无限额框架合同' : '有金额上限' }}（继承且不可修改）</dd>
-      </dl>
-      <div class="change-form-grid">
-        <label class="change-field">
-          <span>金额方向</span>
-          <t-select
-            v-model="changeForm.changeDirection"
-            :options="changeDirectionOptions"
-            @change="onChangeDirection"
-          />
-        </label>
-        <label class="change-field">
-          <span>变更金额（元）</span>
-          <t-input
-            v-model="changeForm.changeAmountYuan"
-            :disabled="changeForm.changeDirection === 'unchanged'"
-            :maxlength="19"
-            placeholder="请输入金额，最多两位小数"
-          />
-        </label>
-        <label class="change-field change-reason">
-          <span>变更原因</span>
-          <t-textarea
-            v-model="changeForm.changeReason"
-            :autosize="{ minRows: 3, maxRows: 6 }"
-          />
-        </label>
-      </div>
-      <p
-        v-if="changeError"
-        class="change-error"
-      >
-        {{ changeError }}
-      </p>
-    </t-dialog>
     <ApprovalProgressPanel
       business-type="contract_version"
       :business-id="contractDetail?.contractVersionId"
@@ -1230,6 +1136,11 @@
 </template>
 
 <script setup lang="ts">
+import type { ContractSigningCompletion } from "./use-contract-signed-archive";
+import EffectiveContractTaxFacts from "./EffectiveContractTaxFacts.vue";
+import SignedContractChanges from "./SignedContractChanges.vue";
+import ContractWorkCompletionSection from "./ContractWorkCompletionSection.vue";
+import ContractSignedArchiveSection from "./ContractSignedArchiveSection.vue";
 import ApprovalDocumentDownload from "../../components/approval/ApprovalDocumentDownload.vue";
 import type { BusinessEntryDraftPayload, BusinessEntryFrozenSnapshot, CoreFlowTone, ContractDetailReadModel } from "@jiangkong/shared-domain";
 import ApprovalProgressPanel from "../../components/ApprovalProgressPanel.vue";
@@ -1238,12 +1149,8 @@ import { computed, onBeforeUnmount, onMounted, reactive, ref, shallowRef, watch 
 import { useRoute, useRouter } from "vue-router";
 import { formatUnknownApiError } from "../../api/error-message";
 import {
-  approveContractSeal,
-  approveGovernedContractSeal,
-  completeContractSeal,
   confirmContractArchive,
   confirmMutuallySignedContract,
-  createContractChangeDraft,
   createPrivateFileDownloadTicket,
   downloadPrivateFileByTicket,
   delegateContractApproval,
@@ -1252,7 +1159,6 @@ import {
   executeContractApprovalReviewAction,
   executeContractSigningMaterialChange,
   fetchApprovalDelegationUserOptions,
-  fetchContractChangeEligibility,
   fetchContractDetail,
   generateContractPdfArchive,
   getPrivateFileDownloadTicketCapability,
@@ -1278,6 +1184,7 @@ import {
 } from "../../lib/contract-approval-result";
 import { ContractSigningMaterialChangeResultUnknownError } from "../../lib/contract-signing-material-change-result";
 import { useAuthStore } from "../../auth/auth.store";
+import MultiDutySmsStatusPanel from "../../components/MultiDutySmsStatusPanel.vue";
 import BusinessFeedback from "../../components/BusinessFeedback.vue";
 import BusinessEntryGrid from "../../components/BusinessEntryGrid.vue";
 import EmptyBusinessState from "../../components/EmptyBusinessState.vue";
@@ -1295,7 +1202,7 @@ import {
   FINAL_CONTRACT_ARCHIVE_UPLOAD_POLICY
 } from "../../components/file-upload-policy.config";
 import { buildFileUploadSummary } from "../../components/file-upload-summary.config";
-import { centsTextToYuanText, yuanTextToCentsText } from "../../lib/money";
+import { centsTextToYuanText } from "../../lib/money";
 import { contractDetailChainLinks } from "../business-chain-links.config";
 import type { DetailTone } from "./contract-detail.config";
 import {
@@ -1317,12 +1224,7 @@ import {
 import {
   contractApprovalRouteText,
   contractChangeTypeLabel,
-  isCurrentChangeSubmission,
-  isPostgresBigIntText,
-  normalizeChangeEligibility,
-  normalizeChangeVersion,
   normalizeContractChangeVersions,
-  type NormalizedChangeEligibility,
   type NormalizedContractChangeVersion
 } from "./contract-change.state";
 import { contractVersionStatusLabel } from "./contract-labels";
@@ -1380,50 +1282,6 @@ async function delegateContractApprovalWithCapability(
   const operationAllowed = capability.availableActionKeys.includes("delegate_approval");
   if (!operationAllowed) throw new Error("当前用户不能委托合同审批");
   return delegateContractApproval(contractVersionId, body);
-}
-
-async function approveLegacyContractSealWithCapability(
-  contractId: string,
-  contractVersionId: string
-) {
-  const capability = await fetchContractDetail(contractId);
-  const matchesRequestedContract = capability.id === contractId;
-  if (!matchesRequestedContract) throw new Error("合同编号已变化，请刷新后重试");
-  const matchesRequestedVersion = capability.contractVersionId === contractVersionId;
-  if (!matchesRequestedVersion) throw new Error("合同版本已变化，请刷新后重试");
-  const operationAllowed = capability.availableActionKeys.includes("approve_seal");
-  if (!operationAllowed) throw new Error("当前用户不能批准合同用章");
-  return approveContractSeal(contractVersionId);
-}
-
-async function approveGovernedContractSealWithCapability(
-  contractId: string,
-  contractVersionId: string,
-  confirmationPassword: string
-) {
-  const capability = await fetchContractDetail(contractId);
-  const matchesRequestedContract = capability.id === contractId;
-  if (!matchesRequestedContract) throw new Error("合同编号已变化，请刷新后重试");
-  const matchesRequestedVersion = capability.contractVersionId === contractVersionId;
-  if (!matchesRequestedVersion) throw new Error("合同版本已变化，请刷新后重试");
-  const operationAllowed = capability.availableActionKeys.includes("approve_seal");
-  if (!operationAllowed) throw new Error("当前用户不能批准合同用章");
-  return approveGovernedContractSeal(contractVersionId, { confirmationPassword });
-}
-
-async function completeContractSealWithCapability(
-  contractId: string,
-  contractVersionId: string,
-  body: Parameters<typeof completeContractSeal>[1]
-) {
-  const capability = await fetchContractDetail(contractId);
-  const matchesRequestedContract = capability.id === contractId;
-  if (!matchesRequestedContract) throw new Error("合同编号已变化，请刷新后重试");
-  const matchesRequestedVersion = capability.contractVersionId === contractVersionId;
-  if (!matchesRequestedVersion) throw new Error("合同版本已变化，请刷新后重试");
-  const operationAllowed = capability.availableActionKeys.includes("complete_seal");
-  if (!operationAllowed) throw new Error("当前用户不能确认合同用章完成");
-  return completeContractSeal(contractVersionId, body);
 }
 
 async function uploadContractArchivePrivateFileWithCapability(
@@ -1579,27 +1437,6 @@ async function confirmContractFinalFileWithCapability(
   return confirmMutuallySignedContract(contractVersionId, body);
 }
 
-async function createContractChangeDraftWithCapability(
-  contractVersionId: string,
-  contractId: string,
-  body: Parameters<typeof createContractChangeDraft>[1]
-) {
-  const capability = await fetchContractChangeEligibility(contractVersionId);
-  const currentEffective = capability.currentEffective;
-  if (!currentEffective) throw new Error("当前合同没有可变更的生效基版");
-  const eligible = capability.eligible;
-  if (!eligible) throw new Error("当前用户不能发起合同变更");
-  const matchesRequestedVersion = currentEffective.id === contractVersionId;
-  if (!matchesRequestedVersion) throw new Error("合同变更基版已变化，请刷新后重试");
-  const matchesRequestedContract = currentEffective.contractId === contractId;
-  if (!matchesRequestedContract) throw new Error("合同编号已变化，请刷新后重试");
-  const operationAllowed = capability.availableActions.includes(
-    "create_contract_change_draft"
-  );
-  if (!operationAllowed) throw new Error("当前用户不能发起合同变更");
-  return createContractChangeDraft(contractVersionId, body);
-}
-
 async function createContractFileDownloadTicketWithCapability(
   fileId: string,
   body: Parameters<typeof createPrivateFileDownloadTicket>[1]
@@ -1635,8 +1472,6 @@ type SensitiveActionKind =
   | "fileDownload"
   | "formalFileDownload"
   | "formalFilePreview"
-  | "governedSealApprove"
-  | "governedSealComplete"
   | "finalUpload"
   | "finalReturn"
   | "finalConfirm";
@@ -1673,6 +1508,7 @@ type ContractReviewDialogContext = Pick<
   | "expectedApprovalInstanceId"
   | "expectedNodeIndex"
   | "expectedApprovalUpdatedAt"
+  | "expectedParallelApprovalEpoch"
   | "decision"
   | "ownerContractRisk"
 >;
@@ -1702,17 +1538,8 @@ const formalPreviewUrl = ref("");
 const detailLoading = ref(false);
 const contractDetailError = ref("");
 const activeTab = ref("overview");
-const changeEligibility = ref<NormalizedChangeEligibility | null>(null);
-const contractChangeAvailableActions = shallowRef<
-  Array<"create_contract_change_draft"> | null
->(null);
 const normalizedChangeVersions = ref<NonNullable<ReturnType<typeof normalizeContractChangeVersions>>>([]);
-const changeEligibilityLoading = ref(false);
-const changeDialogVisible = ref(false);
-const changeSubmitting = ref(false);
-const changeError = ref("");
 let detailRequestId = 0;
-let changeSubmissionToken = 0;
 let signingMaterialChangeSubmissionToken = 0;
 let contractReviewSubmissionToken = 0;
 let contractReviewDialogGeneration = 0;
@@ -1726,17 +1553,6 @@ let contractWithdrawalOperationId = 0;
 let contractWithdrawalDialogContext: ContractWithdrawalDialogContext | null = null;
 let contractWithdrawalInFlight: Promise<boolean> | null = null;
 let contractWithdrawalResultUnknown = false;
-let changeDialogBaseVersionId = "";
-const changeForm = reactive({
-  changeDirection: "unchanged" as "increase" | "decrease" | "unchanged",
-  changeAmountYuan: "0",
-  changeReason: ""
-});
-const changeDirectionOptions = [
-  { label: "增加金额", value: "increase" },
-  { label: "减少金额", value: "decrease" },
-  { label: "金额不变", value: "unchanged" }
-];
 const finalConfirmationOptions = [
   { value: "firstPartySignedOrStamped", label: "我方签字或签章已完成" },
   { value: "companySealCompleted", label: "对应我方公司公章已加盖" },
@@ -1745,11 +1561,34 @@ const finalConfirmationOptions = [
   { value: "onlyPermittedSignatureChanges", label: "审批后仅发生允许的签署信息变化" },
   { value: "documentOrderConfirmed", label: "正文、附件、授权书和签署页顺序完整" }
 ] as const;
-const sealCompletionOptions = finalConfirmationOptions.slice(0, 4);
-const sealCompletionKeys = sealCompletionOptions.map((item) => item.value);
 const finalConfirmationKeys = finalConfirmationOptions.map((item) => item.value);
 const assignmentUsers = ref<Array<{ id: string; name: string }>>([]);
 const archiveActionBusy = ref("");
+const v2LifecycleLocked = ref(false);
+const v2ConfirmedReceipt = ref<(ContractSigningCompletion & { routeContractId: string }) | null>(null);
+const v2ConfirmedRefreshWarning = computed(() => {
+  const receipt = v2ConfirmedReceipt.value;
+  if (!receipt || !contractDetailError.value || receipt.actor !== auth.user?.id || receipt.routeContractId !== routeContractId()) return "";
+  return receipt.kind === "archive" ? "归档结果已核对成功，合同详情暂未刷新，请重试读取。"
+    : receipt.kind === "seal" ? "盖章完成结果已核对，合同详情暂未刷新，请重试读取。"
+      : "已核对原盖章任务由其他人员完成，合同详情暂未刷新，请重试读取。";
+});
+function onV2SigningCompleted(completion: ContractSigningCompletion) {
+  if (completion.actor !== auth.user?.id || completion.versionId !== contractDetail.value?.contractVersionId) return;
+  v2ConfirmedReceipt.value = { ...completion, routeContractId: routeContractId() };
+  void reloadContractDetail();
+}
+watch(() => [auth.user?.id, route.params.contractId, route.query.versionId], () => { v2ConfirmedReceipt.value = null; });
+watch(() => contractDetail.value?.contractVersionId, versionId => {
+  if (versionId && v2ConfirmedReceipt.value && versionId !== v2ConfirmedReceipt.value.versionId) v2ConfirmedReceipt.value = null;
+});
+const retiredContractSealActions = new Set(["approve_seal", "complete_seal"]);
+const legacySigningActions = new Set(["upload_archive", "upload_final_contract", "confirm_archive", "confirm_final_contract", "return_final_contract", "report_signing_material_change", "generate_pdf_archive"]);
+const v2SigningActions = new Set(["confirm_seal_v2", "archive_signed_v2"]);
+const contractTaskCardActions = computed(() => (contractDetail.value?.availableActions ?? []).filter(action =>
+  !retiredContractSealActions.has(action.key) &&
+  (!contractDetail.value?.v2Lifecycle || !legacySigningActions.has(action.key) && !v2SigningActions.has(action.key))
+).map(action => v2LifecycleLocked.value && !action.key.startsWith("download_") ? { ...action, enabled: false, disabledReason: "本次办理结果待核对，请先查询原结果" } : action));
 const signingMaterialChangeDialogVisible = ref(false);
 const signingMaterialChangeDialogError = ref("");
 const signingMaterialChangeDialogContext = ref<
@@ -1834,7 +1673,6 @@ const stagedFinalAssociation = computed(() => {
   const contractVersionId = contractDetail.value?.contractVersionId;
   return contractVersionId ? stagedFinalAssociations.value[contractVersionId] ?? null : null;
 });
-const sealCompletionConfirmations = ref<string[]>([]);
 const finalUploadConfirmations = ref<string[]>([]);
 const finalArchiveConfirmations = ref<string[]>([]);
 const sensitiveAction = reactive<SensitiveActionState>({
@@ -1932,14 +1770,13 @@ const contractArchiveFileOptions = computed(() =>
     }))
 );
 const contractArchiveRecordOptions = computed(() =>
-  (contractDetail.value?.archiveFiles ?? []).map((file) => ({
-    label: `${file.fileName}（${file.statusLabel}）`,
-    value: file.archiveRecordId
+  [...new Map((contractDetail.value?.archiveFiles ?? []).filter(file => file.archiveProtocolVersion !== 2).map(file => [file.archiveRecordId, file])).values()].map((file) => ({
+    label: `${file.fileName}（${file.statusLabel}）`, value: file.archiveRecordId
   }))
 );
 const contractEvidenceFilesView = computed(() =>
   (contractDetail.value?.archiveFiles ?? []).map((file) => ({
-    recordId: file.archiveRecordId,
+    recordId: file.archiveProtocolVersion === 2 ? file.evidenceId ?? file.fileId : file.archiveRecordId,
     fileName: file.fileName,
     businessRef: contractDetail.value?.id ?? "当前合同",
     purpose: "合同归档件",
@@ -1970,7 +1807,8 @@ const contractActionByKey = computed(() =>
 );
 const contractHeaderPrimaryAction = computed(() => {
   const primaryAction = contractDetail.value?.primaryAction;
-  if (!primaryAction) return null;
+  if (!primaryAction || retiredContractSealActions.has(primaryAction) ||
+    contractDetail.value?.v2Lifecycle && (legacySigningActions.has(primaryAction) || v2SigningActions.has(primaryAction))) return null;
   const action = contractActionByKey.value.get(primaryAction);
   return action?.enabled ? action : null;
 });
@@ -2005,9 +1843,7 @@ const showContractAssistanceActions = computed(
     isContractActionEnabled("delegate_approval")
 );
 const showContractSealActions = computed(
-  () => isContractActionEnabled("approve_seal") ||
-    isContractActionEnabled("complete_seal") ||
-    signingMaterialChangeActionEnabled() ||
+  () => signingMaterialChangeActionEnabled() ||
     isContractActionEnabled("generate_pdf_archive")
 );
 const showContractEvidenceActions = computed(
@@ -2131,6 +1967,9 @@ const actionFeedbackState = computed<"success" | "error">(() =>
 );
 
 function isContractActionEnabled(key: string) {
+  if (retiredContractSealActions.has(key)) return false;
+  if (v2LifecycleLocked.value && !key.startsWith("download_")) return false;
+  if (contractDetail.value?.v2Lifecycle && legacySigningActions.has(key)) return false;
   return Boolean(
     contractLifecycleAvailableActions.value?.some(
       (action) => action.key === key && action.enabled
@@ -2138,12 +1977,8 @@ function isContractActionEnabled(key: string) {
   );
 }
 
-function contractChangeActionEnabled() {
-  return contractChangeAvailableActions.value !== null &&
-    contractChangeAvailableActions.value.includes("create_contract_change_draft");
-}
-
 function contractReviewActionEnabled() {
+  if (v2LifecycleLocked.value) return false;
   return Boolean(contractLifecycleAvailableActionKeys.value?.includes("review_approval")) &&
     Boolean(
       contractReviewCapability.value?.availableActions.some(
@@ -2158,6 +1993,7 @@ function contractReviewActionEnabled() {
 }
 
 function contractWithdrawalActionEnabled() {
+  if (v2LifecycleLocked.value) return false;
   return Boolean(contractLifecycleAvailableActionKeys.value?.includes("withdraw_approval")) &&
     Boolean(
       contractReviewCapability.value?.availableActions.some(
@@ -2172,6 +2008,7 @@ function contractWithdrawalActionEnabled() {
 }
 
 function signingMaterialChangeActionEnabled() {
+  if (contractDetail.value?.v2Lifecycle || v2LifecycleLocked.value) return false;
   return Boolean(contractLifecycleAvailableActionKeys.value?.includes(
     "report_signing_material_change"
   )) && Boolean(
@@ -2257,7 +2094,6 @@ async function reloadContractDetail() {
   contractReviewCapability.value = null;
   contractLifecycleAvailableActions.value = null;
   contractLifecycleAvailableActionKeys.value = null;
-  contractChangeAvailableActions.value = null;
   contractReviewResultUnknown = false;
   contractWithdrawalResultUnknown = false;
   detailLoading.value = true;
@@ -2276,22 +2112,6 @@ async function reloadContractDetail() {
     contractReviewCapability.value = structuredClone(serverDetail);
     contractDetail.value = detail;
     normalizedChangeVersions.value = versions;
-    changeEligibility.value = null;
-    if (
-      !serverDetail.historyReadOnly &&
-      canRequestContractChangeEligibility(auth.user?.roleKeys ?? [])
-    ) {
-      changeEligibilityLoading.value = true;
-      const eligibilityPayload = await fetchContractChangeEligibility(detail.contractVersionId).catch(() => null);
-      if (requestId !== detailRequestId || contractId !== routeContractId()) return false;
-      contractChangeAvailableActions.value = eligibilityPayload?.availableActions ?? null;
-      changeEligibility.value = eligibilityPayload === null
-        ? null
-        : normalizeChangeEligibility(structuredClone(eligibilityPayload), detail.contractVersionId);
-      changeEligibilityLoading.value = false;
-    } else {
-      changeEligibilityLoading.value = false;
-    }
     const archiveFileIds = detail.archiveFiles
       .filter((file) => file.canDownload)
       .map((file) => file.fileId);
@@ -2308,11 +2128,8 @@ async function reloadContractDetail() {
     contractReviewCapability.value = null;
     contractLifecycleAvailableActions.value = null;
     contractLifecycleAvailableActionKeys.value = null;
-    contractChangeAvailableActions.value = null;
     contractDetail.value = null;
     normalizedChangeVersions.value = [];
-    changeEligibility.value = null;
-    changeEligibilityLoading.value = false;
     const reason = formatUnknownApiError(error, "未知错误");
     contractDetailError.value = `未能读取合同详情：${reason}。当前页面数据不能用于审批、归档、结算或付款判断，请确认账号权限和网络状态后重试。`;
     return false;
@@ -2325,7 +2142,6 @@ watch(
   () => [route.params.contractId, route.query?.versionId],
   (next, previous) => {
     if (next[0] === previous[0] && next[1] === previous[1]) return;
-    clearChangeTransientState();
     clearContractActionTransientState();
     activeTab.value = "overview";
     contractDetail.value = null;
@@ -2345,24 +2161,6 @@ function routeVersionId() {
   return typeof value === "string" ? value : Array.isArray(value) ? String(value[0] ?? "") : "";
 }
 
-function resetChangeForm() {
-  changeForm.changeDirection = "unchanged";
-  changeForm.changeAmountYuan = "0";
-  changeForm.changeReason = "";
-}
-
-function clearChangeTransientState() {
-  changeSubmissionToken += 1;
-  changeEligibility.value = null;
-  contractChangeAvailableActions.value = null;
-  changeEligibilityLoading.value = false;
-  changeDialogVisible.value = false;
-  changeSubmitting.value = false;
-  changeDialogBaseVersionId = "";
-  changeError.value = "";
-  resetChangeForm();
-}
-
 function clearContractActionTransientState() {
   signingMaterialChangeSubmissionToken += 1;
   contractReviewSubmissionToken += 1;
@@ -2373,7 +2171,6 @@ function clearContractActionTransientState() {
   contractReviewCapability.value = null;
   contractLifecycleAvailableActions.value = null;
   contractLifecycleAvailableActionKeys.value = null;
-  contractChangeAvailableActions.value = null;
   contractWithdrawalSubmissionToken += 1;
   contractWithdrawalDialogGeneration += 1;
   contractWithdrawalDialogContext = null;
@@ -2393,11 +2190,6 @@ function clearContractActionTransientState() {
   contractFinalUploadFiles.value = [];
   finalUploadConfirmations.value = [];
   finalArchiveConfirmations.value = [];
-  sealCompletionConfirmations.value = [];
-}
-
-function moneyText(cents: string) {
-  return `¥${centsTextToYuanText(cents)}`;
 }
 
 function approvalRouteLabel(roleKeys: string[]) {
@@ -2406,80 +2198,6 @@ function approvalRouteLabel(roleKeys: string[]) {
 
 function changeTypeLabel(value: unknown) {
   return contractChangeTypeLabel(value);
-}
-
-function onChangeDirection(value: "increase" | "decrease" | "unchanged") {
-  if (value === "unchanged") changeForm.changeAmountYuan = "0";
-}
-
-function openChangeDialog() {
-  const current = changeEligibility.value?.currentEffective;
-  if (!changeEligibility.value?.eligible || !contractChangeActionEnabled() || !current) return;
-  changeDialogBaseVersionId = current.id;
-  resetChangeForm();
-  changeError.value = "";
-  changeDialogVisible.value = true;
-}
-
-async function submitChangeDraft() {
-  if (changeSubmitting.value) return;
-  const reason = changeForm.changeReason.trim();
-  if (!reason) return void (changeError.value = "请填写变更原因");
-  let amountCents: string;
-  try {
-    amountCents = yuanTextToCentsText(changeForm.changeAmountYuan.trim());
-  } catch {
-    return void (changeError.value = "变更金额必须按元填写，且最多保留两位小数");
-  }
-  if (!isPostgresBigIntText(amountCents)) {
-    return void (changeError.value = "变更金额超出系统可处理范围，请核对后重试");
-  }
-  if (changeForm.changeDirection === "unchanged" && amountCents !== "0") {
-    return void (changeError.value = "金额不变时变更金额必须为 0");
-  }
-  if (changeForm.changeDirection !== "unchanged" && BigInt(amountCents) <= 0n) {
-    return void (changeError.value = "增减金额必须大于 0");
-  }
-  changeSubmitting.value = true;
-  changeError.value = "";
-  const submissionToken = ++changeSubmissionToken;
-  const capturedRouteContractId = routeContractId();
-  const capturedBaseVersionId = changeDialogBaseVersionId;
-  const capturedBaseContractId = changeEligibility.value?.currentEffective?.contractId ?? "";
-  const capturedChangeDirection = changeForm.changeDirection;
-  const submissionIsCurrent = () => isCurrentChangeSubmission(
-    submissionToken,
-    changeSubmissionToken,
-    capturedRouteContractId,
-    routeContractId()
-  );
-  try {
-    const createdPayload = await createContractChangeDraftWithCapability(
-      capturedBaseVersionId,
-      capturedBaseContractId,
-      {
-      changeType: "change",
-      changeReason: reason,
-      changeDirection: capturedChangeDirection,
-      changeAmountCents: amountCents
-      }
-    );
-    if (!submissionIsCurrent()) return;
-    const created = normalizeChangeVersion(createdPayload);
-    if (!created || created.baseVersionId !== capturedBaseVersionId ||
-      created.contractId !== capturedBaseContractId) {
-      throw new Error("变更草稿响应与当前基版不一致，请刷新合同详情");
-    }
-    if (!submissionIsCurrent()) return;
-    changeDialogVisible.value = false;
-    await router.push(`/contracts/${created.contractId}/workbench?versionId=${created.id}`);
-  } catch (error) {
-    if (submissionIsCurrent()) {
-      changeError.value = formatUnknownApiError(error, "创建变更草稿失败");
-    }
-  } finally {
-    if (submissionIsCurrent()) changeSubmitting.value = false;
-  }
 }
 
 function requiredText(raw: string, label: string) {
@@ -2625,6 +2343,7 @@ function currentContractReviewDialogContext(
     expectedApprovalInstanceId: coordinates.expectedApprovalInstanceId,
     expectedNodeIndex: coordinates.expectedNodeIndex,
     expectedApprovalUpdatedAt: coordinates.expectedApprovalUpdatedAt,
+    expectedParallelApprovalEpoch: coordinates.expectedParallelApprovalEpoch,
     decision,
     ownerContractRisk: freezeContractReviewOwnerRisk(
       capability.ownerContractRisk
@@ -2725,20 +2444,6 @@ function requireConfirmations(selected: readonly string[], required: readonly st
   if (!required.every((key) => selected.includes(key))) throw new Error(message);
 }
 
-function sealCompletionPayload() {
-  requireConfirmations(
-    sealCompletionConfirmations.value,
-    sealCompletionKeys,
-    "请确认我方签署、公章、骑缝章和签署日期均已完成"
-  );
-  return {
-    firstPartySignedOrStamped: true,
-    companySealCompleted: true,
-    crossPageSealCompleted: true,
-    signingDateCompleted: true
-  };
-}
-
 function finalDeclarationPayload(selected: readonly string[]) {
   requireConfirmations(
     selected,
@@ -2753,41 +2458,6 @@ function finalDeclarationPayload(selected: readonly string[]) {
     onlyPermittedSignatureChanges: true,
     documentOrderConfirmed: true
   };
-}
-
-function requestContractSealApproval() {
-  try {
-    const contractVersionId = currentContractVersionId();
-    const governed = Boolean(contractDetail.value?.sealTask);
-    openSensitiveAction("governedSealApprove", {
-      title: governed ? "确认同意用章？" : "确认用章通过？",
-      description: governed
-        ? "同意后合同进入线下签署盖章环节；该操作不代表合同已经生效。"
-        : "确认后进入合同归档环节；该操作不代表合同已经生效。",
-      confirmText: governed ? "确认同意用章" : "确认用章通过",
-      requirePassword: governed,
-      targetContractVersionId: contractVersionId
-    });
-  } catch (error) {
-    setActionError(error, "无法提交用章同意，请刷新后重试。");
-    return;
-  }
-}
-
-function requestContractSealCompletion() {
-  try {
-    const contractVersionId = currentContractVersionId();
-    sealCompletionPayload();
-    openSensitiveAction("governedSealComplete", {
-      title: "确认已完成我方签署与盖章？",
-      description: "确认后将进入双方最终版上传环节，请确保线下签署、公章、骑缝章和日期均已完成。",
-      confirmText: "确认已完成",
-      targetContractVersionId: contractVersionId
-    });
-  } catch (error) {
-    setActionError(error, "请补全我方签署盖章确认后重试。");
-    return;
-  }
 }
 
 function captureSigningMaterialChangeContext() {
@@ -3030,11 +2700,8 @@ async function requestContractFileDownload() {
   if (!(await prepareContractFileDownloadCapability(fileId))) return;
   openSensitiveAction("fileDownload", {
     title: "确认下载敏感合同文件？",
-    description: "系统将校验当前密码，签发短时效下载链接，并记录文件、合同和下载原因。",
-    confirmText: "确认下载",
-    requireReason: true,
-    requirePassword: true,
-    reasonLabel: "下载原因"
+    description: "系统将校验当前单据可见权限，签发短时效下载链接，并记录文件、合同和访问审计。",
+    confirmText: "确认下载"
   });
 }
 
@@ -3048,11 +2715,8 @@ async function requestFormalFileDownload(fileId: string) {
   if (!(await prepareContractFileDownloadCapability(fileId))) return;
   openSensitiveAction("formalFileDownload", {
     title: "确认下载合同正式文件？",
-    description: "系统将校验当前密码，签发短时效下载链接，并记录文件、合同和下载原因。",
+    description: "系统将校验当前单据可见权限，签发短时效下载链接，并记录文件、合同和访问审计。",
     confirmText: "确认下载",
-    requireReason: true,
-    requirePassword: true,
-    reasonLabel: "下载原因",
     targetFileId: fileId
   });
 }
@@ -3071,11 +2735,8 @@ async function requestFormalFilePreview(document: { id: string; available: boole
   if (!(await prepareContractFileDownloadCapability(document.id))) return;
   openSensitiveAction("formalFilePreview", {
     title: "确认预览合同正式文件？",
-    description: "系统将校验当前密码，签发五分钟在线预览链接，并记录文件、合同和预览原因。",
+    description: "系统将校验当前单据可见权限，签发短时效在线预览链接，并记录文件、合同和预览审计。",
     confirmText: "确认预览",
-    requireReason: true,
-    requirePassword: true,
-    reasonLabel: "预览原因",
     targetFileId: document.id
   });
 }
@@ -3146,47 +2807,6 @@ async function confirmContractArchiveAction(values: { password: string }) {
         archiveFileId: requiredText(contractArchiveForm.archiveFileId, "归档文件"),
         confirmationPassword: values.password
       }
-    );
-    return finishSensitiveContractAction(await completeContractLifecycleAction());
-  } catch (error) {
-    return finishSensitiveContractAction(failContractLifecycleAction(error));
-  } finally {
-    finishContractLifecycleAction(key);
-  }
-}
-
-async function confirmContractSealApproval(values: { password: string }) {
-  const key = "seal";
-  beginContractLifecycleAction(key);
-  try {
-    if (sensitiveAction.requirePassword) {
-      await approveGovernedContractSealWithCapability(
-        routeContractId(),
-        sensitiveAction.targetContractVersionId,
-        values.password
-      );
-    } else {
-      await approveLegacyContractSealWithCapability(
-        routeContractId(),
-        sensitiveAction.targetContractVersionId
-      );
-    }
-    return finishSensitiveContractAction(await completeContractLifecycleAction());
-  } catch (error) {
-    return finishSensitiveContractAction(failContractLifecycleAction(error));
-  } finally {
-    finishContractLifecycleAction(key);
-  }
-}
-
-async function confirmContractSealCompletion() {
-  const key = "sealComplete";
-  beginContractLifecycleAction(key);
-  try {
-    await completeContractSealWithCapability(
-      routeContractId(),
-      sensitiveAction.targetContractVersionId,
-      sealCompletionPayload()
     );
     return finishSensitiveContractAction(await completeContractLifecycleAction());
   } catch (error) {
@@ -3539,10 +3159,12 @@ function captureContractReviewContext(
     dialog.decision !== decision ||
     dialog.contractId !== freshDialog.contractId ||
     dialog.contractVersionId !== freshDialog.contractVersionId ||
-    dialog.expectedContractUpdatedAt !== freshDialog.expectedContractUpdatedAt ||
+    (dialog.expectedParallelApprovalEpoch === undefined
+      ? dialog.expectedContractUpdatedAt !== freshDialog.expectedContractUpdatedAt ||
+        dialog.expectedApprovalUpdatedAt !== freshDialog.expectedApprovalUpdatedAt
+      : dialog.expectedParallelApprovalEpoch !== freshDialog.expectedParallelApprovalEpoch) ||
     dialog.expectedApprovalInstanceId !== freshDialog.expectedApprovalInstanceId ||
     dialog.expectedNodeIndex !== freshDialog.expectedNodeIndex ||
-    dialog.expectedApprovalUpdatedAt !== freshDialog.expectedApprovalUpdatedAt ||
     !sameContractReviewOwnerRisk(
       dialog.ownerContractRisk,
       freshDialog.ownerContractRisk
@@ -3599,6 +3221,7 @@ function captureContractReviewContext(
     expectedApprovalInstanceId: dialog.expectedApprovalInstanceId,
     expectedNodeIndex: dialog.expectedNodeIndex,
     expectedApprovalUpdatedAt: dialog.expectedApprovalUpdatedAt,
+    expectedParallelApprovalEpoch: dialog.expectedParallelApprovalEpoch,
     decision,
     requiresSelfReviewConfirmation: requiresContractSelfReviewConfirmation.value,
     ...(comment ? { comment } : {}),
@@ -3949,7 +3572,6 @@ onMounted(async () => {
 
 onBeforeUnmount(() => {
   detailRequestId += 1;
-  clearChangeTransientState();
   clearContractActionTransientState();
 });
 </script>
@@ -4393,58 +4015,6 @@ onBeforeUnmount(() => {
   font-size: var(--jg-font-size-body);
 }
 
-.change-dialog-alert {
-  margin-bottom: var(--jg-space-md);
-}
-
-.change-base-summary {
-  display: grid;
-  grid-template-columns: max-content minmax(0, 1fr);
-  gap: var(--jg-space-xs) var(--jg-space-lg);
-  margin: 0 0 var(--jg-space-lg);
-  padding: var(--jg-space-md);
-  border-radius: var(--jg-radius-panel);
-  background: var(--jg-color-bg-muted);
-}
-
-.change-base-summary dt {
-  color: var(--jg-color-text-tertiary);
-  font-size: var(--jg-font-size-meta);
-}
-
-.change-base-summary dd {
-  margin: 0;
-  font-weight: var(--jg-font-weight-semibold);
-}
-
-.change-form-grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: var(--jg-space-md);
-}
-
-.change-field {
-  display: grid;
-  gap: var(--jg-space-sm);
-}
-
-.change-field > span {
-  color: var(--jg-color-text-secondary);
-  font-size: var(--jg-font-size-meta);
-  font-weight: var(--jg-font-weight-semibold);
-}
-
-.change-reason {
-  grid-column: 1 / -1;
-}
-
-.change-error {
-  margin: var(--jg-space-md) 0 0;
-  color: var(--jg-color-danger);
-  font-size: var(--jg-font-size-body);
-  font-weight: var(--jg-font-weight-semibold);
-}
-
 :deep(.t-button:focus-visible),
 :deep(.t-link:focus-visible),
 :deep(.t-input:focus-within),
@@ -4460,8 +4030,7 @@ onBeforeUnmount(() => {
   .overview-grid,
   .money-summary,
   .detail-loading-skeleton__grid,
-  .version-history-row,
-  .change-form-grid {
+  .version-history-row {
     grid-template-columns: 1fr;
   }
 

@@ -1,0 +1,13 @@
+--- a/wage.cjs
++++ b/wage.cjs
+@@ -25,7 +25,9 @@
+     endpoint.searchParams.get('sslmode')==='require'&&endpoint.searchParams.get('sslaccept')==='strict'&&
+     endpoint.searchParams.get('sslcert')===path.join(workDir,'ca.crt'),'REMAINING_WAGE_OWNED_IDENTITY');
+   const environment={PATH:'/usr/local/bin:/usr/bin:/bin',HOME:workDir,TMPDIR:workDir,NODE_ENV:'test',CI:'true'};
+-  const schema=path.join(workDir,'prefixes/combined289/schema.prisma');
++  const schema=context.combinedSchemaPath;
++  need(schema===path.join(workDir,'prefixes/combined291/schema.prisma')&&
++    fs.lstatSync(schema).isFile()&&fs.realpathSync(schema)===schema,'REMAINING_WAGE_EXACT_MAINTENANCE_SCHEMA');
+   const prisma=path.join(api,'node_modules/prisma/build/index.js');
+   const commands=[['deploy','No pending migrations to apply.'],['status','Database schema is up to date']];
+   for(const [operation,marker] of commands){

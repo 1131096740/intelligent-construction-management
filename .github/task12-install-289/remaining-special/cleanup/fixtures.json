@@ -1,0 +1,45 @@
+{
+  "cleanup": [
+    {
+      "file": "src/database/contract-draft-aggregate-concurrency.spec.ts",
+      "pending": 10,
+      "sha256": "3df16963a0453176bf0c82f1d1ab4fb99b342c34beaeca13a60f820e3892442c",
+      "postimage": "1997a922aabf03503e7c628bcf33666bf298937ef52bfd105d4c47ce35fd3ce4"
+    },
+    {
+      "file": "src/database/contract-draft-retention-script.spec.ts",
+      "pending": 1,
+      "sha256": "caf638f591f28fda31b5a9794beed4f3a4b513b6c33b7318c5d848d403bb2e8a",
+      "postimage": "1f6ed8b75602220663019d63fd13dac0c9367fb7e950994e7a584ae1134f45ec"
+    },
+    {
+      "file": "src/database/contract-lifecycle-route.spec.ts",
+      "pending": 2,
+      "sha256": "0b7e34a3a97e2a7ebb2cdb1bdcbefbbd690d5768061ec110dba46236bca4939d",
+      "postimage": "32b015b36b9093f8354281d4807edb4f304eb657902eeb22faa43a3e952f9d1f"
+    },
+    {
+      "file": "src/database/contract-ended-application-retention.spec.ts",
+      "pending": 1,
+      "sha256": "d38d0e4065972c3af0524a06addcaf5a3f4f9fa56e2d4f20c2f951d30745616a",
+      "postimage": "5f335aecb1f01b9979252a4cecd4a64a5e7e4765a7c0d671f650288dec3909d2"
+    },
+    {
+      "file": "src/database/contract-ended-application-purge.spec.ts",
+      "pending": 6,
+      "sha256": "7b7e2381f6a76758ea1ad67bed63df4c24812559a3cd77dc2f24302476d25c68",
+      "postimage": "90ce9a25ca8a3d41f714c8348fae55559f2d58a556aae1e8fd3427a1cf50af7f"
+    },
+    {
+      "file": "src/database/legacy-contract-cleanup-preflight-postgres.spec.ts",
+      "pending": 2,
+      "sha256": "8ab6dc8b472285eac068009ac5d30d96b63bf6eb5da33a0ac7aa6b9b0c636cd2",
+      "postimage": "5cb9c5d5f9724b213dced5c53e81d183b4e5d92465b824608f9c9bac9c518e6d"
+    }
+  ],
+  "profile": {
+    "file": "src/database/project-operating-profile-upgrade.spec.ts",
+    "pending": 2,
+    "sha256": "a9f90c38e0d89698ff86be5577bc920cfdc3605e2d92c21229028089a39c1abd"
+  }
+}

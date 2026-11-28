@@ -3,9 +3,9 @@
   "id": "jiangkong-local-postgresql16-pending-dynamic-gate",
   "description": "Current RUN_* gated database test inventory and the disposable local PostgreSQL 16 runners that can execute a verified subset.",
   "migrationBaseline": {
-    "expectedDirectoryCount": 197,
-    "terminalMigration": "20261023100000_personnel_lifecycle",
-    "terminalMigrationChecksum": "3728120258fd924b194e8614760e5eac8d78c5c38c11b6ca6373c43c4945c662",
+    "expectedDirectoryCount": 352,
+    "terminalMigration": "20261129021000_company_history_expense",
+    "terminalMigrationChecksum": "8cb43f1ae9a6fb6108280f1ea08df4d2d2edf7c060b39b37dfbeeaff7ae368e5",
     "postgresMajorVersion": 16,
     "containerImage": "postgres:16",
     "allowImagePull": false
@@ -26,12 +26,12 @@
     ]
   },
   "inventory": {
-    "pendingFiles": 77,
-    "fullyPendingSuites": 66,
-    "partiallyPendingSuites": 11,
-    "pendingTests": 511,
-    "coveredFiles": 77,
-    "coveredTests": 511,
+    "pendingFiles": 112,
+    "fullyPendingSuites": 92,
+    "partiallyPendingSuites": 20,
+    "pendingTests": 639,
+    "coveredFiles": 112,
+    "coveredTests": 639,
     "remainingFiles": 0,
     "remainingTests": 0
   },
@@ -49,7 +49,8 @@
       "runner": {
         "kind": "workspaceScript",
         "script": "verify:project-financing-quota-concurrency:local",
-        "path": "services/api/prisma/run-project-financing-quota-concurrency-local.cjs"
+        "path": "services/api/prisma/run-project-financing-quota-concurrency-local.cjs",
+        "evidenceEnv": "PROJECT_FINANCING_QUOTA_LOCAL_EVIDENCE_PATH"
       },
       "state": "executable_local_runner"
     },
@@ -95,11 +96,11 @@
     },
     {
       "id": "payment_execution",
-      "pendingTests": 1,
+      "pendingTests": 2,
       "testFiles": [
         {
           "path": "services/api/src/database/payment-execution-concurrency.spec.ts",
-          "pendingTests": 1,
+          "pendingTests": 2,
           "suiteStatus": "fully_pending"
         }
       ],
@@ -337,7 +338,7 @@
     },
     {
       "id": "pol113_pol115_business_entries",
-      "pendingTests": 172,
+      "pendingTests": 191,
       "testFiles": [
         {
           "path": "services/api/src/database/base-entry-http-postgres.spec.ts",
@@ -351,7 +352,7 @@
         },
         {
           "path": "services/api/src/expense-claim/expense-claim-entry.http.pg.spec.ts",
-          "pendingTests": 56,
+          "pendingTests": 61,
           "suiteStatus": "fully_pending"
         },
         {
@@ -360,8 +361,13 @@
           "suiteStatus": "fully_pending"
         },
         {
+          "path": "services/api/src/approval/issue430-notification.pg.spec.ts",
+          "pendingTests": 4,
+          "suiteStatus": "fully_pending"
+        },
+        {
           "path": "services/api/src/spot-procurement/spot-procurement-entry.http.pg.spec.ts",
-          "pendingTests": 3,
+          "pendingTests": 13,
           "suiteStatus": "fully_pending"
         },
         {
@@ -398,7 +404,7 @@
     },
     {
       "id": "remaining_dynamic_postgresql16",
-      "pendingTests": 157,
+      "pendingTests": 180,
       "testFiles": [
         {
           "path": "services/api/src/database/operating-takeover-constraints.spec.ts",
@@ -412,7 +418,7 @@
         },
         {
           "path": "services/api/src/database/contract-draft-aggregate-concurrency.spec.ts",
-          "pendingTests": 6,
+          "pendingTests": 10,
           "suiteStatus": "fully_pending"
         },
         {
@@ -562,7 +568,7 @@
         },
         {
           "path": "services/api/src/database/payable-settlement-concurrency.spec.ts",
-          "pendingTests": 19,
+          "pendingTests": 20,
           "suiteStatus": "fully_pending"
         },
         {
@@ -583,6 +589,16 @@
         {
           "path": "services/api/src/database/fund-movement-concurrency.spec.ts",
           "pendingTests": 5,
+          "suiteStatus": "fully_pending"
+        },
+        {
+          "path": "services/api/src/database/fund-account-postgres.spec.ts",
+          "pendingTests": 12,
+          "suiteStatus": "fully_pending"
+        },
+        {
+          "path": "services/api/src/database/file-binding-catalog.pg.spec.ts",
+          "pendingTests": 6,
           "suiteStatus": "fully_pending"
         }
       ],
@@ -636,11 +652,11 @@
     },
     {
       "id": "general_procurement",
-      "pendingTests": 24,
+      "pendingTests": 27,
       "testFiles": [
         {
           "path": "services/api/src/database/general-procurement-http-postgres.spec.ts",
-          "pendingTests": 12,
+          "pendingTests": 15,
           "suiteStatus": "fully_pending"
         },
         {
@@ -676,7 +692,483 @@
         "path": "services/api/prisma/run-contract-classification-local.cjs"
       },
       "state": "executable_local_runner"
+    },
+    {
+      "id": "enterprise_task01_entry",
+      "pendingTests": 1,
+      "testFiles": [
+        {
+          "path": "services/api/src/fund-execution/enterprise-task01-entry.http.pg.spec.ts",
+          "pendingTests": 1,
+          "suiteStatus": "fully_pending"
+        }
+      ],
+      "runner": {
+        "kind": "node",
+        "path": "services/api/prisma/run-enterprise-task01-local.cjs",
+        "invocation": "task01_explicit_inputs",
+        "resourceHelper": "services/api/prisma/enterprise-task01-resources.cjs",
+        "imageId": "sha256:ca0bd484cb98bf4b24eb1010e73fb3fcbd6714d240fbc1a10eea5b7dbecb641d",
+        "sourceSha256": "7eaa6c921a54aa8e0ccd44fc75011c20feb35c711fffd1e46018de48e2ad1dea",
+        "resourceHelperSha256": "c494075abc0c695a8d3c5748d432a79d05540cbcd1bf7d066800c5a032259f49"
+      },
+      "state": "executable_local_runner",
+      "issue": 383,
+      "executionStatus": "NOT_EXECUTED",
+      "scope": "first-case-tracer-only; explicit separate authorization and immutable inputs required",
+      "ciExecution": "manual-only"
+    },
+    {
+      "id": "task398_shared_standard",
+      "pendingTests": 2,
+      "testFiles": [
+        {
+          "path": "services/api/src/database/task16-shared-standard.http.pg.spec.ts",
+          "pendingTests": 1,
+          "suiteStatus": "partial_pending"
+        },
+        {
+          "path": "services/api/src/database/task16-text-agreement-payments.http.pg.spec.ts",
+          "pendingTests": 1,
+          "suiteStatus": "fully_pending"
+        }
+      ],
+      "runner": {
+        "kind": "node",
+        "path": "services/api/prisma/run-task398-shared-standard-local.cjs"
+      },
+      "state": "executable_local_runner",
+      "issue": 398,
+      "executionStatus": "NOT_EXECUTED"
+    },
+    {
+      "id": "task398_browser",
+      "pendingTests": 1,
+      "testFiles": [
+        {
+          "path": "services/api/src/database/task16-real-browser.pg.spec.ts",
+          "pendingTests": 1,
+          "suiteStatus": "fully_pending"
+        }
+      ],
+      "runner": {
+        "kind": "node",
+        "path": "services/api/prisma/run-task398-shared-standard-local.cjs"
+      },
+      "state": "executable_local_runner",
+      "issue": 398,
+      "executionStatus": "NOT_EXECUTED"
+    },
+    {
+      "id": "task398_browser_completion",
+      "pendingTests": 1,
+      "testFiles": [
+        {
+          "path": "services/api/src/database/task16-real-browser-completion.pg.spec.ts",
+          "pendingTests": 1,
+          "suiteStatus": "fully_pending"
+        }
+      ],
+      "runner": {
+        "kind": "node",
+        "path": "services/api/prisma/run-task398-shared-standard-local.cjs"
+      },
+      "state": "executable_local_runner",
+      "issue": 398,
+      "executionStatus": "NOT_EXECUTED"
+    },
+    {
+      "id": "task407_public_cash_handover",
+      "pendingTests": 1,
+      "testFiles": [
+        {
+          "path": "services/api/src/database/task25-public-cash-handover.http.pg.spec.ts",
+          "pendingTests": 1,
+          "suiteStatus": "fully_pending"
+        }
+      ],
+      "runner": {
+        "kind": "node",
+        "path": "services/api/prisma/run-task398-shared-standard-local.cjs"
+      },
+      "state": "executable_local_runner",
+      "issue": 407,
+      "executionStatus": "NOT_EXECUTED"
+    },
+    {
+      "id": "task409_principal_return",
+      "pendingTests": 1,
+      "testFiles": [
+        {
+          "path": "services/api/src/database/task27-principal-return.http.pg.spec.ts",
+          "pendingTests": 1,
+          "suiteStatus": "fully_pending"
+        }
+      ],
+      "runner": {
+        "kind": "node",
+        "path": "services/api/prisma/run-task398-shared-standard-local.cjs"
+      },
+      "state": "executable_local_runner",
+      "issue": 409,
+      "executionStatus": "NOT_EXECUTED"
+    },
+    {
+      "id": "task410_company_proxy_repayment",
+      "pendingTests": 6,
+      "testFiles": [
+        {
+          "path": "services/api/src/database/company-proxy-repayment.http.pg.spec.ts",
+          "pendingTests": 5,
+          "suiteStatus": "fully_pending"
+        },
+        {
+          "path": "services/api/src/expense-claim/expense-claim-registered-payment.http.pg.spec.ts",
+          "pendingTests": 1,
+          "suiteStatus": "fully_pending"
+        }
+      ],
+      "runner": {
+        "kind": "node",
+        "path": "services/api/prisma/run-task398-shared-standard-local.cjs"
+      },
+      "state": "executable_local_runner",
+      "issue": 410,
+      "executionStatus": "NOT_EXECUTED"
+    },
+    {
+      "id": "line_a_real_db",
+      "pendingTests": 18,
+      "testFiles": [
+        {
+          "path": "services/api/src/database/line-a-real-db.http.pg.spec.ts",
+          "pendingTests": 18,
+          "suiteStatus": "fully_pending"
+        }
+      ],
+      "runner": {
+        "kind": "workspaceScript",
+        "script": "verify:line-a-real-db:local",
+        "path": "services/api/prisma/run-line-a-real-db-local.cjs"
+      },
+      "state": "executable_local_runner"
+    },
+    {
+      "id": "issue420_approval_center",
+      "pendingTests": 3,
+      "testFiles": [
+        {
+          "path": "services/api/src/database/issue420-approval-center.http.pg.spec.ts",
+          "pendingTests": 3,
+          "suiteStatus": "fully_pending"
+        }
+      ],
+      "runner": {
+        "kind": "workspaceScript",
+        "script": "verify:issue420-approval-center:local",
+        "path": "services/api/prisma/run-issue420-approval-center-local.cjs"
+      },
+      "state": "executable_local_runner"
+    },
+    {
+      "id": "issue413_construction_paid",
+      "pendingTests": 2,
+      "testFiles": [
+        {
+          "path": "services/api/src/database/issue413-construction-enterprise-paid.pg.spec.ts",
+          "pendingTests": 2,
+          "suiteStatus": "fully_pending"
+        }
+      ],
+      "runner": {
+        "kind": "workspaceScript",
+        "script": "verify:issue413-construction-paid:local",
+        "path": "services/api/prisma/run-issue413-construction-paid-local.cjs"
+      },
+      "state": "executable_local_runner"
+    },
+    {
+      "id": "issue422_archives",
+      "pendingTests": 4,
+      "testFiles": [
+        {
+          "path": "services/api/src/database/issue422-archives.http.pg.spec.ts",
+          "pendingTests": 4,
+          "suiteStatus": "fully_pending"
+        }
+      ],
+      "runner": {
+        "kind": "workspaceScript",
+        "script": "verify:issue422-archives:local",
+        "path": "services/api/prisma/run-issue422-archives-local.cjs"
+      },
+      "state": "executable_local_runner"
+    },
+    {
+      "id": "issue414_construction_deduction",
+      "pendingTests": 1,
+      "testFiles": [
+        {
+          "path": "services/api/src/database/issue414-construction-enterprise-deduction.pg.spec.ts",
+          "pendingTests": 1,
+          "suiteStatus": "partial_pending"
+        }
+      ],
+      "runner": {
+        "kind": "workspaceScript",
+        "script": "verify:issue414-construction-deduction:local",
+        "path": "services/api/prisma/run-issue414-construction-deduction-local.cjs"
+      },
+      "state": "executable_local_runner"
+    },
+    {
+      "id": "issue400_financial_correction_refund",
+      "pendingTests": 1,
+      "testFiles": [
+        {
+          "path": "services/api/src/database/issue400-financial-correction-refund.pg.spec.ts",
+          "pendingTests": 1,
+          "suiteStatus": "partial_pending"
+        }
+      ],
+      "runner": {
+        "kind": "workspaceScript",
+        "script": "verify:issue400-financial-correction:local",
+        "path": "services/api/prisma/run-issue400-financial-correction-local.cjs"
+      },
+      "state": "executable_local_runner"
+    },
+    {
+      "id": "issue403_actual_purchase_batch",
+      "pendingTests": 3,
+      "testFiles": [
+        {
+          "path": "services/api/src/database/issue403-actual-purchase-batch.pg.spec.ts",
+          "pendingTests": 3,
+          "suiteStatus": "partial_pending"
+        }
+      ],
+      "runner": {
+        "kind": "workspaceScript",
+        "script": "verify:issue403-actual-purchase:local",
+        "path": "services/api/prisma/run-issue403-actual-purchase-local.cjs"
+      },
+      "state": "executable_local_runner"
+    },
+    {
+      "id": "issue404_reimbursement",
+      "pendingTests": 5,
+      "testFiles": [
+        {
+          "path": "services/api/src/database/issue404-reimbursement.pg.spec.ts",
+          "pendingTests": 3,
+          "suiteStatus": "partial_pending"
+        },
+        {
+          "path": "services/api/src/expense-claim/expense-claim-a01-precision.http.pg.spec.ts",
+          "pendingTests": 2,
+          "suiteStatus": "fully_pending"
+        }
+      ],
+      "runner": {
+        "kind": "workspaceScript",
+        "script": "verify:issue404-reimbursement:local",
+        "path": "services/api/prisma/run-issue404-reimbursement-local.cjs"
+      },
+      "state": "executable_local_runner"
+    },
+    {
+      "id": "issue405_other_project_payment",
+      "pendingTests": 1,
+      "testFiles": [
+        {
+          "path": "services/api/src/database/issue405-other-project-payment.pg.spec.ts",
+          "pendingTests": 1,
+          "suiteStatus": "partial_pending"
+        }
+      ],
+      "runner": {
+        "kind": "workspaceScript",
+        "script": "verify:issue405-other-project-payment:local",
+        "path": "services/api/prisma/run-issue405-other-project-payment-local.cjs"
+      },
+      "state": "executable_local_runner"
+    },
+    {
+      "id": "issue411_third_company_repayment",
+      "pendingTests": 2,
+      "testFiles": [
+        {
+          "path": "services/api/src/database/issue411-third-company-repayment.pg.spec.ts",
+          "pendingTests": 2,
+          "suiteStatus": "fully_pending"
+        }
+      ],
+      "runner": {
+        "kind": "workspaceScript",
+        "script": "verify:issue411-third-company:local",
+        "path": "services/api/prisma/run-issue411-third-company-local.cjs"
+      },
+      "state": "executable_local_runner"
+    },
+    {
+      "id": "issue416_his_gap",
+      "pendingTests": 3,
+      "testFiles": [
+        {
+          "path": "services/api/src/database/issue416-his-gap.pg.spec.ts",
+          "pendingTests": 3,
+          "suiteStatus": "partial_pending"
+        }
+      ],
+      "runner": {
+        "kind": "workspaceScript",
+        "script": "verify:issue416-his-gap:local",
+        "path": "services/api/prisma/run-issue416-his-gap-local.cjs"
+      },
+      "state": "executable_local_runner"
+    },
+    {
+      "id": "issue416_takeover_handover",
+      "pendingTests": 1,
+      "testFiles": [
+        {
+          "path": "services/api/src/database/issue416-takeover-handover.pg.spec.ts",
+          "pendingTests": 1,
+          "suiteStatus": "partial_pending"
+        }
+      ],
+      "runner": {
+        "kind": "workspaceScript",
+        "script": "verify:issue416-handover:local",
+        "path": "services/api/prisma/run-issue416-takeover-handover-local.cjs"
+      },
+      "state": "executable_local_runner"
+    },
+    {
+      "id": "issue417_history_expense",
+      "pendingTests": 1,
+      "testFiles": [
+        {
+          "path": "services/api/src/database/issue417-history-expense.pg.spec.ts",
+          "pendingTests": 1,
+          "suiteStatus": "partial_pending"
+        }
+      ],
+      "runner": {
+        "kind": "workspaceScript",
+        "script": "verify:issue417-history-expense:local",
+        "path": "services/api/prisma/run-issue417-history-expense-local.cjs"
+      },
+      "state": "executable_local_runner"
+    },
+    {
+      "id": "issue418_operating_dedup",
+      "pendingTests": 10,
+      "testFiles": [
+        {
+          "path": "services/api/src/database/issue418-recognized-dedup.pg.spec.ts",
+          "pendingTests": 1,
+          "suiteStatus": "fully_pending"
+        },
+        {
+          "path": "services/api/src/database/issue418-signed-operating.pg.spec.ts",
+          "pendingTests": 2,
+          "suiteStatus": "fully_pending"
+        },
+        {
+          "path": "services/api/src/database/issue418-paired-funds.pg.spec.ts",
+          "pendingTests": 2,
+          "suiteStatus": "fully_pending"
+        },
+        {
+          "path": "services/api/src/database/issue418-cash-attribution.pg.spec.ts",
+          "pendingTests": 3,
+          "suiteStatus": "fully_pending"
+        },
+        {
+          "path": "services/api/src/database/issue418-settlement-guard.pg.spec.ts",
+          "pendingTests": 1,
+          "suiteStatus": "fully_pending"
+        },
+        {
+          "path": "services/api/src/database/issue418-contract-drilldown.pg.spec.ts",
+          "pendingTests": 1,
+          "suiteStatus": "fully_pending"
+        }
+      ],
+      "runner": {
+        "kind": "exactLedgerShell",
+        "path": ".github/task12-install-295/contract-finance/run-contract-adjacent-ci.sh"
+      },
+      "state": "executable_local_runner"
+    },
+    {
+      "id": "issue421_signed_settlement_ledger",
+      "pendingTests": 6,
+      "testFiles": [
+        {
+          "path": "services/api/src/database/issue421-signed-settlement-ledger.http.pg.spec.ts",
+          "pendingTests": 6,
+          "suiteStatus": "fully_pending"
+        }
+      ],
+      "runner": {
+        "kind": "workspaceScript",
+        "script": "verify:issue421-ledger:local",
+        "path": "services/api/prisma/run-issue421-ledger-local.cjs"
+      },
+      "state": "executable_local_runner"
+    },
+    {
+      "id": "issue421b_four_ledger",
+      "pendingTests": 5,
+      "testFiles": [
+        {
+          "path": "services/api/src/database/issue421b-four-ledger.http.pg.spec.ts",
+          "pendingTests": 5,
+          "suiteStatus": "fully_pending"
+        }
+      ],
+      "runner": {
+        "kind": "workspaceScript",
+        "script": "verify:issue421b-four-ledger:local",
+        "path": "services/api/prisma/run-issue421b-four-ledger-local.cjs"
+      },
+      "state": "executable_local_runner"
+    },
+    {
+      "id": "historical_takeover_a28",
+      "pendingTests": 3,
+      "testFiles": [
+        {
+          "path": "services/api/src/contract-takeover/contract-takeover-a28.http.pg.spec.ts",
+          "pendingTests": 3,
+          "suiteStatus": "fully_pending",
+          "runFlag": "RUN_CONTRACT_TAKEOVER_A28_PG16",
+          "databaseEnv": [
+            "DATABASE_URL"
+          ]
+        }
+      ],
+      "runner": {
+        "kind": "exactLedgerShell",
+        "path": ".github/task12-install-295/contract-finance/run-contract-adjacent-ci.sh"
+      },
+      "state": "executable_local_runner"
     }
   ],
-  "remainingFiles": []
+  "remainingFiles": [],
+  "executionInventory": {
+    "ciEligible": {
+      "groups": 45,
+      "files": 111,
+      "tests": 638
+    },
+    "manualOnly": {
+      "groups": 1,
+      "files": 1,
+      "tests": 1
+    }
+  }
 }

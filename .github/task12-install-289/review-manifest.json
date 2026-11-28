@@ -1,0 +1,103 @@
+{
+  "schemaVersion": 1,
+  "historical": {
+    "commit": "ee7a215f530f553949bb57cd029587e490bf9c84",
+    "tree": "d1cd9e6246c915cdfa48be44b672e09102b59c8b",
+    "fullSeal": "8ae09674e72061cab1a5e4e0035aa0b79d18381bee2ed22d704402e59789f679",
+    "fullSealReproducedLocally": true,
+    "ledgerSha256": "721986f6ad84cf494ded818087e2f6cf6b7a29b4cab18c798fed58bb11b5ee1f"
+  },
+  "base": {
+    "commit": "ee19df0b6bdd3984151e1216016654f3b39ba925",
+    "tree": "2e7aa4931b37881e6e7a19df46c310e761c43d6f"
+  },
+  "archiveSha256": "48e553b4f5233e4f9ba0aae51775c89784ddd318263def068c7639df5ce69d52",
+  "installerSha256": "86d62f558f8a9e38ef0c3fa4acfd3aaae988d2b23874392802061047be3f9b10",
+  "files": [
+    {
+      "path": "manifest.json",
+      "bytes": 123771,
+      "mode": "0o644",
+      "sha256": "5c4871e8e9fa2d32bf88ea1147523c5eebc67c04a5fe43794ca996a26e46373a",
+      "sourceGitOid": null,
+      "provenance": "sealed historical metadata"
+    },
+    {
+      "path": "overlay/services/api/prisma/local-staged-migrations.cjs",
+      "bytes": 25588,
+      "mode": "0o644",
+      "sha256": "2a1bb698ea78db97f7f39387f1f906eefd903b374dcc934528d4946f796799fc",
+      "sourceGitOid": "362176409d91e427b4b043d0d6e698b49e71d3d5",
+      "provenance": "sealed historical overlay"
+    },
+    {
+      "path": "overlay/services/api/prisma/run-task12-native-con18-once.cjs",
+      "bytes": 120214,
+      "mode": "0o644",
+      "sha256": "1c884f11fcb532132e32f5afea5d2311e3e2b800b1b1d71a540f6e9acc191236",
+      "sourceGitOid": "400ab3ba592a42147b1107e027935683eab6b8e4",
+      "provenance": "sealed historical overlay"
+    },
+    {
+      "path": "overlay/services/api/prisma/schema.prisma",
+      "bytes": 318335,
+      "mode": "0o644",
+      "sha256": "60386e4f3c54ee25461e8a3814e7254f8d4f5695eb58a805486485cb1cc788e4",
+      "sourceGitOid": "f19b0fa4cf99e0871b642f845c267c7850958041",
+      "provenance": "sealed historical overlay"
+    },
+    {
+      "path": "overlay/services/api/prisma/task16-current259-access.json",
+      "bytes": 11070,
+      "mode": "0o644",
+      "sha256": "171cc5b8405013317ddab557c96e84b31d5d6db07df812d285245e923d898a22",
+      "sourceGitOid": "d9f3b0b91b1e713f59b31e17caa2c2f3a423d81d",
+      "provenance": "sealed historical overlay"
+    },
+    {
+      "path": "overlay/services/api/prisma/task16-current259-archive-install.cjs",
+      "bytes": 56588,
+      "mode": "0o644",
+      "sha256": "53fc410d05c60747b7f79cd5ceaf5d09cc96e72b282ac2d47361a8cc3610c75c",
+      "sourceGitOid": "909a715fb70eb59c359eac52865bb21eba48bea6",
+      "provenance": "sealed historical overlay"
+    },
+    {
+      "path": "overlay/services/api/prisma/task16-current259-catalog.cjs",
+      "bytes": 30696,
+      "mode": "0o644",
+      "sha256": "84c3a6786dbabee1077d0d02a1c3fbe8dcf214a4fe768f75378c8e25217ccc0a",
+      "sourceGitOid": "f9ffb6741c95cd1aeffe1c58f30af5d29df4c8e0",
+      "provenance": "sealed historical overlay"
+    },
+    {
+      "path": "overlay/services/api/prisma/task16-current259-client-loader.cjs",
+      "bytes": 92908,
+      "mode": "0o644",
+      "sha256": "3afd64e941d7dcb260e73a18b67eeed3e225479d70ea16167e0652608dae80be",
+      "sourceGitOid": "16996f10af484f6a6d479aa993da49411833b0dc",
+      "provenance": "sealed historical overlay"
+    },
+    {
+      "path": "overlay/services/api/prisma/task16-current259-profile.cjs",
+      "bytes": 3920,
+      "mode": "0o644",
+      "sha256": "c10759d10886cfa8d7067d6bdefc98365e8e2e99876966762c34c320a1bdecbe",
+      "sourceGitOid": "03c00d70e8b13d533a63dd683e60ae0ad893fd3a",
+      "provenance": "sealed historical overlay"
+    },
+    {
+      "path": "witness.json",
+      "bytes": 898678,
+      "mode": "0o644",
+      "sha256": "8ae09674e72061cab1a5e4e0035aa0b79d18381bee2ed22d704402e59789f679",
+      "sourceGitOid": null,
+      "provenance": "sealed historical metadata"
+    }
+  ],
+  "selectedBaseBlobs": 310,
+  "selectedOverlayBlobs": 8,
+  "containsBaseBlobs": false,
+  "containsFullHistoricalTree": false,
+  "publication": "NOT_PERFORMED"
+}

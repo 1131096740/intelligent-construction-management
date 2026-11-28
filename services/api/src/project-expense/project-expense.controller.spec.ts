@@ -1,9 +1,12 @@
 import "reflect-metadata";
 import { BadRequestException } from "@nestjs/common";
+import { Test } from "@nestjs/testing";
 import { REQUIRED_POSITIONS_KEY } from "../auth/decorators/require-positions.decorator";
 import { REQUIRED_PROJECT_ACTION_KEY } from "../auth/decorators/require-project-role.decorator";
+import { RetiredWriteEntryGuard } from "../retired-write-entry/retired-write-entry.guard";
 import { createApiValidationPipe } from "../validation/api-validation";
 import { ProjectExpenseController } from "./project-expense.controller";
+import { ProjectExpenseService } from "./project-expense.service";
 
 type ExpenseBodyMethod =
   | "create"
@@ -530,15 +533,14 @@ describe("ProjectExpenseController authorization wiring", () => {
   it.each([
     ["createAttachmentDownloadTicket", "   ", "下载".repeat(101)],
     ["createApprovalPdfDownloadTicket", "", "下载".repeat(101)]
-  ] as const)("rejects blank password and overlong reason for %s", async (method, confirmationPassword, downloadReason) => {
+  ] as const)("allows downloads without a password and rejects an overlong reason for %s", async (method, confirmationPassword, downloadReason) => {
     const response = await getExpenseValidationResponse(method, {
       confirmationPassword,
       downloadReason
     });
 
-    expect(response.errors).toEqual(
-      expect.arrayContaining(["请输入当前登录密码", "下载原因不能超过 200 个字"])
-    );
+    expect(response.errors).toEqual(["下载原因不能超过 200 个字"]);
+    await expect(validateExpenseBody(method, {})).resolves.toBeDefined();
   });
 
   it.each([
@@ -777,5 +779,61 @@ describe("ProjectExpenseController authorization wiring", () => {
       "user-1",
       body
     );
+  });
+});
+
+describe("project expense receipt retirement through HTTP", () => {
+  it("closes the old write while preserving historical detail and finance entry", async () => {
+    const history = {
+      id: "expense-1",
+      receiptConfirmedAt: "2026-08-01T04:00:01.000Z",
+      receiptConfirmationNote: "数量无误"
+    };
+    const expenses = {
+      confirmPurchaseReceipt: jest.fn().mockResolvedValue({ confirmed: true }),
+      getApprovalDetail: jest.fn().mockResolvedValue(history),
+      recordFinance: jest.fn().mockResolvedValue({ id: "finance-1" })
+    };
+    const moduleRef = await Test.createTestingModule({
+      controllers: [ProjectExpenseController],
+      providers: [{ provide: ProjectExpenseService, useValue: expenses }]
+    }).compile();
+    const app = moduleRef.createNestApplication({ logger: false });
+    app.use((request: { user?: { id: string } }, _response: unknown, next: () => void) => {
+      request.user = { id: "finance-1" };
+      next();
+    });
+    app.useGlobalGuards(new RetiredWriteEntryGuard());
+    app.useGlobalPipes(createApiValidationPipe());
+    await app.listen(0, "127.0.0.1");
+
+    try {
+      const url = `${await app.getUrl()}/projects/project-1/expense-requests/expense-1`;
+      const write = (path: string, body: object) => fetch(`${url}/${path}`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(body)
+      });
+      const retired = await write("receipt-confirmation", validExpenseReceiptBody);
+      expect(retired.status).toBe(410);
+      expect(await retired.json()).toMatchObject({ code: "OLD_WRITE_ENTRY_RETIRED" });
+      expect(expenses.confirmPurchaseReceipt).not.toHaveBeenCalled();
+
+      const detail = await fetch(`${url}/approval-detail`);
+      expect(detail.status).toBe(200);
+      expect(await detail.json()).toEqual(history);
+
+      const finance = await write("finance-records", {
+        expectedExpenseUpdatedAt: "2026-07-11T09:59:59.000Z",
+        idempotencyKey: "6e8fab4b-9e90-4fba-a59d-320cd24cc427",
+        amountCents: "10000",
+        occurredAt: "2026-07-11",
+        confirmationPassword: "current-password"
+      });
+      expect(finance.status).toBe(201);
+      expect(await finance.json()).toEqual({ id: "finance-1" });
+    } finally {
+      await app.close();
+    }
   });
 });

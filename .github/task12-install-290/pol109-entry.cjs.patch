@@ -1,0 +1,21 @@
+--- entry.cjs
++++ entry.cjs
+@@ -3,4 +3,5 @@
+-const {withOutside289Pol109}=require('/qualification/installer.cjs');
+-const receipt={schemaVersion:1,purpose:'ORIGINAL_POL109_EXACT_289',business:'NOT_ENTERED',stages:[]};
+-withOutside289Pol109(receipt).then(()=>{
+-  assert.equal(receipt.releaseTree,'a1be083076018686dd8afba68c44ff9c75502014');
++const {withOutside290Pol109}=require('/qualification/installer.cjs');
++const receipt={schemaVersion:1,purpose:'ORIGINAL_POL109_EXACT_290',business:'NOT_ENTERED',stages:[]};
++withOutside290Pol109(receipt).then(()=>{
++  assert.equal(receipt.releaseTree,'23b1c98bc15f36e986d17059579e6673315b9be8');
++  assert.equal(receipt.predecessorTree,'a1be083076018686dd8afba68c44ff9c75502014');
+@@ -12 +13 @@
+-  assert.deepEqual(receipt.postconsume,{count:289,exactB7:true});
++  assert.equal(receipt.installOnly290.count,290);
+@@ -14 +15 @@
+-  console.log(JSON.stringify({...receipt,status:'ORIGINAL_POL109_289_PASSED'}));
++  console.log(JSON.stringify({...receipt,status:'ORIGINAL_POL109_290_PASSED'}));
+@@ -19 +20 @@
+-    code:typeof code==='string'&&/^[A-Z0-9_]+$/u.test(code)?code:'UNCLASSIFIED_POL109_289_FAILURE',
++    code:typeof code==='string'&&/^[A-Z0-9_]+$/u.test(code)?code:'UNCLASSIFIED_POL109_290_FAILURE',

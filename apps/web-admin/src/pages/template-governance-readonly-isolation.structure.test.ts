@@ -58,23 +58,32 @@ const mutationWrappers = [
   "updateSettlementTemplateVersion"
 ];
 
-describe("stage D template-governance readonly isolation", () => {
-  it("routes every template-governance surface through a readonly page", () => {
+describe("template governance separates public reading and role-bound maintenance", () => {
+  it("keeps the retained reading routes and restricts each editor route", () => {
     for (const page of readonlyPages) {
       expect(routes).toContain(page.replace(/^\.\//, "../pages/"));
     }
-    const authorizedWorkbenchEditors = [...routes.matchAll(
-      /\{\s*path: "结算模板工作台\/(新建|:templateId)",\s*component: \(\) => import\("\.\.\/pages\/settlement-templates\/SettlementTemplateEditorPage\.vue"\),\s*meta: \{ requiredGlobalRoleKeys: settlementTemplateAdminRoleKeys, title: "[^"]+" \}\s*\}/g
+    const authorizedEditors = [...routes.matchAll(
+      /\{\s*path: "([^"]+)",\s*component: \(\) => import\("\.\.\/pages\/(?:contract-templates|settlement-templates)\/(LayoutTemplateManagementPage|LayoutTemplateEditorPage|SettlementTemplateEditorPage)\.vue"\),\s*meta: \{ requiredGlobalRoleKeys: (\["contract_director"\]|settlementTemplateAdminRoleKeys), title: "[^"]+" \}\s*\}/gu
     )];
-    expect(authorizedWorkbenchEditors.map(match => match[1]).sort()).toEqual([":templateId", "新建"]);
-    const legacyRoutes = authorizedWorkbenchEditors.reduce((source, match) => source.replace(match[0], ""), routes);
+    expect(authorizedEditors.map(match => match.slice(1, 4))).toEqual([
+      ["合同模板库/主管维护", "LayoutTemplateManagementPage", '["contract_director"]'],
+      ["合同模板库/版式/:layoutTemplateId/维护", "LayoutTemplateEditorPage", '["contract_director"]'],
+      ["结算模板工作台/新建", "SettlementTemplateEditorPage", "settlementTemplateAdminRoleKeys"],
+      ["结算模板工作台/:templateId", "SettlementTemplateEditorPage", "settlementTemplateAdminRoleKeys"]
+    ]);
+    const legacyRoutes = authorizedEditors.reduce((source, match) => source.replace(match[0], ""), routes);
     expect(legacyRoutes).not.toMatch(
-      /ContractScenarioGovernancePage|ContractTemplateEditorPage|LayoutTemplateEditorPage|ContractNumberRulePage|ContractTemplateListPage|StandardClauseLibraryPage|SettlementTemplateEditorPage/
+      /ContractScenarioGovernancePage|ContractTemplateEditorPage|LayoutTemplateManagementPage|LayoutTemplateEditorPage|ContractNumberRulePage|ContractTemplateListPage|StandardClauseLibraryPage|SettlementTemplateEditorPage/
     );
   });
 
-  it("keeps the seven reachable pages visibly readonly and mutation-free", () => {
-    for (const source of readonlySources) {
+  it("keeps mutations out of all seven reading pages and gates the maintenance link", () => {
+    const [templateList, ...otherPages] = readonlySources;
+    expect(templateList).toContain('v-if="canMaintainTemplates"');
+    expect(templateList).toContain("canMaintainContractTemplates(auth.user?.roleKeys)");
+    expect(templateList).toContain("'/合同模板库/主管维护'");
+    for (const source of otherPages) {
       expect(source).toContain("上线准备期间暂为只读");
     }
     for (const wrapper of mutationWrappers) {

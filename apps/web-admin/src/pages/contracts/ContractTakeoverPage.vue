@@ -455,47 +455,20 @@
             >
           </label>
           <label>
-            <span>选择接管等级</span>
-            <select v-model="createForm.takeoverLevel">
-              <option
-                v-for="option in takeoverLevelOptions"
-                :key="option.value"
-                :value="option.value"
-              >
-                {{ option.label }}
-              </option>
+            <span>合同关系</span>
+            <select v-model="createForm.relationship">
+              <option value="outside">表外：与外部相对方签订</option>
+              <option value="inside">表内：内部单位之间</option>
+              <option value="upward">对上：施工企业付我方</option>
             </select>
           </label>
-          <div class="level-suggestion">
-            <div class="level-suggestion-head">
-              <strong>系统建议等级：{{ takeoverLevelLabel(takeoverLevelSuggestionView.level) }}</strong>
-              <t-tooltip
-                v-if="applySuggestionDisabledReason"
-                :content="applySuggestionDisabledReason"
-              >
-                <t-button
-                  size="small"
-                  variant="outline"
-                  disabled
-                >
-                  采用系统建议
-                </t-button>
-              </t-tooltip>
-              <t-button
-                v-else
-                size="small"
-                variant="outline"
-                @click="applyTakeoverLevelSuggestion"
-              >
-                采用系统建议
-              </t-button>
-            </div>
-            <span>{{ takeoverLevelSuggestionView.reason }}</span>
-            <span>{{ takeoverLevelSelectionHintView }}</span>
-            <span v-if="createFormLevelDisabledReason">
-              如需采用与系统建议不同的等级，请在等级调整说明中写明业务原因，复核确认后才形成最终等级。
-            </span>
-          </div>
+          <label class="checkbox-line">
+            <input
+              v-model="createForm.frameworkNoTotal"
+              type="checkbox"
+            >
+            <span>框架合同暂无总价（金额可留空）</span>
+          </label>
           <label>
             <span>履约状态</span>
             <select v-model="createForm.lifecycleStatus">
@@ -803,14 +776,6 @@
             />
           </label>
           <label>
-            <span>等级调整说明</span>
-            <t-textarea
-              v-model="createForm.takeoverLevelAdjustmentReason"
-              placeholder="如确认等级与系统建议不一致，说明本次调整原因、资料核验情况、风险责任和付款限制"
-              :autosize="{ minRows: 2, maxRows: 4 }"
-            />
-          </label>
-          <label>
             <span>复核意见</span>
             <t-textarea
               v-model="createForm.reviewComment"
@@ -830,19 +795,7 @@
       </div>
 
       <div class="form-actions">
-        <t-tooltip
-          v-if="createFormLevelDisabledReason"
-          :content="createFormLevelDisabledReason"
-        >
-          <t-button
-            theme="primary"
-            disabled
-          >
-            {{ editingTakeoverId ? "保存修改" : "保存接管草稿" }}
-          </t-button>
-        </t-tooltip>
         <t-button
-          v-else
           theme="primary"
           :loading="creating"
           @click="submitCreate"
@@ -1041,11 +994,13 @@
               :saving="Boolean(contractSideState?.saving)"
               :dirty="Boolean(contractSideState?.dirty)"
               :status-text="contractSideStatus"
+              :original-party-relationship="selectedRow.takeover.takeoverLevel === 'NONE' && (selectedRow.takeover.relationship === 'inside' || selectedRow.takeover.relationship === 'outside') ? selectedRow.takeover.relationship : undefined"
               @update:model-value="updateContractSideModel"
               @upload-evidence="uploadContractSideEvidence"
             />
             <ContractTakeoverFinanceSidePanel
               :key="`finance-${selectedTakeoverId}`"
+              :money-summary="selectedTakeoverMoneySummary"
               :model-value="financeSideState?.model ?? null"
               :revision="financeSideState?.revision ?? 0"
               :based-on-contract-revision="financeSideState?.model.basedOnContractRevision ?? 0"
@@ -1084,8 +1039,19 @@
               && Boolean(selectedRow.takeover.financeSide)
               && !financeSideState?.dirty
               && !financeSideState?.saving"
+            :can-withdraw-finance="canWithdrawFinanceConfirmation"
+            :can-return-finance="departmentAccess.canEditFinance
+              && canReturnTakeoverForFinanceSupplement(selectedRow.takeover)"
             @confirm="openDepartmentAction($event, 'confirm')"
             @withdraw="openDepartmentAction($event, 'withdraw')"
+            @return-finance="openFinanceSupplementReturn(selectedRow.takeover)"
+          />
+
+          <ContractTakeoverHandoverPanel
+            :project-id="selectedProjectId"
+            :takeover="selectedRow.takeover"
+            :user-options="responsibleUsers"
+            :can-manage="canConfirmHistoricalContractTakeovers(roleKeys)"
           />
 
           <h3 id="takeover-step-review">
@@ -1320,22 +1286,6 @@
                   {{ option.label }}
                 </option>
               </select>
-            </label>
-            <label>
-              <span>当前登录密码</span>
-              <t-input
-                v-model="evidenceDownloadPassword"
-                type="password"
-                autocomplete="current-password"
-                placeholder="下载前需校验当前登录密码"
-              />
-            </label>
-            <label>
-              <span>下载原因</span>
-              <t-input
-                v-model="evidenceDownloadReason"
-                placeholder="例如：复核历史付款凭证"
-              />
             </label>
             <t-tooltip
               v-if="selectedEvidenceDownloadDisabledReason"
@@ -1590,8 +1540,8 @@
     <SensitiveActionDialog
       v-if="canConfirmTakeovers"
       v-model="supplementReturnVisible"
-      title="退回补充接管资料"
-      description="退回后，合同员可补充资料并重新提交复核；当前接管事实不会生效。"
+      :title="supplementReturnSide === 'finance' ? '财务驳回制单人' : '退回补充接管资料'"
+      :description="supplementReturnSide === 'finance' ? '驳回后，合同制单人补充资料并重新提交，财务需重新核对、合同主管再复核；当前接管事实不会生效。' : '退回后，合同员可补充资料并重新提交复核；当前接管事实不会生效。'"
       confirm-text="确认退回补充"
       confirm-theme="danger"
       require-reason
@@ -1734,7 +1684,7 @@
     <SensitiveActionDialog
       v-model="evidenceDownloadConfirmVisible"
       title="确认安全下载资料"
-      description="系统将校验当前登录密码，并记录下载人、接管合同、资料和下载原因。"
+      description="系统会核验当前账号的单据访问权限，并记录本次下载。"
       confirm-text="确认下载"
       :loading="evidenceDownloading"
       :error="evidenceDownloadConfirmError"
@@ -1817,6 +1767,7 @@ import {
   previewContractTakeoverExcelImport,
   reviewContractTakeoverCorrection,
   returnContractTakeoverForSupplement,
+  returnContractTakeoverForFinanceSupplement,
   saveContractTakeoverContractSide,
   saveContractTakeoverFinanceSide,
   submitContractTakeoverCorrection,
@@ -1870,6 +1821,7 @@ import ContractTakeoverContractSidePanel from "./components/ContractTakeoverCont
 import ContractTakeoverCorrectionPanel from "./components/ContractTakeoverCorrectionPanel.vue";
 import ContractTakeoverDualConfirmationCard from "./components/ContractTakeoverDualConfirmationCard.vue";
 import ContractTakeoverFinanceSidePanel from "./components/ContractTakeoverFinanceSidePanel.vue";
+import ContractTakeoverHandoverPanel from "./components/ContractTakeoverHandoverPanel.vue";
 import HistoricalCompanyEntityMatchPanel from "./components/HistoricalCompanyEntityMatchPanel.vue";
 import {
   buildImportDraftsMessage,
@@ -1881,6 +1833,7 @@ import {
   createContractTakeoverSelectionRequestOwner,
   canConfirmHistoricalChangeBaseline,
   canReturnTakeoverForSupplement,
+  canReturnTakeoverForFinanceSupplement,
   canEditTakeover,
   canSubmitTakeoverReview,
   centsToYuanText,
@@ -1898,23 +1851,16 @@ import {
   normalizeOptionalTaxRate,
   normalizeTakeoverDirectPaymentStages,
   parseContractTakeoverImportPrecheckRows,
-  suggestTakeoverLevel,
   takeoverActionDisabledReason,
   takeoverBatchAbandonmentDisabledReason,
   takeoverDepartmentAccess,
-  takeoverEvidenceDownloadDisabledReason,
   takeoverEvidenceUploadDisabledReason,
   takeoverFinanceBasisStatus,
-  takeoverLevelAdjustmentDisabledReason,
-  takeoverLevelSelectionHint,
   takeoverOperationSections,
-  takeoverSuggestionApplyDisabledReason,
   takeoverPostConfirmationVerificationView,
   takeoverResponsibleUserText,
   takeoverResponsibleUserOptions,
   takeoverWorkbenchSteps,
-  takeoverLevelLabel,
-  takeoverLevelOptions,
   takeoverContractTypeOptions,
   toContractTakeoverTableRow,
   takeoverStatusLabel,
@@ -2103,6 +2049,19 @@ async function returnContractTakeoverForSupplementWithCapability(
   const operationAllowed = capability.availableActions.includes("return_for_supplement");
   if (!operationAllowed) throw new Error("当前用户不能退回历史合同接管补充");
   return returnContractTakeoverForSupplement(projectId, takeoverId, body);
+}
+
+async function returnContractTakeoverForFinanceSupplementWithCapability(
+  projectId: string,
+  takeoverId: string,
+  body: Parameters<typeof returnContractTakeoverForFinanceSupplement>[2]
+) {
+  const capability = await fetchContractTakeoverProjectCapability(projectId);
+  const matchesRequestedProject = capability.projectId === projectId;
+  if (!matchesRequestedProject) throw new Error("历史合同接管项目已变化，请刷新后重试");
+  const operationAllowed = capability.availableActions.includes("return_finance_for_supplement");
+  if (!operationAllowed) throw new Error("当前用户不能驳回财务核对");
+  return returnContractTakeoverForFinanceSupplement(projectId, takeoverId, body);
 }
 
 async function confirmContractTakeoverChangeBaselineWithCapability(
@@ -2330,6 +2289,8 @@ interface CreateFormState extends Record<MoneyFieldKey, string> {
   signedAt: string;
   takeoverCutoffDate: string;
   takeoverLevel: ContractTakeoverLevel;
+  relationship: "inside" | "outside" | "upward";
+  frameworkNoTotal: boolean;
   lifecycleStatus: ContractLifecycleStatus;
   paymentTermsOriginalText: string;
   paymentStages: TakeoverDirectPaymentStageDraft[];
@@ -2465,6 +2426,7 @@ const leaveDialogVisible = ref(false);
 let resolvePendingLeave: ((decision: boolean) => void) | null = null;
 const showPrecheckPanel = ref(false);
 const supplementReturnVisible = ref(false);
+const supplementReturnSide = ref<"supervisor" | "finance">("supervisor");
 const supplementReturnError = ref("");
 const supplementReturnTarget = ref<ContractTakeoverReadModel | null>(null);
 const importBatchReviewVisible = ref(false);
@@ -2509,8 +2471,6 @@ const historicalPaymentVoucherUpload = useTakeoverEvidenceUpload();
 const { file: historicalPaymentVoucherFile, busy: historicalPaymentVoucherUploading, error: historicalPaymentVoucherUploadError, success: historicalPaymentVoucherUploadSuccess } = historicalPaymentVoucherUpload;
 const historicalPaymentVoucherInputRef = ref<HTMLInputElement | null>(null);
 const evidenceDownloadFileId = ref("");
-const evidenceDownloadPassword = ref("");
-const evidenceDownloadReason = ref("");
 const companyEntityCorrectionFiles = ref<UploadFile[]>([]);
 const message = ref("");
 const messageTone = ref<"success" | "danger" | "default">("default");
@@ -2582,7 +2542,10 @@ function contractSideModelFromTakeover(
     };
   }
 
-  const historicalSettledCents = String(takeover.historicalSettledCents);
+  const recordedSettlement = String(takeover.historicalSettledCents);
+  const historicalSettledCents = takeover.takeoverLevel === "NONE" && recordedSettlement === "0"
+    ? ""
+    : recordedSettlement;
   return {
     signedAt: takeover.signedAt.slice(0, 10),
     performanceStatus: contractTakeoverPerformanceStatus(takeover.lifecycleStatus),
@@ -2632,7 +2595,7 @@ function financeSideModelFromTakeover(
     return {
       basedOnContractRevision: contractSide.revision,
       basedOnFinanceBasisRevision: contractSide.financeBasisRevision,
-      zeroPaymentDeclared: true,
+      zeroPaymentDeclared: takeover.takeoverLevel !== "NONE",
       payments: []
     };
   }
@@ -3062,14 +3025,35 @@ const responsibleUserOptions = computed(() =>
   )
 );
 
+const selectedTakeoverMoneySummary = computed(() => {
+  const takeover = selectedRow.value?.takeover;
+  if (!takeover) return null;
+  return {
+    relationship: takeover.relationship,
+    historicalPaidTotalCents: takeover.historicalPaidTotalCents,
+    historicalSettledCents: takeover.historicalSettledCents,
+    historicalOverpaidCents: takeover.historicalOverpaidCents,
+    historicalOverpaymentLabel: takeover.historicalOverpaymentLabel,
+    historicalReceiptsCents: takeover.historicalReceiptsCents,
+    historicalOverReceivedCents: takeover.historicalOverReceivedCents,
+    historicalOverReceivedPendingVerification:
+      takeover.historicalOverReceivedPendingVerification,
+    historicalFactStatusLabel: takeover.historicalFactStatusLabel
+  };
+});
+
 const selectedRow = computed<ContractTakeoverTableRow | null>(
   () => tableRows.value.find((row) => row.id === selectedTakeoverId.value) ?? null
 );
 const departmentAccess = computed(() =>
   takeoverDepartmentAccess(
     roleKeys.value,
-    Boolean(selectedRow.value?.takeover.confirmedAt)
+    Boolean(selectedRow.value?.takeover.confirmedAt),
+    selectedRow.value?.takeover.takeoverLevel === "NONE"
   )
+);
+const canWithdrawFinanceConfirmation = computed(() =>
+  departmentAccess.value.canConfirmFinance && roleKeys.value.includes("finance_director")
 );
 const financeBasisStatus = computed(() => {
   const contractSide = selectedRow.value?.takeover.contractSide;
@@ -3107,7 +3091,7 @@ const departmentActionDescription = computed(() => {
     return "撤回后不会覆盖任何已保存事实；对应部门需重新核对并确认，双侧未齐前接管不会激活。";
   }
   return action.side === "finance"
-    ? "财务主管将基于当前合同侧修订与财务基线确认逐笔实付、凭证、分配及余额口径。"
+    ? "财务确认人将基于当前合同侧修订与财务基线核对逐笔收付、凭证、分配及余额。"
     : "合同主管将确认当前合同事实、历史结算、履约状态、付款条款和结算依据。";
 });
 const canSubmitAppliedCorrections = computed(() =>
@@ -3212,20 +3196,6 @@ const selectedHistoricalPaymentVoucherUploadDisabledReason = computed(() => {
     Boolean(historicalPaymentVoucherFile.value)
   );
 });
-const takeoverLevelSuggestionView = computed(() => suggestTakeoverLevel(createForm));
-const takeoverLevelSelectionHintView = computed(() =>
-  takeoverLevelSelectionHint(createForm.takeoverLevel, takeoverLevelSuggestionView.value)
-);
-const createFormLevelDisabledReason = computed(() =>
-  takeoverLevelAdjustmentDisabledReason(
-    createForm.takeoverLevel,
-    takeoverLevelSuggestionView.value,
-    createForm.takeoverLevelAdjustmentReason
-  )
-);
-const applySuggestionDisabledReason = computed(() =>
-  takeoverSuggestionApplyDisabledReason(createForm.takeoverLevel, takeoverLevelSuggestionView.value)
-);
 const selectedExcelImportFile = computed(() => {
   const raw = excelImportFiles.value[0]?.raw;
   return raw instanceof File ? raw : null;
@@ -3344,7 +3314,7 @@ const selectedEvidenceFiles = computed(() =>
     confirmedAt: null,
     canDownload: file.canDownload,
     disabledReason: file.disabledReason,
-    auditHint: "下载需当前密码、下载原因和短时效链接，并记录审计"
+    auditHint: "下载需单据可见权限、短时效链接和审计记录"
   }))
 );
 const selectedEvidenceDownloadOptions = computed(() =>
@@ -3355,15 +3325,14 @@ const selectedEvidenceDownloadOptions = computed(() =>
       value: file.fileId
     }))
 );
-const selectedEvidenceDownloadDisabledReason = computed(() =>
-  takeoverEvidenceDownloadDisabledReason({
-    fileId: evidenceDownloadFileId.value,
-    password: evidenceDownloadPassword.value,
-    downloadReason: evidenceDownloadReason.value,
-    availableFileIds: selectedEvidenceDownloadOptions.value.map((option) => option.value),
-    hasFiles: selectedEvidenceFiles.value.length > 0
-  })
-);
+const selectedEvidenceDownloadDisabledReason = computed(() => {
+  if (selectedEvidenceFiles.value.length === 0) return "当前接管合同暂无可下载资料";
+  if (!evidenceDownloadFileId.value) return "请选择要下载的接管资料";
+  if (!selectedEvidenceDownloadOptions.value.some((option) => option.value === evidenceDownloadFileId.value)) {
+    return "所选接管资料暂不可下载";
+  }
+  return "";
+});
 const selectedCompanyEntityCorrections = computed(() =>
   (selectedRow.value?.takeover.corrections ?? []).filter(
     (correction) => correction.correctionType === "company_entity"
@@ -3417,13 +3386,23 @@ const selectedBaseInfo = computed(() => {
         ? row.takeover.taxFactMissingFields.join("、")
         : "无"
     },
-    { label: "系统建议等级", value: row.suggestedTakeoverLevelLabel },
-    { label: "确认接管等级", value: takeoverLevelLabel(row.takeoverLevel) },
+    { label: "合同关系", value: row.relationshipLabel },
+    { label: "历史事实状态", value: row.historicalFactStatusLabel },
     {
-      label: "等级复核说明",
-      value: row.takeover.takeoverLevelAdjustmentReason || row.takeover.reviewComment || "未填写"
+      label: "历史已付/结算/超付",
+      value: `${centsTextToYuanText(row.takeover.historicalPaidTotalCents)} / ${centsTextToYuanText(
+        row.takeover.historicalSettledCents
+      )} / ${centsTextToYuanText(row.takeover.historicalOverpaidCents)}（${row.historicalOverpaymentLabel}）`
     },
-    { label: "等级风险", value: row.takeover.levelRiskText },
+    ...(row.takeover.relationship === "upward"
+      ? [{
+          label: "对上历史实收/超收",
+          value: `${centsTextToYuanText(row.takeover.historicalReceiptsCents)} / ${centsTextToYuanText(
+            row.takeover.historicalOverReceivedCents
+          )}（保留事实，待核对，不自动退款）`
+        }]
+      : []),
+    { label: "接管风险", value: row.takeover.levelRiskText },
     { label: "付款提示", value: row.takeover.paymentBlockingHint },
     { label: "接管状态", value: takeoverStatusLabel(row.takeoverStatus) },
     { label: "履约状态", value: lifecycleStatusLabel(row.lifecycleStatus) }
@@ -4150,11 +4129,6 @@ async function submitCreate() {
     setMessage("请先选择项目", "danger");
     return;
   }
-  if (createFormLevelDisabledReason.value) {
-    setMessage(createFormLevelDisabledReason.value, "danger");
-    return;
-  }
-
   creating.value = true;
   message.value = "";
   try {
@@ -4185,7 +4159,9 @@ async function submitCreate() {
       amountCents: yuanToCents(createForm.amountYuan, "合同金额"),
       signedAt: requiredText(createForm.signedAt, "签订日期"),
       takeoverCutoffDate: createForm.takeoverCutoffDate || undefined,
-      takeoverLevel: createForm.takeoverLevel,
+      takeoverLevel: "NONE" as ContractTakeoverLevel,
+      relationship: createForm.relationship,
+      frameworkNoTotal: createForm.frameworkNoTotal,
       lifecycleStatus: createForm.lifecycleStatus,
       paymentTermsOriginalText: requiredText(
         createForm.paymentTermsOriginalText,
@@ -4208,7 +4184,6 @@ async function submitCreate() {
       balanceSourceSummary: requiredText(createForm.balanceSourceSummary, "余额来源说明"),
       evidenceSummary: requiredText(createForm.evidenceSummary, "证据说明"),
       responsibleUserId: createForm.responsibleUserId.trim() || undefined,
-      takeoverLevelAdjustmentReason: createForm.takeoverLevelAdjustmentReason.trim() || undefined,
       reviewComment: createForm.reviewComment.trim() || undefined,
       acceptanceConclusion: createForm.acceptanceConclusion.trim() || undefined
     };
@@ -4269,9 +4244,6 @@ function startEdit(takeover: ContractTakeoverReadModel) {
   showCreateForm.value = true;
 }
 
-function applyTakeoverLevelSuggestion() {
-  createForm.takeoverLevel = takeoverLevelSuggestionView.value.level;
-}
 
 async function cancelEdit() {
   if (!(await takeoverLeaveGuard.requestClose())) return;
@@ -4401,14 +4373,9 @@ async function submitEvidenceFileDownload() {
   try {
     const ticket = await createContractTakeoverFileDownloadTicketWithCapability(
       evidenceDownloadFileId.value,
-      {
-      confirmationPassword: requiredText(evidenceDownloadPassword.value, "当前登录密码"),
-      downloadReason: requiredText(evidenceDownloadReason.value, "下载原因")
-      }
+      {}
     );
     window.open(apiDownloadUrl(ticket.downloadUrl), "_blank", "noopener");
-    evidenceDownloadPassword.value = "";
-    evidenceDownloadReason.value = "";
     evidenceDownloadConfirmVisible.value = false;
     setMessage("已生成短时效下载链接，请在新窗口完成下载。", "success");
   } catch (error) {
@@ -4426,7 +4393,7 @@ function openDepartmentAction(
   const state = side === "contract" ? contractSideState.value : financeSideState.value;
   const allowed = side === "contract"
     ? departmentAccess.value.canConfirmContract
-    : departmentAccess.value.canConfirmFinance;
+    : action === "confirm" ? departmentAccess.value.canConfirmFinance : canWithdrawFinanceConfirmation.value;
   if (!allowed || !state) {
     setMessage("当前岗位或当前事实状态不能执行该部门确认操作", "danger");
     return;
@@ -4914,6 +4881,22 @@ function openSupplementReturn(takeover: ContractTakeoverReadModel) {
     setMessage("只有待复核的接管记录可以退回补充", "danger");
     return;
   }
+  supplementReturnSide.value = "supervisor";
+  supplementReturnTarget.value = takeover;
+  supplementReturnError.value = "";
+  supplementReturnVisible.value = true;
+}
+
+function openFinanceSupplementReturn(takeover: ContractTakeoverReadModel) {
+  if (!departmentAccess.value.canEditFinance) {
+    setMessage("当前岗位不能驳回财务核对", "danger");
+    return;
+  }
+  if (!canReturnTakeoverForFinanceSupplement(takeover)) {
+    setMessage("只有待财务填写的接管记录可以驳回制单人", "danger");
+    return;
+  }
+  supplementReturnSide.value = "finance";
   supplementReturnTarget.value = takeover;
   supplementReturnError.value = "";
   supplementReturnVisible.value = true;
@@ -4927,7 +4910,10 @@ function closeSupplementReturn() {
 }
 
 async function returnSelectedTakeoverForSupplement(values: { reason: string; password: string }) {
-  if (!canConfirmTakeovers.value) {
+  const canReturn = supplementReturnSide.value === "finance"
+    ? departmentAccess.value.canEditFinance
+    : canConfirmTakeovers.value;
+  if (!canReturn) {
     supplementReturnError.value = "当前岗位不能退回历史合同接管资料";
     return;
   }
@@ -4941,14 +4927,20 @@ async function returnSelectedTakeoverForSupplement(values: { reason: string; pas
   supplementReturning.value = true;
   supplementReturnError.value = "";
   try {
-    const updated = await returnContractTakeoverForSupplementWithCapability(projectId, target.id, {
-      reason: requiredText(values.reason, "退回补充原因")
-    });
+    const reason = requiredText(values.reason, "退回补充原因");
+    const updated = supplementReturnSide.value === "finance"
+      ? await returnContractTakeoverForFinanceSupplementWithCapability(projectId, target.id, { reason })
+      : await returnContractTakeoverForSupplementWithCapability(projectId, target.id, { reason });
     takeovers.value = takeovers.value.map((item) => (item.id === updated.id ? updated : item));
     selectedTakeoverId.value = updated.id;
     supplementReturnVisible.value = false;
     supplementReturnTarget.value = null;
-    setMessage("已退回补充，合同员可补齐资料后重新提交复核", "success");
+    setMessage(
+      supplementReturnSide.value === "finance"
+        ? "财务已驳回制单人，补充后需重新提交财务核对和主管复核"
+        : "已退回补充，合同员可补齐资料后重新提交复核",
+      "success"
+    );
   } catch (error) {
     supplementReturnError.value = formatUnknownApiError(error, "退回补充失败");
   } finally {
@@ -4968,8 +4960,6 @@ function resetCompanyEntityCorrectionForm() {
 function resetEvidenceDownloadForm(takeover: ContractTakeoverReadModel | null) {
   evidenceDownloadFileId.value =
     takeover?.evidenceFiles.find((file) => file.canDownload)?.fileId ?? "";
-  evidenceDownloadPassword.value = "";
-  evidenceDownloadReason.value = "";
 }
 
 function formFromTakeover(takeover: ContractTakeoverReadModel): CreateFormState {
@@ -5003,6 +4993,8 @@ function formFromTakeover(takeover: ContractTakeoverReadModel): CreateFormState 
     signedAt: takeover.signedAt.slice(0, 10),
     takeoverCutoffDate: takeover.takeoverCutoffDate?.slice(0, 10) ?? "",
     takeoverLevel: takeover.takeoverLevel,
+    relationship: takeover.relationship ?? "outside",
+    frameworkNoTotal: takeover.frameworkNoTotal === true,
     lifecycleStatus: takeover.lifecycleStatus,
     paymentTermsOriginalText: takeover.paymentTermsOriginalText,
     paymentStages: (takeover.paymentStages ?? []).map((stage) => ({
@@ -5057,7 +5049,9 @@ function createEmptyForm(): CreateFormState {
     pricingItems: [],
     signedAt: todayText(),
     takeoverCutoffDate: "",
-    takeoverLevel: "B",
+    takeoverLevel: "NONE",
+    relationship: "outside",
+    frameworkNoTotal: false,
     lifecycleStatus: "in_progress",
     paymentTermsOriginalText: "",
     paymentStages: [],

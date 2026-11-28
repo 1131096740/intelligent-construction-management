@@ -5,7 +5,7 @@ import { formatBusinessEntryReadonlyValue } from "../../../lib/business-entry-ad
 
 defineProps<{ snapshots: ExpenseClaimEntrySnapshotReadModel[] }>();
 
-function displayValue(field: BusinessEntryFieldDefinition, values: Record<string, unknown>) {
+function displayValue(field: BusinessEntryFieldDefinition, values: Record<string, unknown>, numericProtocolVersion: unknown) {
   const names: Record<string, string> = { companyEntityId: "companyEntityName", applicantUserId: "applicantName", factWitnessUserId: "factWitnessName", projectId: "projectName" };
   if (names[field.key]) {
     if (!values[field.key]) return "未填写";
@@ -17,7 +17,10 @@ function displayValue(field: BusinessEntryFieldDefinition, values: Record<string
     if (value === "bank_transfer") return "银行转账";
     if (value === "cash") return "现金";
   }
-  return formatBusinessEntryReadonlyValue(field, value);
+  const amount = numericProtocolVersion === 2 && field.type === "money" && typeof value === "string"
+    ? value.replace(/^(-?\d+\.\d{2})00$/u, "$1")
+    : value;
+  return formatBusinessEntryReadonlyValue(field, amount);
 }
 
 function lines(snapshot: ExpenseClaimEntrySnapshotReadModel): Record<string, unknown>[] {
@@ -50,7 +53,7 @@ function lines(snapshot: ExpenseClaimEntrySnapshotReadModel): Record<string, unk
           :key="field.key"
         >
           <dt>{{ field.label }}</dt>
-          <dd>{{ displayValue(field, snapshot.valuesSnapshot) }}</dd>
+          <dd>{{ displayValue(field, snapshot.valuesSnapshot, snapshot.valuesSnapshot.numericProtocolVersion) }}</dd>
         </div>
       </dl>
       <section
@@ -65,7 +68,7 @@ function lines(snapshot: ExpenseClaimEntrySnapshotReadModel): Record<string, unk
             :key="field.key"
           >
             <dt>{{ field.label }}</dt>
-            <dd>{{ displayValue(field, line) }}</dd>
+            <dd>{{ displayValue(field, line, snapshot.valuesSnapshot.numericProtocolVersion) }}</dd>
           </div>
         </dl>
       </section>

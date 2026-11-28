@@ -59,7 +59,145 @@ describe("ContractTakeoverHistoricalPaymentOperatingSourceAdapter", () => {
     expect(mapped.input.isBeforeOperatingLedgerEffectiveDate).toBe(true);
   });
 
-  it("does not expose C-level or inactive historical payments as formal sources", async () => {
+  it.each(["NONE", "C"])(
+    "maps an activated %s-level historical payment into the formal operating ledger",
+    async (level) => {
+      const adapter = new ContractTakeoverHistoricalPaymentOperatingSourceAdapter();
+      const tx = historicalPaymentTx();
+      tx.contractTakeover.findFirst.mockResolvedValue({
+        ...(await tx.contractTakeover.findFirst()),
+        takeoverLevel: level
+      });
+
+      const snapshot = await adapter.readSourceSnapshot(tx as never, {
+        projectId: "project-1",
+        sourceType: adapter.sourceType,
+        sourceBusinessId: "historical-payment-1"
+      });
+
+      const mapped = adapter.toOperatingFactInput(snapshot!);
+      expect(mapped.entryKind).toBe("original");
+      expect(mapped.input).toEqual(
+        expect.objectContaining({
+          factKind: "downstream_payment",
+          evidenceLevel: level === "NONE" ? "C" : level,
+          amountCents: 150_000n
+        })
+      );
+      expect(mapped.input.impacts).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            sourceImpactKey: "payable:initial-settlement-1",
+            impactKind: "payable_decrease"
+          })
+        ])
+      );
+    }
+  );
+
+  it.each([true, false])("only treats a verified and vouched inside payment as opening history (voucher: %s)", async (withVoucher) => {
+    const adapter = new ContractTakeoverHistoricalPaymentOperatingSourceAdapter();
+    const tx = historicalPaymentTx();
+    tx.contractTakeover.findFirst.mockResolvedValue({
+      ...(await tx.contractTakeover.findFirst()), takeoverLevel: "NONE"
+    });
+    tx.contractVersion.findUnique.mockResolvedValue({
+      ...(await tx.contractVersion.findUnique()),
+      draftData: {
+        historicalTakeover: true, relationship: "inside",
+        historicalSettlementAuthority: {
+          status: "verified", relationship: "inside", payerKind: "participating_company",
+          companyEntityId: "company-1", payerVersionId: "company-version-1", signingParty: "我方公司",
+          counterpartyKind: "downstream_counterparty", counterpartyVersionId: "counterparty-version-1",
+          counterparty: "供应商"
+        }
+      }
+    });
+    tx.contractTakeoverHistoricalPaymentAllocation.findMany.mockResolvedValue([
+      { allocationType: "settlement", amountCents: 150_000n, allocationOrder: 1 }
+    ]);
+    if (!withVoucher) tx.contractTakeoverHistoricalPaymentVoucher.findMany.mockResolvedValue([]);
+
+    const snapshot = await adapter.readSourceSnapshot(tx as never, {
+      projectId: "project-1", sourceType: adapter.sourceType, sourceBusinessId: "historical-payment-1"
+    });
+    if (!withVoucher) {
+      expect(snapshot?.sourceSnapshot).not.toHaveProperty("historicalOpeningPayment");
+      expect(() => adapter.toOperatingFactInput(snapshot!)).toThrow("历史接管实付快照voucherFileIds不能为空");
+      return;
+    }
+    const { input } = adapter.toOperatingFactInput(snapshot!);
+    expect(input).toMatchObject({
+      factKind: "downstream_payment", evidenceLevel: "A", amountCents: 150_000n,
+      occurredAt: historicalPaymentRow().paidAt, isBeforeOperatingLedgerEffectiveDate: true,
+      sourceSnapshot: { contractRelationship: "inside", historicalOpeningPayment: true }
+    });
+    expect(input.impacts).toEqual([
+      expect.objectContaining({ impactKind: "payable_decrease", amountCents: 150_000n })
+    ]);
+  });
+
+  it.each([6_000n, 0n])("records a frozen upward receipt with %s cents matched", async (matched) => {
+    const adapter = new ContractTakeoverHistoricalPaymentOperatingSourceAdapter();
+    const tx = historicalPaymentTx();
+    tx.contractTakeover.findFirst.mockResolvedValue({
+      ...(await tx.contractTakeover.findFirst()),
+      takeoverLevel: "NONE",
+      historicalInitialSettlementId: matched > 0n ? "initial-settlement-1" : null
+    });
+    tx.contractVersion.findUnique.mockResolvedValue({
+      ...(await tx.contractVersion.findUnique()),
+      draftData: {
+        historicalTakeover: true, relationship: "upward",
+        historicalUpwardAuthority: {
+          companyEntityId: "company-1", companyEntityVersionId: "company-version-1", companyName: "我方公司",
+          affiliate: { assignmentId: "affiliate-assignment-1", businessPartyVersionId: "affiliate-version-1", name: "施工企业甲" }
+        }
+      }
+    });
+    tx.contractPartySnapshot.findFirst.mockResolvedValue({
+      businessPartyVersionId: null,
+      snapshot: { name: "我方公司", companyEntityId: "company-1" }
+    });
+    tx.contractTakeoverHistoricalPayment.findUnique.mockResolvedValue({
+      ...historicalPaymentRow(), amountCents: 7_000n,
+      payerName: "施工企业甲", payeeName: "我方公司"
+    });
+    tx.contractTakeoverHistoricalPaymentAllocation.findMany.mockResolvedValue([
+      ...(matched > 0n ? [{ allocationType: "settlement", amountCents: matched, allocationOrder: 1 }] : []),
+      { allocationType: "abnormal_overpay", amountCents: 7_000n - matched, allocationOrder: 2 }
+    ]);
+
+    const snapshot = await adapter.readSourceSnapshot(tx as never, {
+      projectId: "project-1",
+      sourceType: adapter.sourceType,
+      sourceBusinessId: "historical-payment-1"
+    });
+    expect(snapshot).not.toBeNull();
+    const { input } = adapter.toOperatingFactInput(snapshot!);
+    expect(input).toMatchObject({
+      factKind: "fund_movement",
+      direction: "inflow",
+      evidenceLevel: "A",
+      amountCents: 7_000n,
+      isBeforeOperatingLedgerEffectiveDate: true,
+      sourceSnapshot: { contractRelationship: "upward", unmatchedReceiptCents: (7_000n - matched).toString() },
+      subjects: {
+        actualPayer: { kind: "construction_enterprise", id: "affiliate-version-1" },
+        payee: { kind: "participating_company", id: "company-1" }
+      }
+    });
+    expect(input.impacts).toEqual([
+      matched > 0n ? expect.objectContaining({
+        impactKind: "receivable_decrease", amountCents: matched, direction: "decrease"
+      }) : expect.objectContaining({
+        impactKind: "evidence_gap_notice", amountCents: 7_000n, direction: "notice",
+        description: "对上历史实收已核实，尚无可核销结算，超收待核对"
+      })
+    ]);
+  });
+
+  it("filters only confirmed and activated takeovers regardless of legacy level", async () => {
     const adapter = new ContractTakeoverHistoricalPaymentOperatingSourceAdapter();
     const tx = historicalPaymentTx();
     tx.contractTakeover.findFirst.mockResolvedValue(null);
@@ -79,11 +217,12 @@ describe("ContractTakeoverHistoricalPaymentOperatingSourceAdapter", () => {
     expect(tx.contractTakeover.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
         where: expect.objectContaining({
-          takeoverLevel: { in: ["A", "B"] },
           activatedAt: { not: null }
         })
       })
     );
+    expect((tx.contractTakeover.findMany.mock.calls[0][0] as { where: Record<string, unknown> }).where)
+      .not.toHaveProperty("takeoverLevel");
   });
 
   it("projects abnormal overpay as a returnable company balance", async () => {

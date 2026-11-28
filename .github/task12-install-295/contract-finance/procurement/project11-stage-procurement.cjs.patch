@@ -1,0 +1,11 @@
+--- original
++++ ported
+@@ -4,7 +4,7 @@
+ const path = require('node:path');
+ const { stageWebWorkspace } = require('./stage-browser.cjs');
+ 
+-const original = '/qualification/procurement289-nodb';
++const original = '/qualification/workspace';
+ 
+ function stageProcurementWorkspace(workDir) {
+   const stagedWeb = stageWebWorkspace(workDir);

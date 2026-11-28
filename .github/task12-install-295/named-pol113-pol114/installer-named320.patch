@@ -1,0 +1,126 @@
+--- installer.cjs
++++ installer.cjs
+@@ -72,10 +72,18 @@
+   'jg_upward_archive_catalog_projection_v2()': Object.freeze(['ebf786dd48b05ab47c62b283d702521ceb8edc00a0a8aa54f7194461560604b9', '105281430d2bd723a93626bc129ca497486787d6f8476b95f324a8b1d0324c9e']),
+   'jg_upward_direct_archive_admission_v1()': Object.freeze(['eed377ea62bedf5b75e8d9b75afcb2ce132b8a1281d4fe0564525f836743c20e', 'bfbe61100be1d1705095a03e11c9ef6db48ca05d282aeff03c2d21ea137cb411']),
+ });
+-function outsideWitnessSql(count) {
++const signedSettlementOutsidePostimages = Object.freeze({
++  'jg_require_contract_direct_upward_source_v2()':'c86b37cc155cb5cf424dd682f9767363da264eed8630a0dee9f02acde0dc3f49',
++  'jg_upward_archive_catalog_projection_v2()':'5fc49d0c0d0982b14dad70f9498c003dcffb4dfa9d1b7ae58155a93069f220b3',
++  'jg_upward_direct_archive_admission_v1()':'0ae95bf1a1b3551b5a123869077432a74578cb5c49ca63e7a4be4320eecef462',
++});
++function outsideWitnessSql(count, signedSettlementInstalled = false) {
+   need(count===288 || count===289,'UNKNOWN_OUTSIDE_CATALOG_MILESTONE');
+-  const checks = Object.entries(outsideBodies).map(([name,bodies]) =>
+-    `(to_regprocedure('public.${name}')::oid, '${bodies[count-288]}')`).join(', ');
++  need(!signedSettlementInstalled || count===289,'FORWARD_320_OUTSIDE_MILESTONE');
++  const checks = Object.entries(outsideBodies).map(([name,bodies]) => {
++    const digest=(signedSettlementInstalled ? signedSettlementOutsidePostimages[name] : undefined) ?? bodies[count-288];
++    return `(to_regprocedure('public.${name}')::oid, '${digest}')`;
++  }).join(', ');
+   return `SELECT jsonb_build_object(
+     'upward',public.jg_require_contract_direct_upward_source_v2() IS NOT NULL,
+     'tls',(SELECT ssl FROM pg_stat_ssl WHERE pid=pg_backend_pid()),
+@@ -270,7 +278,8 @@
+   const exact292=purpose===named292
+     ?verifyNamed292Inputs('/qualification/product/services/api/prisma','/qualification/product291/services/api/prisma','/qualification/named292/successor.sql')
+     :undefined;
+-  const named295=purpose===named292&&receipt.purpose==='NAMED_POL113_POL114_EXACT_295';
++  const named320=purpose===named292&&receipt.purpose==='NAMED_POL113_POL114_EXACT_329';
++  const named295=purpose===named292&&(named320||receipt.purpose==='NAMED_POL113_POL114_EXACT_295');
+   let consumerLedger,named292Catalog,named295Tail;
+
+   const historical = '/qualification/source/services/api/prisma';
+@@ -346,6 +355,7 @@
+ hostnossl all all 127.0.0.1/32 reject
+ hostssl all ${owner} 127.0.0.1/32 scram-sha-256
+ hostssl ${database} jg_task01_runtime,jg_task01_observer 127.0.0.1/32 scram-sha-256
++${named320 && database==='jiangkong_pol114' ? 'hostssl jiangkong_pol114 pol114_signed_change_qualification,pol114_signed_settlement_qualification 127.0.0.1/32 scram-sha-256' : ''}
+ ${release.procurementScope ? `hostssl ${database} general_procurement_runtime 127.0.0.1/32 scram-sha-256\n` : ''}${release.projectBusinessScope ? `hostssl ${database} project_business_scope_runtime 127.0.0.1/32 scram-sha-256\n` : ''}hostssl all all 127.0.0.1/32 reject
+ `;
+     fs.writeFileSync(abs('data/pg_hba.conf'), hba);
+@@ -675,11 +685,11 @@
+       );`;
+       const successor=require('./named292/successor.cjs');
+       const identityKeys=['database','databaseOid','namespaceOid','systemIdentifier','ownerOid','actorOid','sessionActor'];
+-      const verifyLedger=async expected=>{
++      const verifyLedger=async (expected,signedSettlementInstalled=false)=>{
+         const installed=await jsonSql(control.inspectSql());
+         need(equal(installed.ledger,expected)&&identityKeys.every(key=>installed[key]===roleIdentity[key]),'NAMED_292_LEDGER_IDENTITY');
+         need(equal(await jsonSql(finalSql),final),'NAMED_292_B7_CONTINUITY');
+-        const outside=await jsonSql(outsideWitnessSql(289));
++        const outside=await jsonSql(outsideWitnessSql(289,signedSettlementInstalled));
+         assertOutsideWitness(289,outside);
+         receipt.orderedTails.push({size:installed.ledger.length,ledgerSha256:hash(JSON.stringify(installed.ledger))});
+         return outside;
+@@ -714,9 +724,35 @@
+           receipt,folder,enter,deploy,verifyLedger,jsonSql,sql,credentials,ledger:exact292.final,need,equal,
+         });
+         consumerLedger=named295Tail.ledger;
++      }
++      if(named320){
++        const material=require('./candidate-admission.json');
++        const rows=material.tails;
++        need(material.migrationCount===329 && /^[0-9a-f]{40}$/u.test(material.sourceTree) &&
++          Array.isArray(rows) && rows.length===34,'NAMED_320_SOURCE');
++        const predecessor=consumerLedger;
++        enter('NAMED_INSTALL_320_CONTRACT_DETAIL_READERS');
++        let previous='20261119003900';
++        for(const row of rows){
++          const match=/^(\d{14})_[a-z0-9_]+$/u.exec(row&&typeof row.name==='string'?row.name:'');
++          need(match&&match[1]>previous&&typeof row.sha256==='string'&&/^[0-9a-f]{64}$/u.test(row.sha256),'NAMED_320_TAIL_SEQUENCE');
++          previous=match[1];
++          const bytes=capture(path.join('/qualification/workspace/services/api/prisma/migrations',row.name,'migration.sql')).bytes;
++          need(hash(bytes)===row.sha256,'NAMED_320_TAIL_DIGEST');
++          const dir=path.join(folder,'migrations',row.name);
++          fs.mkdirSync(dir,{mode:0o700});
++          fs.writeFileSync(path.join(dir,'migration.sql'),bytes,{flag:'wx',mode:0o600});
++        }
++        consumerLedger=[...predecessor,...rows.map(({name,sha256})=>({name,sha256,finished:true,rolledBack:false}))];
++        need(hash(JSON.stringify(consumerLedger))===material.ledger320,'NAMED_320_LEDGER_SOURCE');
++        await deploy();
++        const outside=await verifyLedger(consumerLedger,true);
++        await named295Tail.checkTailCatalogs();
++        receipt.forward320={count:consumerLedger.length,ledgerSha256:material.ledger320,sourceTree:material.sourceTree,
++          sameIdentity:true,exactB7:true,outside};
+       }
+       named292Catalog=async()=>({
+-        outside:await jsonSql(outsideWitnessSql(289)),
++        outside:await jsonSql(outsideWitnessSql(289,named320)),
+         ordinary:await jsonSql(ordinaryClosedSql(true)),
+         balance:await jsonSql(successor.catalogSql),
+       });
+@@ -742,7 +778,7 @@
+         sql:statement => { onlyWhileOwned(); return sql(statement); },
+         readPostgresLog:() => { onlyWhileOwned(); return fs.readFileSync(logPath, 'utf8'); },
+       });
+-      enter(named295?'EXACT_295_NAMED_FRESH_CONSUMER':exact292?'EXACT_292_NAMED_FRESH_CONSUMER':consumerLedger?'EXACT_290_FRESH_CONSUMER':'EXACT_'+release.count+'_CONSUMER');
++      enter(named320?'EXACT_329_NAMED_FRESH_CONSUMER':named295?'EXACT_295_NAMED_FRESH_CONSUMER':exact292?'EXACT_292_NAMED_FRESH_CONSUMER':consumerLedger?'EXACT_290_FRESH_CONSUMER':'EXACT_'+release.count+'_CONSUMER');
+       for (const [key,role] of [['runtime','jg_task01_runtime'], ['observer','jg_task01_observer']]) {
+         const observed = await jsonSql(`SELECT jsonb_build_object(
+           'database',current_database(),'role',current_user,'sessionRole',session_user,
+@@ -772,6 +808,8 @@
+         if (named295Tail) {
+           await named295Tail.checkTailCatalogs();
+           receipt.postBehavior295={catalogPreserved:true,keyUnprovisioned:true,exactB7:true,sameIdentity:true};
++          if(named320) receipt.postBehavior320={exactB7:true,sameIdentity:true,
++            count:afterConsumer.ledger.length,ledgerSha256:hash(JSON.stringify(afterConsumer.ledger))};
+         }
+       } else if (consumerLedger) {
+         const successor=require('./successor.cjs');
+@@ -1101,7 +1139,7 @@
+     need(context.database===namedDatabase&&context.candidateTree===scope.tree&&receipt.archive?.roles===9&&
+       receipt.installOnly292?.count===292&&receipt.installOnly292.ledgerSha256===scope.expectedLedgerSha256,
+       'POL113_POL114_NAMED_292_CONTEXT');
+-    if (version===295) {
++    if (version>=295) {
+       need(receipt.installOnly295?.count===295&&receipt.installOnly295.ledgerSha256===require('./multi-witness.cjs').final,
+         'POL113_POL114_NAMED_295_CONTEXT');
+     }
+@@ -1111,3 +1149,5 @@
+
+ module.exports.withNamedPol113Pol114292=(receipt,mode,consume)=>withNamedPol113Pol114(receipt,mode,consume,292);
+ module.exports.withNamedPol113Pol114295=(receipt,mode,consume)=>withNamedPol113Pol114(receipt,mode,consume,295);
++
++module.exports.withNamedPol113Pol114320=(receipt,mode,consume)=>withNamedPol113Pol114(receipt,mode,consume,329);

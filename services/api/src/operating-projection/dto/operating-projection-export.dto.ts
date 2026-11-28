@@ -18,6 +18,11 @@ const VALUE_MAX_LENGTH = 256;
 const LIST_MAX_LENGTH = 2_048;
 
 export class OperatingProjectionExportDto {
+  @ValidateIf((_object, value) => value !== undefined)
+  @IsString({ message: "经营读取金额协议必须是明确字符串" })
+  @IsIn(["1", "2"], { message: "经营读取金额协议必须为1或2" })
+  numericProtocolVersion?: "1" | "2";
+
   @IsString({ message: "经营投影范围必须是字符串" })
   @MaxLength(VALUE_MAX_LENGTH, { message: "经营投影范围不能超过 256 个字符" })
   @IsIn(SCOPE_KINDS, { message: "经营投影范围必须是单项目、公司或多项目" })

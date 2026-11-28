@@ -1,0 +1,23 @@
+{
+  "installer": {
+    "base": "86d62f558f8a9e38ef0c3fa4acfd3aaae988d2b23874392802061047be3f9b10",
+    "patch": "09932ef2ef390758ac1c94b7f914466123bcf464e1dcf421312099e94da2776b",
+    "result": "8d2e254b0b94d1ccf887354ddc6567893ace36a73187577551d6697a167127b5"
+  },
+  "sourceClosure": {
+    "exact": "9ddeec078730b4d4090d807a7c5820d30c291dacab6117c678f3f3abfbfeb6d3",
+    "actual": "63248a36773e5bb2c07311bd3c8810a061433c46dc6e523ae7225c2df4bc0cdc",
+    "overlays": [
+      "database/task16-shared-standard.http.pg.spec.ts",
+      "database/task25-public-cash-handover.http.pg.spec.ts",
+      "database/task27-principal-return.http.pg.spec.ts",
+      "database/task398-owned-database.test-support.ts",
+      "database/task398-voucher281.test-support.ts"
+    ]
+  },
+  "prismaOverlays": [
+    "contract-bank-runtime-fixture.cjs",
+    "run-task398-shared-standard-local.cjs",
+    "task398-owned-280-business-read-baseline.json"
+  ]
+}

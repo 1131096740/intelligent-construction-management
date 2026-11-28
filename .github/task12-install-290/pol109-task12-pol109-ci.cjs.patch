@@ -1,0 +1,12 @@
+--- task12-pol109-ci.cjs
++++ task12-pol109-ci.cjs
+@@ -18 +18 @@
+-    ['services/api/src/project-close-profit/project-close-profit.owned282.http.pg.spec.ts','3894bbde1ebb0b7bcae424171a9fdffe4e5ae23d3f76b5cf103a8406a9013ae3'],
++    ['services/api/src/project-close-profit/project-close-profit.owned282.http.pg.spec.ts','75ae89bc3c6f850ae95fd07c90d63d3159a8e87220c1f2ce87314a3765c7636d'],
+@@ -90 +90,5 @@
+-    (SELECT count(*)=289 FROM public._prisma_migrations WHERE finished_at IS NOT NULL AND rolled_back_at IS NULL)
++    (SELECT count(*)=290 FROM public._prisma_migrations WHERE finished_at IS NOT NULL AND rolled_back_at IS NULL)
++    AND EXISTS(SELECT FROM public._prisma_migrations
++      WHERE migration_name='20261119003500_fund_balance_correction_controlled_round'
++        AND checksum='8ea8b2a9c78210a7c4e42f4ddf7224fada84b2c4692dfbecc41477d3a8704f60'
++        AND finished_at IS NOT NULL AND rolled_back_at IS NULL)

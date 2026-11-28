@@ -24,6 +24,7 @@ const {
   createRunnerCleanup,
   runInterruption
 } = require("./money-bigint-runner-runtime.cjs");
+const { CI_DYNAMIC_MIGRATION_LABEL, createCiDynamicMigrationFixture } = require("./local-staged-ci-dynamic.cjs");
 
 const root = path.resolve(__dirname, "../../..");
 const apiRoot = path.join(root, "services", "api");
@@ -188,7 +189,7 @@ async function assertLocalDocker() {
   };
 }
 
-async function waitForPostgres(containerName) {
+async function waitForPostgres(containerName, databaseName = DATABASE_NAME) {
   for (let attempt = 0; attempt < 60; attempt += 1) {
     try {
       const init = await command(docker, [
@@ -207,7 +208,7 @@ async function waitForPostgres(containerName) {
         "-U",
         "jiangkong",
         "-d",
-        DATABASE_NAME
+        databaseName
       ]);
       return;
     } catch {
@@ -237,7 +238,7 @@ function runtimeEnvironment(sourceEnvironment, temporaryRoot, url, ledgerSecret)
 }
 
 async function deployMigrations(schemaPath, environment) {
-  await command(
+  return command(
     process.execPath,
     [prismaCli, "migrate", "deploy", "--schema", schemaPath],
     {
@@ -383,11 +384,15 @@ async function assertRoleCollisionFailsClosed(
 
 async function preparePreTerminalPrisma(temporaryRoot) {
   const destination = path.join(temporaryRoot, "pre-terminal-prisma");
-  await cp(prismaRoot, destination, {
-    recursive: true,
-    filter: (source) => path.basename(source) !== TERMINAL_MIGRATION
-  });
-  return path.join(destination, "schema.prisma");
+  const destinationMigrations = path.join(destination, "migrations");
+  const schemaPath = path.join(destination, "schema.prisma");
+  await mkdir(destinationMigrations, { recursive: true });
+  await copyFile(path.join(prismaRoot, "schema.prisma"), schemaPath);
+  await copyFile(path.join(migrationsRoot, "migration_lock.toml"), path.join(destinationMigrations, "migration_lock.toml"));
+  for (const directory of listMigrationDirectories(migrationsRoot).slice(0, POL275_MIGRATION_POSITION - 1)) {
+    await cp(path.join(migrationsRoot, directory), path.join(destinationMigrations, directory), { recursive: true });
+  }
+  return schemaPath;
 }
 
 async function runCurrentProcessGate(environment) {
@@ -705,12 +710,14 @@ async function main() {
   const port = await freePort();
   const suffix = `${Date.now()}-${process.pid}`;
   const containerName = `jiangkong-pol275-${suffix}`;
+  const collisionName = containerName + "-collision";
+  const fixtureRunId = randomUUID(), collisionRunId = randomUUID();
   const temporaryRoot = await mkdtemp(path.join(tmpdir(), "jiangkong-pol275-"));
   const password = randomUUID();
   const ledgerSecret = randomUUID();
   const upgradeUrl = databaseUrl(password, port, DATABASE_NAME);
   const fullReplayUrl = databaseUrl(password, port, FULL_REPLAY_DATABASE_NAME);
-  const collisionUrl = databaseUrl(password, port, ROLE_COLLISION_DATABASE_NAME);
+  const collisionPassword = randomUUID();
   const upgradeEnvironment = runtimeEnvironment(
     sourceEnvironment,
     temporaryRoot,
@@ -723,19 +730,16 @@ async function main() {
     fullReplayUrl,
     ledgerSecret
   );
-  const collisionEnvironment = runtimeEnvironment(
-    sourceEnvironment,
-    temporaryRoot,
-    collisionUrl,
-    ledgerSecret
-  );
+  let positiveAttempted = false, collisionAttempted = false, collisionId, collisionClose;
+  const removeContainer = name => command(docker, ["rm", "--force", "--volumes", name], { timeoutMs: 60_000 })
+    .catch(error => { if (!String(error?.message).includes("No such container")) throw error; });
+  const closeCollision = () => collisionClose ??= collisionAttempted ? removeContainer(collisionId ?? collisionName) : Promise.resolve();
   const cleanup = createRunnerCleanup({
     stopChildren: () => commandRuntime.stopAll(),
-    removeContainer: () =>
-      command(docker, ["rm", "--force", "--volumes", containerName], { timeoutMs: 60_000 })
-        .catch((error) => {
-          if (!String(error?.message).includes("No such container")) throw error;
-        }),
+    removeContainer: async () => {
+      const outcomes = await Promise.allSettled([closeCollision(), positiveAttempted ? removeContainer(containerName) : Promise.resolve()]);
+      if (outcomes.some(result => result.status === "rejected")) fail("本轮临时容器清理失败");
+    },
     removeTemporaryRoot: () => rm(temporaryRoot, { recursive: true, force: true }),
     onComplete: () => process.stdout.write("POL-275 本地动态验收资源已清理。\n")
   });
@@ -755,13 +759,16 @@ async function main() {
   process.once("SIGTERM", onSigterm);
 
   try {
-    await command(docker, [
+    positiveAttempted = true;
+    const created = await command(docker, [
       "run",
       "--pull=never",
       "--detach",
       "--rm",
       "--name",
       containerName,
+      "--label",
+      CI_DYNAMIC_MIGRATION_LABEL + "=" + fixtureRunId,
       "--env",
       "POSTGRES_USER=jiangkong",
       "--env",
@@ -784,14 +791,22 @@ async function main() {
       "jiangkong",
       FULL_REPLAY_DATABASE_NAME
     ]);
-    await command(docker, [
-      "exec",
-      containerName,
-      "createdb",
-      "-U",
-      "jiangkong",
-      ROLE_COLLISION_DATABASE_NAME
-    ]);
+    const collisionPort = await freePort();
+    if (collisionPort === port) fail("正向与负控必须使用不同的本机端口");
+    const collisionUrl = databaseUrl(collisionPassword, collisionPort, ROLE_COLLISION_DATABASE_NAME);
+    const collisionEnvironment = runtimeEnvironment(sourceEnvironment, temporaryRoot, collisionUrl, ledgerSecret);
+    collisionAttempted = true;
+    const collision = await command(docker, [
+      "run", "--pull=never", "--detach", "--rm", "--name", collisionName,
+      "--label", CI_DYNAMIC_MIGRATION_LABEL + "=" + collisionRunId,
+      "--env", "POSTGRES_USER=jiangkong", "--env", "POSTGRES_PASSWORD",
+      "--env", `POSTGRES_DB=${ROLE_COLLISION_DATABASE_NAME}`,
+      "--publish", `127.0.0.1:${collisionPort}:5432`, IMAGE
+    ], { env: { ...sourceEnvironment, POSTGRES_PASSWORD: collisionPassword }, forwardOutput: true });
+    const observedId = collision.stdout.trim();
+    if (!/^[a-f0-9]{64}$/u.test(observedId) || observedId === created.stdout.trim()) fail("负控容器身份无效");
+    collisionId = observedId;
+    await waitForPostgres(collisionId, ROLE_COLLISION_DATABASE_NAME);
 
     const preTerminalSchema = await preparePreTerminalPrisma(temporaryRoot);
     await deployMigrations(preTerminalSchema, collisionEnvironment);
@@ -801,27 +816,42 @@ async function main() {
       collisionUrl
     );
 
+    await closeCollision();
+    const migrationFixture = createCiDynamicMigrationFixture({
+      ciFixture: "DYNAMIC_POL275_V1",
+      container: { id: created.stdout.trim(), name: containerName, runId: fixtureRunId },
+      databaseNames: [DATABASE_NAME, FULL_REPLAY_DATABASE_NAME], temporaryRoot,
+      dockerCommand: (args, options) => command(docker, args, options),
+      deploy: ({ databaseUrl, runtimeEnv, schemaPath }) => deployMigrations(schemaPath, { ...runtimeEnv, DATABASE_URL: databaseUrl })
+    });
+    const migrate = (schemaPath, environment) => migrationFixture.migrate({
+      schemaPath, databaseUrl: environment.DATABASE_URL, runtimeEnv: environment
+    });
     try {
-      await deployMigrations(path.join(prismaRoot, "schema.prisma"), fullReplayEnvironment);
+      await migrate(path.join(prismaRoot, "schema.prisma"), fullReplayEnvironment);
     } catch (error) {
-      const diagnosticPath = "/tmp/pol275-terminal-migration.sql";
-      await command(docker, [
-        "cp",
-        path.join(migrationsRoot, TERMINAL_MIGRATION, "migration.sql"),
-        `${containerName}:${diagnosticPath}`
-      ]).then(() => command(docker, [
-        "exec",
-        containerName,
-        "psql",
-        "-v",
-        "ON_ERROR_STOP=1",
-        "-U",
-        "jiangkong",
-        "-d",
-        FULL_REPLAY_DATABASE_NAME,
-        "-f",
-        diagnosticPath
-      ], { forwardOutput: true })).catch(() => undefined);
+      // Keep the original terminal-migration diagnostic restricted to that
+      // migration. A qualification failure must not trigger a raw fallback.
+      if (String(error?.message).includes("Migration name: " + TERMINAL_MIGRATION)) {
+        const diagnosticPath = "/tmp/pol275-terminal-migration.sql";
+        await command(docker, [
+          "cp",
+          path.join(migrationsRoot, TERMINAL_MIGRATION, "migration.sql"),
+          `${containerName}:${diagnosticPath}`
+        ]).then(() => command(docker, [
+          "exec",
+          containerName,
+          "psql",
+          "-v",
+          "ON_ERROR_STOP=1",
+          "-U",
+          "jiangkong",
+          "-d",
+          FULL_REPLAY_DATABASE_NAME,
+          "-f",
+          diagnosticPath
+        ], { forwardOutput: true })).catch(() => undefined);
+      }
       const logs = await command(docker, ["logs", "--since", "2m", containerName])
         .catch(() => ({ stdout: "", stderr: "" }));
       const diagnostics = selectPostgresDiagnostics(
@@ -838,7 +868,7 @@ async function main() {
     );
 
     await deployMigrations(preTerminalSchema, upgradeEnvironment);
-    await deployMigrations(path.join(prismaRoot, "schema.prisma"), upgradeEnvironment);
+    await migrate(path.join(prismaRoot, "schema.prisma"), upgradeEnvironment);
     await runCurrentProcessGate(upgradeEnvironment);
     const legacyProcess = await prepareLegacyProcessSource(temporaryRoot);
     await runLegacyProcessGate(legacyProcess.sourceRoot, upgradeEnvironment);
@@ -900,6 +930,7 @@ module.exports = {
   inheritedDatabaseTargetNames,
   isExpectedRoleMembershipGuardError,
   legacyJestCli,
+  main,
   runtimeEnvironment,
   selectPostgresDiagnostics
 };

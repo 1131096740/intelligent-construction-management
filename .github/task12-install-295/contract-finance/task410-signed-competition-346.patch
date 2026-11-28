@@ -1,0 +1,20 @@
+--- predecessor/spec
++++ forward/spec
+@@ -35,7 +35,7 @@
+       throw new Error("Only the isolated synthetic runtime is supported");
+     }
+     const mode = task410TestDatabase(target);
+-    if (process.env.TASK410_OWNED_PAYMENT_REMAINDER_331 === "1") {
++    if (process.env.TASK410_OWNED_PAYMENT_REMAINDER_331 === "1" || process.env.TASK410_OWNED_EXPENSE_WITNESS_346 === "1") {
+       target.searchParams.set("connection_limit", "4");
+       process.env.DATABASE_URL = target.href;
+     }
+@@ -604,7 +604,7 @@
+     if (canonical === "none") {
+       expect(journal).toEqual([]);
+       await verifySignedSettlementRoundedPayment(db, password, loginActor, call);
+-      if (process.env.TASK410_OWNED_PAYMENT_REMAINDER_331 === "1") {
++      if (process.env.TASK410_OWNED_PAYMENT_REMAINDER_331 === "1" || process.env.TASK410_OWNED_EXPENSE_WITNESS_346 === "1") {
+         await verifySignedSettlementPaymentCompetition(db, password, loginActor, call);
+       }
+     } else {

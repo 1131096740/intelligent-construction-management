@@ -1,5 +1,6 @@
+import { paymentExecutionVoucherFileId } from "../payment/payment-execution-voucher";
 import { CONTRACT_RELATIONSHIP_LABELS, downstreamContractRelationship } from "@jiangkong/shared-domain";
-import { Injectable } from "@nestjs/common";
+import { BadRequestException, Injectable } from "@nestjs/common";
 import { PrismaService } from "../database/prisma.service";
 import { SPOT_PROCUREMENT_RECEIPT_PDF_TEMPLATE_KEY } from "../spot-procurement/spot-procurement.constants";
 import { SPOT_PROCUREMENT_APPROVAL_ORIGINAL_TEMPLATE_KEY } from "../spot-procurement/spot-procurement-form-renderer";
@@ -10,12 +11,56 @@ import {
 
 type ArchiveTone = "default" | "primary" | "warning" | "success";
 
+export interface ArchiveListFilters {
+  project?: string;
+  contract?: string;
+  counterparty?: string;
+  keyword?: string;
+  documentType?: string;
+  archiveStatus?: string;
+  dateFrom?: string;
+  dateTo?: string;
+}
+
+function normalizedFilter(value: string | undefined): string {
+  return value?.trim().toLowerCase() ?? "";
+}
+
+function hasArchiveFilters(filters: ArchiveListFilters): boolean {
+  return Boolean(
+    normalizedFilter(filters.project) ||
+    normalizedFilter(filters.contract) ||
+    normalizedFilter(filters.counterparty) ||
+    normalizedFilter(filters.keyword) ||
+    normalizedFilter(filters.documentType) ||
+    normalizedFilter(filters.archiveStatus) ||
+    normalizedFilter(filters.dateFrom) ||
+    normalizedFilter(filters.dateTo)
+  );
+}
+
+function shanghaiDayStart(value: string): number | null {
+  if (!/^\d{4}-\d{2}-\d{2}$/u.test(value)) return null;
+  const parsed = Date.parse(`${value}T00:00:00+08:00`);
+  return Number.isNaN(parsed) ? null : parsed;
+}
+
+function shanghaiDayEnd(value: string): number | null {
+  const start = shanghaiDayStart(value);
+  return start === null ? null : start + 24 * 60 * 60 * 1000 - 1;
+}
+
 @Injectable()
 export class ArchiveService {
   constructor(private readonly prisma: PrismaService) {}
 
-  async listRecent(rawLimit?: string | number, visibleProjectIds?: string[]) {
+  async listRecent(
+    rawLimit?: string | number,
+    visibleProjectIds?: string[],
+    filters: ArchiveListFilters = {}
+  ) {
     const take = this.limit(rawLimit);
+    const scanTake = hasArchiveFilters(filters) ? Math.max(take, 200) : take;
     const visibleProjectSet = visibleProjectIds ? new Set(visibleProjectIds) : null;
     const visibleTakeoverIds = await this.findVisibleContractTakeoverIds(visibleProjectIds);
     const archiveRecordWhere = visibleProjectIds
@@ -28,18 +73,19 @@ export class ArchiveService {
           ]
         }
       : undefined;
-    const [contractArchives, settlementArchives, paymentVouchers, archiveRecords, spotArchives] =
+    const [contractArchives, settlementArchives, rawPaymentVouchers, archiveRecords, spotArchives] =
       await Promise.all([
-        this.prisma.contractArchiveFile.findMany({ take, orderBy: { createdAt: "desc" } }),
-        this.prisma.settlementArchiveFile.findMany({ take, orderBy: { createdAt: "desc" } }),
-        this.prisma.paymentExecution.findMany({ take, orderBy: { createdAt: "desc" } }),
+        this.prisma.contractArchiveFile.findMany({ take: scanTake, orderBy: { createdAt: "desc" } }),
+        this.prisma.settlementArchiveFile.findMany({ take: scanTake, orderBy: { createdAt: "desc" } }),
+        this.prisma.paymentExecution.findMany({ take: scanTake, orderBy: { createdAt: "desc" } }),
         this.prisma.archiveRecord.findMany({
-          take,
+          take: scanTake,
           orderBy: { createdAt: "desc" },
           ...(archiveRecordWhere ? { where: archiveRecordWhere } : {})
         }),
-        this.findSpotArchives(take, visibleProjectIds)
+        this.findSpotArchives(scanTake, visibleProjectIds)
       ]);
+    const paymentVouchers = await Promise.all(rawPaymentVouchers.map(async row=>({...row,voucherFileId:await paymentExecutionVoucherFileId(this.prisma,row)})));
     const governedSettlementEvidence = await this.findGovernedSettlementEvidence(
       visibleProjectIds,
       take
@@ -47,6 +93,20 @@ export class ArchiveService {
     const governedEvidenceFileIds = new Set(
       governedSettlementEvidence.map((row) => row.fileId)
     );
+
+    const newParentIds = contractArchives.filter(row => row.archiveProtocolVersion === 2).map(row => row.id);
+    const evidence = newParentIds.length ? await this.prisma.contractArchiveEvidenceFile.findMany({ where: { archiveFileId: { in: newParentIds } }, orderBy: [{ archiveFileId: "asc" }, { displayOrder: "asc" }] }) : [];
+    const contractArchiveRefs: Array<{ parent: typeof contractArchives[number]; fileId: string; evidence?: typeof evidence[number] }> = [];
+    for (const parent of contractArchives) {
+      if (parent.archiveProtocolVersion === 2) {
+        const children = evidence.filter(child => child.archiveFileId === parent.id).sort((a, b) => a.displayOrder - b.displayOrder);
+        if (parent.fileId !== null || !children.length || children.some((child, index) => child.contractVersionId !== parent.contractVersionId || child.displayOrder !== index)) throw new BadRequestException("合同归档原件清单不完整，请核对资料");
+        for (const child of children) contractArchiveRefs.push({ parent, evidence: child, fileId: child.fileId });
+      } else {
+        if (!parent.fileId) throw new BadRequestException("原合同归档记录缺少文件，请核对资料");
+        contractArchiveRefs.push({ parent, fileId: parent.fileId });
+      }
+    }
 
     const contractVersionIds = [
       ...contractArchives.map((row) => row.contractVersionId),
@@ -71,7 +131,7 @@ export class ArchiveService {
       .filter((row) => row.businessType === "contract_takeover")
       .map((row) => row.businessId);
     const fileIds = [
-      ...contractArchives.map((row) => row.fileId),
+      ...contractArchiveRefs.map((ref) => ref.fileId),
       ...settlementArchives.map((row) => row.fileId),
       ...paymentVouchers.map((row) => row.voucherFileId),
       ...archiveRecords.map((row) => row.fileId),
@@ -144,21 +204,27 @@ export class ArchiveService {
     );
 
     const rows = [
-      ...contractArchives.map((row) => {
+      ...contractArchiveRefs.map(({ parent: row, fileId, evidence: child }) => {
+        const file = fileById.get(fileId);
+        if (child && (!file || file.mimeType !== child.mimeType || file.sizeBytes !== child.sizeBytes || file.contentSha256 !== child.contentSha256)) throw new BadRequestException("归档原件身份与冻结资料不一致，请核对原件");
         const version = versionById.get(row.contractVersionId);
         const contract = version ? contractById.get(version.contractId) : null;
         const canDownload = row.status === "confirmed" || Boolean(row.confirmedAt);
         return {
           projectId: contract?.projectId,
-          id: `contract-${row.id}`,
+          contractNo: contract?.code ?? contract?.temporaryCode ?? "",
+          contractName: contract?.name ?? "",
+          counterpartyName: contract?.counterparty ?? "",
+          id: child ? `contract-evidence-${child.id}` : `contract-${row.id}`,
+          ...(child ? { archiveRecordId: row.id, archiveProtocolVersion: 2 as const, evidenceId: child.id, displayOrder: child.displayOrder } : {}),
           contractRelationshipLabel:CONTRACT_RELATIONSHIP_LABELS[downstreamContractRelationship(version??{})],
-          documentNo: row.id,
-          fileId: row.fileId,
-          fileSizeBytes: fileById.get(row.fileId)?.sizeBytes ?? 0,
+          documentNo: child ? this.contractArchiveNumber(row.authoritySnapshot, contract?.code) : row.id,
+          fileId,
+          fileSizeBytes: file?.sizeBytes ?? 0,
           documentType: "合同归档件",
           businessRef: this.contractRef(contract, version),
           project: this.projectName(projectById, contract?.projectId),
-          fileSource: this.fileName(fileById, row.fileId),
+          fileSource: this.fileName(fileById, fileId),
           archiveStatus: this.statusLabel(row.status),
           statusTone: this.statusTone(row.status),
           uploadDepartment: "合同部",
@@ -173,8 +239,14 @@ export class ArchiveService {
         const settlement = settlementById.get(row.settlementId);
         if (settlement?.governanceVersion === 1) return [];
         const canDownload = row.status === "confirmed" || Boolean(row.confirmedAt);
+        const settlementContract = settlement
+          ? contractById.get(versionById.get(settlement.contractVersionId)?.contractId ?? "")
+          : null;
         return [{
           projectId: settlement?.projectId,
+          contractNo: settlementContract?.code ?? settlementContract?.temporaryCode ?? "",
+          contractName: settlementContract?.name ?? "",
+          counterpartyName: settlementContract?.counterparty ?? "",
           id: `settlement-${row.id}`,
           contractRelationshipLabel:CONTRACT_RELATIONSHIP_LABELS[downstreamContractRelationship(versionById.get(settlement?.contractVersionId??"")??{})],
           documentNo: row.id,
@@ -197,24 +269,30 @@ export class ArchiveService {
       ...governedSettlementEvidence,
       ...paymentVouchers.map((row) => {
         const payment = paymentById.get(row.paymentRequestId);
+        const paymentContract = payment
+          ? contractById.get(versionById.get(payment.contractVersionId)?.contractId ?? "")
+          : null;
         return {
           projectId: payment?.projectId,
+          contractNo: paymentContract?.code ?? paymentContract?.temporaryCode ?? "",
+          contractName: paymentContract?.name ?? "",
+          counterpartyName: paymentContract?.counterparty ?? "",
           id: `voucher-${row.id}`,
           contractRelationshipLabel:CONTRACT_RELATIONSHIP_LABELS[downstreamContractRelationship(versionById.get(payment?.contractVersionId??"")??{})],
-          documentNo: row.voucherFileId,
+          documentNo: row.voucherFileId ?? "凭证待补充",
           fileId: row.voucherFileId,
-          fileSizeBytes: fileById.get(row.voucherFileId)?.sizeBytes ?? 0,
+          fileSizeBytes: row.voucherFileId ? fileById.get(row.voucherFileId)?.sizeBytes ?? 0 : 0,
           documentType: "付款凭证",
           businessRef: payment?.code ?? row.paymentRequestId,
           project: this.projectName(projectById, payment?.projectId),
-          fileSource: this.fileName(fileById, row.voucherFileId),
-          archiveStatus: "已上传",
-          statusTone: "success" as ArchiveTone,
+          fileSource: row.voucherFileId ? this.fileName(fileById, row.voucherFileId) : "实付已登记，凭证待补充",
+          archiveStatus: row.voucherFileId ? "已上传" : "待补充",
+          statusTone: (row.voucherFileId ? "success" : "warning") as ArchiveTone,
           uploadDepartment: "财务部",
           confirmedBy: userById.get(row.executedByUserId)?.name ?? "经办人未读取",
           lastAction: this.date(row.createdAt),
-          canDownload: true,
-          disabledReason: null,
+          canDownload: Boolean(row.voucherFileId),
+          disabledReason: row.voucherFileId ? null : "实付已登记，凭证待补充",
           createdAt: row.createdAt
         };
       }),
@@ -233,6 +311,21 @@ export class ArchiveService {
           expenseById,
           takeoverById
         });
+        const recordTakeover =
+          row.businessType === "contract_takeover" ? takeoverById.get(row.businessId) : undefined;
+        const recordContractVersionId =
+          row.businessType === "contract_version"
+            ? row.businessId
+            : row.businessType === "settlement"
+              ? settlementById.get(row.businessId)?.contractVersionId
+              : row.businessType === "payment_request"
+                ? paymentById.get(row.businessId)?.contractVersionId
+                : undefined;
+        const recordContract = recordTakeover
+          ? contractById.get(recordTakeover.contractId)
+          : recordContractVersionId
+            ? contractById.get(versionById.get(recordContractVersionId)?.contractId ?? "")
+            : undefined;
         return {
           projectId: this.archiveProjectId(row.businessType, row.businessId, {
             versionById,
@@ -242,6 +335,9 @@ export class ArchiveService {
             expenseById,
             takeoverById
           }),
+          contractNo: recordContract?.code ?? recordContract?.temporaryCode ?? "",
+          contractName: recordContract?.name ?? "",
+          counterpartyName: recordContract?.counterparty ?? "",
           id: `archive-${row.id}`,
           documentNo: row.id,
           fileId: row.fileId,
@@ -485,20 +581,77 @@ export class ArchiveService {
           }
         ];
       })
-    ]
+    ];
+    const spotProcurementByCode = new Map(
+      spotArchives.procurements.map((procurement) => [procurement.code, procurement])
+    );
+    type AssembledArchiveRow = (typeof rows)[number];
+    const rowContractNo = (row: AssembledArchiveRow) =>
+      "contractNo" in row && typeof row.contractNo === "string" ? row.contractNo : "";
+    const rowContractName = (row: AssembledArchiveRow) =>
+      "contractName" in row && typeof row.contractName === "string" ? row.contractName : "";
+    const rowCounterpartyName = (row: AssembledArchiveRow) =>
+      "counterpartyName" in row && typeof row.counterpartyName === "string"
+        ? row.counterpartyName
+        : spotProcurementByCode.get(row.businessRef)?.supplierNameSnapshot ?? "";
+    const filterText = {
+      project: normalizedFilter(filters.project),
+      contract: normalizedFilter(filters.contract),
+      counterparty: normalizedFilter(filters.counterparty),
+      keyword: normalizedFilter(filters.keyword),
+      documentType: normalizedFilter(filters.documentType),
+      archiveStatus: normalizedFilter(filters.archiveStatus)
+    };
+    const dateFrom = filters.dateFrom ? shanghaiDayStart(filters.dateFrom) : null;
+    const dateTo = filters.dateTo ? shanghaiDayEnd(filters.dateTo) : null;
+    const matchesFilters = (row: AssembledArchiveRow) => {
+      const contractText = `${rowContractNo(row)} ${rowContractName(row)}`.toLowerCase();
+      const counterparty = rowCounterpartyName(row).toLowerCase();
+      const keywordMatches =
+        !filterText.keyword ||
+        [
+          row.documentNo,
+          row.businessRef,
+          row.project,
+          row.fileSource,
+          row.documentType,
+          contractText,
+          counterparty
+        ].some((value) => value.toLowerCase().includes(filterText.keyword));
+      const created = row.createdAt.getTime();
+      return (
+        (!filterText.project || row.project.toLowerCase().includes(filterText.project)) &&
+        (!filterText.contract || contractText.includes(filterText.contract)) &&
+        (!filterText.counterparty || counterparty.includes(filterText.counterparty)) &&
+        (!filterText.documentType || row.documentType.toLowerCase().includes(filterText.documentType)) &&
+        (!filterText.archiveStatus || row.archiveStatus.toLowerCase().includes(filterText.archiveStatus)) &&
+        (dateFrom === null || created >= dateFrom) &&
+        (dateTo === null || created <= dateTo) &&
+        keywordMatches
+      );
+    };
+    const searchRows = rows
       .filter((row) => !visibleProjectSet || (row.projectId && visibleProjectSet.has(row.projectId)))
+      .filter(matchesFilters)
       .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())
       .slice(0, take)
       .map((row) => ({
         id: row.id,
+        contractNo: rowContractNo(row),
+        contractName: rowContractName(row),
+        counterpartyName: rowCounterpartyName(row),
+        ...("evidenceId" in row && typeof row.evidenceId === "string" && "archiveRecordId" in row && typeof row.archiveRecordId === "string" && "archiveProtocolVersion" in row && row.archiveProtocolVersion === 2 && "displayOrder" in row && typeof row.displayOrder === "number"
+          ? { archiveRecordId: row.archiveRecordId, archiveProtocolVersion: row.archiveProtocolVersion, evidenceId: row.evidenceId, displayOrder: row.displayOrder } : {}),
         contractRelationshipLabel:"contractRelationshipLabel" in row?row.contractRelationshipLabel:row.documentType.includes("合同")||row.documentType.includes("结算")||row.documentType.includes("付款")?"待确认分类":"无合同业务",
         documentNo: row.documentNo,
         fileId: row.fileId,
+        mimeType: row.fileId ? fileById.get(row.fileId)?.mimeType ?? "" : "",
         documentType: row.documentType,
         businessRef: row.businessRef,
         project: row.project,
         fileSource: row.fileSource,
         fileSizeBytes: row.fileSizeBytes,
+        createdAt: row.createdAt.toISOString(),
         canDownload: row.canDownload,
         disabledReason: row.disabledReason,
         archiveStatus: row.archiveStatus,
@@ -509,13 +662,13 @@ export class ArchiveService {
       }));
 
     return {
-      rows,
+      rows: searchRows,
       summary: {
-        total: rows.length,
-        contractArchives: rows.filter((row) => row.documentType.includes("合同")).length,
-        settlementArchives: rows.filter((row) => row.documentType.includes("结算")).length,
-        paymentFiles: rows.filter((row) => row.documentType.includes("付款")).length,
-        pending: rows.filter((row) => row.archiveStatus.includes("待")).length
+        total: searchRows.length,
+        contractArchives: searchRows.filter((row) => row.documentType.includes("合同")).length,
+        settlementArchives: searchRows.filter((row) => row.documentType.includes("结算")).length,
+        paymentFiles: searchRows.filter((row) => row.documentType.includes("付款")).length,
+        pending: searchRows.filter((row) => row.archiveStatus.includes("待")).length
       }
     };
   }
@@ -1264,6 +1417,12 @@ export class ArchiveService {
       select: { id: true }
     });
     return rows.map((row) => row.id);
+  }
+
+  private contractArchiveNumber(authority: unknown, currentCode: string | null | undefined): string {
+    const record = (v: unknown): Record<string, unknown> => v && typeof v === "object" && !Array.isArray(v) ? v as Record<string, unknown> : {};
+    const code = record(record(record(authority).sourceBasis).sourceLocator).formalCode;
+    return typeof code === "string" && code.trim() ? code : currentCode || "合同归档资料";
   }
 
   private findFiles(ids: string[]) {

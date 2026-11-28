@@ -120,7 +120,7 @@ for (const width of [1280, 390]) {
         }
         if (path.endsWith("/capability")) return route.fulfill({ json: { claimId: "claim-1", availableActions: ["delete_expense_claim_draft"], removableAttachmentIds: [] } });
         return route.fulfill({ json: kind === "expense" ? {
-          id: "claim-1", code: "TEST-01", claimType: "loan", status: "draft", canDeleteDraft: true, project: null,
+          id: "claim-1", code: "TEST-01", claimType: "incidental_expense", status: "draft", canDeleteDraft: true, project: { id: "project-1", name: "隔离测试项目" },
           requestedAmountCents: "100", loanOffsetAmountCents: "0", companyPayableAmountCents: "0", fundedAmountCents: "0", updatedAt: "2026-10-19T00:00:00.000Z", entrySnapshots: [], lines: [], attachments: [], paymentExecutions: [], loanDisbursements: [], loanRepayments: [], paymentSubjectCompanyEntities: [], paymentSubjectPermissions: { canAdjust: false }, handledByName: "合成员工", applicantName: "合成员工", fundsPermissions: {}, reason: "合成草稿"
         } : {
           id: "procurement-1", code: "TEST-02", status: "draft", statusLabel: "草稿", canDeleteDraft: true, revision: 1, requestedAmountCents: "100", approvals: [], submissions: [], payments: [], paymentSummary: { availableAmountCents: "100", reservedAmountCents: "0" }, reason: "合成采购"

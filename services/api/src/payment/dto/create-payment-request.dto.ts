@@ -1,4 +1,4 @@
-import { IsIn, ValidateIf } from "class-validator";
+import { IsIn, Matches, ValidateIf } from "class-validator";
 import {
   IsCanonicalMoneyText,
   IsMaxUnicodeTextLength,
@@ -8,10 +8,10 @@ import {
 
 export class CreatePaymentRequestDto {
   @ValidateIf((_object, value) => value !== undefined)
-  @IsIn(["settlement", "contract_advance", "contract_due"], {
+  @IsIn(["settlement", "signed_settlement", "contract_advance", "contract_due"], {
     message: "付款来源类型不正确"
   })
-  sourceType?: "settlement" | "contract_advance" | "contract_due";
+  sourceType?: "settlement" | "signed_settlement" | "contract_advance" | "contract_due";
 
   @ValidateIf((_object, value) => value !== undefined)
   @IsIn(["our_company", "affiliate"], { message: "付款主体类型不正确" })
@@ -24,6 +24,12 @@ export class CreatePaymentRequestDto {
   settlementId?: string;
 
   @IsOptionalNonBlankText({
+    typeMessage: "已签结算编号必须是文字",
+    blankMessage: "已签结算编号不能为空白"
+  })
+  signedSettlementId?: string;
+
+  @IsOptionalNonBlankText({
     typeMessage: "合同版本编号必须是文字",
     blankMessage: "合同版本编号不能为空白"
   })
@@ -34,6 +40,10 @@ export class CreatePaymentRequestDto {
     blankMessage: "付款条款版本编号不能为空白"
   })
   paymentTermsVersionId?: string;
+
+  @ValidateIf((_object, value) => value !== undefined)
+  @Matches(/^[a-f0-9]{64}$/u, { message: "付款约定核对凭据不正确，请重新读取合同" })
+  expectedAgreementFingerprint?: string;
 
   @IsOptionalNonBlankText({
     typeMessage: "付款阶段编号必须是文字",

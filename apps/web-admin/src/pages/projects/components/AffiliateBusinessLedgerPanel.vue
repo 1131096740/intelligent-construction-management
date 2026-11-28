@@ -95,6 +95,7 @@ const paymentKindOptions = [
   { label: "合同预付款", value: "advance" },
   { label: "通用直接付款", value: "direct_contract" }
 ] satisfies Array<{ label: string; value: ProjectAffiliatePaymentKind }>;
+const newPaymentKindOptions = paymentKindOptions.filter(({ value }) => value !== "advance");
 const effectDirectionOptions = [
   { label: "增加", value: "increase" },
   { label: "减少", value: "decrease" }
@@ -1327,7 +1328,7 @@ function errorMessage(error: unknown, fallback: string) {
           <t-select
             v-model="paymentForm.paymentKind"
             label="付款类型"
-            :options="paymentKindOptions"
+            :options="recordMode === 'original' ? newPaymentKindOptions : paymentKindOptions"
             :disabled="recordMode !== 'original'"
           />
           <t-select

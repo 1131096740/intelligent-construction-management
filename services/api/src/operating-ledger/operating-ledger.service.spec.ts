@@ -1,5 +1,8 @@
 import { BadRequestException, ConflictException, ForbiddenException } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
+import { ContractOperatingSourceAdapter } from "../contract/contract-operating-source.adapter";
+import { ExpenseClaimApprovalOperatingSourceAdapter } from "../expense-claim/expense-claim-operating-source.adapter";
+import { syntheticOperatingWrite } from "./operating-precision.persistence.test-support";
 
 import {
   OperatingLedgerService,
@@ -62,6 +65,200 @@ describe("OperatingLedgerService", () => {
     await expect(service.appendFromSource(baseInput(), "actor-1"))
       .rejects.toBeInstanceOf(ForbiddenException);
     expect(prisma.operatingFact.create).not.toHaveBeenCalled();
+  });
+
+  it("still requires a participating company on the legacy payment source date", async () => {
+    const prisma = createPrismaMock({
+      user: { id: "actor-1", isActive: true }, projectMembers: [{ positionKey: "finance_staff" }],
+      project: projectRecord(), assignment: assignmentRecord()
+    });
+    prisma.projectParticipatingCompany.findFirst.mockResolvedValue(null);
+    const service = new OperatingLedgerService(prisma as never);
+    const input = baseInput();
+    await expect(service.appendFromSource({
+      ...input, sourceType: "payment_execution", factKind: "downstream_payment",
+      subjects: { actualPayer: { kind: "participating_company", id: "company-1" },
+        payee: { kind: "downstream_counterparty", id: "counterparty-version-1" } }
+    }, "actor-1")).rejects.toThrow("未在本项目事实日参与");
+    expect(prisma.projectParticipatingCompany.findFirst).toHaveBeenCalledWith(expect.objectContaining({
+      where: expect.objectContaining({
+        projectId: input.projectId,
+        AND: expect.arrayContaining([{ effectiveFrom: { lte: input.occurredAt } }])
+      })
+    }));
+    expect(prisma.operatingFact.create).not.toHaveBeenCalled();
+  });
+
+  it("refuses a public-cash payment before registered funding has been installed", async () => {
+    const prisma = createPrismaMock({
+      user: { id: "actor-1", isActive: true }, projectMembers: [{ positionKey: "finance_staff" }],
+      project: projectRecord(), assignment: assignmentRecord()
+    });
+    const service = new OperatingLedgerService(prisma as never);
+    await expect(service.appendFromSource({
+      ...baseInput(), sourceType: "payment_execution", factKind: "downstream_payment",
+      subjects: { actualPayer: { kind: "public_cash", id: "public_cash" },
+        payee: { kind: "downstream_counterparty", id: "counterparty-version-1" } }
+    }, "actor-1")).rejects.toThrow("公共现金经营后果必须关联同一正式实付");
+    expect(prisma.operatingFact.create).not.toHaveBeenCalled();
+  });
+
+  it("requires the registered expense execution, claim and public cash account to match the ledger payment", async () => {
+    const prisma = createPrismaMock({
+      user: { id: "actor-1", isActive: true }, projectMembers: [{ positionKey: "finance_staff" }],
+      project: projectRecord(), assignment: assignmentRecord(), persistControlledRows: true
+    });
+    const base = baseInput();
+    const payer = { kind: "public_cash", id: "public_cash" } as const;
+    const input = {
+      ...base, sourceType: "expense_claim_payment_execution", sourceBusinessId: "expense-payment-1",
+      factKind: "downstream_payment" as const,
+      subjects: { actualPayer: payer, payee: { kind: "downstream_counterparty" as const, id: "counterparty-version-1" } },
+      impacts: [{
+        idempotencyKey: "expense-payment-1:funds", sourceImpactKey: "public_cash_funds_decrease",
+        impactKind: "public_cash_funds_decrease" as const, amountCents: base.amountCents,
+        direction: "decrease" as const, subjectRole: "actual_payer" as const, subject: payer
+      }]
+    };
+    const funding = {
+      actualPayerCompanyId: null, actualPayerName: "公共现金", originalDebtorCompanyId: "company-1",
+      projectId: input.projectId, actorUserId: input.confirmedByUserId, amountCents: input.amountCents, paidAt: input.occurredAt,
+      account: { kind: "public_cash", scopeKey: "public_cash", companyEntityId: null },
+      expenseExecution: { id: input.sourceBusinessId, expenseClaimId: "expense-1", amountCents: input.amountCents,
+        paidAt: input.occurredAt, createdAt: input.confirmedAt, recordedByUserId: input.confirmedByUserId }
+    };
+    const findFunding = jest.fn()
+      .mockResolvedValueOnce({ ...funding, projectId: "another-project" })
+      .mockResolvedValue(funding);
+    const tx = { ...prisma,
+      registeredOperationalPayment: { findUnique: findFunding },
+      expenseClaim: { findUnique: jest.fn().mockResolvedValue({
+        projectId: input.projectId, companyEntityId: "company-1", claimType: "reimbursement"
+      }) }
+    } as never;
+    const service = new OperatingLedgerService(prisma as never);
+    await expect(service.appendFromSourceInTransaction(tx, input, "actor-1")).rejects.toThrow("公共现金经营后果必须关联同一正式实付");
+    await expect(service.appendFromSourceInTransaction(tx, input, "actor-1")).resolves.toMatchObject({ created: true });
+    expect(findFunding).toHaveBeenCalledWith(expect.objectContaining({ where: { expenseExecutionId: "expense-payment-1" } }));
+  });
+
+  it("只在末次确认的受控成本入口写账，不查询经营整行或调用通用写函数", async () => {
+    const prisma = createPrismaMock({ user: { id: "actor-1", isActive: true }, projectMembers: [{ positionKey: "finance_staff" }],
+      project: projectRecord(), assignment: assignmentRecord() });
+    const scoped = jest.fn(async (parts: TemplateStringsArray, ...args: unknown[]) => {
+      expect(parts.join("?")).toContain("jg_post_contract_work_completion_cost_v1");
+      const fact = JSON.parse(String(args[0]));
+      const impact = JSON.parse(String(args[1]));
+      expect(fact).toMatchObject({ sourceType: "contract_work_completion", sourceBusinessId: "fact-1", amountYuan: "0.0123" });
+      expect(impact).toMatchObject({ factId: fact.id, impactKind: "confirmed_cost", amountYuan: "0.0123" });
+      return [{ id: fact.id, projectId: "project-1", sourceType: fact.sourceType, sourceBusinessId: "fact-1", impactId: "impact-1" }];
+    });
+    const tx = { ...prisma, $queryRaw: scoped } as never;
+    const service = new OperatingLedgerService(prisma as never);
+    const input = { ...baseInput(), sourceType: "contract_work_completion", sourceBusinessId: "fact-1",
+      idempotencyKey: "contract_work_completion:fact-1", factKind: "expense", direction: "neutral",
+      numericProtocolVersion: 2, amountCents: null, amountYuan: "0.0123",
+      sourceSnapshot: { numericFacts: { protocolVersion: 2, amountState: "known", amountYuan: "0.0123" } },
+      subjects: { debtor: { kind: "construction_enterprise", id: "affiliate-version-1" },
+        costBearingCompany: { kind: "construction_enterprise", id: "affiliate-version-1" },
+        creditor: { kind: "downstream_counterparty", id: "counterparty-version-1" } },
+      impacts: [{ idempotencyKey: "contract_work_completion:fact-1:confirmed_cost", sourceImpactKey: "confirmed_cost",
+        impactKind: "confirmed_cost", amountCents: null, numericProtocolVersion: 2, amountYuan: "0.0123",
+        direction: "increase", subjectRole: "debtor", subject: { kind: "construction_enterprise", id: "affiliate-version-1" },
+        costCategoryCode: "other_project_cost" }] } as const;
+    await expect(service.appendConfirmedSourceInTransaction(tx, input as never, "actor-1"))
+      .resolves.toMatchObject({ created: true, impactIds: ["impact-1"] });
+    expect(scoped).toHaveBeenCalledTimes(1);
+    expect(prisma.operatingFact.findUnique).not.toHaveBeenCalled();
+    expect(prisma.operatingImpactEntry.findUnique).not.toHaveBeenCalled();
+    await expect(service.replayFromSourceInTransaction(tx, input as never, "actor-1")).rejects.toBeInstanceOf(ForbiddenException);
+    expect(scoped).toHaveBeenCalledTimes(1);
+  });
+
+  it("经公开经营写入与读取保留合同承诺1.5340元，事实及影响均不冒充分", async () => {
+    const prisma = createPrismaMock({ user: { id: "actor-1", isActive: true }, projectMembers: [{ positionKey: "finance_staff" }], project: projectRecord(), assignment: assignmentRecord(), persistControlledRows: true });
+    const service = new OperatingLedgerService(prisma as never);
+    const input = { ...baseInput(), sourceType: "contract_version", sourceBusinessId: "contract-version-precision", sourceBusinessCode: "HT-PRECISION", factKind: "downstream_contract", direction: "neutral", numericProtocolVersion: 2, amountCents: null, amountYuan: "1.5340", sourceSnapshot: { numericFacts: { protocolVersion: 2, amountState: "known", amountYuan: "1.5340" } }, subjects: { debtor: { kind: "participating_company", id: "company-1" }, creditor: { kind: "downstream_counterparty", id: "counterparty-version-1" } }, impacts: [{ idempotencyKey: "precision-commitment", sourceImpactKey: "contract_commitment_reference", impactKind: "contract_commitment_reference", numericProtocolVersion: 2, amountCents: null, amountYuan: "1.5340", direction: "increase", subjectRole: "debtor", subject: { kind: "participating_company", id: "company-1" } }] };
+    await service.appendFromSource(input as never, "actor-1");
+    const read = await new OperatingLedgerService(prisma as never).readFacts("project-1", "actor-1") as unknown as Array<{ numericProtocolVersion: number; amountCents: bigint | null; amountYuan: Prisma.Decimal | null; impacts: Array<{ numericProtocolVersion: number; amountCents: bigint | null; amountYuan: Prisma.Decimal | null }> }>;
+    expect(read).toHaveLength(1);
+    expect(read[0]).toMatchObject({ numericProtocolVersion: 2, amountCents: null });
+    expect(read[0].amountYuan?.toFixed(4)).toBe("1.5340");
+    expect(read[0].impacts).toHaveLength(1);
+    expect(read[0].impacts[0]).toMatchObject({ numericProtocolVersion: 2, amountCents: null });
+    expect(read[0].impacts[0].amountYuan?.toFixed(4)).toBe("1.5340");
+  });
+
+  it("keeps an exact signed-settlement cost with zero cumulative payable delta and refuses a forged delta", async () => {
+    const prisma = createPrismaMock({ user: { id: "actor-1", isActive: true },
+      projectMembers: [{ positionKey: "finance_staff" }], project: projectRecord(),
+      assignment: assignmentRecord(), persistControlledRows: true });
+    const service = new OperatingLedgerService(prisma as never);
+    const debtor = { kind: "participating_company", id: "company-1" };
+    const operatingNumericFacts = { protocolVersion: 2, cumulativeBeforeYuan: "1.0100",
+      cumulativeAfterYuan: "1.0050", payableDeltaCents: "0" };
+    const input = {
+      ...baseInput(),
+      sourceType: "signed_contract_settlement", sourceBusinessId: "signed-settlement-1",
+      factKind: "downstream_settlement", direction: "neutral", numericProtocolVersion: 2,
+      amountCents: null, amountYuan: "0.0050",
+      sourceSnapshot: { formalStatus: "confirmed", contractKind: "downstream",
+        relationship: "inside", signedAmountYuan: "-0.0050", operatingNumericFacts },
+      subjects: { debtor, creditor: { kind: "downstream_counterparty", id: "counterparty-version-1" } },
+      impacts: [{ idempotencyKey: "signed-settlement-1:confirmed_cost", sourceImpactKey: "confirmed_cost",
+        impactKind: "confirmed_cost", direction: "decrease", subjectRole: "debtor", subject: debtor,
+        costCategoryCode: "crew_and_labor", numericProtocolVersion: 2, amountCents: null, amountYuan: "0.0050" }]
+    } as const;
+    const wrongDelta = { ...input, sourceSnapshot: { ...input.sourceSnapshot,
+      operatingNumericFacts: { ...operatingNumericFacts, payableDeltaCents: "-1" } } };
+    await expect(service.appendFromSource(wrongDelta as never, "actor-1")).rejects.toThrow("冻结的累计付款口径不一致");
+    expect(prisma.$queryRaw).not.toHaveBeenCalled();
+
+    await expect(service.appendFromSource(input as never, "actor-1")).resolves.toMatchObject({ created: true });
+    await expect(service.appendFromSource(input as never, "actor-1")).resolves.toMatchObject({ created: false });
+    const [fact] = await service.readFacts("project-1", "actor-1");
+    expect(fact).toMatchObject({ numericProtocolVersion: 2, amountCents: null });
+    expect(fact.impacts).toHaveLength(1);
+    expect(fact.impacts[0]).toMatchObject({ numericProtocolVersion: 2, amountCents: null, direction: "decrease" });
+    expect(fact.impacts[0].amountYuan?.toFixed(4)).toBe("0.0050");
+  });
+
+  it("公开持久化重读区分待确定合同总价与已知零元，重放不互换", async () => {
+    for (const amountYuan of [null, "0.0000"]) {
+      const prisma = createPrismaMock({ user: { id: "actor-1", isActive: true }, projectMembers: [{ positionKey: "finance_staff" }], project: projectRecord(), assignment: assignmentRecord(), persistControlledRows: true });
+      const input = { ...baseInput(), sourceType: "contract_version", sourceBusinessId: "contract-version-unknown", factKind: "downstream_contract", direction: "neutral", numericProtocolVersion: 2, amountCents: null, amountYuan, subjects: { debtor: { kind: "participating_company", id: "company-1" }, creditor: { kind: "downstream_counterparty", id: "counterparty-version-1" } }, impacts: [{ idempotencyKey: "unknown-commitment", sourceImpactKey: "contract_commitment_reference", impactKind: "contract_commitment_reference", numericProtocolVersion: 2, amountCents: null, amountYuan, direction: amountYuan === null ? "notice" : "increase", subjectRole: "debtor", subject: { kind: "participating_company", id: "company-1" } }] };
+      await new OperatingLedgerService(prisma as never).appendFromSource(input as never, "actor-1");
+      const reader = new OperatingLedgerService(prisma as never);
+      await reader.appendFromSource(input as never, "actor-1");
+      const read = await reader.readFacts("project-1", "actor-1");
+      expect(read).toHaveLength(1);
+      expect(read[0].amountCents).toBeNull();
+      expect(read[0].amountYuan === null ? null : read[0].amountYuan.toFixed(4)).toBe(amountYuan);
+      expect(read[0].sourceSnapshot).toMatchObject({ numericFacts: { protocolVersion: 2, amountState: amountYuan === null ? "unknown" : "known", amountYuan } });
+      expect(read[0].impacts[0].amountYuan === null ? null : read[0].impacts[0].amountYuan.toFixed(4)).toBe(amountYuan);
+      const otherAmount = amountYuan === null ? "0.0000" : null;
+      await expect(reader.appendFromSource({ ...input, amountYuan: otherAmount, impacts: [{ ...input.impacts[0], amountYuan: otherAmount }] } as never, "actor-1")).rejects.toBeInstanceOf(BadRequestException);
+    }
+  });
+
+  it("拒绝把待确定合同承诺写成已知零元影响", async () => {
+    const prisma = createPrismaMock({ user: { id: "actor-1", isActive: true }, projectMembers: [{ positionKey: "finance_staff" }], project: projectRecord(), assignment: assignmentRecord(), persistControlledRows: true });
+    const input = { ...baseInput(), sourceType: "contract_version", sourceBusinessId: "contract-version-mismatch", factKind: "downstream_contract", direction: "neutral", numericProtocolVersion: 2, amountCents: null, amountYuan: null, subjects: { debtor: { kind: "participating_company", id: "company-1" }, creditor: { kind: "downstream_counterparty", id: "counterparty-version-1" } }, impacts: [{ idempotencyKey: "mismatch-commitment", sourceImpactKey: "contract_commitment_reference", impactKind: "contract_commitment_reference", numericProtocolVersion: 2, amountCents: null, amountYuan: "0.0000", direction: "increase", subjectRole: "debtor", subject: { kind: "participating_company", id: "company-1" } }] };
+    const service = new OperatingLedgerService(prisma as never);
+    await expect(service.appendFromSource(input as never, "actor-1")).rejects.toBeInstanceOf(BadRequestException);
+    expect(await service.readFacts("project-1", "actor-1")).toEqual([]);
+  });
+
+  it("公开合同适配和经营写入保留前版净减少0.0050元", async () => {
+    const prisma = createPrismaMock({ user: { id: "actor-1", isActive: true }, projectMembers: [{ positionKey: "finance_staff" }], project: projectRecord(), assignment: assignmentRecord(), persistControlledRows: true });
+    const source = { projectId: "project-1", sourceType: "contract_version", sourceBusinessId: "contract-version-decrease", sourceBusinessCode: "HT-DEC", sourceVersion: 2, status: "confirmed" as const, sourceSnapshot: { numericProtocolVersion: 2, commitmentDeltaYuan: "-0.0050", amountNature: "fixed", signingSubjectType: "our_company", companyEntityVersionId: "company-1", counterpartyVersionId: "counterparty-version-1", occurredAt: "2026-08-14T00:00:00.000Z", confirmedAt: "2026-08-14T01:00:00.000Z", confirmedByUserId: "actor-1", operatingLedgerEffectiveDate: "2026-08-01T00:00:00.000Z", affiliate: { assignmentId: "assignment-1", businessPartyVersionId: "affiliate-version-1", name: "施工企业", creditCode: "91110000000000000A" } } };
+    const { input } = new ContractOperatingSourceAdapter().toOperatingFactInput(source);
+    await new OperatingLedgerService(prisma as never).appendFromSource(input, "actor-1");
+    const read = await new OperatingLedgerService(prisma as never).readFacts("project-1", "actor-1");
+    expect(read[0].amountCents).toBeNull();
+    expect(read[0].amountYuan?.toFixed(4)).toBe("0.0050");
+    expect(read[0].impacts[0].direction).toBe("decrease");
+    expect(read[0].impacts[0].amountYuan?.toFixed(4)).toBe("0.0050");
   });
 
   it("writes one fact with multiple impact keys and replays the same source idempotently", async () => {
@@ -306,6 +503,64 @@ describe("OperatingLedgerService", () => {
         "actor-1"
       )
     ).rejects.toThrow("事实种类project_wage必须填写payee主体");
+  });
+
+  it("retains the original cost and payable with an explicitly pending bearing company", async () => {
+    const prisma = pendingExpensePrisma();
+    const service = new OperatingLedgerService(prisma as never);
+    const input = pendingExpenseInput();
+
+    await expect(service.appendConfirmedSourceInTransaction(prisma as never, input, "actor-1"))
+      .resolves.toEqual(expect.objectContaining({ created: true }));
+    expect(prisma.expenseClaim.findFirst).toHaveBeenCalledWith({ where: expect.objectContaining({
+      id: input.sourceBusinessId, projectId: input.projectId, approvedAt: input.occurredAt, requestedAmountCents: 800n,
+      voidedAt: null, actualPurchaseBatchId: null, generalProcurementId: null,
+      costBearingCompanySpecified: true, costBearingCompanyEntityId: null
+    }), select: { approvalInstanceId: true } });
+    expect(prisma.approvalInstance.findFirst).toHaveBeenCalledWith({ where: {
+      id: "round-1", businessType: "expense_claim", businessId: input.sourceBusinessId, flowType: "expense_claim.approve", status: "approved"
+    }, select: { id: true } });
+    expect(prisma.approvalActionLog.findFirst).toHaveBeenCalledWith({ where: {
+      approvalInstanceId: "round-1", action: "approve", actorUserId: "actor-1", createdAt: input.confirmedAt
+    }, select: { id: true } });
+    const writes = prisma.$queryRaw.mock.calls.map(([sql]: [Prisma.Sql]) => syntheticOperatingWrite(sql));
+    expect(writes.map(write => write.row)).toEqual([
+      expect.objectContaining({ amountCents: 800n, costBearingCompanySubjectId: null, entryKind: "original" }),
+      expect.objectContaining({ impactKind: "confirmed_cost", amountCents: 800n, subjectId: null }),
+      expect.objectContaining({ impactKind: "payable_increase", amountCents: 800n, subjectKind: "downstream_counterparty" })
+    ]);
+    await expect(service.materializeSourceForComparisonInTransaction(prisma as never, input))
+      .resolves.toEqual(expect.objectContaining({ input: expect.objectContaining({ sourceBusinessId: input.sourceBusinessId }) }));
+  });
+
+  it.each(["expenseClaim", "approvalInstance", "approvalActionLog"] as const)(
+    "requires the matching persisted %s before allowing the pending bearing company",
+    async model => {
+      const prisma = pendingExpensePrisma();
+      prisma[model].findFirst.mockResolvedValue(null);
+      await expect(new OperatingLedgerService(prisma as never).appendConfirmedSourceInTransaction(
+        prisma as never, pendingExpenseInput(), "actor-1"
+      )).rejects.toThrow("事实种类expense必须填写costBearingCompany主体");
+      expect(prisma.$queryRaw).not.toHaveBeenCalled();
+    }
+  );
+
+  it("rejects pending-bearing markers on generic writes and expense corrections", async () => {
+    const prisma = pendingExpensePrisma();
+    const service = new OperatingLedgerService(prisma as never);
+    const input = pendingExpenseInput();
+    await expect(service.appendFromSource(input, "actor-1")).rejects.toThrow("必须填写costBearingCompany主体");
+    await expect(service.appendConfirmedSourceInTransaction(
+      prisma as never, { ...input, sourceVersion: 2, adjustsFactId: "old-fact" }, "actor-1", "correction"
+    )).rejects.toThrow("必须填写costBearingCompany主体");
+    await expect(service.appendConfirmedSourceInTransaction(
+      prisma as never, { ...input, sourceType: "expense_claim" }, "actor-1"
+    )).rejects.toThrow("必须填写costBearingCompany主体");
+    await expect(service.appendConfirmedSourceInTransaction(
+      prisma as never, { ...input, sourceSnapshot: { formalStatus: "confirmed", claimType: "incidental_expense" } }, "actor-1"
+    )).rejects.toThrow("必须填写costBearingCompany主体");
+    expect(prisma.expenseClaim.findFirst).not.toHaveBeenCalled();
+    expect(prisma.$queryRaw).not.toHaveBeenCalled();
   });
 
   it("does not expose the wage external creditor kind to generic operating facts", async () => {
@@ -593,6 +848,32 @@ function baseInput(projectId = "project-1") {
   };
 }
 
+function pendingExpenseInput() {
+  return new ExpenseClaimApprovalOperatingSourceAdapter().toOperatingFactInput({
+    projectId: "project-1", sourceType: "expense_claim_approval", sourceBusinessId: "expense-1",
+    sourceBusinessCode: "BX-001", sourceVersion: 1, status: "confirmed",
+    sourceSnapshot: {
+      formalStatus: "confirmed", claimType: "incidental_expense", incidentalExpenseCategory: "temporary_service",
+      companyEntityId: "company-1", costBearingCompanyEntityId: null, payeeNameSnapshot: "合成服务方",
+      requestedAmountCents: "800", companyPayableAmountCents: "800", confirmedByUserId: "actor-1",
+      approvedAt: "2026-08-14T00:00:00.000Z", confirmedAt: "2026-08-14T01:00:00.000Z",
+      operatingLedgerEffectiveDate: "2026-08-01T00:00:00.000Z",
+      affiliate: { assignmentId: "assignment-1", businessPartyVersionId: "affiliate-version-1",
+        name: "施工企业", creditCode: "91110000000000000A" }
+    }
+  }).input;
+}
+
+function pendingExpensePrisma() {
+  return {
+    ...createPrismaMock({ persistControlledRows: true, user: { id: "actor-1", isActive: true },
+      project: projectRecord(), assignment: assignmentRecord() }),
+    expenseClaim: { findFirst: jest.fn().mockResolvedValue({ approvalInstanceId: "round-1" }) },
+    approvalInstance: { findFirst: jest.fn().mockResolvedValue({ id: "round-1" }) },
+    approvalActionLog: { findFirst: jest.fn().mockResolvedValue({ id: "action-1" }) }
+  };
+}
+
 function employeeLoanRepaymentReversalInput() {
   return {
     ...baseInput(),
@@ -826,6 +1107,7 @@ function closeStage(stageKey: string, projectionCutoffAt: Date) {
 }
 
 function createPrismaMock(options: {
+  persistControlledRows?: boolean;
   user?: { id: string; isActive: boolean } | null;
   projectMembers?: Array<{ positionKey: string }>;
   project?: ReturnType<typeof projectRecord> | null;
@@ -839,8 +1121,32 @@ function createPrismaMock(options: {
   const storedImpacts: Array<Record<string, unknown>> = [];
   let controlledWriteCount = 0;
   const tx = {
+    contractArchiveFile: { findFirst: jest.fn().mockResolvedValue(null) },
     $executeRaw: jest.fn(),
-    $queryRaw: jest.fn().mockImplementation(async () => {
+    $queryRaw: jest.fn().mockImplementation(async (query: Prisma.Sql) => {
+      if (query.text.includes("registered_payment_voucher_catalog")) return [{ state: "absent" }];
+      if (options.persistControlledRows) {
+        const written = syntheticOperatingWrite(query);
+        if (written.kind === "Fact") { storedFact = { ...written.row, impacts: storedImpacts }; return [{ id: written.row.id, projectId: written.row.projectId, sourceType: written.row.sourceType, sourceBusinessId: written.row.sourceBusinessId }]; }
+        if (written.row.numericProtocolVersion === 2) {
+          if (!storedFact || storedFact.numericProtocolVersion !== 2 || written.row.factId !== storedFact.id ||
+              written.row.sourceType !== storedFact.sourceType || written.row.sourceBusinessId !== storedFact.sourceBusinessId) {
+            throw new Error("合成持久层拒绝来自不同事实的四位分录");
+          }
+          if (storedFact.sourceType === "signed_contract_settlement") {
+            if (written.row.sourceImpactKey !== "confirmed_cost" || written.row.impactKind !== "confirmed_cost" ||
+                written.row.direction !== "decrease" || written.row.subjectRole !== "debtor" ||
+                written.row.subjectKind !== storedFact.debtorSubjectKind || written.row.subjectId !== storedFact.debtorSubjectId ||
+                written.row.amountYuan === null || storedFact.amountYuan === null ||
+                !new Prisma.Decimal(String(written.row.amountYuan)).equals(String(storedFact.amountYuan))) {
+              throw new Error("合成持久层拒绝不对应已签结算的成本冲减");
+            }
+          } else if (written.row.sourceImpactKey !== "contract_commitment_reference" || written.row.impactKind !== "contract_commitment_reference" || (written.row.amountYuan === null ? written.row.direction !== "notice" : !["increase", "decrease"].includes(String(written.row.direction))) || written.row.subjectRole !== "debtor" || written.row.subjectKind !== storedFact.debtorSubjectKind || written.row.subjectId !== storedFact.debtorSubjectId || (written.row.amountYuan === null ? storedFact.amountYuan !== null : storedFact.amountYuan === null || !new Prisma.Decimal(String(written.row.amountYuan)).equals(String(storedFact.amountYuan)))) throw new Error("合成持久层拒绝不对应原合同承诺的影响");
+        }
+        storedImpacts.push(written.row);
+        if (storedFact) storedFact.impacts = storedImpacts;
+        return [{ id: written.row.id }];
+      }
       if (!storedFact) {
         storedFact = {
           id: "fact-1",
@@ -952,6 +1258,7 @@ function createPrismaMock(options: {
       })
     },
     operatingFact: {
+      findMany: jest.fn().mockImplementation(async () => storedFact ? [{ ...storedFact, impacts: storedImpacts }] : []),
       findUnique: jest.fn().mockImplementation(async ({ where }: { where: Record<string, unknown> }) => {
         if (where.id) return options.originalFact ?? null;
         return storedFact;
@@ -972,6 +1279,7 @@ function createPrismaMock(options: {
     },
     operatingImpactEntry: {
       findUnique: jest.fn().mockImplementation(async ({ where }: { where: Record<string, unknown> }) => {
+        if (options.persistControlledRows && where.id) return storedImpacts.find(impact => impact.id === where.id) ?? null;
         const key = where.sourceType_sourceBusinessId_sourceImpactKey as Record<string, string> | undefined;
         return storedImpacts.find((impact) => impact.sourceImpactKey === key?.sourceImpactKey) ?? null;
       }),

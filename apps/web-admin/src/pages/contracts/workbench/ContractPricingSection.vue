@@ -27,12 +27,12 @@
         v-if="policyKind === 'fixed_total_without_bill'"
         class="field"
       >
-        <span class="field-label">含税合同总价（元）</span>
+        <span class="field-label">{{ amountBasisLabel }}合同金额（元）</span>
         <t-input
           v-model="manualAmountYuanText"
           data-field-key="manualAmountCents"
           :disabled="disabled"
-          placeholder="请输入含税合同总价"
+          :placeholder="`请输入${amountBasisLabel}合同金额，未知可留空`"
           @change="onManualAmountChange"
         />
       </label>
@@ -41,12 +41,12 @@
         v-else-if="policyKind === 'priced_bill'"
         class="field"
       >
-        <span class="field-label">清单含税合计（元）</span>
+        <span class="field-label">清单已知金额（元）</span>
         <div class="readonly-value amount-value">
           {{ derivedAmountYuanText || "—" }}
         </div>
         <small class="field-help">
-          {{ derivedAmountYuanText ? "由后端按清单行逐行计算并汇总。" : "请先在合同清单中录入并保存计价项目。" }}
+          {{ derivedAmountYuanText ? "由后端按清单行汇总；部分项目未定价时，此值不是最终合同总价。" : "部分金额待确定；未知数量或单价保持空白。" }}
         </small>
       </div>
     </div>
@@ -56,7 +56,7 @@
       class="framework-note"
     >
       <strong>不设合同总价；按实际发生量结算</strong>
-      <span>清单中的含税单价是合同事实，预计数量和预计金额仅供参考，不形成合同上限。</span>
+      <span>清单中的{{ amountBasisLabel }}单价是合同事实，预计数量和预计金额仅供参考，不形成合同上限。</span>
     </div>
   </div>
 </template>
@@ -64,7 +64,7 @@
 <script setup lang="ts">
 import type { ContractWorkbenchReadModel } from "@jiangkong/shared-domain";
 import { computed, ref, watch } from "vue";
-import { centsTextToYuanText, yuanTextToCentsText } from "../../../lib/money";
+import { centsTextToYuanText } from "../../../lib/money";
 import type { ContractDraftModel } from "./use-contract-draft";
 
 type PricingPolicyKind =
@@ -86,11 +86,6 @@ const pricingNatureOptions = [
   { label: "单价计量", value: "unit_price" },
   { label: "框架协议", value: "framework" }
 ];
-const amountSourceOptions = [
-  { label: "手工录入含税总价", value: "manual" },
-  { label: "由计价清单汇总", value: "bill_sum" }
-];
-
 const amountLimitType = computed(() => {
   const version = props.workbench?.version as unknown as { amountLimitType?: unknown } | undefined;
   return version?.amountLimitType === "unlimited" ? "unlimited" : "capped";
@@ -108,19 +103,22 @@ const hasPricedRows = computed(() =>
 const policyKind = computed<PricingPolicyKind>(() =>
   pricingPolicyFor(props.model.pricingNature)
 );
+const amountBasisLabel = computed(() =>
+  (props.model.extraDraftData?.contractBasics as Record<string, unknown> | undefined)?.amountBasis === "tax_exclusive" ? "不含税" : "含税"
+);
 const amountSourceLabel = computed(() =>
   policyKind.value === "unlimited_framework"
     ? "不形成合同总价"
-    : amountSourceOptions.find(
-        (option) => option.value === amountSourceFor(policyKind.value)
-      )?.label ?? "—"
+    : policyKind.value === "fixed_total_without_bill"
+      ? `手工录入${amountBasisLabel.value}总价`
+      : "由计价清单汇总"
 );
 
 function pricingPolicyFor(pricingNature: string): PricingPolicyKind {
   if (pricingNature === "framework" && amountLimitType.value === "unlimited") {
     return "unlimited_framework";
   }
-  if (hasPricedRows.value || pricingNature !== "fixed_total") {
+  if ((props.model.numericProtocolVersion !== 2 && hasPricedRows.value) || pricingNature !== "fixed_total") {
     return "priced_bill";
   }
   return "fixed_total_without_bill";
@@ -137,9 +135,9 @@ function centsToYuanInput(cents: string | null): string {
 const manualAmountYuanText = ref("");
 
 watch(
-  () => props.model.manualAmountCents,
-  (amountCents) => {
-    manualAmountYuanText.value = centsToYuanInput(amountCents);
+  () => [props.model.numericProtocolVersion, props.model.manualAmountYuan, props.model.manualAmountCents] as const,
+  ([protocol, amountYuan, amountCents]) => {
+    manualAmountYuanText.value = protocol === 2 ? amountYuan ?? "" : centsToYuanInput(amountCents);
   },
   { immediate: true }
 );
@@ -148,6 +146,7 @@ const derivedAmountYuanText = computed(() => {
   if (!hasPricedRows.value) {
     return "";
   }
+  if (props.workbench?.version.numericProtocolVersion === 2) return props.workbench.version.amountYuan ?? "";
   const cents = props.workbench?.version.amountCents ?? null;
   return cents === null ? "" : centsTextToYuanText(cents);
 });
@@ -170,27 +169,17 @@ function updatePricingNature(value: string) {
   const nextPolicy = pricingPolicyFor(value);
   emit("update", {
     pricingNature: value,
-    amountSource: amountSourceFor(nextPolicy),
+    numericProtocolVersion: 2,
+    amountSource: value === "fixed_total" ? "manual" : amountSourceFor(nextPolicy),
     ...(nextPolicy === "fixed_total_without_bill" ? {} : { manualAmountCents: null })
   });
-}
-
-function yuanTextToCents(text: string): string | null {
-  const trimmed = text.trim();
-  if (!trimmed) {
-    return null;
-  }
-  try {
-    return yuanTextToCentsText(trimmed);
-  } catch {
-    return null;
-  }
 }
 
 function onManualAmountChange(value: string) {
   emit("update", {
     amountSource: "manual",
-    manualAmountCents: yuanTextToCents(value)
+    numericProtocolVersion: 2,
+    manualAmountYuan: value || null
   });
 }
 </script>

@@ -517,7 +517,7 @@ function mappedFact(
   return { entryKind, input };
 }
 
-function factInput(): AppendOperatingFactInput {
+function factInput(): Omit<Extract<AppendOperatingFactInput, { amountCents: bigint }>, "impacts"> & { impacts: Array<Extract<AppendOperatingFactInput["impacts"][number], { amountCents: bigint }>> } {
   return {
     projectId: "project-1",
     sourceType: "pol04_test_source",

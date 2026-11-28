@@ -1,0 +1,35 @@
+{
+  "installer.cjs": {
+    "baseSha256": "86d62f558f8a9e38ef0c3fa4acfd3aaae988d2b23874392802061047be3f9b10",
+    "deltaSha256": "1fe6d81fd67aae728d6d7e670668bcdc9baf055c0d3da54c07798abf13754b37",
+    "resultSha256": "19c6c47251790c1929b3ddb5340083f9c55a84942f21f985c4cc2b61b45e3d3d"
+  },
+  "checkout.cjs": {
+    "baseSha256": "77eaa09f4dd25bb0c1b2a6da987d7b1b976188295f1be3a5d2d83f2c44990268",
+    "deltaSha256": "e4fd8f79caabe02b46d22e23f0e91ba6299243722cbf187b61bbba4873c324af",
+    "resultSha256": "7dcddf0e61402c00772ed9e727bd90a8b94cf1fc1a21c34bf2416501fa3adf1f"
+  },
+  "loanCheck": {
+    "path": "services/api/prisma/migrations/20261119000600_company_transfer_ordinary_loan_repayment_check/migration.sql",
+    "oid": "8c2a29872812d5117fa8aec2473d4cb66fa7eb01",
+    "sha256": "c9f590d5ce2d57ba44a371461e58e1dd6d65cc631e97a77fc382e2fb749aa22c"
+  },
+  "loanApproval": {
+    "path": "services/api/prisma/migrations/20261119000700_company_transfer_ordinary_loan_repayment_approval/migration.sql",
+    "oid": "d5c0181080b069cdf27c067a387a4cd60186d907",
+    "sha256": "341990cbd21419631b0751031fda54e57579e35a0d84d0c0cc1f790718cd1af0"
+  },
+  "material": {
+    "install-only292.cjs": "9e344b9bba5ae58ade70802c6efcca06a74adda6cc5823e8218bfa5b8b88bf47",
+    "scope.json": "db3dded107e3c454c9fc2bda5ff3acaf6ff90a15bddfa5c475ef1d2484b7df0a",
+    "tree-proof.json": "7bf3d26c2c5c8f20256e8d1482376ef83db81d20df2523bcb9a9949ff352f8f8",
+    "successor.cjs": "939c2fdc239dc50cf8a64dd79c6d64a84f767df9c9ce9edeb2928d4a88da9b5e"
+  },
+  "referenceReceiptSha256": "99f5af68c20ef0835b377287469e3634fa3de931fc423863264287f2a46e99fb",
+  "canonicalBaseline": {
+    "path": "services/api/prisma/database-dynamic-gate-manifest.json",
+    "priorOid": "d51fa2adae5a9973d4c5110100119c799b822792",
+    "oid": "527a74df06d8ae1927c1e44d10cbf5973b13bebd",
+    "sha256": "7d606b8c52f09fbaf00bd3c8699fdf352be66fd570e990b821f045799a020160"
+  }
+}

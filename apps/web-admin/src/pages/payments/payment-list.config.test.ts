@@ -23,9 +23,9 @@ describe("payment ledger page configuration", () => {
   it("uses compact enterprise payment filter fields", () => {
     expect(paymentFilterFields.map((field) => field.label)).toEqual([
       "项目",
-      "付款来源",
-      "审批状态",
-      "实付状态",
+      "开始日期",
+      "结束日期",
+      "审批/实付状态",
       "关键词"
     ]);
   });
@@ -60,20 +60,18 @@ describe("payment ledger page configuration", () => {
     ]);
   });
 
-  it("filters payment rows by project, source, approval, payment status, and keyword", () => {
+  it("filters payment rows by server project/status filters and keyword", () => {
     const rows: PaymentLedgerRow[] = [
       paymentRow({
         id: "payment-1",
-        project: "E2E 项目",
-        settlementNo: "合同累计结算",
+        projectId: "project-1",
         approvalStatus: "已批待付",
         paymentStatus: "部分付款",
         paymentNo: "FK-001"
       }),
       paymentRow({
         id: "payment-2",
-        project: "其他项目",
-        settlementNo: "JS-002",
+        projectId: "project-2",
         approvalStatus: "审批中",
         paymentStatus: "未付款",
         paymentNo: "FK-002"
@@ -83,10 +81,8 @@ describe("payment ledger page configuration", () => {
     expect(
       filterPaymentLedgerRows(rows, {
         ...emptyPaymentLedgerFilters(),
-        project: "E2E",
-        settlementNo: "合同累计",
-        approvalStatus: "已批",
-        paymentStatus: "部分",
+        projectId: "project-1",
+        status: "已批",
         keyword: "FK-001"
       }).map((row) => row.id)
     ).toEqual(["payment-1"]);
@@ -94,13 +90,13 @@ describe("payment ledger page configuration", () => {
 
   it("derives stable select options from the returned ledger facts", () => {
     const options = paymentLedgerFilterOptions([
-      paymentRow({ project: "项目乙", settlementNo: "JS-002", approvalStatus: "审批中", paymentStatus: "未付款" }),
-      paymentRow({ project: "项目甲", settlementNo: "JS-001", approvalStatus: "已通过", paymentStatus: "已付款" }),
+      paymentRow({ projectId: "project-b", project: "项目乙", settlementNo: "JS-002", approvalStatus: "审批中", paymentStatus: "未付款" }),
+      paymentRow({ projectId: "project-a", project: "项目甲", settlementNo: "JS-001", approvalStatus: "已通过", paymentStatus: "已付款" }),
       paymentRow({ project: "项目乙", settlementNo: "JS-002", approvalStatus: "审批中", paymentStatus: "未付款" })
     ]);
 
-    expect(options.project.map((option) => option.value)).toEqual(["", "项目甲", "项目乙"]);
-    expect(options.approvalStatus.map((option) => option.value)).toEqual(["", "审批中", "已通过"]);
+    expect(options.projectId.map((option) => option.value)).toEqual(["", "project-a", "project-b"]);
+    expect(options.status.map((option) => option.value)).toEqual(["", "审批中", "未付款", "已付款", "已通过"]);
   });
 
   it("records the server-owned pagination boundary", () => {
@@ -122,6 +118,7 @@ describe("payment ledger page configuration", () => {
     expect(paymentCreateSourceOptions).toEqual([
       { value: "contract_due", label: "合同累计结算付款" },
       { value: "settlement", label: "单张结算付款" },
+      { value: "signed_settlement", label: "已签结算最近确认一期" },
       { value: "contract_advance", label: "合同预付款" }
     ]);
   });

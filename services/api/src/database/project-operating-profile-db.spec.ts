@@ -570,6 +570,13 @@ describeParticipantHistory("POL-284 participant history integrity on PostgreSQL 
     await prisma.$executeRawUnsafe(
       `GRANT EXECUTE ON FUNCTION public."serializeProjectParticipatingCompanyMutation"(TEXT) TO "${PARTICIPANT_HISTORY_RUNTIME_ROLE}"`
     );
+    // The archive-aware participant stop guard calls these invoker routines.
+    await prisma.$executeRawUnsafe(
+      `GRANT EXECUTE ON FUNCTION
+        public.jg_contract_archive_v2_ownership_day(TEXT),
+        public.jg_assert_contract_archive_v2_manifest(TEXT)
+      TO "${PARTICIPANT_HISTORY_RUNTIME_ROLE}"`
+    );
   });
 
   afterAll(async () => {
@@ -1583,9 +1590,12 @@ async function runLastParticipantMutationRace(
   const secondClient = new PrismaClient({ datasources: { db: { url: databaseUrl } } });
   const firstStatementDone = deferred<void>();
   const releaseFirst = deferred<void>();
+  let firstPid: number;
   try {
     const first = firstClient.$transaction(async (tx) => {
       await tx.$executeRawUnsafe("SET LOCAL lock_timeout = '3s'");
+      const [backend] = await tx.$queryRaw<[{ pid: number }]>`SELECT pg_backend_pid() AS pid`;
+      firstPid = backend.pid;
       const result = await mutateParticipantForExit(
         tx,
         fixture.participantId!,
@@ -1611,8 +1621,11 @@ async function runLastParticipantMutationRace(
       `)).resolves.toEqual([{ id: fixture.projectId }]);
     }
 
+    const secondBackend = deferred<number>();
     const second = secondClient.$transaction(async (tx) => {
       await tx.$executeRawUnsafe("SET LOCAL lock_timeout = '3s'");
+      const [backend] = await tx.$queryRaw<[{ pid: number }]>`SELECT pg_backend_pid() AS pid`;
+      secondBackend.resolve(backend.pid);
       return mutateParticipantForExit(
         tx,
         secondParticipant.id,
@@ -1620,11 +1633,31 @@ async function runLastParticipantMutationRace(
         secondEndedOn
       );
     }, { isolationLevel });
-    await expectBlocked(second);
-    releaseFirst.resolve();
+    const outcome = settled(second);
+    try {
+      const secondPid = await Promise.race([
+        secondBackend.promise,
+        outcome.then(result => { throw new Error(`second transaction ended before its lock request: ${describeOutcome(result)}`); })
+      ]);
+      // An unresolved Prisma promise may still be waiting for a connection.
+      // Release only after PostgreSQL identifies the first transaction as the blocker.
+      const deadline = Date.now() + 2500;
+      let blocked = false;
+      while (!blocked && Date.now() < deadline) {
+        const [observation] = await prisma.$queryRaw<[{ blocked: boolean }]>`
+          SELECT ${firstPid!}::integer = ANY(pg_blocking_pids(${secondPid}::integer)) AS blocked
+        `;
+        blocked = observation.blocked;
+        if (!blocked) await new Promise(resolve => setTimeout(resolve, 10));
+      }
+      expect(blocked).toBe(true);
+    } finally {
+      releaseFirst.resolve();
+      await Promise.all([first, outcome]);
+    }
     await expect(first).resolves.toBe(1);
 
-    const secondOutcome = await settled(second);
+    const secondOutcome = await outcome;
     expect(secondOutcome.status).toBe("rejected");
     if (secondOutcome.status === "rejected") {
       expect(sqlState(secondOutcome.reason)).toBe(

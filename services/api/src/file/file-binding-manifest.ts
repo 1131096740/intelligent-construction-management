@@ -1,5 +1,7 @@
 import { Prisma } from "@prisma/client";
-import { NON_RECEIPT_FILE_BINDINGS } from "./file-business-binding";
+import { readFileBindingCatalog } from "../database/registered-payment-catalog";
+import { NON_RECEIPT_FILE_BINDINGS, SIGNED_CONTRACT_FILE_BINDING_SOURCES } from "./file-business-binding";
+import { contractReviewRetainedObjectKeys } from "./contract-review-file-retention";
 import { isValidObjectKey, type VersionedObjectStorage } from "./versioned-object-storage";
 
 /**
@@ -20,7 +22,7 @@ import { isValidObjectKey, type VersionedObjectStorage } from "./versioned-objec
 export interface ManifestBusinessBinding {
   table: string;
   column: string;
-  rowId: string;
+  rowId: string | null;
 }
 
 /** 已解析的绑定：`fileId` 是绑定行里实际引用到的文件对象 ID。 */
@@ -94,9 +96,9 @@ export interface FileBindingClassification {
 export function bindingKey(binding: {
   table: string;
   column: string;
-  rowId: string;
+  rowId: string | null;
 }): string {
-  return `${binding.table}:${binding.column}:${binding.rowId}`;
+  return `${binding.table}:${binding.column}:${binding.rowId ?? "受保护凭证"}`;
 }
 
 function sqlIdentifier(value: string): Prisma.Sql {
@@ -127,23 +129,44 @@ export async function fileBusinessBindingRefs(
   const candidates = Prisma.join(
     uniqueIds.map((fileId) => Prisma.sql`(${fileId})`)
   );
-  const registryQueries = NON_RECEIPT_FILE_BINDINGS.flatMap(
-    (binding) =>
+  const catalog = await readFileBindingCatalog(tx, true);
+  const registryQueries = NON_RECEIPT_FILE_BINDINGS
+    .filter(({ table }) => table === "RegisteredPaymentVoucher" ? catalog.registeredPayment :
+      table === "ProjectOwnerSettlementEntry" ? catalog.ownerSettlementVoucher :
+        catalog.signedContractFileBindings || !SIGNED_CONTRACT_FILE_BINDING_SOURCES.has(table))
+    .flatMap((binding) =>
       binding.columns.map((column) => {
+        if (binding.table === "ProjectOwnerSettlementEntry") {
+          return Prisma.sql`
+            SELECT c."id" AS "fileId", 'ProjectOwnerSettlementEntry' AS "table",
+              'voucherFileId' AS "column", NULL::text AS "rowId"
+            FROM candidates c WHERE public.jg_project_owner_settlement_voucher_bound(c."id")
+          `;
+        }
+        const signedSource = SIGNED_CONTRACT_FILE_BINDING_SOURCES.get(binding.table);
+        if (signedSource) {
+          return Prisma.sql`
+            SELECT x."fileId", ${binding.table} AS "table", ${column} AS "column", x."rowId"
+            FROM ${signedSource} x JOIN candidates c ON c."id"=x."fileId"
+          `;
+        }
         const tableId = sqlIdentifier(binding.table);
+        const voucher = binding.table === "RegisteredPaymentVoucher";
+        const relation = voucher ? Prisma.sql`public.${tableId}` : tableId;
         const columnId = sqlIdentifier(column);
         const rowIdColumn =
-          "rowIdColumn" in binding ? binding.rowIdColumn : "id"
+          "rowIdColumn" in binding ? binding.rowIdColumn : "id";
+        const rowId = voucher ? Prisma.sql`x."executionId"` : Prisma.sql`to_jsonb(x) ->> ${rowIdColumn}`;
         return Prisma.sql`
           SELECT x.${columnId} AS "fileId",
                  ${binding.table} AS "table",
                  ${column} AS "column",
-                 to_jsonb(x) ->> ${rowIdColumn} AS "rowId"
-          FROM ${tableId} x
+                 ${rowId} AS "rowId"
+          FROM ${relation} x
           JOIN candidates c ON c."id" = x.${columnId}
         `;
       })
-  );
+    );
   const rows = await tx.$queryRaw<ResolvedFileBinding[]>(
     Prisma.sql`
       /* file_binding_manifest_refs */
@@ -191,6 +214,7 @@ export function classifyFileBinding(
   candidateFileIds: ReadonlySet<string>
 ): FileBindingClassification {
   const external = refs.filter((ref) => {
+    if (ref.rowId === null) return true;
     if (ownedRefKeys.has(bindingKey(ref))) {
       return false;
     }
@@ -220,6 +244,7 @@ export function classifyFileBinding(
 const CONTRACT_VERSION_FILE_BINDINGS = [
   { table: "ContractDraftAttachment", column: "fileId", versionIdColumn: "contractVersionId" },
   { table: "ContractArchiveFile", column: "fileId", versionIdColumn: "contractVersionId" },
+  { table: "ContractArchiveEvidenceFile", column: "fileId", versionIdColumn: "contractVersionId" },
   { table: "ContractFormalFile", column: "fileId", versionIdColumn: "contractVersionId" },
   { table: "ContractGeneratedDocument", column: "docxFileId", versionIdColumn: "contractVersionId" },
   { table: "ContractGeneratedDocument", column: "pdfFileId", versionIdColumn: "contractVersionId" },
@@ -391,6 +416,7 @@ export async function buildFileBindingManifest(
       fileObject as FileObjectLite
     ])
   );
+  const retainedObjectKeys = await contractReviewRetainedObjectKeys(tx, fileObjects);
   const physicalObjectRows = fileObjects.length
     ? await tx.fileObject.findMany({
         where: {
@@ -419,11 +445,13 @@ export async function buildFileBindingManifest(
           (physicalFileId) => !candidates.has(physicalFileId)
         )
       : [];
-    const classification: FileBindingClassification = physicalObjectSharedIds.length
+    const retained = fileObject && retainedObjectKeys.has(fileObject.objectKey);
+    const classification: FileBindingClassification = retained || physicalObjectSharedIds.length
       ? {
           bindingType: "shared",
           sharedReason: [
             baseClassification.sharedReason,
+            retained ? "履约复核或待登记签章原件需保留" : undefined,
             ...physicalObjectSharedIds.map(
               (physicalFileId) => `FileObject:physicalObject:${physicalFileId}`
             )

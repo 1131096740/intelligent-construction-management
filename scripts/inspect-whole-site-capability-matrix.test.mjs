@@ -351,6 +351,7 @@ function pageManifest(web, actions, { unresolved = false } = {}) {
   const accepted = new Set();
   const candidates = new Set();
   for (const action of actions) {
+    if (action.semantic === "read_only") continue;
     for (const binding of action.bindings) {
       for (const consumer of binding.productionConsumers) {
         candidates.add(
@@ -736,6 +737,59 @@ test("builds a ready GET route matrix", () => {
   assert.equal(matrix.status, "ready");
   assert.equal(matrix.summary.routeCount, 1);
   assert.equal(matrix.routes[0].mutationCoverage, "not_applicable");
+});
+
+function explicitReadOnlyAction(nestRoute, transport) {
+  const action = actionFor(nestRoute, transport, { accepted: false });
+  action.id = "fixture.lookup";
+  action.semantic = "read_only";
+  action.capability = {
+    kind: "none",
+    source: "localStorage.originalRequest",
+    serverDerived: false,
+    dominatesTrigger: false
+  };
+  action.bindings[0].causalVerified = true;
+  return action;
+}
+
+test("carries an explicit authenticated GET-only lookup without treating it as a write", () => {
+  const input = fixture();
+  input.webManifest.wrappers[0].returnProvenance = "transparent_main_response";
+  const action = explicitReadOnlyAction(input.nestManifest.routes[0], input.webManifest.wrappers[0]);
+  input.pageManifest = pageManifest(input.webManifest, [action]);
+
+  const matrix = build(input);
+  assert.equal(matrix.status, "ready");
+  assert.equal(matrix.summary.actionBindingCount, 1);
+  assert.equal(matrix.summary.acceptedActionBindingCount, 0);
+  assert.equal(matrix.summary.productionMutationConsumerPairCount, 0);
+  assert.equal(matrix.routes[0].mutationCoverage, "not_applicable");
+  assert.equal(matrix.routes[0].actions[0].semantic, "read_only");
+  assert.equal(matrix.routes[0].actions[0].causalVerified, true);
+  assert.deepEqual(matrix.routes[0].actions[0].blockerCodes, []);
+});
+
+test("rejects a POST mislabeled as an explicit read-only lookup", () => {
+  const input = fixture({ mutation: "accepted" });
+  const action = explicitReadOnlyAction(input.nestManifest.routes[1], input.webManifest.wrappers[1]);
+  input.pageManifest = pageManifest(input.webManifest, [action]);
+  assert.throws(() => build(input), { code: "CAPABILITY_MATRIX_INVALID_READ_ONLY_ACTION" });
+});
+
+test("rejects a GET-only declaration whose transport also dispatches a POST", () => {
+  const input = fixture();
+  const postRoute = route("POST", "/fixtures", "SaveFixture");
+  const read = input.webManifest.wrappers[0];
+  const postRequest = wrapper("POST", "/fixtures", { name: read.name, sourceLine: 11 }).requests[0];
+  const mixed = { ...read, returnProvenance: "transparent_main_response", requests: [...read.requests, postRequest] };
+  input.nestManifest.routes.push(postRoute);
+  input.webManifest = webManifest([mixed]);
+  input.usageManifest = usageManifest(input.nestManifest.routes, input.webManifest);
+  input.pageManifest = pageManifest(input.webManifest, [
+    explicitReadOnlyAction(input.nestManifest.routes[0], mixed)
+  ]);
+  assert.throws(() => build(input), { code: "CAPABILITY_MATRIX_INVALID_READ_ONLY_TRANSPORT" });
 });
 
 test("carries a GET-only fresh-read binding without classifying it as a mutation", () => {

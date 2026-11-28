@@ -1,0 +1,20 @@
+--- payment-execution-concurrency.spec.ts
++++ payment-execution-concurrency.spec.ts
+@@ -204,12 +204,15 @@
+         AND EXISTS (SELECT 1 FROM pg_catalog.pg_stat_ssl WHERE pid = pg_backend_pid() AND ssl)
+         AND EXISTS (SELECT 1 FROM pg_catalog.pg_roles r JOIN pg_catalog.pg_database d ON d.datdba = r.oid
+           WHERE d.datname = current_database() AND r.oid = 10 AND r.rolsuper AND r.rolname = current_user)
+-        AND (SELECT count(*) = 290 AND count(*) FILTER (
++        AND (SELECT count(*) = 295 AND count(*) FILTER (
+           WHERE migration_name = '20261118231000_registered_payment_voucher_fixed_read'
+             AND checksum = 'e1ff36a191e8173a2cf06db3c20aa386db58360bfceba39eed010f9444da196e'
++        ) = 1 AND count(*) FILTER (
++          WHERE migration_name = '20261119003800_company_transfer_ordinary_loan_multi_witness'
++            AND checksum = 'e5b56cb299eb4a51eb094267fbf302b6fa6b40b31c0337c6dfcf628694d5de25'
+         ) = 1 FROM public._prisma_migrations WHERE finished_at IS NOT NULL AND rolled_back_at IS NULL) AS accepted
+     `;
+-    if (result?.accepted !== true) throw new Error("PAYMENT_CONCURRENCY_OWNED_290_IDENTITY");
++    if (result?.accepted !== true) throw new Error("PAYMENT_CONCURRENCY_OWNED_295_IDENTITY");
+     return;
+   }
+   const [migrationCount] = await client.$queryRaw<Array<{ count: bigint }>>`

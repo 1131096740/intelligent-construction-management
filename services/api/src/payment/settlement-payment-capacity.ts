@@ -23,6 +23,7 @@ export interface SettlementCapacityPaymentRequest {
   requestedAmountCents: bigint;
   approvedAmountCents?: bigint | null;
   paidAmountCents: bigint;
+  sourceType?: string | null;
 }
 
 export interface SettlementPaymentCapacity {

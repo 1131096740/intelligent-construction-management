@@ -1,0 +1,64 @@
+{
+  "issue": 424,
+  "date": "2026-11-24",
+  "environment": {
+    "docker": "29.5.3",
+    "postgres_image": "postgres:16",
+    "postgres_image_id": "sha256:3950ad7c3148ca2175ef1b6c36c9efbf78957ae8fbe8b3a5d7c35af50500382f",
+    "container": "jiangkong-am424-legacy-1ad6e766-0313-4d31-8d76-6dfa56438a70",
+    "container_port": 64003,
+    "database": "jiangkong_line_a_real_db",
+    "postgres_version": "16.16"
+  },
+  "timings": {
+    "legacy_261_build_ms": 10294,
+    "seed_load_ms": 460,
+    "pre_dump_ms": 260,
+    "pre_restore_ms": 2210,
+    "primary_migrate_phase1_ms": 610,
+    "primary_shim_resolve_phase2_ms": 1020,
+    "restore_pre_migrate_ms": 1590,
+    "post_dump_ms": 280,
+    "post_restore_ms": 2150,
+    "rollback_restore_ms": 1950,
+    "postcut_dump_ms": 290,
+    "postcut_restore_ms": 2050
+  },
+  "migrations": {
+    "inventory": 328,
+    "legacy_prefix": 261,
+    "legacy_terminal": "20261111140000_contract_direct_upward_retention_acl_source_v3",
+    "reached_finished": 277,
+    "rolled_back_attempts": 2,
+    "pending": 51,
+    "blocked_gate": "20261118223000_contract_normal_generated_archive_assignment_lock",
+    "blocked_error": "NORMAL_ARCHIVE_ASSIGNMENT_INSTALL_SCOPE"
+  },
+  "data": {
+    "public_tables_before": 331,
+    "public_tables_after_reachable_migration": 349,
+    "total_rows_before": 35342,
+    "business_rows_before": 35081,
+    "audit_rows": 20000,
+    "takeover_rows": 12000
+  },
+  "comparison": {
+    "legacy_tables_compared": 330,
+    "legacy_table_count_changes": 0,
+    "content_hash_mismatches": 0,
+    "money_sum_mismatches": 0,
+    "integrity_mismatches": 0,
+    "audit_hash_before": "c66d0bcd5169bd20c95b4500d4ae85fe",
+    "audit_hash_after": "c66d0bcd5169bd20c95b4500d4ae85fe"
+  },
+  "backups": {
+    "pre": { "bytes": 4712564, "sha256": "84da51c2009643c19f281dad2c071052a7df5e383967c31fc38cbfb88263078a" },
+    "post": { "bytes": 4972365, "sha256": "2838505e287db317fd8ffa1c96e1a44ff73934474992c245259dbb9d574d3156" },
+    "postcut": { "bytes": 4972886, "sha256": "2654be5b03ace8ccdff03079115de0c24842a0144ae11bedd3b8e177392ded96" }
+  },
+  "final": {
+    "docker_ps_q": "",
+    "drill_containers_remaining": 0,
+    "product_code_changed": false
+  }
+}

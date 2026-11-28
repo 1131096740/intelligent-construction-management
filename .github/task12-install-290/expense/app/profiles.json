@@ -1,0 +1,20 @@
+{
+  "execution": {
+    "spec": "project-expense-execution-concurrency.owned282.spec.ts",
+    "sha256": "ae0417f654b069c45750cf6defd3a269f98153e19601769c85884e3802601006",
+    "runFlag": "RUN_PROJECT_EXPENSE_EXECUTION_CONCURRENCY",
+    "runIdKey": "TASK_EXPENSE_EXECUTION_282_RUN_ID"
+  },
+  "finance": {
+    "spec": "project-expense-finance-concurrency.owned282.spec.ts",
+    "sha256": "94305a122c4abdb484fb29eb416bdb178572626e86c316fa55f4f3a61dbe364e",
+    "runFlag": "RUN_PROJECT_EXPENSE_FINANCE_CONCURRENCY",
+    "runIdKey": "TASK_EXPENSE_FINANCE_282_RUN_ID"
+  },
+  "receipt": {
+    "spec": "project-expense-receipt-concurrency.spec.ts",
+    "sha256": "c54a84a4b522b1ed999db844ecbf644da094b0a225eeb6904e16e23c210ffdd7",
+    "runFlag": "RUN_PROJECT_EXPENSE_RECEIPT_CONCURRENCY",
+    "runIdKey": "TASK_RECEIPT_282_RUN_ID"
+  }
+}

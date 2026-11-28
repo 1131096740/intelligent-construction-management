@@ -33,6 +33,7 @@ interface Fixture {
   spotProcurementVersions: Array<{ id: string; procurementId: string }>;
   spotProcurements: Array<{ id: string; projectId: string }>;
   spotProcurementPayments: Array<{ id: string; projectId: string }>;
+  generalProcurements: Array<{ id: string; projectId: string }>;
 }
 
 interface PreviewResult {
@@ -82,7 +83,8 @@ function baseFixture(): Fixture {
     expenses: [],
     spotProcurementVersions: [],
     spotProcurements: [],
-    spotProcurementPayments: []
+    spotProcurementPayments: [],
+    generalProcurements: []
   };
 }
 
@@ -100,6 +102,7 @@ function createPrisma(fixture: Fixture) {
     settlement: { findMany: jest.fn().mockResolvedValue(fixture.settlements) },
     paymentRequest: { findMany: jest.fn().mockResolvedValue(fixture.payments) },
     projectExpenseRequest: { findMany: jest.fn().mockResolvedValue(fixture.expenses) },
+    generalProcurement: { findMany: jest.fn().mockResolvedValue(fixture.generalProcurements) },
     spotProcurementVersion: {
       findMany: jest.fn().mockResolvedValue(fixture.spotProcurementVersions)
     },
@@ -676,6 +679,36 @@ describe("PermissionImpactService approval impacts", () => {
       blocking: true,
       reasonCode: "approval_execution_semantics_not_safe"
     });
+  });
+
+  it("综合采购已办并联职责不阻断撤岗，剩余职责仍须有当前办理人", async () => {
+    const fixture = baseFixture();
+    fixture.positions.push({ id: "position-director", key: "comprehensive_director" });
+    fixture.userPositions.push(
+      { id: "target-director", userId: "target", positionId: "position-director", projectId: null },
+      { id: "other-director", userId: "approver", positionId: "position-director", projectId: null }
+    );
+    fixture.generalProcurements.push({ id: "general-procurement", projectId: "project-1" });
+    fixture.instances.push({
+      id: "parallel-procurement", businessType: "general_procurement", businessId: "general-procurement",
+      applicantUserId: "applicant", currentNodeIndex: 0,
+      frozenNodes: [
+        { name: "综合部主管", mode: "any", roleKeys: ["comprehensive_director"], approvedRoleKeys: [], protocolVersion: 1, executionMode: "parallel" },
+        { name: "项目经理", mode: "any", roleKeys: ["project_manager"], approvedRoleKeys: ["project_manager"], protocolVersion: 1, executionMode: "parallel" }
+      ]
+    });
+    const removal = { operation: "remove", userId: "target", scope: "global", roleKey: "comprehensive_director" } as const;
+
+    const covered = (await preview(fixture, removal)).result;
+    expect(covered).toMatchObject({ canApply: true, summary: { affectedInstances: 1, blockingInstances: 0 } });
+    expect(covered.impacts).toHaveLength(1);
+    expect(covered.impacts[0]).toMatchObject({ pendingRoleKeys: ["comprehensive_director"], blocking: false });
+
+    fixture.userPositions = fixture.userPositions.filter(assignment => assignment.id !== "other-director");
+    const uncovered = (await preview(fixture, removal)).result;
+    expect(uncovered).toMatchObject({ canApply: false, summary: { affectedInstances: 1, blockingInstances: 1 } });
+    expect(uncovered.impacts).toHaveLength(1);
+    expect(uncovered.impacts[0]).toMatchObject({ pendingRoleKeys: ["comprehensive_director"], reasonCode: "no_executable_current_approver" });
   });
 
   it("多岗位 all 节点无论初始或已有 approvedRoleKeys 均以执行语义不安全阻断", async () => {

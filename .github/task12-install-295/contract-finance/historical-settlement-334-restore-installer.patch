@@ -1,0 +1,10 @@
+diff --git a/installer.cjs b/installer.cjs
+--- a/installer.cjs
++++ b/installer.cjs
+@@ -1547,0 +1548,6 @@
++
++module.exports.withCombined334HistoricalSettlementForRestore = (receipt,prepare295,consume,material) => {
++  need(typeof prepare295==='function' && typeof consume==='function' && material && typeof material==='object',
++    'A28_334_RESTORE_ARGUMENTS');
++  return withCombinedOrdinaryLoan(receipt,consume,exactMultiWitness295,true,{...readForward320(material,334),prepare295});
++};

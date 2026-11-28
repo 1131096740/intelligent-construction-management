@@ -5,11 +5,14 @@ const { spawnSync } = require("node:child_process");
 const path = require("node:path");
 const { mkdtempSync, rmSync } = require("node:fs");
 const { tmpdir } = require("node:os");
-const storageRoot = mkdtempSync(path.join(tmpdir(), "general-procurement-files-"));
+const { createCommandRuntime } = require("./money-bigint-runner-runtime.cjs");
+const { CI_DYNAMIC_MIGRATION_LABEL, createCiDynamicMigrationFixture } = require("./local-staged-ci-dynamic.cjs");
+const { renderGeneralProcurementFileGuardGrant } = require("./contract-bank-runtime-fixture.cjs");
 
 const root = path.resolve(__dirname, "../../..");
 const password = randomUUID();
-const name = `jiangkong-general_procurement-http-${randomUUID()}`;
+const fixtureRunId = randomUUID();
+const name = `jiangkong-general-procurement-http-${fixtureRunId}`;
 let containerId;
 
 function command(bin, args, env = process.env, quiet = false, timeout = 180_000) {
@@ -21,13 +24,17 @@ function command(bin, args, env = process.env, quiet = false, timeout = 180_000)
 }
 
 if (process.env.NODE_ENV === "production") throw new Error("禁止生产执行");
+const a05 = process.argv[2] === "--a05";
+if (process.argv.length !== (a05 ? 3 : 2)) throw new Error("采购验收仅支持 --a05 定向参数");
 if (process.env.DOCKER_HOST && !process.env.DOCKER_HOST.startsWith("unix://")) throw new Error("只允许本机 Docker");
 const endpoint = process.env.DOCKER_HOST || command("docker", ["context", "inspect", "--format", "{{.Endpoints.docker.Host}}"], process.env, true);
 if (!endpoint.startsWith("unix://")) throw new Error("只允许本机 Docker");
 const docker = (args, env = process.env, quiet = false) => command("docker", ["--host", endpoint, ...args], env, quiet);
+const storageRoot = mkdtempSync(path.join(tmpdir(), "general-procurement-files-"));
 
-try {
+async function verify() {
   containerId = docker(["run", "--detach", "--rm", "--pull=never", "--name", name,
+    "--label", CI_DYNAMIC_MIGRATION_LABEL + "=" + fixtureRunId,
     "--env", "POSTGRES_PASSWORD", "--env", "POSTGRES_USER=jiangkong", "--env", "POSTGRES_DB=general_procurement",
     "--publish", "127.0.0.1::5432", "postgres:16"], { ...process.env, POSTGRES_PASSWORD: password }, true);
   if (!/^[a-f0-9]{64}$/.test(containerId)) throw new Error("一次性容器标识无效");
@@ -41,7 +48,20 @@ try {
     DATABASE_URL: `postgresql://jiangkong:${password}@127.0.0.1:${port}/general_procurement` };
   console.log(`GENERAL_PROCUREMENT 一次性容器：${name}`);
   docker(["exec", containerId, "psql", "-U", "jiangkong", "-d", "general_procurement", "-Atc", "SHOW server_version;"]);
-  command("pnpm", ["--filter", "@jiangkong/api", "exec", "prisma", "migrate", "deploy"], env);
+  const { command: stagedCommand } = createCommandRuntime({ defaultCwd: root });
+  const migration = createCiDynamicMigrationFixture({
+    ciFixture: "DYNAMIC_GENERAL_PROCUREMENT_V1",
+    container: { id: containerId, name, runId: fixtureRunId },
+    databaseNames: ["general_procurement"],
+    temporaryRoot: mkdtempSync(path.join(storageRoot, "staged-migrations-")),
+    dockerCommand: (args, options) => stagedCommand("docker", ["--host", endpoint, ...args], { ...options, env: process.env }),
+    deploy({ databaseUrl, runtimeEnv, schemaPath }) {
+      const args = ["--filter", "@jiangkong/api", "exec", "prisma", "migrate", "deploy"];
+      if (schemaPath) args.push("--schema", schemaPath);
+      return { stdout: command("pnpm", args, { ...runtimeEnv, DATABASE_URL: databaseUrl }) };
+    }
+  });
+  await migration.migrate({ databaseUrl: env.DATABASE_URL, runtimeEnv: env });
   // Preserve the inherited CRUD state on the new table: deployment must remove DELETE itself.
   const runtime = "general_procurement_runtime";
   docker(["exec", containerId, "psql", "-v", "ON_ERROR_STOP=1", "-U", "jiangkong", "-d", "general_procurement", "-c", `
@@ -50,20 +70,34 @@ try {
     GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO ${runtime};
     REVOKE ALL ON TABLE public."OperatingLedgerWriteSecret", public."OperatingLedgerWriteContext" FROM ${runtime};
     REVOKE INSERT, UPDATE, DELETE ON TABLE public."OperatingFact" FROM ${runtime};
+    ${renderGeneralProcurementFileGuardGrant()}
   `], process.env, true);
   docker(["cp", path.join(__dirname, "general-procurement-runtime-grants.sql"), `${containerId}:/tmp/procurement-grants.sql`], process.env, true);
   docker(["exec", "--env", `OPERATING_LEDGER_RUNTIME_ROLE=${runtime}`, containerId, "psql", "-v", "ON_ERROR_STOP=1", "-U", "jiangkong", "-d", "general_procurement", "--file=/tmp/procurement-grants.sql"], process.env, true);
   const grants = docker(["exec", containerId, "psql", "-U", "jiangkong", "-d", "general_procurement", "-Atc", `SELECT has_table_privilege('${runtime}', 'public."GeneralProcurement"', 'INSERT'), has_table_privilege('${runtime}', 'public."GeneralProcurement"', 'DELETE');`], process.env, true);
   if (grants !== "t|f") throw new Error("新表运行权限必须可写、不可删除");
   env.DATABASE_URL = `postgresql://${runtime}:${password}@127.0.0.1:${port}/general_procurement`;
+  if (a05) {
+    const sideTests = path.join(root, "services/api/test-support");
+    command("pnpm", ["--filter", "@jiangkong/api", "exec", "jest", "--runInBand", "--roots", sideTests,
+      "--runTestsByPath", path.join(sideTests, "task426-a05-general-procurement.http.pg.spec.ts")],
+    { ...env, APPROVAL_SMS_ENABLED: "false" }, false, 300_000);
+    return;
+  }
   command("pnpm", ["--filter", "@jiangkong/api", "test", "--", "--runInBand", "src/database/general-procurement-http-postgres.spec.ts", "src/database/approval-v6-migration-postgres.spec.ts"], env, false, 300_000);
-} finally {
+}
+
+verify().finally(() => {
   rmSync(storageRoot, { recursive: true, force: true });
   if (containerId && /^[a-f0-9]{64}$/.test(containerId)) {
     docker(["rm", "--force", "--volumes", containerId], process.env, true);
     console.log(`GENERAL_PROCUREMENT 已清理自身容器：${name}`);
   }
-}
-
-// Keep cross-project scope and approval isolation in the same mandatory CI shard.
-command(process.execPath, [path.join(__dirname, "run-project-business-scope-local.cjs")], process.env, false, 360_000);
+}).then(() => {
+  if (a05) return;
+  // Keep cross-project scope and approval isolation in the same mandatory CI shard.
+  command(process.execPath, [path.join(__dirname, "run-project-business-scope-local.cjs")], process.env, false, 360_000);
+}).catch((error) => {
+  console.error(error.message.replaceAll(password, "[redacted]"));
+  process.exitCode = 1;
+});

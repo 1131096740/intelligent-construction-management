@@ -49,16 +49,22 @@
     {
       "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
       "classification": "test_only",
+      "reason": "Issue #425: V2 submission uses generated-document and frozen-party validation; V1 readiness is no longer a Web submission step.",
+      "wrappers": [
+        "checkContractSubmissionReadiness"
+      ]
+    },
+    {
+      "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
+      "classification": "test_only",
       "reason": "No production consumer; retained only by API unit tests.",
       "wrappers": [
         "abandonContractDraft",
         "addBillRow",
         "cloneContractTemplateVersion",
-        "cloneLayoutTemplateVersion",
         "createContractNumberRule",
         "createContractTemplate",
         "createDraftCheckpoint",
-        "createLayoutTemplate",
         "createStandardClause",
         "deleteBillRow",
         "deletePristineContractDraft",
@@ -66,14 +72,10 @@
         "discardLayoutTemplateVersion",
         "discardStandardClauseVersion",
         "fetchContractWorkbench",
-        "getLatestLayoutTemplatePreview",
-        "inspectLayoutTemplateVersion",
         "listContractDrafts",
         "listStandardClauseHistory",
         "publishContractTemplateVersion",
-        "publishLayoutTemplateVersion",
         "publishStandardClauseVersion",
-        "queueLayoutTemplatePreview",
         "reorderBillRows",
         "restoreDraftCheckpoint",
         "revokeContractTemplateVersion",
@@ -81,14 +83,11 @@
         "saveContractDraft",
         "stopContractNumberRule",
         "stopContractTemplateVersion",
-        "stopLayoutTemplateVersion",
         "submitContractTemplateVersion",
-        "submitLayoutTemplateVersion",
         "submitStandardClauseVersion",
         "updateBillRow",
         "updateContractNumberRule",
         "updateContractTemplateVersion",
-        "updateLayoutTemplateVersion",
         "uploadContractFormalApprovalFile",
         "voidContractDraft"
       ]
@@ -110,7 +109,6 @@
         "confirmProjectOwnerContract",
         "confirmProjectUpstreamSettlement",
         "copyAbandonedContractDraft",
-        "createApprovalDelegation",
         "createSettlementDraft",
         "fetchActiveContractNumberRules",
         "fetchContractWorkbenchLedger",
@@ -126,10 +124,8 @@
         "recordProjectUpstreamSettlement",
         "remindContractApproval",
         "remindPaymentApproval",
-        "remindSettlementApproval",
         "requestSettlementExceptionQuota",
-        "reviewSettlementExceptionQuota",
-        "revokeApprovalDelegation"
+        "reviewSettlementExceptionQuota"
       ]
     },
     {
@@ -180,6 +176,89 @@
         "downloadSettlementTemplatePreview",
         "publishSettlementTemplateVersion",
         "updateSettlementTemplateVersion"
+      ]
+    },
+    {
+      "apiFile": "apps/web-admin/src/api/contract-scenario.api.ts",
+      "classification": "test_only",
+      "reason": "Task09 CON09 requires manual template selection without recommendations; these two wrappers have no production consumer after removing the former scenario recommendation flow. Retained API unit tests and backend APIs pending task43 retirement.",
+      "wrappers": [
+        "listAvailableContractBusinessScenarios",
+        "recommendContractScenarioTemplates"
+      ]
+    },
+    {
+      "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+      "classification": "test_only",
+      "reason": "The signed-supplement workflow (SignedContractChanges, #395) replaces legacy contract change drafts; the remaining eligibility wrapper covers only the historical read.",
+      "wrappers": [
+        "fetchContractChangeEligibility"
+      ]
+    },
+    {
+      "apiFile": "apps/web-admin/src/api/actual-purchase-batch.api.ts",
+      "classification": "unreferenced",
+      "reason": "#403 返工的批次读/改适配器暂无生产消费者（批次面板只用创建/付款/更正/退款）；由 #405 合入集成分支时按既有退休登记机制显式登记，避免整站门禁把 #403 残留算作 #405 回归。",
+      "wrappers": [
+        "fetchActualPurchaseBatch",
+        "updateActualPurchaseBatch"
+      ]
+    },
+    {
+      "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+      "classification": "test_only",
+      "reason": "Issue #425 removes the old settlement editor from authenticated Web routes; historical test adapters stay available without a production consumer.",
+      "wrappers": [
+        "copyAbandonedSettlementDraft",
+        "fetchSettlementContractOptions"
+      ]
+    },
+    {
+      "apiFile": "apps/web-admin/src/api/settlement-drafts.api.ts",
+      "classification": "test_only",
+      "reason": "Issue #425 removes the old settlement editor from authenticated Web routes; historical test adapters stay available without a production consumer.",
+      "wrappers": [
+        "attachSettlementDraftLineFile",
+        "createSettlementDraftRecord",
+        "executeSettlementDraftLifecycleAction",
+        "generateSettlementFrozenDocument",
+        "invalidateSettlementDraftLineAttachment",
+        "linkSettlementCounterpartySignedDocument",
+        "submitSettlementDraftRecord",
+        "updateSettlementDraftRecord"
+      ]
+    },
+    {
+      "apiFile": "apps/web-admin/src/api/settlement-drafts.api.ts",
+      "classification": "unreachable_only",
+      "reason": "Issue #425 removes the old settlement editor from authenticated Web routes; historical test adapters stay available without a production consumer.",
+      "wrappers": [
+        "fetchSettlementFinalPreparation",
+        "fetchSettlementProjectCapability",
+        "uploadSettlementDraftPrivateFile"
+      ]
+    },
+    {
+      "apiFile": "apps/web-admin/src/api/settlement-template.api.ts",
+      "classification": "test_only",
+      "reason": "Issue #425 removes the old settlement editor from authenticated Web routes; historical test adapters stay available without a production consumer.",
+      "wrappers": [
+        "fetchSettlementTemplateRecommendations"
+      ]
+    },
+    {
+      "apiFile": "apps/web-admin/src/api/settlement-workbench.api.ts",
+      "classification": "test_only",
+      "reason": "Issue #425 removes the old settlement editor from authenticated Web routes; historical test adapters stay available without a production consumer.",
+      "wrappers": [
+        "applySettlementImport",
+        "downloadSettlementImportErrors",
+        "downloadSettlementImportResult",
+        "downloadSettlementImportTemplate",
+        "fetchSettlementParticipantOptions",
+        "fetchSettlementSourceLines",
+        "previewSettlementImport",
+        "previewSettlementLines"
       ]
     }
   ]

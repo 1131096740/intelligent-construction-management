@@ -385,6 +385,39 @@ describe("PermissionGuard", () => {
     ).rejects.toThrow("当前账号缺少执行该项目操作所需的岗位权限");
   });
 
+  it("admits a marked legacy executive duty ahead of the cursor only for a frozen current actor", async () => {
+    const marker = { protocolVersion: 1, executionMode: "parallel", legacyContractCutover: true, approvedRoleKeys: [] as string[] };
+    const frozenNodes = [
+      { ...marker, name: "合同部主管", mode: "any", roleKeys: ["contract_director"],
+        candidateUserIds: ["director-1"], candidateUserIdsByRole: { contract_director: ["director-1"] },
+        roleScopesByRole: { contract_director: "global" } },
+      { ...marker, name: "董事长/总经理", mode: "any", roleKeys: ["chairman", "general_manager"],
+        candidateUserIds: ["frozen-chairman"], candidateUserIdsByRole: { chairman: ["frozen-chairman"], general_manager: [] },
+        roleScopesByRole: { chairman: "global", general_manager: "global" } }
+    ];
+    const instance = { id: "round-1", flowType: "contract.approve", currentNodeIndex: 0, status: "in_progress", frozenNodes };
+    const prisma = {
+      ...buildPrisma("chairman"),
+      userPosition: { findMany: jest.fn().mockImplementation(({ where }: { where: { projectId: string | null } }) =>
+        Promise.resolve(where.projectId === null ? [{ positionId: "position-1" }] : [])) },
+      contractVersion: { findUnique: jest.fn().mockResolvedValue({ contractId: "contract-1", status: "in_approval", numericProtocolVersion: 1 }) },
+      contract: { findUnique: jest.fn().mockResolvedValue({ projectId: "project-1" }) },
+      approvalInstance: { findFirst: jest.fn().mockResolvedValue(instance) }
+    };
+    const guard = () => new PermissionGuard({
+      getAllAndOverride: jest.fn().mockReturnValueOnce(undefined).mockReturnValueOnce("contract.approve")
+    } as never, prisma as never);
+    const request = (actor: string) => contextWithRequest({
+      user: { id: actor }, params: { contractVersionId: "version-1" },
+      body: { expectedApprovalInstanceId: "round-1", expectedNodeIndex: 1 }
+    });
+
+    await expect(guard().canActivate(request("frozen-chairman"))).resolves.toBe(true);
+    await expect(guard().canActivate(request("other-chairman"))).rejects.toMatchObject({ status: 403 });
+    frozenNodes[1].approvedRoleKeys = ["chairman"];
+    await expect(guard().canActivate(request("frozen-chairman"))).rejects.toMatchObject({ status: 403 });
+  });
+
   it("rejects a governed frozen candidate after the candidate changes roles", async () => {
     const prisma = {
       userPosition: { findMany: jest.fn().mockResolvedValue([]) },
@@ -406,7 +439,7 @@ describe("PermissionGuard", () => {
           }]
         })
       },
-      approvalDelegation: { findMany: jest.fn().mockResolvedValue([]) },
+      approvalDelegation: { groupBy: jest.fn().mockResolvedValue([]) },
       user: { findMany: jest.fn().mockResolvedValue([{ id: "former-finance-1", isActive: true }]) }
     };
     const guard = new PermissionGuard({
@@ -559,7 +592,7 @@ describe("PermissionGuard", () => {
           frozenNodes: [{ roleKeys: ["finance_director"], candidateUserIds: ["finance-1"] }]
         })
       },
-      approvalDelegation: { findMany: jest.fn().mockResolvedValue([]) },
+      approvalDelegation: { groupBy: jest.fn().mockResolvedValue([]) },
       user: { findMany: jest.fn().mockResolvedValue([{ id: "finance-2", isActive: true }]) }
     };
     const guard = new PermissionGuard({
@@ -570,6 +603,34 @@ describe("PermissionGuard", () => {
       user: { id: "finance-2" },
       params: { paymentId: "payment-1" }
     }))).rejects.toThrow("当前账号不是该审批节点冻结的处理人");
+  });
+
+  it.each([
+    { role: "finance_director", approvalDutyIndex: 1, allowed: true },
+    { role: "finance_director", approvalDutyIndex: 0, allowed: false },
+    { role: "finance_staff", approvalDutyIndex: 1, allowed: false }
+  ])("requires the parallel expense assignee's current role for the requested duty ($role, $approvalDutyIndex)", async ({ role, approvalDutyIndex, allowed }) => {
+    const nodes = [
+      { roleKeys: ["comprehensive_director"], roleScopesByRole: { comprehensive_director: "global" } },
+      { roleKeys: ["finance_director"], roleScopesByRole: { finance_director: "global" } }
+    ].map(node => ({ ...node, protocolVersion: 1, executionMode: "parallel", mode: "any", candidatePolicy: "current_role_scope" }));
+    const prisma = {
+      userPosition: { findMany: jest.fn().mockResolvedValue([{ positionId: "p-1", projectId: null }]) },
+      position: { findMany: jest.fn().mockResolvedValue([{ id: "p-1", key: role }]) },
+      projectMember: { findMany: jest.fn().mockResolvedValue([]) },
+      user: { findUnique: jest.fn().mockResolvedValue({ isActive: true }) },
+      expenseClaim: { findUnique: jest.fn().mockResolvedValue({ projectId: null, claimType: "reimbursement", status: "approval_pending", approvalInstanceId: "round" }) },
+      approvalInstance: { findFirst: jest.fn().mockResolvedValue({ id: "round", flowType: "expense_claim.approve", currentNodeIndex: 0, frozenNodes: nodes }) }
+    };
+    const guard = new PermissionGuard({
+      getAllAndOverride: jest.fn().mockReturnValueOnce(undefined).mockReturnValueOnce("expense_claim.approve")
+    } as never, prisma as never);
+    const pending = guard.canActivate(contextWithRequest({
+      user: { id: "reviewer" }, params: { claimId: "claim-1" },
+      body: { approvalInstanceId: "round", approvalDutyIndex }
+    }));
+    if (allowed) await expect(pending).resolves.toBe(true);
+    else await expect(pending).rejects.toThrow(ForbiddenException);
   });
 
   it("rejects a frozen non-project fact witness without a current approval role", async () => {
@@ -586,7 +647,7 @@ describe("PermissionGuard", () => {
           }]
         })
       },
-      approvalDelegation: { findMany: jest.fn().mockResolvedValue([]) },
+      approvalDelegation: { groupBy: jest.fn().mockResolvedValue([]) },
       user: { findMany: jest.fn().mockResolvedValue([{ id: "witness-1", isActive: true }]) }
     };
     const context = (userId: string) => contextWithRequest({
@@ -629,7 +690,7 @@ describe("PermissionGuard", () => {
           }]
         })
       },
-      approvalDelegation: { findMany: jest.fn().mockResolvedValue([]) },
+      approvalDelegation: { groupBy: jest.fn().mockResolvedValue([]) },
       user: { findMany: jest.fn().mockResolvedValue([]) }
     };
     const guard = new PermissionGuard({
@@ -669,7 +730,7 @@ describe("PermissionGuard", () => {
         })
       },
       approvalDelegation: {
-        findMany: jest.fn().mockResolvedValue([{ fromUserId: "finance-1" }])
+        groupBy: jest.fn().mockResolvedValue([{ fromUserId: "finance-1" }])
       },
       user: {
         findMany: jest.fn().mockResolvedValue([
@@ -708,7 +769,7 @@ describe("PermissionGuard", () => {
           Promise.resolve(select.projectId ? { projectId: "project-1" } : { id: "payment-1" }))
       },
       approvalInstance: { findFirst: approvalFindFirst },
-      approvalDelegation: { findMany: jest.fn().mockResolvedValue([]) },
+      approvalDelegation: { groupBy: jest.fn().mockResolvedValue([]) },
       user: { findMany: jest.fn().mockResolvedValue([]) }
     };
     const guard = new PermissionGuard({
@@ -745,7 +806,7 @@ describe("PermissionGuard", () => {
         findFirst: jest.fn().mockResolvedValue({ projectId: "project-1" })
       },
       approvalDelegation: {
-        findMany: jest.fn().mockResolvedValue([{ fromUserId: "finance-director-1" }])
+        groupBy: jest.fn().mockResolvedValue([{ fromUserId: "finance-director-1" }])
       },
       user: {
         findMany: jest.fn().mockResolvedValue([
@@ -772,7 +833,8 @@ describe("PermissionGuard", () => {
         })
       )
     ).resolves.toBe(true);
-    expect(prisma.approvalDelegation.findMany).toHaveBeenCalledWith({
+    expect(prisma.approvalDelegation.groupBy).toHaveBeenCalledWith({
+      by: ["fromUserId"],
       where: {
         toUserId: "delegatee-1",
         actionKey: null,
@@ -781,8 +843,7 @@ describe("PermissionGuard", () => {
         enabled: true,
         startsAt: { lte: expect.any(Date) },
         endsAt: { gt: expect.any(Date) }
-      },
-      select: { fromUserId: true }
+      }
     });
   });
 
@@ -1105,7 +1166,7 @@ describe("PermissionGuard", () => {
       position: { findMany: jest.fn().mockResolvedValue([]) },
       paymentRequest: { findFirst: jest.fn().mockResolvedValue({ projectId: "project-1" }) },
       approvalDelegation: {
-        findMany: jest.fn().mockResolvedValue([{ fromUserId: "finance-director-1" }])
+        groupBy: jest.fn().mockResolvedValue([{ fromUserId: "finance-director-1" }])
       },
       user: {
         findMany: jest.fn().mockResolvedValue([
@@ -1917,6 +1978,27 @@ describe("PermissionGuard", () => {
     });
   });
 
+  it("binds a contract payment remainder action directly to the payment request project", async () => {
+    const spot = { findPaymentProjectId: jest.fn() };
+    const prisma = {
+      userPosition: { findMany: jest.fn().mockResolvedValue([]) },
+      position: { findMany: jest.fn().mockResolvedValue([]) },
+      projectMember: { findMany: jest.fn().mockResolvedValue([{ positionKey: "comprehensive_director" }]) },
+      paymentRequest: { findFirst: jest.fn().mockResolvedValue({ projectId: "project-a" }) }
+    };
+    const guard = new PermissionGuard(
+      { getAllAndOverride: jest.fn().mockReturnValueOnce(undefined).mockReturnValueOnce("payment.create") } as never,
+      prisma as never,
+      spot as never
+    );
+
+    await expect(guard.canActivate(contextWithRequest({
+      user: { id: "user-1" }, params: { paymentRequestId: "pay-1" }, body: { projectId: "project-b" }
+    }))).resolves.toBe(true);
+    expect(spot.findPaymentProjectId).not.toHaveBeenCalled();
+    expect(prisma.projectMember.findMany).toHaveBeenCalledWith({ where: { userId: "user-1", projectId: "project-a" } });
+  });
+
   it("resolves project roles from body contractVersionId for contract advance payment creation", async () => {
     const prisma = {
       userPosition: {
@@ -2393,6 +2475,98 @@ describe("PermissionGuard", () => {
       where: { OR: [{ id: "JS-2026-001" }, { code: "JS-2026-001" }] },
       select: { projectId: true }
     });
+    expect(prisma.projectMember.findMany).toHaveBeenCalledWith({
+      where: { userId: "user-1", projectId: "project-a" }
+    });
+  });
+
+  it("resolves project roles from body signedSettlementId for payment creation", async () => {
+    const prisma = {
+      userPosition: {
+        findMany: jest.fn().mockResolvedValue([])
+      },
+      projectMember: {
+        findMany: jest.fn(({ where }: { where: { projectId: string } }) =>
+          Promise.resolve(where.projectId === "project-a" ? [{ positionKey: "contract_staff" }] : [])
+        )
+      },
+      position: {
+        findMany: jest.fn().mockResolvedValue([])
+      },
+      signedContractSettlement: {
+        findUnique: jest.fn().mockResolvedValue({ projectId: "project-a" })
+      }
+    };
+    const guard = new PermissionGuard(
+      {
+        getAllAndOverride: jest
+          .fn()
+          .mockReturnValueOnce(undefined)
+          .mockReturnValueOnce("payment.create")
+      } as never,
+      prisma as never
+    );
+
+    await expect(
+      guard.canActivate(
+        contextWithRequest({
+          user: { id: "user-1" },
+          body: {
+            sourceType: "signed_settlement",
+            signedSettlementId: "signed-settlement-1",
+            projectId: "project-b"
+          }
+        })
+      )
+    ).resolves.toBe(true);
+    expect(prisma.signedContractSettlement.findUnique).toHaveBeenCalledWith({
+      where: { id: "signed-settlement-1" },
+      select: { projectId: true }
+    });
+    expect(prisma.projectMember.findMany).toHaveBeenCalledWith({
+      where: { userId: "user-1", projectId: "project-a" }
+    });
+  });
+
+  it("rejects a forged project id when only a signed settlement basis is supplied", async () => {
+    const prisma = {
+      userPosition: {
+        findMany: jest.fn().mockResolvedValue([])
+      },
+      projectMember: {
+        findMany: jest.fn(({ where }: { where: { projectId: string } }) =>
+          Promise.resolve(where.projectId === "project-b" ? [{ positionKey: "contract_staff" }] : [])
+        )
+      },
+      position: {
+        findMany: jest.fn().mockResolvedValue([])
+      },
+      signedContractSettlement: {
+        findUnique: jest.fn().mockResolvedValue({ projectId: "project-a" })
+      }
+    };
+    const guard = new PermissionGuard(
+      {
+        getAllAndOverride: jest
+          .fn()
+          .mockReturnValueOnce(undefined)
+          .mockReturnValueOnce("payment.create")
+      } as never,
+      prisma as never
+    );
+
+    await expect(
+      guard.canActivate(
+        contextWithRequest({
+          user: { id: "user-1" },
+          body: {
+            sourceType: "signed_settlement",
+            signedSettlementId: "signed-settlement-1",
+            projectId: "project-b"
+          }
+        })
+      )
+    ).rejects.toThrow(ForbiddenException);
     expect(prisma.projectMember.findMany).toHaveBeenCalledWith({
       where: { userId: "user-1", projectId: "project-a" }
     });

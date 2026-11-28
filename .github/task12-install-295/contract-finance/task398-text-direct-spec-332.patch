@@ -1,0 +1,8 @@
+--- predecessor/task16-text-agreement-payments.http.pg.spec.ts
++++ forward/task16-text-agreement-payments.http.pg.spec.ts
+@@ -42,3 +42,4 @@
+     `;
+-    const expectedCount = process.env.TASK425_TEXT_FINANCE_331 === "1" ? 331 : 330;
++    const expectedCount = process.env.TASK425_TEXT_FINANCE_332 === "1" ? 332
++      : process.env.TASK425_TEXT_FINANCE_331 === "1" ? 331 : 330;
+     expect(identity).toEqual({ count: expectedCount, run: runId });

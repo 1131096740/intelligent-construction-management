@@ -1,0 +1,54 @@
+--- runner.cjs
++++ runner.cjs
+@@ -326,0 +327 @@
++ const reportFile=path.join(privateLogDir,"standard-290-jest.json");
+@@ -328,2 +329,4 @@
+-  const knownTitle="rejects a project source gap, then shares three valid instalments and supplements the voucher";
+-  const reportFile=path.join(privateLogDir,"standard-290-jest.json");
++  const knownCase=standard290?.lane==="cash-handover"?["hands over real registered cash without rewriting balances, and takes over a departed custodian's held transfers",1]:
++    standard290?.lane==="principal-return"?["locks four-place principal reservations, records a partial and one competing final payment, and recovers the original key",1]:
++    ["rejects a project source gap, then shares three valid instalments and supplements the voucher",8];
++  const [knownTitle,expected]=knownCase;
+@@ -336,3 +339,3 @@
+-   if(report.success!==true||report.numPassedTests!==8||report.numFailedTests!==0||report.numPendingTests!==0||
+-      matched.length!==8||matched.filter(row=>row.title===knownTitle).length!==1)throw Error("TASK398_STANDARD_290_ORIGINAL_COVERAGE");
+-   standard290.original={business:1,passed:8,skipped:0};
++   if(report.success!==true||report.numPassedTests!==expected||report.numFailedTests!==0||report.numPendingTests!==0||
++      matched.length!==expected||matched.filter(row=>row.title===knownTitle).length!==1)throw Error("TASK398_STANDARD_290_ORIGINAL_COVERAGE");
++   standard290.original={business:1,passed:expected,skipped:0};
+@@ -349,0 +353,13 @@
++  if(standard290){
++   try {
++    const report=JSON.parse(readFileSync(reportFile,"utf8"));
++    standard290.safeJestFailure=report.testResults?.flatMap(suite=>suite.assertionResults??[])
++      .filter(row=>row.status==="failed").slice(0,3).map(row=>{
++        const message=(row.failureMessages??[]).join("\n");
++        return {prismaCodes:[...new Set(message.match(/\bP[0-9]{4}\b/gu)??[])].slice(0,4),
++          sqlstates:[...message.matchAll(/\b(?:SQLSTATE|Code:)\s*([0-9A-Z]{5})\b/gu)].slice(0,4).map(x=>x[1]),
++          frames:[...message.matchAll(/(?:task25-public-cash-handover|task27-principal-return)\.http\.pg\.spec\.ts:(\d+):(\d+)/gu)]
++            .slice(0,5).map(x=>[Number(x[1]),Number(x[2])])};
++      });
++   } catch { /* Preserve the original failing command when Jest emitted no parseable report. */ }
++  }
+@@ -488 +504 @@
+- const modes=new Map([["standard-290",[]],["standard",[]],["principal-return",["--principal-return-real"]],["cash-handover",["--cash-handover-real"]],["correction-catalog",["--cash-handover-real"]]]);
++ const modes=new Map([["standard-290",[]],["cash-handover-290",["--cash-handover-real"]],["principal-return-290",["--principal-return-real"]],["standard",[]],["principal-return",["--principal-return-real"]],["cash-handover",["--cash-handover-real"]],["correction-catalog",["--cash-handover-real"]]]);
+@@ -490 +506,3 @@
+- if(mode==="standard-290"&&receipt?.purpose!=="TASK398_STANDARD_EXACT_290") throw Error("TASK398_STANDARD_290_SCOPE");
++ const exact290=mode==="standard-290"||mode==="cash-handover-290"||mode==="principal-return-290";
++ if(exact290&&receipt?.purpose!=="TASK398_STANDARD_EXACT_290") throw Error("TASK398_STANDARD_290_SCOPE");
++ if((mode==="cash-handover-290"&&receipt.lane!=="cash-handover")||(mode==="principal-return-290"&&receipt.lane!=="principal-return")) throw Error("TASK398_LANE_290_SCOPE");
+@@ -496 +514 @@
+- if(candidateTree!==((mode==="correction-catalog"||mode==="standard-290")?"23b1c98bc15f36e986d17059579e6673315b9be8":"8d3e50a0c525a68e717b74fbecbcceabc80840f7")||candidate!=="0a5b607cf912ffbb50237af2608ac8b2a5360c16"||containerName(runId)===""||database!==`jg_task01_${short}`
++ if(candidateTree!==((mode==="correction-catalog"||exact290)?"23b1c98bc15f36e986d17059579e6673315b9be8":"8d3e50a0c525a68e717b74fbecbcceabc80840f7")||candidate!=="0a5b607cf912ffbb50237af2608ac8b2a5360c16"||containerName(runId)===""||database!==`jg_task01_${short}`
+@@ -536,2 +554,2 @@
+-   ||readback.sameActor!==true||readback.tls!==true||readback.inactiveLedger!==0||ledger.length!==((mode==="correction-catalog"||mode==="standard-290")?290:282)
+-   ||createHash("sha256").update(JSON.stringify(ledger)).digest("hex")!==((mode==="correction-catalog"||mode==="standard-290")?"8741d9da09253efb803af9e132b4cde09de0dfef86da7edf952b6c0056a057a5":"be6d9aed22658af5e273010a2e1e839544fa27e74e998701fb3d9e9248f88cfc"))throw new Error("TASK398_OWNED_280_LEDGER");
++   ||readback.sameActor!==true||readback.tls!==true||readback.inactiveLedger!==0||ledger.length!==((mode==="correction-catalog"||exact290)?290:282)
++   ||createHash("sha256").update(JSON.stringify(ledger)).digest("hex")!==((mode==="correction-catalog"||exact290)?"8741d9da09253efb803af9e132b4cde09de0dfef86da7edf952b6c0056a057a5":"be6d9aed22658af5e273010a2e1e839544fa27e74e998701fb3d9e9248f88cfc"))throw new Error("TASK398_OWNED_280_LEDGER");
+@@ -553 +571,4 @@
+-  correctionCatalog:mode==="correction-catalog"?{context,receipt}:undefined,standard290:mode==="standard-290"?receipt:undefined,ownedMigrationBaseline:{
++  correctionCatalog:mode==="correction-catalog"?{context,receipt}:undefined,standard290:exact290?receipt:undefined,ownedMigrationBaseline:exact290?{
++  expectedDirectoryCount:290,terminalMigration:"20261119003500_fund_balance_correction_controlled_round",
++  terminalMigrationChecksum:"8ea8b2a9c78210a7c4e42f4ddf7224fada84b2c4692dfbecc41477d3a8704f60"
++ }:{

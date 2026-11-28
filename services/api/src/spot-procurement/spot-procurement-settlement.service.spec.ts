@@ -1,3 +1,7 @@
+import { Test } from "@nestjs/testing";
+import { SpotProcurementApplicationService } from "./spot-procurement-application.service";
+import { SpotProcurementReadService } from "./spot-procurement-read.service";
+import { SpotProcurementPaymentService } from "./spot-procurement-payment.service";
 import "reflect-metadata";
 import {
   BadRequestException,
@@ -138,7 +142,7 @@ function refundRow(
     procurementId: "procurement-1",
     paymentId: "payment-1",
     amountCents: 1_000n,
-    receivedAt: new Date("2020-01-02T03:04:05.000Z"),
+    receivedAt: new Date("2026-07-29T03:04:05.000Z"),
     refundMethod: "bank_transfer",
     voucherFileId: "refund-voucher-1",
     recordedByUserId: ACTORS.financeStaff,
@@ -1004,7 +1008,7 @@ describe("SpotProcurementSettlementService discrepancy workflow", () => {
 describe("SpotProcurementSettlementService refund workflow", () => {
   const refundInput = {
     amountCents: "1000",
-    receivedAt: "2020-01-02T03:04:05.000Z",
+    receivedAt: "2026-07-29T03:04:05.000Z",
     refundMethod: "bank_transfer" as const,
     voucherFileId: "refund-voucher-1",
     idempotencyKey: "refund-key-1"
@@ -1041,6 +1045,34 @@ describe("SpotProcurementSettlementService refund workflow", () => {
       refund: options?.refund ?? null
     });
   }
+
+  it.each([["2026-07-27", 400], ["2026-07-28", 201]] as const)("compares refund %s with payment by Beijing business date over HTTP", async (receivedAt, status) => {
+    const harness = paidRefundHarness();
+    Reflect.set(harness.service, "operatingSources", { appendConfirmedSourceIfEnabledInTransaction: jest.fn().mockResolvedValue(null) });
+    const module = await Test.createTestingModule({ controllers: [SpotProcurementController], providers: [
+      { provide: SpotProcurementSettlementService, useValue: harness.service },
+      ...[SpotProcurementApplicationService, SpotProcurementReadService, SpotProcurementPaymentService].map(provide => ({ provide, useValue: {} }))
+    ] }).compile();
+    const app = module.createNestApplication({ logger: false });
+    app.use((request: { user?: unknown }, _response: unknown, next: () => void) => { request.user = { id: ACTORS.financeStaff }; next(); });
+    try {
+      await app.listen(0, "127.0.0.1");
+      const response = await fetch(`${await app.getUrl()}/spot-procurements/procurement-1/refunds`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ ...refundInput, receivedAt }) });
+      expect(response.status).toBe(status);
+      if (status === 400) {
+        expect(await response.text()).toContain("不能早于付款日期");
+        expect(harness.getRefund()).toBeNull(); expect(harness.funding.reverseExecution).not.toHaveBeenCalled();
+      } else {
+        expect((await response.json()).refund.receivedAt).toBe("2026-07-27T16:00:00.000Z");
+        // Simulate an immutable old stored fact in this in-memory DB fixture.
+        // Replay must not re-date it or rejudge its historical date ordering.
+        const legacy = harness.getRefund()!; legacy.receivedAt = new Date("2020-01-02T03:04:05Z");
+        const replay = await fetch(`${await app.getUrl()}/spot-procurements/procurement-1/refunds`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ ...refundInput, receivedAt: legacy.receivedAt.toISOString() }) });
+        expect(replay.status).toBe(201); expect(legacy.receivedAt.toISOString()).toBe("2020-01-02T03:04:05.000Z");
+        expect(harness.getRefund()).toBe(legacy); expect(harness.tx.spotProcurementRefund.create).toHaveBeenCalledTimes(1);
+      }
+    } finally { await app.close(); }
+  });
 
   it("requires the exact full refund, locks the project before files, and replays one immutable fact", async () => {
     const harness = paidRefundHarness();

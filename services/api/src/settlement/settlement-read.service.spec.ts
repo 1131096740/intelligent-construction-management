@@ -54,7 +54,7 @@ describe("SettlementReadService", () => {
     await workbook.xlsx.load(result.buffer as unknown as ExcelJS.Buffer);
 
     expect(service.listRecent).toHaveBeenCalledWith(undefined, ["project-1"], {
-      unbounded: true
+      unbounded: true, actorUserId: "finance-user"
     });
     expect(result.fileName).toMatch(/^结算台账-\d{8}\.xlsx$/);
     expect(workbook.getWorksheet("结算台账")?.getRow(2).getCell(1).value).toBe(
@@ -96,10 +96,9 @@ describe("SettlementReadService", () => {
     ["pending_archive_confirm", true], ["effective", true], ["partially_paid", true], ["paid", true]
   ])("shows formal settlement download availability for %s", (status, enabled) => {
     const service = new SettlementReadService({} as never) as unknown as {
-      settlementActions(status: string, roles: string[], review: object, files: []): Array<{ key: string; enabled: boolean; disabledReason?: string }>;
+      settlementActions(status: string, roles: string[], files: []): Array<{ key: string; enabled: boolean; disabledReason?: string }>;
     };
-    const action = service.settlementActions(status as string, ["contract_staff"],
-      { canAct: false, canReview: false, requiresSelfReviewConfirmation: false }, [])
+    const action = service.settlementActions(status as string, ["contract_staff"], [])
       .find((item) => item.key === "download_approval_form");
     expect(action?.enabled).toBe(enabled);
     if (!enabled) expect(action?.disabledReason).toBe("仅最终审批通过后可下载正式结算单");
@@ -110,7 +109,6 @@ describe("SettlementReadService", () => {
       settlementActions(
         status: string,
         roleKeys: string[],
-        approvalReviewAccess: { canAct: boolean; canReview: boolean; requiresSelfReviewConfirmation: boolean },
         archiveFiles: []
       ): Array<{ key: string; enabled: boolean }>;
     };
@@ -118,7 +116,6 @@ describe("SettlementReadService", () => {
     const actions = service.settlementActions(
       "effective",
       ["finance_staff"],
-      { canAct: false, canReview: false, requiresSelfReviewConfirmation: false },
       []
     );
 
@@ -271,7 +268,6 @@ describe("SettlementReadService", () => {
       settlementActions(
         status: string,
         roleKeys: string[],
-        access: { canAct: boolean; canReview: boolean; requiresSelfReviewConfirmation: boolean },
         files: [],
         governanceVersion: number,
         generationFailed: boolean
@@ -279,16 +275,9 @@ describe("SettlementReadService", () => {
       statusView(status: string, generationFailed?: boolean): { label: string };
       nextActionLabel(status: string, generationFailed?: boolean): string;
     };
-    const noApprovalAccess = {
-      canAct: false,
-      canReview: false,
-      requiresSelfReviewConfirmation: false
-    };
-
     const directorActions = service.settlementActions(
       "pending_generation",
       ["contract_director"],
-      noApprovalAccess,
       [],
       1,
       true
@@ -296,7 +285,6 @@ describe("SettlementReadService", () => {
     const staffActions = service.settlementActions(
       "pending_generation",
       ["contract_staff"],
-      noApprovalAccess,
       [],
       1,
       true
@@ -304,7 +292,6 @@ describe("SettlementReadService", () => {
     const processingActions = service.settlementActions(
       "pending_generation",
       ["contract_director"],
-      noApprovalAccess,
       [],
       1,
       false
@@ -1047,65 +1034,6 @@ describe("SettlementReadService", () => {
     ).rejects.toThrow("未找到结算绑定的付款条款版本，请刷新结算台账后重试");
   });
 
-  it("结算申请人兼任当前岗位仍须本人确认签批", async () => {
-    const prisma = {
-      approvalInstance: {
-        findFirst: jest.fn().mockResolvedValue({
-          applicantUserId: "leader-1",
-          frozenNodes: [{ roleKeys: ["budget_director"] }],
-          currentNodeIndex: 0
-        })
-      }
-    };
-    const service = new SettlementReadService(prisma as never) as unknown as {
-      canReviewCurrentApproval(
-        businessType: string,
-        businessId: string,
-        projectId: string,
-        roleKeys: string[],
-        actorUserId: string
-      ): Promise<unknown>;
-      settlementActions(
-        status: string,
-        roleKeys: never[],
-        access: unknown,
-        archiveFiles: never[]
-      ): Array<Record<string, unknown>>;
-    };
-
-    const access = await service.canReviewCurrentApproval(
-      "settlement",
-      "settlement-1",
-      "project-1",
-      ["chairman", "budget_director"],
-      "leader-1"
-    );
-    expect(access).toEqual({
-      canAct: true,
-      canReview: true,
-      requiresSelfReviewConfirmation: true
-    });
-    expect(
-      service.settlementActions(
-        "approval_pending",
-        ["chairman", "budget_director"] as never[],
-        access,
-        []
-      )
-    ).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({
-          key: "review_approval",
-          enabled: true,
-          disabledReason: null,
-          requiresSelfReviewConfirmation: true
-        }),
-        expect.objectContaining({ key: "transfer_approval", enabled: true }),
-        expect.objectContaining({ key: "delegate_approval", enabled: true })
-      ])
-    );
-  });
-
   it("does not borrow current contract tax facts for a legacy settlement without snapshots", async () => {
     const service = new SettlementReadService({} as never) as unknown as {
       taxFactSummary(
@@ -1147,97 +1075,6 @@ describe("SettlementReadService", () => {
     ]);
   });
 
-  it.each([
-    ["双端启用", true, true],
-    ["委托人停用", false, false],
-    ["受托人缺失", false, true]
-  ] as const)("standing delegation 在%s时 canReview=%s", async (label, expected, delegatorActive) => {
-    const prisma = {
-      approvalInstance: {
-        findFirst: jest.fn().mockResolvedValue({
-          applicantUserId: "applicant-1",
-          frozenNodes: [{ roleKeys: ["budget_director"] }],
-          currentNodeIndex: 0
-        })
-      },
-      approvalDelegation: {
-        findMany: jest.fn().mockResolvedValue([{ fromUserId: "delegator-1" }])
-      },
-      user: {
-        findMany: jest.fn().mockResolvedValue([
-          { id: "delegator-1", isActive: delegatorActive },
-          ...(label === "受托人缺失" ? [] : [{ id: "delegatee-1", isActive: true }])
-        ])
-      }
-    };
-    const projectVisibility = {
-      effectiveRoleKeys: jest.fn().mockImplementation((userId: string) =>
-        userId === "delegator-1" ? ["budget_director"] : []
-      )
-    };
-    const service = new SettlementReadService(prisma as never, projectVisibility as never) as unknown as {
-      canReviewCurrentApproval(
-        businessType: string,
-        businessId: string,
-        projectId: string,
-        roleKeys: string[],
-        actorUserId: string
-      ): Promise<{ canReview: boolean }>;
-    };
-
-    const access = await service.canReviewCurrentApproval(
-      "settlement",
-      "settlement-1",
-      "project-1",
-      [],
-      "delegatee-1"
-    );
-
-    expect(access.canReview).toBe(expected);
-  });
-
-  it.each([
-    ["冻结候选调岗后", "finance-director-1", [], false],
-    ["同岗位非冻结候选", "finance-director-2", ["finance_director"], false]
-  ] as const)("受治理结算节点%s按当前任职控制", async (_label, actorUserId, roleKeys, expected) => {
-    const prisma = {
-      approvalInstance: {
-        findFirst: jest.fn().mockResolvedValue({
-          applicantUserId: "applicant-1",
-          frozenNodes: [{
-            roleKeys: ["finance_director"],
-            candidateUserIdsByRole: { finance_director: ["finance-director-1"] },
-            candidateUserIds: ["finance-director-1"]
-          }],
-          currentNodeIndex: 0
-        })
-      },
-      approvalDelegation: { findMany: jest.fn().mockResolvedValue([]) },
-      user: { findMany: jest.fn().mockResolvedValue([]) }
-    };
-    const service = new SettlementReadService(prisma as never, {
-      effectiveRoleKeys: jest.fn().mockResolvedValue([])
-    } as never) as unknown as {
-      canReviewCurrentApproval(
-        businessType: string,
-        businessId: string,
-        projectId: string,
-        roleKeys: string[],
-        actorUserId: string
-      ): Promise<{ canAct: boolean; canReview: boolean }>;
-    };
-
-    const access = await service.canReviewCurrentApproval(
-      "settlement",
-      "settlement-1",
-      "project-1",
-      [...roleKeys],
-      actorUserId
-    );
-
-    expect(access.canAct).toBe(expected);
-    expect(access.canReview).toBe(expected);
-  });
   it("aggregates formal settlements and owned drafts without project-by-project reads", async () => {
     const now = new Date("2026-07-20T01:00:00.000Z");
     const settlement = (id: string, status: string, preparedByUserId = "u1") => ({
@@ -1262,7 +1099,7 @@ describe("SettlementReadService", () => {
       paymentRequest: { findMany: jest.fn().mockResolvedValue([]) },
       approvalInstance: { findMany: jest.fn().mockResolvedValue([]) }
     };
-    const service = new SettlementReadService(prisma as never);
+    const service = new SettlementReadService(prisma as never, {effectiveRoleKeys: async () => ["contract_director"]} as never);
     const result = await service.lifecycleLedger("my_drafts", 1, 20, ["p1"], "u1");
 
     expect(result.summary).toEqual({ formal_ledger: 1, my_drafts: 1, returned_for_revision: 1, ended: 2 });
@@ -1282,7 +1119,7 @@ describe("SettlementReadService", () => {
         projectId: "p1",
         lifecycleKind: "approval_draft",
         abandonReason: "不再继续",
-        copyAvailable: true
+        copyAvailable: false
       })
     ]));
     const formal = await service.lifecycleLedger("formal_ledger", 1, 20, ["p1"], "u1");
@@ -1403,20 +1240,22 @@ describe("SettlementReadService", () => {
         { businessType: "settlement", businessId: "archive" }
       ])
     };
-    const service = new SettlementReadService(prisma as never, undefined, undefined, me as never);
+    const service = new SettlementReadService(prisma as never, {effectiveRoleKeys: async () => ["contract_director"]} as never, undefined, me as never);
 
     const pending = await service.workbenchLedger("pending_action", 1, 20, ["p1"], "u1");
     expect(pending.rows).toEqual(expect.arrayContaining([
-      expect.objectContaining({ settlementId: "archive", status: "pending_archive_confirm" }),
-      expect.objectContaining({ settlementId: "returned", status: "approval_rejected" })
+      expect.objectContaining({ settlementId: "archive", status: "pending_archive_confirm" })
     ]));
+    expect(pending.rows).toHaveLength(1);
     expect(pending.summary).toEqual({
-      pending_action: 2, my_drafts: 1, in_approval: 1, pending_archive: 1, effective: 1, all: 7
+      pending_action: 1, my_drafts: 1, in_approval: 1, pending_archive: 1, effective: 1, all: 7
     });
 
     const all = await service.workbenchLedger("all", 1, 20, ["p1"], "u1");
     expect(all.rows).toEqual(expect.arrayContaining([
-      expect.objectContaining({ id: "draft-2", abandonReason: "不再继续", copyAvailable: true }),
+      expect.objectContaining({ id: "draft-2", abandonReason: "不再继续", copyAvailable: false }),
+      expect.objectContaining({ settlementId: "approval", status: "approval_pending", nextAction: "查看历史审批" }),
+      expect.objectContaining({ settlementId: "returned", status: "approval_rejected" }),
       expect.objectContaining({ settlementId: "voided", status: "voided" })
     ]));
     expect(me.getSettlementPendingWorkItems).toHaveBeenCalledWith("u1");

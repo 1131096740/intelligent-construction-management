@@ -1,6 +1,10 @@
+import { Test } from "@nestjs/testing";
+import { ProjectController } from "./project.controller";
+import { FileService } from "../file/file.service";
 jest.mock("../file/file-business-binding",()=>({...jest.requireActual("../file/file-business-binding"),acquireFileBusinessBindingTransactionLock:jest.fn().mockResolvedValue(undefined)}));
 jest.mock("../contract-ledger/contract-bank-event",()=>({requireContractBankEvent:jest.fn().mockResolvedValue({id:"verified-bank"}),claimContractBankEvent:jest.fn()}));
 import { ConflictException } from "@nestjs/common";
+import { claimContractBankEvent, requireContractBankEvent } from "../contract-ledger/contract-bank-event";
 import { ProjectService } from "./project.service";
 
 const confirmedAt = new Date("2026-07-29T02:00:00.000Z");
@@ -116,6 +120,22 @@ describe("ProjectService upstream fund facts", () => {
             settledAt: new Date("2026-07-31T00:00:00.000Z")
           }
         ])
+      },
+      paymentRequest: {
+        findMany: jest.fn().mockResolvedValue([
+          {
+            id: "payment-request-1",
+            code: "FK-2026-001",
+            sourceType: "settlement",
+            status: "approved_pending_payment",
+            contractId: "contract-1",
+            contractVersionId: "contract-version-1",
+            settlementId: "settlement-1",
+            requestedAmountCents: 50000n,
+            approvedAmountCents: 50000n,
+            paidAmountCents: 20000n
+          }
+        ])
       }
     };
     const service = new ProjectService(prisma as never);
@@ -150,11 +170,28 @@ describe("ProjectService upstream fund facts", () => {
           id: "upstream-settlement-1",
           approvedAmountCents: "50000"
         })
+      ],
+      affiliatePaymentRequests: [
+        expect.objectContaining({
+          id: "payment-request-1",
+          code: "FK-2026-001",
+          approvedAmountCents: "50000",
+          paidAmountCents: "20000",
+          remainingAmountCents: "30000"
+        })
       ]
     });
     expect(prisma.invoiceRecord.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
         where: { projectId: "project-1", status: "active", invalidatedAt: null }
+      })
+    );
+    expect(prisma.paymentRequest.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          projectId: "project-1",
+          paymentSubjectType: "affiliate"
+        })
       })
     );
   });
@@ -186,11 +223,22 @@ describe("ProjectService upstream fund facts", () => {
     }
   );
 
-  it("records an owner payment as a pending external fact instead of company cash", async () => {
+  it.each([
+    ["2026-11-05", "2026-11-04T16:00:00.000Z", false],
+    ["2026-11-04T11:15:00-05:00", "2026-11-04T16:15:00.000Z", false],
+    ["2026-11-05", "2026-11-04T16:00:00.000Z", true]
+  ])("records the owner receipt %s at the exact Beijing/offset instant (direct: %s)", async (occurredAt, expected, direct) => {
+    jest.useFakeTimers({ now: new Date("2026-11-04T16:30:00Z"), doNotFake: ["nextTick", "queueMicrotask", "setImmediate", "clearImmediate", "setTimeout", "clearTimeout", "setInterval", "clearInterval", "hrtime", "performance"] });
     const tx = {
  contractProxyExecution:{findMany:jest.fn().mockResolvedValue([])},
  upwardReceiptMatch:{findMany:jest.fn().mockResolvedValue([])},
-      $queryRaw: jest.fn().mockResolvedValue([]),
+      $queryRaw: jest.fn().mockImplementation(async (query: { sql?: string }) => {
+        const sql = query.sql ?? "";
+        if (sql.includes('FROM "User"')) return [{ id: "finance-1", isActive: true, name: "财务样本" }];
+        if (sql.includes('FROM "HandwrittenSignatureVersion"')) return [{ id: "signature-1", fileId: "signature-file", contentSha256: "b".repeat(64) }];
+        if (sql.includes('FROM "FileObject"')) return [{ id: "signature-file", storageStatus: "active", contentSha256: "b".repeat(64) }];
+        return [];
+      }),
       project: { findFirst: jest.fn().mockResolvedValue({ id: "project-1" }) },
       projectAffiliateAssignment: {
         findMany: jest.fn().mockResolvedValue([{
@@ -225,12 +273,12 @@ describe("ProjectService upstream fund facts", () => {
         findUnique: jest.fn().mockResolvedValue(null),
         create: jest.fn().mockImplementation(async ({ data }) => ({
           id: "fund-fact-1",
-          ...data,
           confirmedByUserId: null,
           confirmedAt: null,
           confirmationSignatureVersionId: null,
           confirmationSignatureFileId: null,
           confirmationSignatureSha256: null,
+          ...data,
           createdAt: new Date("2026-07-29T01:00:00.000Z")
         }))
       },
@@ -241,12 +289,14 @@ describe("ProjectService upstream fund facts", () => {
       $transaction: jest.fn(async (callback: (client: typeof tx) => unknown) => callback(tx))
     };
     const entrySnapshots = upstreamFundEntrySnapshotService();
+    const auth = { confirmPassword: jest.fn().mockResolvedValue(undefined) };
+    const sources = { appendConfirmedSourceIfEnabledInTransaction: jest.fn().mockResolvedValue(undefined) };
     const service = new ProjectService(
       prisma as never,
       undefined,
+      auth as never,
       undefined,
-      undefined,
-      undefined,
+      sources as never,
       undefined,
       entrySnapshots as never
     ) as ProjectService & {
@@ -265,20 +315,20 @@ describe("ProjectService upstream fund facts", () => {
       ): Promise<Record<string, unknown>>;
     };
 
-    const result = await service.recordUpstreamFundFact("project-1", "finance-1", {
-      factType: "owner_payment_to_affiliate",
-      basisType: "written",
-      occurredAt: "2026-07-29T00:00:00.000Z",
-      amountCents: "10000",
-      counterpartyName: "建设单位",
-      evidenceFileId: "file-1",
-      idempotencyKey: "5a516b76-2822-4f52-a4ca-963d48221637"
-    });
-
+    const module = await Test.createTestingModule({ controllers: [ProjectController], providers: [{ provide: ProjectService, useValue: service }, { provide: FileService, useValue: {} }] }).compile();
+    const app = module.createNestApplication({ logger: false }); app.use((request: { user?: unknown }, _response: unknown, next: () => void) => { request.user = { id: "finance-1" }; next(); });
+    await app.listen(0, "127.0.0.1");
+    const body = { factType: "owner_payment_to_affiliate", basisType: "written", occurredAt, amountCents: "10000", counterpartyName: "建设单位", evidenceFileId: "file-1", idempotencyKey: "5a516b76-2822-4f52-a4ca-963d48221637" };
+    try {
+      const url = `${await app.getUrl()}/projects/project-1/upstream-fund-facts`;
+      const response = await fetch(url, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ ...body, ...(direct ? { confirmedReceipt: true, confirmationPassword: "isolated-password" } : {}) }) });
+      expect(response.status).toBe(201);
+      const result = await response.json(); expect(result.occurredAt).toBe(expected);
+      expect(tx.projectUpstreamFundFact.create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ occurredAt: new Date(expected) }) }));
     expect(result).toMatchObject({
       id: "fund-fact-1",
       factType: "owner_payment_to_affiliate",
-      status: "pending_confirm",
+      status: direct ? "confirmed" : "pending_confirm",
       cashEffectCents: "0",
       entrySnapshot: expect.objectContaining({
         sceneKey: "project_upstream_fund_fact",
@@ -286,12 +336,20 @@ describe("ProjectService upstream fund facts", () => {
       })
     });
     expect(tx.approvalInstance.create).not.toHaveBeenCalled();
+    if (direct) {
+      expect(auth.confirmPassword).toHaveBeenCalledWith("finance-1", "isolated-password");
+      expect(sources.appendConfirmedSourceIfEnabledInTransaction).toHaveBeenCalledWith(tx, {
+        projectId: "project-1", sourceType: "project_upstream_fund_fact", sourceBusinessId: "fund-fact-1"
+      }, "finance-1");
+    } else {
+      expect(sources.appendConfirmedSourceIfEnabledInTransaction).not.toHaveBeenCalled();
+    }
     expect(tx.projectUpstreamFundFact.create).toHaveBeenCalledWith({
       data: expect.objectContaining({
         projectId: "project-1",
         factType: "owner_payment_to_affiliate",
         basisType: "written",
-        status: "pending_confirm",
+        status: direct ? "confirmed" : "pending_confirm",
         amountCents: 10000n,
         evidenceFileId: "file-1",
         fileContentSha256Snapshot: "a".repeat(64),
@@ -316,6 +374,10 @@ describe("ProjectService upstream fund facts", () => {
       idempotencyKey: "snapshot-freeze-failure"
     })).rejects.toThrow("snapshot freeze failed");
     expect(tx.auditLog.create).not.toHaveBeenCalled();
+      tx.projectUpstreamFundFact.create.mockClear(); prisma.$transaction.mockClear();
+      const future = await fetch(url, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ ...body, occurredAt: "2026-11-05T00:31:00+08:00" }) });
+      expect(future.status).toBe(400); expect(tx.projectUpstreamFundFact.create).not.toHaveBeenCalled(); expect(prisma.$transaction).not.toHaveBeenCalled();
+    } finally { await app.close(); jest.useRealTimers(); }
   });
 
   it("rejects an owner payment whose counterparty differs from the linked upstream settlement", async () => {
@@ -714,7 +776,7 @@ describe("ProjectService upstream fund facts", () => {
     expect(tx.auditLog.create).not.toHaveBeenCalled();
   });
 
-  it("does not let a pending settlement increase authorize remittance confirmation", async () => {
+  it("allows a remittance to overpay its confirmed settlement and reports the excess (OPS-05)", async () => {
     const pendingRemittance = fundFact({
       factType: "affiliate_remittance_to_company",
       affiliateSettlementFactId: "settlement-fact-1",
@@ -781,19 +843,25 @@ describe("ProjectService upstream fund facts", () => {
     const auth = { confirmPassword: jest.fn().mockResolvedValue(undefined) };
     const service = new ProjectService(prisma as never, undefined, auth as never);
 
-    await expect(
-      service.confirmUpstreamFundFact(
-        "project-1",
-        "fund-fact-1",
-        "finance-1",
-        {
-          confirmationPassword: "current-password",
-          confirmationActionId: "remittance-pending-settlement-mask-confirm"
-        },
-        confirmedAt
-      )
-    ).rejects.toThrow("施工企业结算有效金额不能低于已登记拨款金额");
-    expect(tx.projectUpstreamFundFact.updateMany).not.toHaveBeenCalled();
+    const result = await service.confirmUpstreamFundFact(
+      "project-1",
+      "fund-fact-1",
+      "finance-1",
+      {
+        confirmationPassword: "current-password",
+        confirmationActionId: "remittance-pending-settlement-mask-confirm"
+      },
+      confirmedAt
+    );
+
+    expect(result).toMatchObject({
+      status: "confirmed",
+      settlementCoverage: {
+        overpaidCents: "10000",
+        overpaid: true
+      }
+    });
+    expect(tx.projectUpstreamFundFact.updateMany).toHaveBeenCalledTimes(1);
   });
 
   it("requires a finance director to confirm oral notification facts", async () => {
@@ -900,7 +968,7 @@ describe("ProjectService upstream fund facts", () => {
     expect(tx.projectUpstreamFundFact.updateMany).toHaveBeenCalledTimes(1);
   });
 
-  it("does not let a pending settlement increase authorize remittance registration", async () => {
+  it("allows registering a remittance that overpays its settlement and reports the excess (OPS-05)", async () => {
     const tx = {
  contractProxyExecution:{findMany:jest.fn().mockResolvedValue([])},
  upwardReceiptMatch:{findMany:jest.fn().mockResolvedValue([])},
@@ -976,28 +1044,43 @@ describe("ProjectService upstream fund facts", () => {
     const prisma = {
       $transaction: jest.fn(async (callback: (client: typeof tx) => unknown) => callback(tx))
     };
-    const service = new ProjectService(prisma as never);
+    const service = new ProjectService(
+      prisma as never,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      upstreamFundEntrySnapshotService() as never
+    );
 
-    await expect(
-      service.recordUpstreamFundFact("project-1", "finance-1", {
-        factType: "affiliate_remittance_to_company",
-        basisType: "oral",
-        occurredAt: "2026-07-29T00:00:00.000Z",
-        amountCents: "20000",
-        counterpartyName: "我方公司",
-        companyEntityId: "company-1",
-        affiliateCompanyContractId: "company-contract-1",
-        affiliateSettlementFactId: "settlement-fact-1",
-        invoiceRecordId: "invoice-1",
-        idempotencyKey: "remittance-pending-settlement-mask-record"
-      })
-    ).rejects.toThrow("施工企业结算有效金额不能低于已登记拨款金额");
-    expect(tx.projectUpstreamFundFact.create).not.toHaveBeenCalled();
-    expect(tx.projectParticipatingCompany.findFirst).not.toHaveBeenCalled();
-    expect(tx.auditLog.create).not.toHaveBeenCalled();
+    const result = await service.recordUpstreamFundFact("project-1", "finance-1", {
+      factType: "affiliate_remittance_to_company",
+      basisType: "oral",
+      occurredAt: "2026-07-29T00:00:00.000Z",
+      amountCents: "20000",
+      counterpartyName: "我方公司",
+      companyEntityId: "company-1",
+      affiliateCompanyContractId: "company-contract-1",
+      affiliateSettlementFactId: "settlement-fact-1",
+      invoiceRecordId: "invoice-1",
+      idempotencyKey: "remittance-pending-settlement-mask-record"
+    });
+
+    expect(result).toMatchObject({
+      settlementCoverage: {
+        overpaidCents: "10000",
+        overpaid: true
+      }
+    });
+    expect(tx.projectUpstreamFundFact.create).toHaveBeenCalledTimes(1);
+    expect(tx.projectParticipatingCompany.findFirst).toHaveBeenCalled();
+    expect(tx.auditLog.create).toHaveBeenCalled();
   });
 
-  it("replays an identical recording idempotently and rejects key reuse with a changed amount", async () => {
+  it.each([false, true])("replays the same upstream registration and rejects changed amounts (direct verified remittance: %s)", async direct => {
+    jest.mocked(claimContractBankEvent).mockClear();
+    jest.mocked(requireContractBankEvent).mockClear();
     let stored: ReturnType<typeof fundFact> | null = null;
     const tx = {
  contractProxyExecution:{findMany:jest.fn().mockResolvedValue([])},
@@ -1065,24 +1148,34 @@ describe("ProjectService upstream fund facts", () => {
       projectParticipatingCompany: {
         findFirst: jest.fn().mockResolvedValue({ companyEntityId: "company-1" })
       },
-      $queryRaw: jest.fn().mockResolvedValue([{ id: "project-1" }]),
+      fileObject: { findUnique: jest.fn().mockResolvedValue({
+        uploadedByUserId: "finance-1", storageStatus: "active", contentSha256: "a".repeat(64)
+      }) },
+      $queryRaw: jest.fn().mockImplementation(async (query: { sql?: string }) => {
+        const sql = query.sql ?? "";
+        if (sql.includes('FROM "User"')) return [{ id: "finance-1", isActive: true, name: "财务样本" }];
+        if (sql.includes('FROM "HandwrittenSignatureVersion"')) return [{ id: "signature-1", fileId: "signature-file", contentSha256: "b".repeat(64) }];
+        if (sql.includes('FROM "FileObject"')) return [{ id: "signature-file", storageStatus: "active", contentSha256: "b".repeat(64) }];
+        return [{ id: "project-1" }];
+      }),
       auditLog: { create: jest.fn() }
     };
     const prisma = {
       $transaction: jest.fn(async (callback: (client: typeof tx) => unknown) => callback(tx))
     };
+    const sources = { appendConfirmedSourceIfEnabledInTransaction: jest.fn().mockResolvedValue(undefined) };
     const service = new ProjectService(
       prisma as never,
       undefined,
+      { confirmPassword: jest.fn().mockResolvedValue(undefined) } as never,
       undefined,
-      undefined,
-      undefined,
+      sources as never,
       undefined,
       upstreamFundEntrySnapshotService() as never
     );
     const input = {
       factType: "affiliate_remittance_to_company" as const,
-      basisType: "oral" as const,
+      basisType: direct ? "written" as const : "oral" as const,
       occurredAt: "2026-07-29T00:00:00.000Z",
       amountCents: "10000",
       counterpartyName: "我方公司",
@@ -1090,7 +1183,9 @@ describe("ProjectService upstream fund facts", () => {
       affiliateCompanyContractId: "company-contract-1",
       affiliateSettlementFactId: "settlement-fact-1",
       invoiceRecordId: "invoice-1",
-      idempotencyKey: "5a516b76-2822-4f52-a4ca-963d48221637"
+      idempotencyKey: "5a516b76-2822-4f52-a4ca-963d48221637",
+      ...(direct ? { confirmedReceipt: true, confirmationPassword: "isolated-password",
+        evidenceFileId: "file-1", bankObservationReference: "bank-observation" } : {})
     };
 
     const first = await service.recordUpstreamFundFact("project-1", "finance-1", input);
@@ -1105,7 +1200,22 @@ describe("ProjectService upstream fund facts", () => {
     });
     expect(replay).toEqual(createdFact);
     expect(tx.projectUpstreamFundFact.create).toHaveBeenCalledTimes(1);
-    expect(tx.$queryRaw).toHaveBeenCalledTimes(3);
+    expect(tx.$queryRaw).toHaveBeenCalledTimes(direct ? 7 : 3);
+    if (direct) {
+      expect(tx.$queryRaw.mock.invocationCallOrder[0]).toBeLessThan(
+        tx.projectUpstreamFundFact.findUnique.mock.invocationCallOrder[0]
+      );
+      expect(first).toMatchObject({ status: "confirmed", cashEffectCents: "10000" });
+      expect(requireContractBankEvent).toHaveBeenCalledTimes(1);
+      expect(requireContractBankEvent).toHaveBeenCalledWith(tx, expect.objectContaining({
+        projectId: "project-1", companyId: "company-1", reference: "bank-observation", amountCents: 10000n, direction: "inflow"
+      }));
+      expect(claimContractBankEvent).toHaveBeenCalledTimes(1);
+      expect(claimContractBankEvent).toHaveBeenCalledWith(tx, "verified-bank", "project_upstream_fund_fact", "fund-fact-1", "finance-1");
+      expect(sources.appendConfirmedSourceIfEnabledInTransaction).toHaveBeenCalledTimes(1);
+    } else {
+      expect(claimContractBankEvent).not.toHaveBeenCalled();
+    }
     expect(tx.$queryRaw.mock.invocationCallOrder[0]).toBeLessThan(
       tx.projectParticipatingCompany.findFirst.mock.invocationCallOrder[0]
     );

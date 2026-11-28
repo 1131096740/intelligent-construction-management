@@ -1,3 +1,9 @@
+import { Test } from "@nestjs/testing";
+import { Prisma } from "@prisma/client";
+import { PaymentController } from "./payment.controller";
+import { PaymentReadService } from "./payment-read.service";
+import { ProjectVisibilityService } from "../auth/project-visibility.service";
+import { FileService } from "../file/file.service";
 import { attachApprovalSignatureFixture } from "../approval/approval-evidence-test-fixture";
 jest.mock("../contract-ledger/contract-bank-event",()=>({requireContractBankEvent:jest.fn().mockResolvedValue({id:"verified-bank"}),claimContractBankEvent:jest.fn()}));
 jest.mock("../contract-ledger/contract-proxy-capacity", () => ({ contractProxyPaid: jest.fn().mockResolvedValue(0n), contractProxyPaidForContract: jest.fn().mockResolvedValue(0n) }));
@@ -39,6 +45,7 @@ describe("PaymentRequestService", () => {
     { name: "综合部主管", mode: "any", roleKeys: ["comprehensive_director"] },
     { name: "项目经理", mode: "any", roleKeys: ["project_manager"] },
     { name: "财务", mode: "any", roleKeys: ["finance_director"] },
+    { name: "合同部主管", mode: "any", roleKeys: ["contract_director"] },
     { name: "董事长/总经理", mode: "any", roleKeys: ["chairman", "general_manager"] }
   ];
   const paymentReviewCoordinates = {
@@ -131,6 +138,81 @@ describe("PaymentRequestService", () => {
       buffer[index + 1] = low;
     }
     return buffer.toString("hex").toUpperCase();
+  }
+
+  /** Stateful persistence facts for the five legacy final-approval cases.
+   * Approval/signature/role services stay real; no production fallback is used. */
+  async function attachPaymentNotificationPersistence(tx: {
+    paymentRequest: {findFirst:jest.Mock;update:jest.Mock};
+    approvalInstance: {findFirst:jest.Mock;update:jest.Mock};
+    approvalActionLog: {create:jest.Mock};
+    user: {findUnique:jest.Mock};
+  }, knownUserIds: string[]) {
+    const initialPayment=await tx.paymentRequest.findFirst({where:{id:"payment-1"}});
+    const initialRound=await tx.approvalInstance.findFirst({where:{id:"approval-instance-1"}});
+    if (!initialPayment || !initialRound || !(initialRound.updatedAt instanceof Date)) throw new Error("Legacy approval fixture must contain its real request, round and frozen CAS date");
+    const payment:Record<string,unknown>={...initialPayment,contractId:"contract-1",contractVersionId:"contract-version-1",settlementId:"settlement-1",sourceType:"settlement",paidAmountCents:0n};
+    const round:Record<string,unknown>={...initialRound,businessType:"payment_request",businessId:payment.id,flowType:"payment.approve",status:"in_progress",createdAt:new Date(initialRound.updatedAt.getTime())};
+    tx.paymentRequest.update.mockImplementation(async ({where,data}:{where:{id:string};data:Record<string,unknown>})=>{
+      if(where.id!==payment.id) throw new Error("Unexpected request in legacy approval fixture");
+      Object.assign(payment,data);return {...payment};
+    });
+    Object.assign(tx.paymentRequest,{findUnique:jest.fn(async ({where}:{where:{id:string}})=>where.id===payment.id?{...payment}:null)});
+    tx.approvalInstance.findFirst.mockImplementation(async ({where}:{where?:Record<string,unknown>})=>Object.entries(where??{}).every(([field,value])=>round[field]===value)?{...round}:null);
+    Object.assign(tx.approvalInstance,{findMany:jest.fn(async({where={},orderBy,take}:{where?:Record<string,unknown>;orderBy?:Record<string,string>|Array<Record<string,string>>;take?:number}={})=>{
+      const selected=Object.entries(where).every(([field,value])=>{
+        if(value && typeof value==="object" && "in" in value && Array.isArray(value.in))return value.in.includes(round[field]);
+        if(value instanceof Date){const actual=round[field];return actual instanceof Date && actual.getTime()===value.getTime();}
+        return round[field]===value;
+      })?[{...round}]:[];
+      if(orderBy){
+        const entries=(Array.isArray(orderBy)?orderBy:[orderBy]).flatMap(item=>Object.entries(item));
+        for(const [field,direction] of entries)if(!["createdAt","updatedAt","id"].includes(field)||!["asc","desc"].includes(direction))throw new Error("Unexpected legacy approval round ordering");
+        selected.sort((a,b)=>{
+          for(const [field,direction] of entries){
+            const left=a[field],right=b[field];
+            const difference=left instanceof Date&&right instanceof Date?left.getTime()-right.getTime():typeof left==="string"&&typeof right==="string"?left.localeCompare(right):NaN;
+            if(Number.isNaN(difference))throw new Error("Legacy round sort values must match real persistence types");
+            if(difference)return difference*(direction==="desc"?-1:1);
+          }
+          return 0;
+        });
+      }
+      return take===undefined?selected:selected.slice(0,take);
+    })});
+    tx.approvalInstance.update.mockImplementation(async ({where,data}:{where:{id:string};data:Record<string,unknown>})=>{
+      if(where.id!==round.id) throw new Error("Unexpected round in legacy approval fixture");
+      Object.assign(round,data);return {...round};
+    });
+    Object.assign(tx,{
+      contractVersion:{findUnique:jest.fn(async ({where}:{where:{id:string}})=>where.id===payment.contractVersionId?{
+        id:payment.contractVersionId,contractId:payment.contractId,status:"active",signingSubjectType:"our_company",
+        companyEntityIdSnapshot:payment.companyEntityIdSnapshot,companyEntityNameSnapshot:payment.companyEntityNameSnapshot,companyEntityCreditCodeSnapshot:payment.companyEntityCreditCodeSnapshot
+      }:null)},
+      paymentExecution:{findMany:jest.fn(async ({where}:{where:{paymentRequestId:string}})=>{
+        if(where.paymentRequestId!==payment.id) throw new Error("Unexpected execution relation in legacy approval fixture");
+        return [];
+      })}
+    });
+    const actions=new Map<string,Record<string,unknown>>();
+    tx.approvalActionLog.create.mockImplementation(async ({data}:{data:Record<string,unknown>})=>{
+      const action={id:"87ae6b8a-1bee-4459-a1c4-9ef5d82ac415",createdAt:new Date("2026-07-31T01:01:01Z"),...data};
+      actions.set(action.id,{...action});return {...action};
+    });
+    Object.assign(tx.approvalActionLog,{
+      findUnique:jest.fn(async ({where}:{where:{id:string}})=>actions.get(where.id)??null),
+      createMany:jest.fn(async ({data,skipDuplicates}:{data:Array<Record<string,unknown>>;skipDuplicates?:boolean})=>{
+        let count=0;
+        for(const value of data){
+          if(typeof value.id!=="string") throw new Error("Outbox fixture requires its stable primary key");
+          if(actions.has(value.id)){if(skipDuplicates)continue;throw new Error("Duplicate outbox fixture primary key");}
+          actions.set(value.id,{createdAt:new Date("2026-07-31T01:01:01Z"),...value});count++;
+        }
+        return {count};
+      })
+    });
+    const users=await Promise.all(knownUserIds.map(id=>tx.user.findUnique({where:{id}})));
+    Object.assign(tx.user,{findMany:jest.fn(async ()=>users.filter(user=>user?.isActive))});
   }
 
   function approvalRoleTables(roleKey: string) {
@@ -248,6 +330,7 @@ describe("PaymentRequestService", () => {
       contractVersionId: string;
       paymentTermsVersionId: string;
       paymentTermsStageId: string | null;
+      contractDueBasis: string | null;
       settlementId: string | null;
       sourceType: string;
       updatedAt: Date;
@@ -475,6 +558,70 @@ name: "签批人甲",
     return { payment, createdExecution, tx, prisma };
   }
 
+  it.each([["2026-11-05", "2026-11-04T16:00:00.000Z"], ["2026-11-04T11:15:00-05:00", "2026-11-04T16:15:00.000Z"]])("persists HTTP payment date %s at its exact Beijing/offset instant through the existing synthetic transaction", async (paidAt, expected) => {
+    jest.useFakeTimers({ now: new Date("2026-11-04T16:30:00Z"), doNotFake: ["nextTick", "queueMicrotask", "setImmediate", "clearImmediate", "setTimeout", "clearTimeout", "setInterval", "clearInterval", "hrtime", "performance"] });
+    const { tx, prisma, createdExecution } = hardenedPaymentExecutionFixture();
+    tx.paymentExecution.create.mockImplementation(async ({ data }) => ({ ...createdExecution, ...data }));
+    const actual = paymentExecutionService(new PaymentAmountService(), prisma as never, audit as never, fileAccess as never, auth as never, undefined, undefined, projectFunding as never);
+    Reflect.set(actual, "operatingSources", { appendConfirmedSourceIfEnabledInTransaction: jest.fn().mockResolvedValue(null) });
+    const module = await Test.createTestingModule({ controllers: [PaymentController], providers: [{ provide: PaymentRequestService, useValue: actual }, { provide: PaymentReadService, useValue: {} }, { provide: ProjectVisibilityService, useValue: {} }, { provide: FileService, useValue: fileAccess }] }).compile();
+    const app = module.createNestApplication({ logger: false }); app.use((request: { user?: unknown }, _response: unknown, next: () => void) => { request.user = { id: "cashier-1" }; next(); });
+    try {
+      await app.listen(0, "127.0.0.1"); const url = `${await app.getUrl()}/payments/FK-2026-012/executions`;
+      const body = { ...paymentExecutionCoordinates, amountCents: "30000", paidAt, voucherFileId: "file-1", confirmationPassword: "synthetic-password" };
+      const response = await fetch(url, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
+      expect(response.status).toBe(201); expect((await response.json()).paidAt).toBe(expected);
+      expect(tx.paymentExecution.create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ paidAt: new Date(expected) }) }));
+      tx.paymentExecution.create.mockClear(); prisma.$transaction.mockClear();
+      const future = await fetch(url, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ ...body, paidAt: "2026-11-05T00:31:00+08:00" }) });
+      expect(future.status).toBe(400); expect(tx.paymentExecution.create).not.toHaveBeenCalled(); expect(prisma.$transaction).not.toHaveBeenCalled();
+    } finally { await app.close(); jest.useRealTimers(); }
+  });
+
+  it("funds one approved text agreement installment and replays its original execution", async () => {
+    const { tx, payment, prisma, createdExecution } = hardenedPaymentExecutionFixture({
+      contractTypeKey: "other", settlementId: null, sourceType: "contract_due", paymentTermsVersionId: "terms",
+      contractDueBasis: "text_agreement_v1", paymentTermsStageId: null,
+      status: "partially_paid", requestedAmountCents: 65_000n, approvedAmountCents: 60_000n, paidAmountCents: 20_000n
+    });
+    const executeRaw = jest.fn();
+    const approval = { businessType: "payment_request", businessId: payment.id, flowType: "payment.approve",
+      status: "approved", createdAt: new Date("2026-06-06") };
+    Object.assign(tx, {
+      approvalInstance: { findMany: jest.fn().mockResolvedValue([approval]) },
+      $executeRaw: executeRaw,
+      contractVersion: { findUnique: jest.fn().mockResolvedValue({
+        id: payment.contractVersionId, contractId: payment.contractId, effectiveAt: new Date("2026-06-01"),
+        amountCents: 0n, amountLimitType: "unlimited", signingSubjectType: "our_company",
+        companyEntityIdSnapshot: payment.companyEntityIdSnapshot, companyEntityNameSnapshot: payment.companyEntityNameSnapshot,
+        companyEntityCreditCodeSnapshot: payment.companyEntityCreditCodeSnapshot
+      }) }
+    });
+    tx.$queryRaw.mockReset().mockResolvedValue([payment]);
+    tx.paymentRequest.update.mockResolvedValue({ id: payment.id, status: "partially_paid", paidAmountCents: 50_000n });
+    const service = paymentExecutionService(new PaymentAmountService(), prisma as never, audit as never,
+      fileAccess as never, auth as never, undefined, undefined, projectFunding as never);
+    const append = jest.fn().mockResolvedValue(null);
+    Reflect.set(service, "operatingSources", { appendConfirmedSourceIfEnabledInTransaction: append });
+    const input = { ...paymentExecutionCoordinates, amountCents: "30000", paidAt: "2026-06-22T00:00:00.000Z",
+      voucherFileId: "file-1", confirmationPassword: "current-password", bankReceiptReference: undefined };
+
+    const result = await service.recordExecution(payment.id, "cashier-1", input);
+    expect(result).toMatchObject({ id: createdExecution.id, amountCents: "30000" });
+    expect(tx.paymentRequest.update).toHaveBeenCalledWith({ where: { id: payment.id }, data: {
+      status: "partially_paid", paidAmountCents: 50_000n
+    } });
+    tx.paymentExecution.findUnique.mockResolvedValue(createdExecution);
+    await expect(service.recordExecution(payment.id, "cashier-1", input)).resolves.toEqual(result);
+    expect(projectFunding.allocateExecution).toHaveBeenCalledTimes(1);
+    const appendAllocation = "SELECT public.jg_append_text_payment_allocation_v1(";
+    expect(executeRaw.mock.calls.filter(([parts]) => parts[0] === appendAllocation)).toEqual([
+      [[appendAllocation, "::text)"], createdExecution.id]
+    ]);
+    expect(append).toHaveBeenCalledTimes(1);
+    expect(tx.settlement.update).not.toHaveBeenCalled();
+  });
+
   it("requires payment execution CAS and UUID v4 idempotency coordinates", async () => {
     const dto = Object.assign(new RecordPaymentExecutionDto(), {
       amountCents: "10000",
@@ -578,208 +725,90 @@ name: "签批人甲",
     expect(auth.confirmPassword).not.toHaveBeenCalled();
   });
 
-  it("freezes multiple employee and business-party wage creditors on one payment execution", async () => {
-    const fixture = hardenedPaymentExecutionFixture();
-    const employeeRef = "00000000-0000-4000-8000-000000000032";
-    const institutionRef = "00000000-0000-4000-8000-000000000033";
-    const wagePayableRow = (input: {
-      id: string;
-      subjectType: "employee_user" | "business_party";
-      identityKey: string;
-      name: string;
-      amountCents: bigint;
-    }) => ({
-      id: input.id,
-      confirmedVersionId: "version-1",
-      projectAllocationId: "project-allocation-1",
-      creditorBreakdownId: `creditor-${input.id}`,
-      debtorCompanyId: "company-1",
-      costBearingCompanyId: "company-1",
-      projectId: "project-1",
-      personLineId: "person-line-1",
-      amountCents: input.amountCents,
-      direction: "increase",
-      adjustsPayableRefId: null,
-      debtorCompanySnapshot: { companyId: "company-1" },
-      projectSnapshot: { projectId: "project-1" },
-      creditorSnapshot: {
-        subjectType: input.subjectType,
-        identityKey: input.identityKey,
-        name: input.name
-      },
-      confirmedVersion: { status: "confirmed" },
-      creditorBreakdown: {
-        creditorSubjectType: input.subjectType,
-        creditorUserId: input.subjectType === "employee_user" ? "user-1" : null,
-        creditorBusinessPartyVersionId: input.subjectType === "business_party" ? "party-version-1" : null,
-        creditorSubjectIdentityKey: input.identityKey,
-        creditorNameSnapshot: input.name,
-        creditorUnifiedIdentitySnapshot: input.subjectType === "business_party" ? "统一社会信用代码-1" : null,
-        creditorVersionFingerprint: "version-fingerprint-1"
-      },
-      adjustments: []
-    });
-    const payableRows = [
-      wagePayableRow({
-        id: employeeRef,
-        subjectType: "employee_user",
-        identityKey: "employee_user:user-1",
-        name: "员工冻结名",
-        amountCents: 20_000n
-      }),
-      wagePayableRow({
-        id: institutionRef,
-        subjectType: "business_party",
-        identityKey: "business_party:party-version-1",
-        name: "代发机构冻结名",
-        amountCents: 10_000n
-      })
-    ];
-    const tx = fixture.tx as typeof fixture.tx & {
-      wagePayableRef: { findMany: jest.Mock };
-      paymentExecutionWagePayableBinding: { findMany: jest.Mock; create: jest.Mock };
-    };
-    tx.wagePayableRef = {
-      findMany: jest.fn().mockResolvedValue(payableRows)
-    };
-    tx.paymentExecutionWagePayableBinding = {
-      findMany: jest.fn().mockResolvedValue([]),
-      create: jest.fn().mockResolvedValue({})
-    };
-
+  it("returns 410 for new wage bindings before creating ordinary payment facts", async () => {
+    const { tx, prisma, payment } = hardenedPaymentExecutionFixture();
+    tx.$queryRaw.mockReset().mockResolvedValue([payment]);
     const paymentService = paymentExecutionService(
-      new PaymentAmountService(),
-      fixture.prisma as never,
-      audit as never,
-      fileAccess as never,
-      auth as never,
-      undefined,
-      undefined,
-      projectFunding as never
+      new PaymentAmountService(), prisma as never, audit as never, fileAccess as never, auth as never,
+      undefined, undefined, projectFunding as never
     );
-
-    const result = await paymentService.recordExecution("FK-2026-012", "cashier-1", {
-      ...paymentExecutionCoordinates,
-      amountCents: "30000",
-      paidAt: "2026-06-22T00:00:00.000Z",
-      voucherFileId: "file-1",
-      confirmationPassword: "current-password",
-      wagePayableBindings: [
-        { payableRef: employeeRef, amountCents: "20000" },
-        { payableRef: institutionRef, amountCents: "10000" }
+    const module = await Test.createTestingModule({
+      controllers: [PaymentController],
+      providers: [
+        { provide: PaymentRequestService, useValue: paymentService },
+        { provide: PaymentReadService, useValue: {} },
+        { provide: ProjectVisibilityService, useValue: {} },
+        { provide: FileService, useValue: fileAccess }
       ]
+    }).compile();
+    const app = module.createNestApplication({ logger: false });
+    app.use((request: { user?: unknown }, _response: unknown, next: () => void) => {
+      request.user = { id: "cashier-1" };
+      next();
     });
-
-    expect(result).toEqual({
-      amountCents: "30000",
-      paidAt: new Date("2026-06-22T00:00:00.000Z"),
-      paymentSubjectType: "our_company"
-    });
-    for (const forbiddenField of [
-      "id",
-      "idempotencyKey",
-      "paymentRequestId",
-      "settlementId",
-      "executedByUserId",
-      "voucherFileId",
-      "companyEntityIdSnapshot",
-      "companyEntityNameSnapshot",
-      "companyEntityCreditCodeSnapshot"
-    ]) {
-      expect(result).not.toHaveProperty(forbiddenField);
+    try {
+      await app.listen(0, "127.0.0.1");
+      const body = {
+        ...paymentExecutionCoordinates, amountCents: "30000", paidAt: "2026-06-22T00:00:00.000Z",
+        voucherFileId: "file-1", confirmationPassword: "current-password",
+        wagePayableBindings: [
+          { payableRef: "00000000-0000-4000-8000-000000000032", amountCents: "20000" },
+          { payableRef: "00000000-0000-4000-8000-000000000033", amountCents: "10000" }
+        ]
+      };
+      const post = () => fetch(`${url}/payments/FK-2026-012/executions`, {
+        method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body)
+      });
+      const url = await app.getUrl();
+      expect((await post()).status).toBe(410);
+      tx.projectMember.findMany.mockResolvedValue([]);
+      expect((await post()).status).toBe(403);
+      expect(tx.paymentExecution.create).not.toHaveBeenCalled();
+      expect(tx.paymentRequest.update).not.toHaveBeenCalled();
+      expect(tx.settlement.update).not.toHaveBeenCalled();
+      expect(projectFunding.allocateExecution).not.toHaveBeenCalled();
+      expect(audit.record).not.toHaveBeenCalled();
+    } finally {
+      await app.close();
     }
-    expect(JSON.stringify(result)).not.toContain("execution-hardened-1");
-    const auditMetadata = audit.record.mock.calls.at(-1)?.[1]?.metadata;
-    expect(auditMetadata).toEqual(expect.objectContaining({ executionFingerprint: expect.any(String) }));
-    expect(auditMetadata).not.toHaveProperty("executionId");
-    expect(auditMetadata).not.toHaveProperty("voucherFileId");
-    expect(JSON.stringify(auditMetadata)).not.toContain("execution-hardened-1");
-
-    expect(tx.paymentExecutionWagePayableBinding.create).toHaveBeenCalledTimes(2);
-    expect(tx.paymentExecutionWagePayableBinding.create).toHaveBeenNthCalledWith(1, {
-      data: expect.objectContaining({
-        paymentExecutionId: "execution-hardened-1",
-        wagePayableRefId: employeeRef,
-        creditorSubjectType: "employee_user",
-        creditorUserId: "user-1",
-        creditorBusinessPartyVersionId: null,
-        creditorSubjectIdentityKey: "employee_user:user-1",
-        amountCents: 20_000n
-      })
-    });
-    expect(tx.paymentExecutionWagePayableBinding.create).toHaveBeenNthCalledWith(2, {
-      data: expect.objectContaining({
-        paymentExecutionId: "execution-hardened-1",
-        wagePayableRefId: institutionRef,
-        creditorSubjectType: "business_party",
-        creditorUserId: null,
-        creditorBusinessPartyVersionId: "party-version-1",
-        creditorSubjectIdentityKey: "business_party:party-version-1",
-        amountCents: 10_000n
-      })
-    });
   });
 
-  it("routes a claimed PaymentExecution through the shared allocator in the same transaction and forces deferred contracts", async () => {
+  it.each([
+    { name: "原A停用实际B在用合法代付", directoryActive: false, fault: "active_proxy_", error: "" },
+    { name: "原A停用实际B在用仍拒缺冻结版本", directoryActive: false, fault: "active_proxy_missing", error: "冻结主体" },
+    { name: "原A停用实际B在用仍拒冻结冲突", directoryActive: false, fault: "active_proxy_mismatch", error: "冻结依据" },
+    { name: "原A停用实际B在用仍拒草稿合同", directoryActive: false, fault: "active_proxy_draft_source", error: "合同未生效" },
+    { name: "原A停用实际B在用仍拒作废合同", directoryActive: false, fault: "active_proxy_voided_source", error: "合同未生效" },
+    { name: "原A停用实际B在用仍拒项目冲突", directoryActive: false, fault: "active_proxy_project_source", error: "项目来源不一致" },
+    { name: "在用目录原路径", directoryActive: true, fault: "", error: "" },
+    { name: "停用目录可靠冻结原单及有效账户HTTP", directoryActive: false, fault: "", error: "" },
+    { name: "停用公司缺原版本", directoryActive: false, fault: "missing", error: "冻结主体" },
+    { name: "停用公司冻结身份冲突", directoryActive: false, fault: "mismatch", error: "冻结依据" },
+    { name: "旧单不得新选其它停用公司", directoryActive: false, fault: "foreign", error: "不能新选" },
+    { name: "账户核验已撤销", directoryActive: false, fault: "revoked", error: "已失效" },
+    { name: "失去本项目财务职责", directoryActive: false, fault: "scope", error: "当前项目财务" },
+    { name: "原合同仍是草稿", directoryActive: false, fault: "draft_source", error: "合同未生效" },
+    { name: "原合同项目冲突", directoryActive: false, fault: "project_source", error: "项目来源不一致" },
+    { name: "无可选签注也不得绕过原账户依据", directoryActive: false, fault: "no_attestation", error: "当前银行账户依据" },
+    { name: "原单尚未批准", directoryActive: false, fault: "request_pending", error: "审批" },
+    { name: "曾生效合同已被补充版本替代的已批准旧付款", directoryActive: false, fault: "superseded_source", error: "" },
+    { name: "作废版本不能充当曾生效来源", directoryActive: false, fault: "voided_source", error: "合同未生效" }
+  ])("存量公司付款公开路径 $name", async ({ directoryActive, fault: scenario, error }) => {
+    const activeProxy = scenario.startsWith("active_proxy_");
+    const fault = activeProxy ? scenario.slice("active_proxy_".length) : scenario;
     const fixture = hardenedPaymentExecutionFixture();
     const tx = fixture.tx as typeof fixture.tx & {
-      $executeRawUnsafe: jest.Mock;
-      wagePayableRef: { findMany: jest.Mock };
-      paymentExecutionWagePayableBinding: {
-        findMany: jest.Mock;
-        create: jest.Mock;
-      };
-      paymentExecutionPayerVerification: { findUnique: jest.Mock };
+      paymentExecutionPayerVerification: { findUnique: jest.Mock; findUniqueOrThrow: jest.Mock };
       companyEntity: { findUnique: jest.Mock };
+      companyEntityVersion: { findUnique: jest.Mock };
       fileObject: { findUnique: jest.Mock };
       paymentExecutionPayerAttestation: { create: jest.Mock };
     };
     const verifiedAt = new Date("2026-06-20T00:00:00.000Z");
-    tx.$executeRawUnsafe = jest.fn().mockResolvedValue(0);
-    tx.wagePayableRef = {
-      findMany: jest.fn().mockResolvedValue([
-        {
-          id: "00000000-0000-4000-8000-000000000034",
-          confirmedVersionId: "version-1",
-          projectAllocationId: "project-allocation-1",
-          creditorBreakdownId: "creditor-1",
-          debtorCompanyId: "company-1",
-          costBearingCompanyId: "company-1",
-          projectId: "project-1",
-          personLineId: "person-line-1",
-          amountCents: 30_000n,
-          direction: "increase",
-          adjustsPayableRefId: null,
-          debtorCompanySnapshot: { companyId: "company-1" },
-          projectSnapshot: { projectId: "project-1" },
-          creditorSnapshot: {
-            subjectType: "employee_user",
-            identityKey: "employee_user:user-1",
-            name: "测试员工"
-          },
-          confirmedVersion: { status: "confirmed" },
-          creditorBreakdown: {
-            creditorSubjectType: "employee_user",
-            creditorUserId: "user-1",
-            creditorBusinessPartyVersionId: null,
-            creditorSubjectIdentityKey: "employee_user:user-1",
-            creditorNameSnapshot: "测试员工",
-            creditorUnifiedIdentitySnapshot: null,
-            creditorVersionFingerprint: "version-fingerprint-1"
-          },
-          adjustments: []
-        }
-      ])
-    };
-    tx.paymentExecutionWagePayableBinding = {
-      findMany: jest.fn().mockResolvedValue([]),
-      create: jest.fn().mockResolvedValue({})
-    };
-    tx.paymentExecutionPayerVerification = {
-      findUnique: jest.fn().mockResolvedValue({
+    const verification = {
         id: "payer-verification-1",
         reference: "server-payer-verification-reference",
-        holderCompanyEntityId: "company-1",
+        holderCompanyEntityId: activeProxy ? "company-active-proxy" : fault === "foreign" ? "company-new" : "company-1",
         holderNameSnapshot: "建工智管建设有限公司",
         holderCreditCodeSnapshot: "91310000TEST000001",
         verificationReference: "verification-record-1",
@@ -787,16 +816,19 @@ name: "签批人甲",
         verifiedAt,
         verificationEvidenceFileId: "verification-evidence-1",
         verificationEvidenceContentSha256: "a".repeat(64),
-        status: "verified",
+        status: fault === "revoked" ? "revoked" : "verified",
         sourceType: "bank_account_legal_holder",
         sourceRecordId: "bank-source-record-1"
-      })
+    };
+    tx.paymentExecutionPayerVerification = {
+      findUnique: jest.fn().mockResolvedValue(verification),
+      findUniqueOrThrow: jest.fn().mockResolvedValue(verification)
     };
     tx.user.findUnique = jest.fn().mockResolvedValue({ id: "user", isActive: true, name: "签批人甲" });
     tx.userPosition.findMany = jest.fn(
       ({ where }: { where: { userId: string; projectId?: string | null } }) =>
         Promise.resolve(
-          where.userId === "finance-director-1" && where.projectId === null
+          ["finance-director-1", "reauthorizer"].includes(where.userId) && where.projectId === null
             ? [{ positionId: "finance-director-position" }]
             : []
         )
@@ -805,8 +837,12 @@ name: "签批人甲",
       { id: "finance-director-position", key: "finance_director" }
     ]);
     tx.companyEntity = {
-      findUnique: jest.fn().mockResolvedValue({ id: "company-1", isActive: true, name: "签批人甲" })
+      findUnique: jest.fn().mockResolvedValue({ id: activeProxy ? "company-active-proxy" : fault === "foreign" ? "company-new" : "company-1", isActive: activeProxy || directoryActive, name: "签批人甲" })
     };
+    tx.companyEntityVersion = { findUnique: jest.fn().mockResolvedValue({ id: "company-version-1", companyEntityId: fault === "mismatch" ? "conflicting-company" : "company-1", name: "建工智管建设有限公司", unifiedSocialCreditCode: "91310000TEST000001", isActive: true }) };
+    Object.assign(fixture.payment, { contractVersionStatus: fault === "draft_source" ? "draft" : fault === "superseded_source" ? "superseded" : fault === "voided_source" ? "voided" : "effective", contractProjectId: fault === "project_source" ? "other-project" : fixture.payment.projectId, companyDirectoryIsActive: directoryActive, companyEntityVersionId: fault === "missing" ? null : "company-version-1" });
+    if (fault === "scope") tx.projectMember.findMany.mockResolvedValue([]);
+    if (fault === "request_pending") fixture.payment.status = "approval_pending";
     tx.fileObject = {
       findUnique: jest.fn().mockResolvedValue({
         id: "verification-evidence-1",
@@ -818,12 +854,13 @@ name: "签批人甲",
     tx.paymentExecutionPayerAttestation = {
       create: jest.fn().mockResolvedValue({})
     };
-    const sharedAllocations = {
-      materializeInTransaction: jest.fn().mockResolvedValue({
-        allocationLineCount: 1
-      }),
-      assertReplayInTransaction: jest.fn()
-    };
+    if (activeProxy) {
+      Object.assign(tx, {
+        approvalActionLog: { findUnique: jest.fn().mockResolvedValue({ id: "reauth-action", approvalInstanceId: "reauth-round", action: "approve", actorUserId: "reauthorizer", approvedRoleKey: "finance_director", createdAt: new Date("2026-06-20T00:00:00Z"), metadata: { paymentRequestId: "payment-1", contractVersionId: "contract-version-1" } }) },
+        approvalInstance: { findUnique: jest.fn().mockResolvedValue({ id: "reauth-round", businessType: "payment_request", businessId: "payment-1", status: "approved" }) }
+      });
+      tx.fileObject.findUnique.mockImplementation(({ where }: { where: { id: string } }) => Promise.resolve({ id: where.id, uploadedByUserId: where.id === "authorization-evidence" ? "reauthorizer" : "finance-director-1", storageStatus: "active", contentSha256: "a".repeat(64) }));
+    }
     const operatingSources = {
       appendConfirmedSourceIfEnabledInTransaction: jest.fn()
     };
@@ -837,66 +874,56 @@ name: "签批人甲",
       undefined,
       projectFunding as never,
       undefined,
-      operatingSources as never,
-      sharedAllocations as never
+      operatingSources as never
     );
 
-    await paymentService.recordExecution("FK-2026-012", "cashier-1", {
+    const payload = {
       ...paymentExecutionCoordinates,
       amountCents: "30000",
       paidAt: "2026-06-22T00:00:00.000Z",
       voucherFileId: "file-1",
       confirmationPassword: "current-password",
-      observationSelectionRef: "server-signed-observation-selection",
-      payerAttestation: {
-        bankAccountReference: "server-payer-verification-reference"
-      },
-      wagePayableBindings: [
-        {
-          payableRef: "00000000-0000-4000-8000-000000000034",
-          amountCents: "30000"
-        }
-      ]
-    });
+      bankReceiptReference: "server-bank-reference",
+      payerAttestation: fault === "no_attestation" ? undefined : {
+        bankAccountReference: "server-payer-verification-reference",
+        ...(activeProxy ? { authorization: { reason: "已有批准的跨主体代付", evidenceFileId: "authorization-evidence", reauthorizationReference: "reauth-action", reauthorizedByUserId: "reauthorizer", reauthorizedAt: "2026-06-20T00:00:00Z" } } : {})
+      }
+    };
+    if (error) {
+      await expect(paymentService.recordExecution("FK-2026-012", "cashier-1", payload)).rejects.toThrow(error);
+      expect(tx.paymentRequest.update).not.toHaveBeenCalled();
+      if (activeProxy) {
+        expect(tx.paymentExecution.create).not.toHaveBeenCalled();
+        expect(tx.paymentExecutionPayerAttestation.create).not.toHaveBeenCalled();
+      }
+      return;
+    }
+    if (!directoryActive) {
+      const module = await Test.createTestingModule({ controllers: [PaymentController], providers: [{ provide: PaymentRequestService, useValue: paymentService }, { provide: PaymentReadService, useValue: {} }, { provide: ProjectVisibilityService, useValue: {} }, { provide: FileService, useValue: fileAccess }] }).compile();
+      const app = module.createNestApplication({ logger: false });
+      app.use((request: { user?: unknown }, _response: unknown, next: () => void) => { request.user = { id: "cashier-1" }; next(); });
+      try {
+        await app.listen(0,"127.0.0.1");
+        const response = await fetch(`${await app.getUrl()}/payments/FK-2026-012/executions`, {method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify(payload)});
+        expect(response.status).toBe(201);expect(await response.json()).toMatchObject({amountCents:"30000",paymentSubjectType:"our_company"});
+      } finally { await app.close(); }
+    } else await paymentService.recordExecution("FK-2026-012", "cashier-1", payload);
 
     expect(tx.paymentExecutionPayerAttestation.create).toHaveBeenCalledWith({
       data: expect.objectContaining({
         paymentExecutionId: "execution-hardened-1",
         payerVerificationId: "payer-verification-1",
-        holderCompanyEntityId: "company-1",
+        holderCompanyEntityId: activeProxy ? "company-active-proxy" : "company-1",
         verifiedByUserId: "finance-director-1",
         verificationEvidenceContentSha256: "a".repeat(64)
       })
     });
-    expect(sharedAllocations.materializeInTransaction).toHaveBeenCalledWith(tx, {
-      actorUserId: "cashier-1",
-      auditRequestId: paymentExecutionCoordinates.idempotencyKey,
-      observationSelectionRef: "server-signed-observation-selection",
-      paymentExecutionId: "execution-hardened-1",
-      paymentRequestId: "payment-1",
-      projectId: "project-1",
-      amountCents: 30_000n,
-      occurredAt: new Date("2026-06-22T00:00:00.000Z"),
-      wagePayableBindings: [
-        {
-          payableRef: "00000000-0000-4000-8000-000000000034",
-          amountCents: 30_000n
-        }
-      ]
-    });
-    expect(projectFunding.allocateExecution).not.toHaveBeenCalled();
-    expect(
-      operatingSources.appendConfirmedSourceIfEnabledInTransaction
-    ).not.toHaveBeenCalled();
-    expect(tx.$executeRawUnsafe).toHaveBeenCalledWith(
-      "SET CONSTRAINTS ALL IMMEDIATE"
-    );
-    expect(
-      sharedAllocations.materializeInTransaction.mock.invocationCallOrder[0]
-    ).toBeLessThan(tx.paymentRequest.update.mock.invocationCallOrder[0]);
-    expect(audit.record.mock.invocationCallOrder[0]).toBeLessThan(
-      tx.$executeRawUnsafe.mock.invocationCallOrder[0]
-    );
+    expect(projectFunding.allocateExecution).toHaveBeenCalledWith(tx, expect.objectContaining({
+      projectId: "project-1", executionId: "execution-hardened-1", amountCents: 30_000n
+    }));
+    expect(tx.paymentRequest.update).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({ status: "partially_paid", paidAmountCents: 30_000n })
+    }));
   });
 
   it("rejects payment request creation when the service is unavailable", async () => {
@@ -946,6 +973,7 @@ name: "签批人甲",
             companyEntityCreditCodeSnapshot: "91310000TEST000001"
           })
         },
+        contractBankEventClaim: { findUnique: jest.fn().mockResolvedValue(null) },
         paymentExecutionWagePayableBinding: {
           findMany: jest.fn().mockResolvedValue([{
             wagePayableRefId: "00000000-0000-4000-8000-000000000031",
@@ -983,6 +1011,69 @@ name: "签批人甲",
       });
     }
   );
+
+  it("replays only the frozen wage binding and bank reference for the original current project actor", async () => {
+    const { tx, createdExecution, prisma } = hardenedPaymentExecutionFixture();
+    tx.paymentExecution.findUnique.mockResolvedValue(createdExecution);
+    const payableRef = "00000000-0000-4000-8000-000000000031";
+    const bindings = [{ wagePayableRefId: payableRef, amountCents: 30_000n }];
+    const contractClaim = { observationId: "bank-observation-1" };
+    Object.assign(tx, {
+      paymentExecutionWagePayableBinding: { findMany: jest.fn().mockResolvedValue(bindings) },
+      contractBankEventClaim: { findUnique: jest.fn().mockResolvedValue(contractClaim) },
+      verifiedBankTransactionObservation: { findUnique: jest.fn().mockResolvedValue({ reference: "original-bank" }) }
+    });
+    const actual = paymentExecutionService(
+      new PaymentAmountService(), prisma as never, audit as never, fileAccess as never, auth as never,
+      undefined, undefined, projectFunding as never
+    );
+    const input = {
+      ...paymentExecutionCoordinates, amountCents: "30000", paidAt: "2026-06-22T00:00:00.000Z",
+      voucherFileId: "file-1", confirmationPassword: "current-password", bankReceiptReference: "original-bank",
+      wagePayableBindings: [{ payableRef, amountCents: "30000" }]
+    };
+
+    await expect(actual.recordExecution("FK-2026-012", "cashier-1", input)).resolves.toEqual({
+      amountCents: "30000", paidAt: createdExecution.paidAt, paymentSubjectType: "our_company"
+    });
+    await expect(actual.recordExecution("FK-2026-012", "cashier-1", {
+      ...input, wagePayableBindings: [{ payableRef: "00000000-0000-4000-8000-000000000032", amountCents: "30000" }]
+    })).rejects.toMatchObject({ status: 409 });
+    await expect(actual.recordExecution("FK-2026-012", "cashier-1", {
+      ...input, bankReceiptReference: undefined
+    })).rejects.toMatchObject({ status: 409 });
+
+    tx.projectMember.findMany.mockResolvedValue([]);
+    await expect(actual.recordExecution("FK-2026-012", "cashier-1", input)).rejects.toMatchObject({ status: 403 });
+    expect(tx.paymentExecution.create).not.toHaveBeenCalled();
+    expect(tx.paymentRequest.update).not.toHaveBeenCalled();
+    expect(audit.record).not.toHaveBeenCalled();
+  });
+
+  it("replays an ordinary payment with its original bank reference and rejects a changed reference", async () => {
+    const { tx, createdExecution, prisma } = hardenedPaymentExecutionFixture();
+    tx.paymentExecution.findUnique.mockResolvedValue(createdExecution);
+    Object.assign(tx, {
+      contractBankEventClaim: { findUnique: jest.fn().mockResolvedValue({ observationId: "bank-observation-1" }) },
+      verifiedBankTransactionObservation: { findUnique: jest.fn().mockResolvedValue({ reference: "ordinary-bank-reference" }) }
+    });
+    const service = paymentExecutionService(
+      new PaymentAmountService(), prisma as never, audit as never, fileAccess as never, auth as never,
+      undefined, undefined, projectFunding as never
+    );
+
+    const input = {
+      ...paymentExecutionCoordinates, amountCents: "30000", paidAt: "2026-06-22T00:00:00.000Z",
+      voucherFileId: "file-1", confirmationPassword: "current-password", bankReceiptReference: "ordinary-bank-reference"
+    };
+    await expect(service.recordExecution("FK-2026-012", "cashier-1", input)).resolves.toMatchObject({
+      id: createdExecution.id, amountCents: "30000", paidAt: createdExecution.paidAt, paymentSubjectType: "our_company"
+    });
+    await expect(service.recordExecution("FK-2026-012", "cashier-1", {
+      ...input, bankReceiptReference: "changed-bank-reference"
+    })).rejects.toMatchObject({ status: 409 });
+    expect(tx.paymentExecution.create).not.toHaveBeenCalled();
+  });
 
   it("maps explicit PostgreSQL 40001 but preserves 40P01 on payment execution", async () => {
     const serialization = {
@@ -1166,6 +1257,573 @@ name: "签批人甲",
     });
   });
 
+  describe("signed settlement payment basis (SET-09/A12)", () => {
+    const signedSettlementRow = (
+      id: string,
+      amountYuan: string,
+      confirmationNo: bigint,
+      reviewedAt = new Date("2026-11-10T00:00:00.000Z")
+    ) => ({
+      id,
+      number: `JS-${id}`,
+      amountYuan: new Prisma.Decimal(amountYuan),
+      confirmationNo,
+      reviewedAt
+    });
+
+    function signedSettlementCreateTx(options: {
+      rows: ReturnType<typeof signedSettlementRow>[];
+      selectedId: string;
+      state?: string;
+      contractKind?: string;
+      occupied?: Array<{
+        status: string;
+        requestedAmountCents: bigint;
+        approvedAmountCents: bigint | null;
+        paidAmountCents: bigint;
+      }>;
+    }) {
+      const tx = {
+        $queryRaw: jest.fn().mockResolvedValue([{ id: "signed-settlement-advisory-lock" }]),
+        signedContractSettlement: {
+          findUnique: jest.fn().mockResolvedValue({
+            id: options.selectedId,
+            projectId: "project-1",
+            contractKind: options.contractKind ?? "downstream",
+            contractId: "contract-1",
+            state: options.state ?? "confirmed"
+          }),
+          findMany: jest.fn().mockResolvedValue(options.rows)
+        },
+        contract: {
+          findUnique: jest.fn().mockResolvedValue({
+            projectId: "project-1",
+            contractTypeKey: "labor_subcontract",
+            voidedAt: null
+          })
+        },
+        contractVersion: {
+          findFirst: jest.fn().mockResolvedValue({
+            id: "contract-version-1",
+            signingSubjectType: "our_company"
+          })
+        },
+        paymentTermsVersion: {
+          findFirst: jest.fn().mockResolvedValue({ id: "terms-version-1" })
+        },
+        contractTakeover: {
+          findUnique: jest.fn().mockResolvedValue(null),
+          findFirst: jest.fn().mockResolvedValue(null)
+        },
+        settlement: { findMany: jest.fn().mockResolvedValue([]) },
+        projectProxyPayment: { findMany: jest.fn().mockResolvedValue([]) },
+        paymentRequest: {
+          findMany: jest.fn().mockResolvedValue(options.occupied ?? []),
+          create: jest.fn().mockImplementation(({ data }) =>
+            Promise.resolve({
+              id: "payment-1",
+              code: data.code,
+              projectId: data.projectId,
+              settlementId: data.settlementId,
+              signedSettlementId: data.signedSettlementId,
+              sourceType: data.sourceType,
+              contractId: data.contractId,
+              contractVersionId: data.contractVersionId,
+              paymentTermsVersionId: data.paymentTermsVersionId,
+              status: data.status,
+              paymentSubjectType: data.paymentSubjectType,
+              requestedAmountCents: data.requestedAmountCents,
+              approvedAmountCents: data.approvedAmountCents,
+              paidAmountCents: data.paidAmountCents
+            })
+          )
+        }
+      };
+      const prisma = { $transaction: jest.fn(async (callback) => callback(tx)) };
+      return { tx, prisma };
+    }
+
+    it("releases only the unpaid remainder and submits the reduced amount against the latest signed settlement", async () => {
+      const rows = [
+        signedSettlementRow("signed-original", "100.0000", 1n),
+        signedSettlementRow("signed-reduction", "-30.0000", 2n)
+      ];
+      const { tx } = signedSettlementCreateTx({ rows, selectedId: "signed-reduction" });
+      const origin = {
+        id: "original-payment", code: "FK-ORIGIN", sourceType: "signed_settlement",
+        projectId: "project-1", contractId: "contract-1", status: "partially_paid", paymentSubjectType: "our_company",
+        requestedAmountCents: 10_000n, approvedAmountCents: 10_000n, paidAmountCents: 4_000n,
+        remainingWithdrawnCents: null, updatedAt: new Date("2026-11-20T00:00:00.000Z")
+      };
+      const released = { ...origin, remainingWithdrawnCents: 6_000n };
+      const duties = ["comprehensive_director", "project_manager", "contract_director", "finance_director", "general_manager"]
+        .map(roleKey => ({ userId: roleKey, roleKey }));
+      tx.$queryRaw.mockImplementation(query => Promise.resolve(
+        (query.sql ?? "").includes('FOR UPDATE OF payment, version') ? [origin] : duties
+      ));
+      tx.paymentRequest.findMany.mockResolvedValue([released]);
+      const db = {
+        ...tx,
+        paymentRequest: { ...tx.paymentRequest, update: jest.fn().mockResolvedValue(released) },
+        user: { findUnique: jest.fn().mockResolvedValue({ isActive: true }) },
+        userPosition: { findMany: jest.fn().mockResolvedValue([{ positionId: "keeper", projectId: null }]) },
+        projectMember: { findMany: jest.fn().mockResolvedValue([]) },
+        position: { findMany: jest.fn().mockResolvedValue([{ id: "keeper", key: "comprehensive_director" }]) },
+        approvalInstance: {
+          findMany: jest.fn().mockResolvedValue([{
+            id: "approved-round", businessType: "payment_request", businessId: origin.id, flowType: "payment.approve", status: "approved"
+          }]),
+          create: jest.fn().mockResolvedValue({ id: "new-round" })
+        },
+        auditLog: { create: jest.fn().mockResolvedValue({}) }
+      };
+      const prisma = { $transaction: jest.fn(async callback => callback(db)) };
+      const service = new PaymentRequestService(new PaymentAmountService(), prisma as never);
+      const result = await service.withdrawRemainder(origin.id, "keeper", {
+        expectedUpdatedAt: origin.updatedAt.toISOString(), requestedAmountCents: "3000",
+        code: "FK-ADJUSTED", reason: "负结算后回到可付余额"
+      });
+      expect(db.paymentRequest.update).toHaveBeenCalledWith({
+        where: { id: origin.id }, data: { remainingWithdrawnCents: 6_000n }
+      });
+      expect(db.approvalInstance.create).toHaveBeenCalledWith({ data: expect.objectContaining({
+        businessId: "payment-1", status: "in_progress", currentNodeIndex: 0,
+        frozenNodes: expect.arrayContaining([
+          expect.objectContaining({ roleKeys: expect.arrayContaining(["contract_director"]) }),
+          expect.objectContaining({ roleKeys: expect.arrayContaining(["finance_director"]) })
+        ])
+      }) });
+      expect(db.auditLog.create).toHaveBeenCalledWith({ data: expect.objectContaining({
+        action: "payment.request.withdraw_remainder", businessId: origin.id,
+        metadata: expect.objectContaining({ previousApprovalInstanceId: "approved-round", withdrawnCents: "6000", revisedPaymentId: "payment-1" })
+      }) });
+      expect(result).toMatchObject({
+        origin: { approvedAmountCents: "10000", paidAmountCents: "4000", remainingWithdrawnCents: "6000" },
+        revised: { signedSettlementId: "signed-reduction", requestedAmountCents: "3000", status: "approval_pending" }
+      });
+    });
+
+    it("uses the full contract cumulative, not the negative latest period, as the payment cap", async () => {
+      const rows = [
+        signedSettlementRow("signed-positive", "100.0000", 1n),
+        signedSettlementRow("signed-negative", "-30.0000", 2n, new Date("2026-11-11T00:00:00.000Z"))
+      ];
+      const { tx, prisma } = signedSettlementCreateTx({
+        rows,
+        selectedId: "signed-negative",
+        occupied: [
+          {
+            status: "paid",
+            requestedAmountCents: 2_000n,
+            approvedAmountCents: 2_000n,
+            paidAmountCents: 2_000n
+          }
+        ]
+      });
+      const paymentService = new PaymentRequestService(new PaymentAmountService(), prisma as never);
+
+      const created = await paymentService.create({
+        sourceType: "signed_settlement",
+        signedSettlementId: "signed-negative",
+        code: "FK-SIGNED-001",
+        requestedAmountCents: "5000"
+      });
+
+      expect(created).toMatchObject({
+        sourceType: "signed_settlement",
+        code: "FK-SIGNED-001",
+        requestedAmountCents: "5000"
+      });
+      expect(tx.paymentRequest.create).toHaveBeenCalledWith({
+        data: expect.objectContaining({
+          settlementId: null,
+          signedSettlementId: "signed-negative",
+          sourceType: "signed_settlement",
+          signedSettlementConfirmationNo: 2n,
+          signedSettlementOccupiedCents: 2_000n,
+          requestedAmountCents: 5_000n
+        })
+      });
+      const data = tx.paymentRequest.create.mock.calls[0]![0].data;
+      // 累计 100 - 30 = 70 元；已付 20 元；本次 50 元刚好用满。
+      expect(data.signedSettlementConfirmedYuan.toFixed(4)).toBe("-30.0000");
+      expect(data.signedSettlementContractConfirmedYuan.toFixed(4)).toBe("70.0000");
+    });
+
+    it("includes confirmed legacy settlements in the same contract capacity as signed settlements", async () => {
+      const rows = [signedSettlementRow("signed-100", "100.0000", 1n)];
+      const { tx, prisma } = signedSettlementCreateTx({ rows, selectedId: "signed-100" });
+      tx.settlement.findMany = jest.fn().mockResolvedValue([
+        { amountCents: 2_000n, sourceType: null, sourceTakeoverId: null }
+      ]);
+      const paymentService = new PaymentRequestService(new PaymentAmountService(), prisma as never);
+
+      // 已签 100 + 旧结算 20 = 120 元，两种依据同口径参与累计容量。
+      await paymentService.create({
+        sourceType: "signed_settlement",
+        signedSettlementId: "signed-100",
+        code: "FK-SIGNED-LEGACY-001",
+        requestedAmountCents: "12000"
+      });
+      const data = tx.paymentRequest.create.mock.calls[0]![0].data;
+      expect(data.signedSettlementContractConfirmedYuan.toFixed(4)).toBe("120.0000");
+
+      await expect(
+        paymentService.create({
+          sourceType: "signed_settlement",
+          signedSettlementId: "signed-100",
+          code: "FK-SIGNED-LEGACY-002",
+          requestedAmountCents: "12001"
+        })
+      ).rejects.toThrow("合同已签结算累计可付金额不足");
+    });
+
+    it("rejects a payment above the full contract cumulative remaining amount", async () => {
+      const rows = [
+        signedSettlementRow("signed-positive", "100.0000", 1n),
+        signedSettlementRow("signed-negative", "-30.0000", 2n, new Date("2026-11-11T00:00:00.000Z"))
+      ];
+      const { tx, prisma } = signedSettlementCreateTx({
+        rows,
+        selectedId: "signed-negative",
+        occupied: [
+          {
+            status: "paid",
+            requestedAmountCents: 2_000n,
+            approvedAmountCents: 2_000n,
+            paidAmountCents: 2_000n
+          }
+        ]
+      });
+      const paymentService = new PaymentRequestService(new PaymentAmountService(), prisma as never);
+
+      await expect(
+        paymentService.create({
+          sourceType: "signed_settlement",
+          signedSettlementId: "signed-negative",
+          code: "FK-SIGNED-002",
+          requestedAmountCents: "5001"
+        })
+      ).rejects.toThrow("合同已签结算累计可付金额不足");
+      expect(tx.paymentRequest.create).not.toHaveBeenCalled();
+      expect(tx.$queryRaw.mock.invocationCallOrder[0]).toBeLessThan(
+        tx.paymentRequest.create.mock.invocationCallOrder[0] ?? Number.MAX_SAFE_INTEGER
+      );
+    });
+
+    it("rejects a confirmed signed settlement that is not the latest confirmed period", async () => {
+      const rows = [
+        signedSettlementRow("signed-latest", "100.0000", 2n, new Date("2026-11-11T00:00:00.000Z")),
+        signedSettlementRow("signed-old", "100.0000", 1n)
+      ];
+      const { tx, prisma } = signedSettlementCreateTx({ rows, selectedId: "signed-old" });
+      const paymentService = new PaymentRequestService(new PaymentAmountService(), prisma as never);
+
+      await expect(
+        paymentService.create({
+          sourceType: "signed_settlement",
+          signedSettlementId: "signed-old",
+          code: "FK-SIGNED-003",
+          requestedAmountCents: "100"
+        })
+      ).rejects.toThrow("付款只可选择最近确认的一期已签结算");
+      expect(tx.paymentRequest.create).not.toHaveBeenCalled();
+    });
+
+    it("rejects a signed settlement that is not yet confirmed", async () => {
+      const { tx, prisma } = signedSettlementCreateTx({
+        rows: [],
+        selectedId: "signed-pending",
+        state: "pending_review"
+      });
+      const paymentService = new PaymentRequestService(new PaymentAmountService(), prisma as never);
+
+      await expect(
+        paymentService.create({
+          sourceType: "signed_settlement",
+          signedSettlementId: "signed-pending",
+          code: "FK-SIGNED-004",
+          requestedAmountCents: "100"
+        })
+      ).rejects.toThrow("当前已签结算尚未复核确认");
+      expect(tx.paymentRequest.create).not.toHaveBeenCalled();
+    });
+
+    it("rejects paying an upward signed settlement through our payment request", async () => {
+      const { tx, prisma } = signedSettlementCreateTx({
+        rows: [],
+        selectedId: "signed-upward",
+        contractKind: "upward"
+      });
+      const paymentService = new PaymentRequestService(new PaymentAmountService(), prisma as never);
+
+      await expect(
+        paymentService.create({
+          sourceType: "signed_settlement",
+          signedSettlementId: "signed-upward",
+          code: "FK-SIGNED-005",
+          requestedAmountCents: "100"
+        })
+      ).rejects.toThrow("表外或对上结算不产生我方付款申请");
+      expect(tx.paymentRequest.create).not.toHaveBeenCalled();
+    });
+
+    it("revalidates the contract cumulative inside the execution transaction and blocks overpay after a negative settlement", async () => {
+      const fixture = hardenedPaymentExecutionFixture({
+        sourceType: "signed_settlement",
+        settlementId: null,
+        requestedAmountCents: 5_000n,
+        approvedAmountCents: 5_000n,
+        paidAmountCents: 0n
+      });
+      (fixture.payment as unknown as { signedSettlementId: string | null }).signedSettlementId =
+        "signed-negative";
+      const tx = fixture.tx as unknown as Record<string, unknown> & {
+        paymentRequest: { findMany: jest.Mock };
+        paymentExecution: { create: jest.Mock };
+      };
+      tx.settlement = {
+        findUnique: jest.fn().mockResolvedValue(null),
+        update: jest.fn(),
+        findMany: jest.fn().mockResolvedValue([])
+      };
+      tx.signedContractSettlement = {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "signed-negative",
+          contractKind: "downstream",
+          contractId: "contract-1",
+          state: "confirmed"
+        }),
+        findMany: jest.fn().mockResolvedValue([
+          signedSettlementRow("signed-positive", "100.0000", 1n),
+          signedSettlementRow("signed-negative", "-60.0000", 2n, new Date("2026-11-11T00:00:00.000Z"))
+        ])
+      };
+      tx.contractTakeover = {
+        findUnique: jest.fn().mockResolvedValue(null),
+        findFirst: jest.fn().mockResolvedValue(null)
+      };
+      tx.projectProxyPayment = { findMany: jest.fn().mockResolvedValue([]) };
+      tx.paymentRequest.findMany = jest.fn().mockResolvedValue([
+        {
+          status: "approved_pending_payment",
+          requestedAmountCents: 5_000n,
+          approvedAmountCents: 5_000n,
+          paidAmountCents: 0n
+        }
+      ]);
+      const paymentService = paymentExecutionService(
+        new PaymentAmountService(),
+        fixture.prisma as never,
+        audit as never,
+        fileAccess as never,
+        auth as never,
+        undefined,
+        undefined,
+        projectFunding as never
+      );
+
+      // 合同累计 100 - 60 = 40 元；申请批复 50 元；实付 45 元超过累计可付。
+      await expect(
+        paymentService.recordExecution("FK-2026-012", "cashier-1", {
+          ...paymentExecutionCoordinates,
+          amountCents: "4500",
+          paidAt: "2026-06-22T00:00:00.000Z",
+          voucherFileId: "file-1",
+          confirmationPassword: "current-password"
+        })
+      ).rejects.toThrow("合同已签结算累计可付金额不足");
+      expect(tx.paymentExecution.create).not.toHaveBeenCalled();
+    });
+
+    it("allows execution while the latest contract cumulative still covers the request", async () => {
+      const fixture = hardenedPaymentExecutionFixture({
+        sourceType: "signed_settlement",
+        settlementId: null,
+        requestedAmountCents: 5_000n,
+        approvedAmountCents: 5_000n,
+        paidAmountCents: 0n
+      });
+      (fixture.payment as unknown as { signedSettlementId: string | null }).signedSettlementId =
+        "signed-latest";
+      const tx = fixture.tx as unknown as Record<string, unknown> & {
+        paymentRequest: { findMany: jest.Mock };
+        paymentExecution: { create: jest.Mock };
+      };
+      tx.settlement = {
+        findUnique: jest.fn().mockResolvedValue(null),
+        update: jest.fn(),
+        findMany: jest.fn().mockResolvedValue([])
+      };
+      tx.signedContractSettlement = {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "signed-latest",
+          contractKind: "downstream",
+          contractId: "contract-1",
+          state: "confirmed"
+        }),
+        findMany: jest.fn().mockResolvedValue([
+          signedSettlementRow("signed-positive", "100.0000", 1n),
+          signedSettlementRow("signed-latest", "-30.0000", 2n, new Date("2026-11-11T00:00:00.000Z"))
+        ])
+      };
+      tx.contractTakeover = {
+        findUnique: jest.fn().mockResolvedValue(null),
+        findFirst: jest.fn().mockResolvedValue(null)
+      };
+      tx.projectProxyPayment = { findMany: jest.fn().mockResolvedValue([]) };
+      tx.paymentRequest.findMany = jest.fn().mockResolvedValue([
+        {
+          status: "approved_pending_payment",
+          requestedAmountCents: 5_000n,
+          approvedAmountCents: 5_000n,
+          paidAmountCents: 0n
+        }
+      ]);
+      tx.paymentExecution.create = jest.fn().mockImplementation(({ data }) =>
+        Promise.resolve({ ...fixture.createdExecution, amountCents: data.amountCents })
+      );
+      const paymentService = paymentExecutionService(
+        new PaymentAmountService(),
+        fixture.prisma as never,
+        audit as never,
+        fileAccess as never,
+        auth as never,
+        undefined,
+        undefined,
+        projectFunding as never
+      );
+
+      const execution = await paymentService.recordExecution("FK-2026-012", "cashier-1", {
+        ...paymentExecutionCoordinates,
+        amountCents: "3000",
+        paidAt: "2026-06-22T00:00:00.000Z",
+        voucherFileId: "file-1",
+        confirmationPassword: "current-password"
+      });
+
+      expect(execution.amountCents).toBe("3000");
+      expect(tx.paymentExecution.create).toHaveBeenCalledWith({
+        data: expect.objectContaining({
+          paymentRequestId: "payment-1",
+          settlementId: null,
+          amountCents: 3_000n
+        })
+      });
+      expect((tx.paymentRequest as unknown as { update: jest.Mock }).update).toHaveBeenCalledWith({
+        where: { id: "payment-1" },
+        data: { paidAmountCents: 3_000n, status: "partially_paid" }
+      });
+    });
+
+    it("rejects final approval while a negative settlement leaves more unpaid applications than the contract balance", async () => {
+      const frozenNodes = [
+        { ...paymentApprovalNodes[0], approvedRoleKeys: ["comprehensive_director"] },
+        { ...paymentApprovalNodes[1], approvedRoleKeys: ["project_manager"] },
+        { ...paymentApprovalNodes[2], approvedRoleKeys: ["finance_director"] },
+        { ...paymentApprovalNodes[3], approvedRoleKeys: ["contract_director"] },
+        paymentApprovalNodes[4]
+      ];
+      const payment = {
+        ...paymentReviewPaymentVersion,
+        id: "payment-1",
+        code: "FK-SIGNED-APPROVAL",
+        projectId: "project-1",
+        contractId: "contract-1",
+        contractVersionId: "contract-version-1",
+        paymentTermsVersionId: "terms-version-1",
+        sourceType: "signed_settlement",
+        signedSettlementId: "signed-negative",
+        settlementId: null,
+        status: "approval_pending",
+        paymentSubjectType: "affiliate",
+        signingSubjectType: "affiliate",
+        requestedAmountCents: 5_000n,
+        approvedAmountCents: null,
+        paidAmountCents: 0n
+      };
+      const tx = {
+        user: { findUnique: jest.fn(async ({ where }: { where: { id: string } }) => ({ id: where.id, name: "原审批人乙", isActive: true })) },
+        paymentRequest: {
+          findFirst: jest.fn().mockResolvedValue(payment),
+          findMany: jest.fn().mockResolvedValue([
+            {
+              sourceType: "signed_settlement",
+              status: "approval_pending",
+              requestedAmountCents: 5_000n,
+              approvedAmountCents: null,
+              paidAmountCents: 0n
+            },
+            {
+              sourceType: "signed_settlement",
+              status: "approval_pending",
+              requestedAmountCents: 5_000n,
+              approvedAmountCents: null,
+              paidAmountCents: 0n
+            }
+          ]),
+          update: jest.fn()
+        },
+        approvalInstance: {
+          findFirst: jest.fn().mockResolvedValue({
+            ...paymentReviewApprovalVersion,
+            id: "approval-instance-1",
+            currentNodeIndex: 4,
+            frozenNodes
+          }),
+          update: jest.fn()
+        },
+        approvalActionLog: { create: jest.fn() },
+        auditLog: { create: jest.fn() },
+        signedContractSettlement: {
+          findUnique: jest.fn().mockResolvedValue({
+            id: "signed-negative",
+            contractKind: "downstream",
+            contractId: "contract-1",
+            state: "confirmed"
+          }),
+          findMany: jest.fn().mockResolvedValue([
+            signedSettlementRow("signed-positive", "100.0000", 1n),
+            signedSettlementRow("signed-negative", "-60.0000", 2n)
+          ])
+        },
+        settlement: { findMany: jest.fn().mockResolvedValue([]) },
+        contractTakeover: { findFirst: jest.fn().mockResolvedValue(null) },
+        projectProxyPayment: { findMany: jest.fn().mockResolvedValue([]) },
+        ...financingUsageUpdates(),
+        ...approvalRoleTables("chairman")
+      };
+      attachApprovalSignatureFixture(tx);
+      const auditLog = { create: jest.fn().mockResolvedValue({ id: "audit-1" }) };
+      const prisma = {
+        auditLog,
+        $transaction: jest.fn(async (callback) => callback(tx))
+      };
+      const paymentService = new PaymentRequestService(
+        new PaymentAmountService(),
+        prisma as never,
+        new AuditService()
+      );
+
+      // 合同累计 100 - 60 = 40 元；两笔在途各 50 元，合计 100 元已超出余额。
+      await expect(
+        paymentService.reviewApproval("payment-1", "chairman-1", {
+          ...paymentReviewCoordinates,
+          expectedNodeIndex: 4,
+          decision: "approve"
+        })
+      ).rejects.toThrow("合同已签结算累计可付金额不足");
+      expect(tx.paymentRequest.update).not.toHaveBeenCalled();
+      expect(auditLog.create).toHaveBeenCalledWith({
+        data: expect.objectContaining({
+          action: "payment.capacity.blocked",
+          businessType: "payment_request",
+          businessId: "payment-1"
+        })
+      });
+    });
+  });
+
   it("rejects a payment subject that differs from the contract signing subject at creation", async () => {
     const cashPool = projectCashPoolTables();
     const tx = {
@@ -1332,7 +1990,7 @@ name: "签批人甲",
     expect(tx.paymentRequest.create).not.toHaveBeenCalled();
   });
 
-  it("rejects settlement payment when historical takeover is C level", async () => {
+  it("requires a handover before settlement payment on a C-level historical takeover", async () => {
     const cashPool = projectCashPoolTables();
     const tx = {
       settlement: {
@@ -1391,7 +2049,7 @@ name: "签批人甲",
         },
         "applicant-1"
       )
-    ).rejects.toThrow("C级历史接管仍有资料缺口或争议，不能发起付款申请");
+    ).rejects.toThrow("请先完成接管分工登记");
 
     expect(audit.record).toHaveBeenCalledWith(tx, {
       actorUserId: "applicant-1",
@@ -1402,7 +2060,7 @@ name: "签批人甲",
         contractId: "contract-1",
         contractVersionId: "contract-version-1",
         sourceType: "settlement",
-        reason: "takeover_level_c",
+        reason: "handover_required",
         takeoverStatus: "confirmed"
       }
     });
@@ -1540,7 +2198,7 @@ name: "签批人甲",
     expect(tx.paymentRequest.create).not.toHaveBeenCalled();
   });
 
-  it("creates a payment request when an effective historical contract change baseline is missing", async () => {
+  it.each(["our_company", "affiliate"] as const)("enforces the advance application rule for %s contracts", async (paymentSubjectType) => {
     jest.useFakeTimers();
     jest.setSystemTime(new Date("2026-07-20T00:00:00.000Z"));
 
@@ -1559,6 +2217,7 @@ name: "签批人甲",
             changeType: "historical_takeover",
             originalBaseAmountCents: null,
             amountCents: BigInt(1_000_000),
+            signingSubjectType: paymentSubjectType,
             effectiveAt: new Date("2026-06-01T00:00:00.000Z")
           })
         },
@@ -1633,12 +2292,18 @@ name: "签批人甲",
       };
       const paymentService = new PaymentRequestService(new PaymentAmountService(), prisma as never);
 
-      const created = await paymentService.create({
+      const creation = paymentService.create({
         sourceType: "contract_advance",
         contractVersionId: "contract-version-1",
         code: "FK-YF-2026-001",
         requestedAmountCents: "100000"
       } as never);
+      if (paymentSubjectType === "affiliate") {
+        await expect(creation).rejects.toThrow("施工企业合同预付款已停止新增申请");
+        expect(tx.paymentRequest.create).not.toHaveBeenCalled();
+        return;
+      }
+      const created = await creation;
 
       expect(created.code).toBe("FK-YF-2026-001");
       expect(tx.settlement.findUnique).not.toHaveBeenCalled();
@@ -2027,6 +2692,51 @@ name: "签批人甲",
     expect(tx.paymentRequest.create).not.toHaveBeenCalled();
   });
 
+  it("submits a text-only service payment on its actual agreement without creating a stage or settlement", async () => {
+    const version = {
+      id: "v2", contractId: "contract", status: "effective", numericProtocolVersion: 2,
+      amountCents: 0n, amountLimitType: "unlimited", amountYuan: null, effectiveAt: new Date("2026-06-01"),
+      settlementMode: "direct_payment", settlementModeConfirmedAt: new Date("2026-06-01"),
+      settlementModeConfirmedByUserId: "director", signingSubjectType: "our_company"
+    };
+    const tx = {
+      contractVersion: { findUnique: jest.fn().mockResolvedValue(version) },
+      contract: { findUnique: jest.fn().mockResolvedValue({ projectId: "project", contractTypeKey: "other" }) },
+      contractTakeover: { findUnique: jest.fn().mockResolvedValue(null), findFirst: jest.fn().mockResolvedValue(null) },
+      paymentTermsVersion: { findFirst: jest.fn().mockResolvedValue({ id: "terms", originalText: "按实际服务付款" }) },
+      paymentTermsStage: { findFirst: jest.fn().mockResolvedValue(null) },
+      paymentRequest: {
+        create: jest.fn(({ data }) => ({ id: "payment", ...data })),
+        findMany: jest.fn().mockResolvedValue([{ status: "paid", requestedAmountCents: 24_000n,
+          approvedAmountCents: 24_000n, paidAmountCents: 24_000n }])
+      },
+      projectProxyPayment: { findMany: jest.fn().mockResolvedValue([]) },
+      $queryRaw: jest.fn((query: TemplateStringsArray) => Array.isArray(query) && query.join("").includes("jg_read_text_payment_agreement_v1")
+        ? [{ agreementText: "按实际服务付款" }]
+        : Array.isArray(query) && query.join("").includes("jg_read_effective_contract_change_amount_v1")
+          ? [{ effectiveAmountYuan: new Prisma.Decimal("600.0040") }] : [{ id: "contract" }])
+    };
+    const prisma = { $transaction: jest.fn(async (callback) => callback(tx)) };
+    const service = new PaymentRequestService(new PaymentAmountService(), prisma as never);
+    const input = { sourceType: "contract_due" as const, contractVersionId: "v2", paymentTermsVersionId: "terms",
+      expectedAgreementFingerprint: "6aedb478397e188fe34bec6efde3e4e40e3922e4e3f369883fe4559ff327121a",
+      code: "FK-TEXT-1", requestedAmountCents: "55000", paymentMatter: "巡检服务",
+      amountCalculationExplanation: "服务工单共计550元" };
+    await expect(service.create(input)).resolves.toMatchObject({
+      sourceType: "contract_due", requestedAmountCents: "55000", paymentTermsVersionId: "terms", settlementId: null
+    });
+    expect(tx.paymentRequest.create).toHaveBeenCalledWith({ data: expect.objectContaining({
+      paymentTermsStageId: null, contractDueBasis: "text_agreement_v1"
+    }) });
+    await expect(service.create({ ...input, paymentTermsVersionId: "stale" })).rejects.toMatchObject({ status: 409 });
+    await expect(service.create({ ...input, expectedAgreementFingerprint: "0".repeat(64) })).rejects.toMatchObject({ status: 409 });
+    tx.contractVersion.findUnique.mockResolvedValue({ ...version, amountLimitType: "capped", amountYuan: new Prisma.Decimal("1000") });
+    await expect(service.create(input)).rejects.toThrow("当前最多可申请 360.00 元");
+    await expect(service.create({ ...input, requestedAmountCents: "36000" })).resolves.toMatchObject({ requestedAmountCents: "36000" });
+    tx.paymentTermsStage.findFirst.mockResolvedValue({ id: "actual-stage" });
+    await expect(service.create(input)).rejects.toThrow("请选择合同已冻结的付款阶段");
+  });
+
   it("requires payment matter and calculation explanation for an unlimited direct-payment contract", async () => {
     const tx = {
       contractVersion: {
@@ -2222,14 +2932,15 @@ name: "签批人甲",
     const paymentService = new PaymentRequestService(new PaymentAmountService(), {} as never);
     const assertCapacity = (
       paymentService as unknown as {
-        assertGenericContractPaymentStageCapacity(
+        assertDirectPaymentApplicationCapacity(
           tx: unknown,
           contractVersion: unknown,
           stage: unknown,
-          requestedAmountCents: bigint
+          requestedAmountCents: bigint,
+          textAgreementLimit: null
         ): Promise<void>;
       }
-    ).assertGenericContractPaymentStageCapacity.bind(paymentService);
+    ).assertDirectPaymentApplicationCapacity.bind(paymentService);
 
     await expect(assertCapacity(
       tx,
@@ -2251,7 +2962,8 @@ name: "签批人甲",
         allowsEarlyPayment: false,
         allowsInstallments: true
       },
-      90_000n
+      90_000n,
+      null
     )).rejects.toThrow("合同付款阶段当前可申请金额不足，当前最多可申请 500.00 元");
     expect(tx.paymentRequest.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -2361,14 +3073,15 @@ name: "签批人甲",
     const paymentService = new PaymentRequestService(new PaymentAmountService(), {} as never);
     const assertCapacity = (
       paymentService as unknown as {
-        assertGenericContractPaymentStageCapacity(
+        assertDirectPaymentApplicationCapacity(
           tx: unknown,
           contractVersion: unknown,
           stage: unknown,
-          requestedAmountCents: bigint
+          requestedAmountCents: bigint,
+          textAgreementLimit: null
         ): Promise<void>;
       }
-    ).assertGenericContractPaymentStageCapacity.bind(paymentService);
+    ).assertDirectPaymentApplicationCapacity.bind(paymentService);
 
     await expect(assertCapacity(
       tx,
@@ -2390,7 +3103,8 @@ name: "签批人甲",
         allowsEarlyPayment: false,
         allowsInstallments: true
       },
-      50_000n
+      50_000n,
+      null
     )).rejects.toThrow("合同付款阶段当前可申请金额不足，当前最多可申请 400.00 元");
   });
 
@@ -2402,14 +3116,15 @@ name: "签批人甲",
     const paymentService = new PaymentRequestService(new PaymentAmountService(), {} as never);
     const assertCapacity = (
       paymentService as unknown as {
-        assertGenericContractPaymentStageCapacity(
+        assertDirectPaymentApplicationCapacity(
           tx: unknown,
           contractVersion: unknown,
           stage: unknown,
-          requestedAmountCents: bigint
+          requestedAmountCents: bigint,
+          textAgreementLimit: null
         ): Promise<void>;
       }
-    ).assertGenericContractPaymentStageCapacity.bind(paymentService);
+    ).assertDirectPaymentApplicationCapacity.bind(paymentService);
 
     await expect(assertCapacity(
       tx,
@@ -2431,7 +3146,8 @@ name: "签批人甲",
         allowsEarlyPayment: true,
         allowsInstallments: true
       },
-      100_000n
+      100_000n,
+      null
     )).resolves.toBeUndefined();
   });
 
@@ -2443,14 +3159,15 @@ name: "签批人甲",
     const paymentService = new PaymentRequestService(new PaymentAmountService(), {} as never);
     const assertCapacity = (
       paymentService as unknown as {
-        assertGenericContractPaymentStageCapacity(
+        assertDirectPaymentApplicationCapacity(
           tx: unknown,
           contractVersion: unknown,
           stage: unknown,
-          requestedAmountCents: bigint
+          requestedAmountCents: bigint,
+          textAgreementLimit: null
         ): Promise<void>;
       }
-    ).assertGenericContractPaymentStageCapacity.bind(paymentService);
+    ).assertDirectPaymentApplicationCapacity.bind(paymentService);
 
     await expect(assertCapacity(
       tx,
@@ -2472,7 +3189,8 @@ name: "签批人甲",
         allowsEarlyPayment: false,
         allowsInstallments: false
       },
-      50_000n
+      50_000n,
+      null
     )).rejects.toThrow(
       "该付款阶段不允许分次申请，本次申请金额必须等于当前可申请金额 1,000.00 元"
     );
@@ -3965,10 +4683,23 @@ user: { findUnique: jest.fn(async ({where}: {where: {id: string}}) => ({ id: whe
         .mockResolvedValueOnce([{ id: "sig-pm", contentSha256: "c".repeat(64), storageStatus: "active" }]),
       ...approvalRoleTables("comprehensive_director")
     };
+    const nextRound = { id: "approval-instance-1", currentNodeIndex: 1 };
+    const transition = { id: "signed-action", action: "approve", signatureSha256Snapshot: "c".repeat(64) };
+    tx.approvalInstance.update.mockResolvedValue(nextRound);
+    tx.approvalActionLog.create.mockResolvedValue(transition);
+    let inTransaction = false;
     const prisma = {
-      $transaction: jest.fn(async (callback) => callback(tx))
+      $transaction: jest.fn(async (callback) => {
+        inTransaction = true;
+        try { return await callback(tx); } finally { inTransaction = false; }
+      })
     };
-    const paymentService = new PaymentRequestService(new PaymentAmountService(), prisma as never);
+    const notices = {
+      queue: jest.fn(async () => { expect(inTransaction).toBe(true); }),
+      afterCommit: jest.fn(async () => { expect(inTransaction).toBe(false); })
+    };
+    const paymentService = new PaymentRequestService(new PaymentAmountService(), prisma as never, undefined, undefined,
+      undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, notices as never);
 
     const approved = await paymentService.reviewApproval("FK-2026-012", "pm-1", {
       ...paymentReviewCoordinates,
@@ -3976,6 +4707,8 @@ user: { findUnique: jest.fn(async ({where}: {where: {id: string}}) => ({ id: whe
     });
 
     expect(approved.status).toBe("approval_pending");
+    expect(notices.queue).toHaveBeenCalledWith(tx, approved, nextRound, transition);
+    expect(notices.afterCommit).toHaveBeenCalledWith(approved.id);
     expect(tx.paymentRequest.update).toHaveBeenCalledWith({
       where: { id: "payment-1" },
       data: { status: "approval_pending" }
@@ -3991,7 +4724,8 @@ user: { findUnique: jest.fn(async ({where}: {where: {id: string}}) => ({ id: whe
           },
           governedPaymentApprovalNodes[1],
           governedPaymentApprovalNodes[2],
-          governedPaymentApprovalNodes[3]
+          governedPaymentApprovalNodes[3],
+          governedPaymentApprovalNodes[4]
         ],
         status: "in_progress"
       }
@@ -4155,6 +4889,7 @@ user: { findUnique: jest.fn(async ({where}: {where: {id: string}}) => ({ id: whe
 
   it("付款领导自审成功后只记录修剪后的原因和自审标记", async () => {
     const { service, tx } = paymentLeaderSelfReviewFixture();
+    await attachPaymentNotificationPersistence(tx,["leader-1"]);
 
     await service.reviewApproval("payment-1", "leader-1", {
       ...paymentReviewCoordinates,
@@ -4240,7 +4975,8 @@ user: { findUnique: jest.fn(async ({where}: {where: {id: string}}) => ({ id: whe
       { ...paymentApprovalNodes[0], approvedRoleKeys: ["comprehensive_director"] },
       { ...paymentApprovalNodes[1], approvedRoleKeys: ["project_manager"] },
       { ...paymentApprovalNodes[2], approvedRoleKeys: ["finance_director"] },
-      paymentApprovalNodes[3]
+      { ...paymentApprovalNodes[3], approvedRoleKeys: ["contract_director"] },
+      paymentApprovalNodes[4]
     ];
     const tx = {
 user: { findUnique: jest.fn(async ({where}: {where: {id: string}}) => ({ id: where.id, name: "原审批人乙", isActive: true })) },
@@ -4264,7 +5000,7 @@ user: { findUnique: jest.fn(async ({where}: {where: {id: string}}) => ({ id: whe
         findFirst: jest.fn().mockResolvedValue({
           ...paymentReviewApprovalVersion,
           id: "approval-instance-1",
-          currentNodeIndex: 3,
+          currentNodeIndex: 4,
           frozenNodes
         }),
         update: jest.fn()
@@ -4279,6 +5015,7 @@ user: { findUnique: jest.fn(async ({where}: {where: {id: string}}) => ({ id: whe
       ...approvalRoleTables("chairman")
     };
     attachApprovalSignatureFixture(tx);
+    await attachPaymentNotificationPersistence(tx,["chairman-1"]);
     const prisma = {
       $transaction: jest.fn(async (callback) => callback(tx))
     };
@@ -4286,7 +5023,7 @@ user: { findUnique: jest.fn(async ({where}: {where: {id: string}}) => ({ id: whe
 
     const approved = await paymentService.reviewApproval("FK-2026-012", "chairman-1", {
       ...paymentReviewCoordinates,
-      expectedNodeIndex: 3,
+      expectedNodeIndex: 4,
       decision: "approve",
       approvedAmountCents: "45000"
     });
@@ -4302,13 +5039,14 @@ user: { findUnique: jest.fn(async ({where}: {where: {id: string}}) => ({ id: whe
     expect(tx.approvalInstance.update).toHaveBeenCalledWith({
       where: { id: "approval-instance-1" },
       data: {
-        currentNodeIndex: 4,
+        currentNodeIndex: 5,
         frozenNodes: [
           frozenNodes[0],
           frozenNodes[1],
           frozenNodes[2],
+          frozenNodes[3],
           {
-            ...paymentApprovalNodes[3],
+            ...paymentApprovalNodes[4],
             approvedRoleKeys: ["chairman"]
           }
         ],
@@ -4327,7 +5065,8 @@ user: { findUnique: jest.fn(async ({where}: {where: {id: string}}) => ({ id: whe
       { ...paymentApprovalNodes[0], approvedRoleKeys: ["comprehensive_director"] },
       { ...paymentApprovalNodes[1], approvedRoleKeys: ["project_manager"] },
       { ...paymentApprovalNodes[2], approvedRoleKeys: ["finance_director"] },
-      paymentApprovalNodes[3]
+      { ...paymentApprovalNodes[3], approvedRoleKeys: ["contract_director"] },
+      paymentApprovalNodes[4]
     ];
     const tx = {
 user: { findUnique: jest.fn(async ({where}: {where: {id: string}}) => ({ id: where.id, name: "原审批人乙", isActive: true })) },
@@ -4346,7 +5085,7 @@ user: { findUnique: jest.fn(async ({where}: {where: {id: string}}) => ({ id: whe
         findFirst: jest.fn().mockResolvedValue({
           ...paymentReviewApprovalVersion,
           id: "approval-instance-1",
-          currentNodeIndex: 3,
+          currentNodeIndex: 4,
           frozenNodes
         }),
         update: jest.fn()
@@ -4368,7 +5107,7 @@ user: { findUnique: jest.fn(async ({where}: {where: {id: string}}) => ({ id: whe
     await expect(
       paymentService.reviewApproval("FK-2026-012", "chairman-1", {
         ...paymentReviewCoordinates,
-        expectedNodeIndex: 3,
+        expectedNodeIndex: 4,
         decision: "approve",
         approvedAmountCents
       })
@@ -4473,6 +5212,7 @@ user: { findUnique: jest.fn(async ({where}: {where: {id: string}}) => ({ id: whe
       ...approvalRoleTables("chairman")
     };
     attachApprovalSignatureFixture(tx);
+    await attachPaymentNotificationPersistence(tx,["chairman-1"]);
     const prisma = {
       $transaction: jest.fn(async (callback) => callback(tx))
     };
@@ -4573,6 +5313,7 @@ name: "签批人甲",
         }]),
       ...financingUsageUpdates()
     };
+    await attachPaymentNotificationPersistence(tx,["delegate-user-1","delegator-1"]);
     const prisma = {
       $transaction: jest.fn(async (callback) => callback(tx))
     };
@@ -4695,6 +5436,90 @@ user: { findUnique: jest.fn(async ({where}: {where: {id: string}}) => ({ id: whe
         representedUserId: "general-manager-1"
       }
     });
+  });
+
+  it("付款最终驳回时为原申请人入队一条修改提醒，提交后才唤醒派发", async () => {
+    const tx = {
+      user: { findUnique: jest.fn(async ({where}: {where: {id: string}}) => ({ id: where.id, name: "原审批人乙", isActive: true })) },
+      paymentRequest: {
+        findFirst: jest.fn().mockResolvedValue({
+          ...paymentReviewPaymentVersion,
+          id: "payment-1",
+          code: "FK-2026-012",
+          projectId: "project-1",
+          status: "approval_pending",
+          requestedAmountCents: 50_000n
+        }),
+        update: jest.fn().mockResolvedValue({
+          id: "payment-1", code: "FK-2026-012", status: "approval_rejected", approvedAmountCents: null
+        })
+      },
+      approvalInstance: {
+        findFirst: jest.fn().mockResolvedValue({
+          ...paymentReviewApprovalVersion,
+          id: "approval-instance-1",
+          currentNodeIndex: 0,
+          frozenNodes: [{ name: "董事长/总经理", mode: "any", roleKeys: ["chairman", "general_manager"] }]
+        }),
+        update: jest.fn()
+      },
+      approvalActionLog: { create: jest.fn().mockResolvedValue({ id: "reject-action", action: "reject",
+        approvalInstanceId: "approval-instance-1" }) },
+      auditLog: { create: jest.fn() },
+      ...financingUsageUpdates(),
+      ...approvalRoleTables("general_manager")
+    };
+    attachApprovalSignatureFixture(tx);
+    let depth = 0;
+    const prisma = { $transaction: jest.fn(async (callback) => { depth += 1; try { return await callback(tx); } finally { depth -= 1; } }) };
+    const notifications = { queueCorrection: jest.fn(async () => { expect(depth).toBe(1); }),
+      afterCommit: jest.fn(async () => { expect(depth).toBe(0); }) };
+    const paymentService = new PaymentRequestService(new PaymentAmountService(), prisma as never, undefined, undefined,
+      undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, notifications as never);
+
+    const rejected = await paymentService.reviewApproval("FK-2026-012", "general-manager-1", {
+      ...paymentReviewCoordinates, decision: "reject", comment: "付款条件尚未满足"
+    });
+
+    expect(notifications.queueCorrection).toHaveBeenCalledWith(tx, rejected,
+      expect.objectContaining({ id: "approval-instance-1", status: "rejected" }), { id: "reject-action", action: "reject",
+        approvalInstanceId: "approval-instance-1" });
+    expect(notifications.afterCommit).toHaveBeenCalledWith("payment-1");
+  });
+
+  it("付款退回申请人时同样为原申请人入队修改提醒", async () => {
+    const tx = {
+      user: { findUnique: jest.fn(async ({where}: {where: {id: string}}) => ({ id: where.id, name: "原审批人乙", isActive: true })) },
+      paymentRequest: {
+        findFirst: jest.fn().mockResolvedValue({ ...paymentReviewPaymentVersion, id: "payment-1", code: "FK-2026-012",
+          projectId: "project-1", status: "approval_pending", requestedAmountCents: 50_000n }),
+        update: jest.fn().mockResolvedValue({ id: "payment-1", code: "FK-2026-012", status: "draft" })
+      },
+      approvalInstance: {
+        findFirst: jest.fn().mockResolvedValue({ ...paymentReviewApprovalVersion, id: "approval-instance-1", currentNodeIndex: 0,
+          frozenNodes: [{ name: "董事长/总经理", mode: "any", roleKeys: ["chairman", "general_manager"] }] }),
+        update: jest.fn()
+      },
+      approvalActionLog: { create: jest.fn().mockResolvedValue({ id: "return-action", action: "return_to_applicant",
+        approvalInstanceId: "approval-instance-1" }) },
+      auditLog: { create: jest.fn() },
+      ...financingUsageUpdates(),
+      ...approvalRoleTables("general_manager")
+    };
+    attachApprovalSignatureFixture(tx);
+    const prisma = { $transaction: jest.fn(async (callback) => callback(tx)) };
+    const notifications = { queueCorrection: jest.fn(), afterCommit: jest.fn() };
+    const paymentService = new PaymentRequestService(new PaymentAmountService(), prisma as never, undefined, undefined,
+      undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, notifications as never);
+
+    await paymentService.reviewApproval("FK-2026-012", "general-manager-1", {
+      ...paymentReviewCoordinates, decision: "return_to_applicant", comment: "请补充付款依据"
+    });
+
+    expect(notifications.queueCorrection).toHaveBeenCalledWith(tx, expect.objectContaining({ status: "draft" }),
+      expect.objectContaining({ id: "approval-instance-1", status: "returned_to_applicant" }),
+      expect.objectContaining({ id: "return-action", action: "return_to_applicant" }));
+    expect(notifications.afterCommit).toHaveBeenCalledWith("payment-1");
   });
 
   it("rejects unsupported payment approval decisions before the transaction", async () => {
@@ -5113,6 +5938,7 @@ user: { findUnique: jest.fn(async ({where}: {where: {id: string}}) => ({ id: whe
       ...financingUsageUpdates(),
       ...approvalRoleTables("employee")
     };
+    await attachPaymentNotificationPersistence(tx,["transfer-user-1","chairman-1"]);
     const prisma = {
       $transaction: jest.fn(async (callback) => callback(tx))
     };
@@ -6797,7 +7623,7 @@ user: { findUnique: jest.fn(async ({where}: {where: {id: string}}) => ({ id: whe
     expect(tx.settlement.update).not.toHaveBeenCalled();
   });
 
-  it("rejects historical takeover settlement execution when takeover is C level", async () => {
+  it("requires a handover before historical takeover settlement execution on a C-level takeover", async () => {
     const tx = {
       $queryRaw: jest
         .fn()
@@ -6859,7 +7685,7 @@ user: { findUnique: jest.fn(async ({where}: {where: {id: string}}) => ({ id: whe
         voucherFileId: "file-1",
         confirmationPassword: "current-password"
       })
-    ).rejects.toThrow("C级历史接管仍有资料缺口或争议，不能登记实付");
+    ).rejects.toThrow("请先完成接管分工登记");
 
     expect(tx.paymentExecution.create).not.toHaveBeenCalled();
     expect(tx.settlement.update).not.toHaveBeenCalled();

@@ -1,0 +1,22 @@
+{
+  "services/api/prisma/database-dynamic-gate-manifest.json": "3e65683b60f4f9ed5d3d1cfbce1c04c7827eb840c976eb6b1b57a1e82c357ec0",
+  "services/api/prisma/migrations/20261129001000_contract_upward_archive_verifier_pin_forward/migration.sql": "4e8e6e23267f525ca2bff68719e2989126fff82e5bd0d0ba344abc2c4c8d4da3",
+  "services/api/prisma/task12-upward-projection-forward.test.cjs": "75d19e9b91dd8b706f978c3a5d2c0127e9f7a0b9d0310a8c6f0e6574c42cf91d",
+  "services/api/src/contract-template/template-management.test-support.ts": "213fcdf195ae58218defb7ac9f01ea507923be36b9ec96404394210ac480d72b",
+  "services/api/src/contract/contract-direct-outside-operating-executor-qualification.ts": "e8dfaed6e34613de8d9abe47fa5f450bcb837d08a861c60b4a461591c7a19bd1",
+  "services/api/src/contract/contract-direct-pending-save.ts": "9bafb801dcfe561a5072a6fbc4d8ac890ce2f729a23d055e4828a082490ae48c",
+  "services/api/src/contract/contract-direct-pending-source.ts": "99c929bf8d53f511fe65309b8cf9bcd776a1da04de15e78b58255a66c47e71e7",
+  "services/api/src/contract/contract-upward-archive-catalog.ts": "651597248f508dbe4b4e3dd9b11ae190829cf41138cc05816196ef43fd5c5b36",
+  "services/api/src/contract/contract-upward-direct-archive-native.ts": "ac89c4079cd5f450a38201867ebd3413066c77f219b4b94ed9798d4fd7a1e220",
+  "services/api/src/contract/contract-upward-direct-source-pins.ts": "06801a59dbf408b94136aac7f560fd4845e625d6bb5135f4137e244755b31dcf",
+  "services/api/src/contract/contract-upward-legacy-readers.spec.ts": "e8661cf7685b150a88a2380a8b0e164bf7518ee75742f3d2f023f4bec25e5ba5",
+  "services/api/src/contract/contract-upward-pending-save.ts": "7fd73c7e91985e51ec269bb31a7acf1674d3958ad04ed67612eab7c695dc4c31",
+  "services/api/src/database/line-a-real-db.http.pg.spec.ts": "778ab372345d494f6bdef6881a8d3cce86d21b6d30f27ebdfefd79a54bc50683",
+  "services/api/src/file/file.service.spec.ts": "43497f0f1c8080f98cdc84cfc306d1a7b1fe7d66e2ce63ab97e5460c7fda3fc4",
+  "services/api/src/file/file.service.ts": "8ad78a1b9a00f154384524bdfd7af2def5be00fd4ef64db0d1a51e6e9546727f",
+  "services/api/src/necessary-expense-reserve/necessary-expense-reserve-file-access.spec.ts": "0a90790d0c5da521c04133638770bb91b59ffe2b387fc84eb29ecdbcdfb9be14",
+  "services/api/src/project-close-profit/project-close-profit.http.pg.spec.ts": "f285a9fa492fd75763937f25b73dd0fb2907de4397672cf47be6cf18f68819c8",
+  "services/api/src/project-fund-dispute/project-fund-dispute-file-access.spec.ts": "09d01533102dd2860f17bc3785c9dacc0df055e393f1530db9e0860136d1101b",
+  "services/api/src/spot-procurement/spot-procurement-access.service.spec.ts": "2cd5d59494c94b3127f65d80c3cb6ded1dbd4fd6946629966a44c92c1ac2ff74",
+  "services/api/src/spot-procurement/spot-procurement-access.service.ts": "7b04681b38f7e02c673164c66ee8e8d5454c678600fd4311d31a5676678a18f3"
+}

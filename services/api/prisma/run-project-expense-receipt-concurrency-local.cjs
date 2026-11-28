@@ -19,6 +19,7 @@ const {
   runInterruption,
   withLocalPostgresHost
 } = require("./money-bigint-runner-runtime.cjs");
+const { CI_DYNAMIC_MIGRATION_LABEL, createCiDynamicMigrationFixture } = require("./local-staged-ci-dynamic.cjs");
 const { loadCanonicalMigrationBaseline } = require("./migration-baseline.cjs");
 
 const DATABASE_NAME =
@@ -199,7 +200,7 @@ async function preparePre160MigrationRoot(temporaryRoot) {
     withFileTypes: true
   });
   for (const entry of entries) {
-    if (!entry.isDirectory() || entry.name === LATEST_MIGRATION) continue;
+    if (!entry.isDirectory() || entry.name >= LATEST_MIGRATION) continue;
     await cp(
       path.join(migrationsRoot, entry.name),
       path.join(migrations, entry.name),
@@ -399,7 +400,8 @@ async function verifyRetainedMigration({
   dockerCommand,
   databaseUrl,
   temporaryRoot,
-  runtimeEnv
+  runtimeEnv,
+  migrationFixture
 }) {
   await createDatabase(
     dockerCommand,
@@ -445,11 +447,10 @@ async function verifyRetainedMigration({
     );
   }
 
-  await runPrismaMigrate(
-    path.join(__dirname, "schema.prisma"),
-    databaseUrlFor(databaseUrl, RETAINED_DATABASES.valid),
+  await migrationFixture.migrate({
+    databaseUrl: databaseUrlFor(databaseUrl, RETAINED_DATABASES.valid),
     runtimeEnv
-  );
+  });
   const legacyKey = await runPsql(
     dockerCommand,
     RETAINED_DATABASES.valid,
@@ -558,6 +559,7 @@ async function main() {
     path.join(tmpdir(), "jiangkong-project-expense-receipt-")
   );
   const databasePassword = randomUUID();
+  const fixtureRunId = randomUUID();
   const databaseUrl =
     `postgresql://jiangkong:${databasePassword}` +
     `@127.0.0.1:${databasePort}/${DATABASE_NAME}`;
@@ -615,7 +617,7 @@ async function main() {
     ]);
     assertLocalDockerEndpoint(endpoint.stdout);
     await dockerCommand(["info"]);
-    await dockerCommand(
+    const created = await dockerCommand(
       [
         "run",
         "--pull=never",
@@ -623,6 +625,8 @@ async function main() {
         "--rm",
         "--name",
         containerName,
+        "--label",
+        CI_DYNAMIC_MIGRATION_LABEL + "=" + fixtureRunId,
         "--env",
         "POSTGRES_USER=jiangkong",
         "--env",
@@ -639,22 +643,24 @@ async function main() {
       }
     );
     await waitForPostgres(containerName, dockerCommand);
+    const migrationFixture = createCiDynamicMigrationFixture({
+      ciFixture: "DYNAMIC_PROJECT_EXPENSE_RECEIPT_V1",
+      container: { id: created.stdout.trim(), name: containerName, runId: fixtureRunId },
+      databaseNames: [DATABASE_NAME, RETAINED_DATABASES.valid],
+      temporaryRoot,
+      dockerCommand,
+      deploy: ({ schemaPath = path.join(__dirname, "schema.prisma"), databaseUrl, runtimeEnv }) =>
+        runPrismaMigrate(schemaPath, databaseUrl, runtimeEnv)
+    });
     await verifyRetainedMigration({
       dockerCommand,
       databaseUrl,
       temporaryRoot,
-      runtimeEnv
+      runtimeEnv,
+      migrationFixture
     });
-    await runPrismaMigrate(
-      path.join(__dirname, "schema.prisma"),
-      databaseUrl,
-      runtimeEnv
-    );
-    await runPrismaMigrate(
-      path.join(__dirname, "schema.prisma"),
-      databaseUrl,
-      runtimeEnv
-    );
+    await migrationFixture.migrate({ databaseUrl, runtimeEnv });
+    await migrationFixture.migrate({ databaseUrl, runtimeEnv });
     await command(
       pnpm,
       [
@@ -694,6 +700,7 @@ module.exports = {
   assertDedicatedLocalDatabase,
   assertLocalDockerEndpoint,
   createReceiptConcurrencyCleanup,
+  preparePre160MigrationRoot,
   verifyRetainedMigration,
   main
 };

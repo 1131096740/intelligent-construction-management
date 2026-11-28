@@ -279,155 +279,20 @@
           <BusinessActionPanel :actions="settlementDetail.availableActions" />
 
           <t-alert
-            v-if="showSettlementOverageReviewNotice"
-            theme="warning"
-            title="框架合同超量复核"
-            :message="settlementOverageReviewMessage"
-          />
-
-          <t-alert
             v-if="settlementDetail.disabledReasons.length"
             theme="info"
             title="当前不可办理原因"
             :message="settlementDetail.disabledReasons.join('；')"
           />
 
-          <div class="action-grid">
-            <div
-              v-if="showSettlementApprovalActions"
-              class="action-group"
-            >
-              <div class="action-title">
-                <strong>结算审批</strong>
-                <span>审批结果写入完整流程记录</span>
-              </div>
-              <div
-                v-if="isSettlementActionEnabled('review_approval')"
-                class="action-fields"
-              >
-                <label class="action-field action-field--wide">
-                  <span>审批意见</span>
-                  <t-textarea
-                    v-model="settlementArchiveForm.approvalComment"
-                    :autosize="{ minRows: 2, maxRows: 4 }"
-                    placeholder="驳回或退回时必须填写原因"
-                  />
-                </label>
-                <div
-                  v-if="requiresSettlementSelfReviewConfirmation"
-                  class="self-review-field action-field--wide"
-                >
-                  <t-alert
-                    theme="warning"
-                    title="本人申请审批二次确认"
-                    message="当前单据由您本人发起，请填写独立自审原因；当前密码将在确认对话框中输入。"
-                  />
-                  <label class="action-field">
-                    <span>自审原因 <b aria-hidden="true">*</b></span>
-                    <t-textarea
-                      v-model="settlementArchiveForm.selfReviewReason"
-                      :autosize="{ minRows: 2, maxRows: 4 }"
-                      placeholder="请说明独立复核依据"
-                    />
-                  </label>
-                </div>
-              </div>
-              <div class="action-buttons">
-                <t-button
-                  v-if="isSettlementActionEnabled('review_approval')"
-                  :theme="buttonTheme('review_approval')"
-                  :variant="buttonVariant('review_approval')"
-                  :loading="archiveActionBusy === 'reviewApproval'"
-                  @click="requestSettlementReview('approve')"
-                >
-                  通过
-                </t-button>
-                <t-button
-                  v-if="isSettlementActionEnabled('review_approval')"
-                  theme="danger"
-                  variant="outline"
-                  :loading="archiveActionBusy === 'reviewApproval'"
-                  @click="requestSettlementReview('reject')"
-                >
-                  驳回
-                </t-button>
-                <t-button
-                  v-if="isSettlementActionEnabled('review_approval')"
-                  variant="outline"
-                  :loading="archiveActionBusy === 'reviewApproval'"
-                  @click="requestSettlementReview('reject_previous')"
-                >
-                  退回上级
-                </t-button>
-                <t-button
-                  v-if="isSettlementActionEnabled('review_approval')"
-                  variant="outline"
-                  :loading="archiveActionBusy === 'reviewApproval'"
-                  @click="requestSettlementReview('return_to_applicant')"
-                >
-                  打回发起人
-                </t-button>
-                <t-button
-                  v-if="isSettlementActionEnabled('download_approval_form')"
-                  variant="outline"
-                  :loading="archiveActionBusy === 'approvalForm'"
-                  @click="requestApprovalFormDownload"
-                >
-                  下载结算单
-                </t-button>
-              </div>
-            </div>
-
-            <div
-              v-if="showSettlementAssistanceActions"
-              class="action-group"
-            >
-              <div class="action-title">
-                <strong>审批辅助</strong>
-                <span>撤回、催办、转审与委托</span>
-              </div>
-              <div
-                v-if="isSettlementActionEnabled('transfer_approval') || isSettlementActionEnabled('delegate_approval')"
-                class="action-fields"
-              >
-                <label class="action-field action-field--wide">
-                  <span>目标处理人</span>
-                  <t-select
-                    v-model="settlementArchiveForm.assignmentUserId"
-                    :options="assignmentUserOptions"
-                    placeholder="选择目标处理人"
-                  />
-                </label>
-              </div>
-              <div class="action-buttons">
-                <t-button
-                  v-if="settlementWithdrawalActionEnabled()"
-                  variant="outline"
-                  :loading="archiveActionBusy === 'withdrawApproval'"
-                  @click="requestSettlementWithdrawal"
-                >
-                  撤回
-                </t-button>
-
-                <t-button
-                  v-if="isSettlementActionEnabled('transfer_approval')"
-                  variant="outline"
-                  :loading="archiveActionBusy === 'transferApproval'"
-                  @click="requestSettlementAssignment('transfer')"
-                >
-                  转审
-                </t-button>
-                <t-button
-                  v-if="isSettlementActionEnabled('delegate_approval')"
-                  variant="outline"
-                  :loading="archiveActionBusy === 'delegateApproval'"
-                  @click="requestSettlementAssignment('delegate')"
-                >
-                  委托
-                </t-button>
-              </div>
-            </div>
-          </div>
+          <t-button
+            v-if="isSettlementActionEnabled('download_approval_form')"
+            variant="outline"
+            :loading="archiveActionBusy === 'approvalForm'"
+            @click="requestApprovalFormDownload"
+          >
+            下载结算单
+          </t-button>
         </section>
       </section>
 
@@ -732,21 +597,6 @@
     </template>
 
     <SensitiveActionDialog
-      v-if="sensitiveAction.kind === 'withdrawal' && settlementWithdrawalActionEnabled()"
-      v-model="sensitiveAction.visible"
-      :title="sensitiveAction.title"
-      :description="sensitiveAction.description"
-      :confirm-text="sensitiveAction.confirmText"
-      :confirm-theme="sensitiveAction.confirmTheme"
-      :require-reason="false"
-      :require-password="false"
-      :loading="archiveActionBusy === 'withdrawApproval'"
-      :error="sensitiveAction.error"
-      @confirm="confirmSettlementWithdrawal"
-    />
-
-    <SensitiveActionDialog
-      v-if="sensitiveAction.kind !== 'withdrawal'"
       v-model="sensitiveAction.visible"
       :title="sensitiveAction.title"
       :description="sensitiveAction.description"
@@ -758,6 +608,11 @@
       :loading="Boolean(archiveActionBusy)"
       :error="sensitiveAction.error"
       @confirm="executeSensitiveAction"
+    />
+    <DutySmsStatusPanel
+      v-if="settlementDetail?.settlementId && isSettlementActionEnabled('confirm_archive')"
+      domain="settlements"
+      :business-id="settlementDetail.settlementId"
     />
     <ApprovalProgressPanel
       business-type="settlement"
@@ -775,6 +630,7 @@ import type {
   SettlementDetailReadModel
 } from "@jiangkong/shared-domain";
 import ApprovalProgressPanel from "../../components/ApprovalProgressPanel.vue";
+import DutySmsStatusPanel from "../../components/DutySmsStatusPanel.vue";
 import type { UploadFile } from "tdesign-vue-next";
 import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
@@ -783,29 +639,18 @@ import { useAuthStore } from "../../auth/auth.store";
 import {
   confirmSettlementArchive,
   createPrivateFileDownloadTicket,
-  delegateSettlementApproval,
   downloadSettlementAttachmentTemplate,
   downloadSettlementDraftExcel,
   downloadSettlementLatestApprovalPdf,
-  executeSettlementApprovalWithdrawalAction,
-  fetchApprovalDelegationUserOptions,
   fetchSettlementActionCapability,
   fetchSettlementDetail,
   getPrivateFileDownloadTicketCapability,
   generateSettlementPdfArchive,
-  prepareSettlementApprovalWithdrawalAction,
   regenerateSettlementSignedDocument,
   retrySettlementSignedDocumentGeneration,
-  reviewSettlementApproval,
-  transferSettlementApproval,
   uploadSettlementArchivePrivateFile,
   uploadSettlementArchiveFile
 } from "../../api/core-flow-read.api";
-import type {
-  SettlementApprovalWithdrawalActionContext,
-  SettlementApprovalWithdrawalCoordinates
-} from "../../api/core-flow-read.api";
-import { SettlementApprovalWithdrawalResultUnknownError } from "../../lib/settlement-approval-result";
 import ApprovalTimeline from "../../components/ApprovalTimeline.vue";
 import BusinessActionPanel from "../../components/BusinessActionPanel.vue";
 import BusinessDetailHeader from "../../components/BusinessDetailHeader.vue";
@@ -814,7 +659,6 @@ import BusinessEntryGrid from "../../components/BusinessEntryGrid.vue";
 import EmptyBusinessState from "../../components/EmptyBusinessState.vue";
 import JgAttachmentPanel from "../../components/JgAttachmentPanel.vue";
 import SensitiveActionDialog from "../../components/SensitiveActionDialog.vue";
-import { buildApprovalSelfReviewPayload } from "../../components/approval-self-review.config";
 import { CORE_ARCHIVE_UPLOAD_POLICY } from "../../components/file-upload-policy.config";
 import { buildFileUploadSummary } from "../../components/file-upload-summary.config";
 import type { SettlementDetailTone } from "./settlement-detail.config";
@@ -831,17 +675,9 @@ import {
 import SettlementSignatureEvidencePanel from "./components/SettlementSignatureEvidencePanel.vue";
 import SettlementRecoveryLedgerPanel from "./components/SettlementRecoveryLedgerPanel.vue";
 
-type SettlementReviewDecision = "approve" | "reject" | "reject_previous" | "return_to_applicant";
 type SensitiveActionKind =
-  | "approvalApprove"
-  | "approvalReject"
-  | "approvalRejectPrevious"
-  | "approvalReturnApplicant"
   | "approvalFormDownload"
   | "archiveConfirm"
-  | "withdrawal"
-  | "transfer"
-  | "delegate"
   | "generationRegeneration"
   | "fileDownload";
 
@@ -858,36 +694,18 @@ interface SensitiveActionState {
   error: string;
 }
 
-interface SettlementWithdrawalDialogContext
-  extends SettlementApprovalWithdrawalCoordinates {
-  routeGeneration: number;
-  detailEpoch: number;
-  dialogGeneration: number;
-  routeSettlementId: string;
-  settlementCode: string;
-  settlementId: string;
-}
-
 const route = useRoute();
 const router = useRouter();
 const auth = useAuthStore();
 const settlementDetail = ref<SettlementDetailReadModel | null>(null);
-const settlementApprovalCapability = ref<SettlementDetailReadModel | null>(null);
 const detailLoading = ref(false);
 const settlementDetailLoadError = ref("");
 const activeTab = ref("overview");
-const assignmentUsers = ref<Array<{ id: string; name: string }>>([]);
 const archiveActionBusy = ref("");
 const archiveActionMessage = ref("");
 const archiveActionMessageTone = ref<"success" | "danger">("success");
 const settlementArchiveUploadFiles = ref<UploadFile[]>([]);
 let settlementDetailRequestId = 0;
-let settlementWithdrawalSubmissionToken = 0;
-let settlementWithdrawalDialogGeneration = 0;
-let settlementWithdrawalOperationId = 0;
-let settlementWithdrawalDialogContext: SettlementWithdrawalDialogContext | null = null;
-let settlementWithdrawalInFlight: Promise<boolean> | null = null;
-let settlementWithdrawalResultUnknown = false;
 const sensitiveAction = reactive<SensitiveActionState>({
   visible: false,
   kind: null,
@@ -902,10 +720,7 @@ const sensitiveAction = reactive<SensitiveActionState>({
 });
 const settlementArchiveForm = reactive({
   archiveFileId: "",
-  assignmentUserId: "",
-  downloadFileId: "",
-  approvalComment: "",
-  selfReviewReason: ""
+  downloadFileId: ""
 });
 
 const settlementDetailMetaView = computed(() => settlementDetail.value?.meta ?? []);
@@ -952,15 +767,6 @@ const settlementPayableCalculationView = computed(() => settlementDetail.value?.
   note: "详情读取成功后显示本期可付金额、已申请付款、已实付和剩余可申请金额。"
 });
 const settlementLinesView = computed(() => settlementDetail.value?.settlementLines ?? []);
-const settlementOverageReviewLines = computed(() => settlementLinesView.value.filter((line) =>
-  line.overageReason.trim() && line.overageReason !== "-"
-));
-const showSettlementOverageReviewNotice = computed(() =>
-  isSettlementActionEnabled("review_approval") && settlementOverageReviewLines.value.length > 0
-);
-const settlementOverageReviewMessage = computed(() => settlementOverageReviewLines.value
-  .map((line) => `“${line.name}”：${line.overageReason}`)
-  .join("；"));
 const settlementPaymentBlockMessageView = computed(() =>
   settlementDetail.value?.paymentBlockMessage ?? "详情读取成功后显示付款申请规则。"
 );
@@ -1016,27 +822,12 @@ const settlementHeaderPrimaryAction = computed(() => {
   const action = settlementActionByKey.value.get(primaryAction);
   return action?.enabled ? action : null;
 });
-const requiresSettlementSelfReviewConfirmation = computed(() =>
-  settlementActionByKey.value.get("review_approval")?.requiresSelfReviewConfirmation === true
-);
 const canRunSettlementAction = computed(() => Boolean(settlementDetail.value?.settlementId));
 const canRecordSettlementRecovery = computed(() =>
   auth.user?.roleKeys.includes("finance_staff") || auth.user?.globalRoleKeys.includes("finance_staff")
 );
-const showSettlementApprovalActions = computed(() =>
-  isSettlementActionEnabled("review_approval") || isSettlementActionEnabled("download_approval_form")
-);
-const showSettlementAssistanceActions = computed(() =>
-  settlementWithdrawalActionEnabled() ||
-  isSettlementActionEnabled("remind_approval") ||
-  isSettlementActionEnabled("transfer_approval") ||
-  isSettlementActionEnabled("delegate_approval")
-);
 const showSettlementFileActions = computed(() =>
   canRunSettlementAction.value || isSettlementActionEnabled("generate_pdf_archive")
-);
-const assignmentUserOptions = computed(() =>
-  assignmentUsers.value.map((user) => ({ label: user.name, value: user.id }))
 );
 const selectedSettlementArchiveFile = computed(() => selectedUploadFile(settlementArchiveUploadFiles.value));
 const coreArchiveUploadSizeLimit = {
@@ -1061,40 +852,6 @@ function isSettlementActionEnabled(key: string) {
   return settlementActionByKey.value.get(key)?.enabled ?? false;
 }
 
-function settlementWithdrawalActionEnabled() {
-  const coordinates = settlementApprovalCapability.value?.withdrawApprovalContext;
-  const currentRouteSettlementId = routeSettlementId();
-  return Boolean(
-    settlementApprovalCapability.value?.availableActions.some(
-      (action) => action.key === "withdraw_approval" && action.enabled
-    )
-  ) &&
-    Boolean(coordinates) &&
-    Boolean(currentRouteSettlementId) &&
-    (settlementApprovalCapability.value?.id === currentRouteSettlementId ||
-      settlementApprovalCapability.value?.settlementId ===
-        currentRouteSettlementId) &&
-    Boolean(settlementApprovalCapability.value?.id) &&
-    Boolean(settlementApprovalCapability.value?.settlementId) &&
-    settlementApprovalCapability.value?.lifecycleUpdatedAt ===
-      coordinates?.expectedSettlementUpdatedAt &&
-    Boolean(coordinates?.expectedSettlementUpdatedAt) &&
-      !Number.isNaN(
-        new Date(coordinates?.expectedSettlementUpdatedAt ?? "").getTime()
-      ) &&
-    Boolean(coordinates?.expectedApprovalInstanceId) &&
-    Number.isInteger(coordinates?.expectedNodeIndex) &&
-    (coordinates?.expectedNodeIndex ?? -1) >= 0 &&
-    Boolean(coordinates?.expectedApprovalUpdatedAt) &&
-      !Number.isNaN(
-        new Date(coordinates?.expectedApprovalUpdatedAt ?? "").getTime()
-      ) &&
-    (settlementApprovalCapability.value?.availableActions.filter(
-      (action) => action.key === "withdraw_approval" && action.enabled
-    ).length ?? 0) === 1 &&
-    !settlementWithdrawalResultUnknown;
-}
-
 function buttonTheme(key: string) {
   return settlementDetail.value?.primaryAction === key ? "primary" : "default";
 }
@@ -1114,7 +871,7 @@ function openPrimaryAction() {
     void router.push("/付款工作台");
     return;
   }
-  activeTab.value = action.key === "review_approval" ? "process" : "evidence";
+  activeTab.value = "evidence";
   requestAnimationFrame(() => {
     document.querySelector(".tab-content")?.scrollIntoView({ block: "start" });
   });
@@ -1131,14 +888,11 @@ async function reloadSettlementDetail() {
   }
 
   detailLoading.value = true;
-  settlementApprovalCapability.value = null;
-  settlementWithdrawalResultUnknown = false;
   try {
     settlementDetailLoadError.value = "";
     const serverDetail = await fetchSettlementDetail(settlementId);
     if (requestId !== settlementDetailRequestId || settlementId !== routeSettlementId()) return false;
     const detail = structuredClone(serverDetail);
-    settlementApprovalCapability.value = serverDetail;
     settlementDetail.value = detail;
     const archiveRecordIds = detail.archiveFiles.map((file) => file.recordId);
     const governedFinalRecordId = detail.archiveFiles.find(
@@ -1156,7 +910,6 @@ async function reloadSettlementDetail() {
     return true;
   } catch (error) {
     if (requestId !== settlementDetailRequestId || settlementId !== routeSettlementId()) return false;
-    settlementApprovalCapability.value = null;
     settlementDetail.value = null;
     const reason = formatUnknownApiError(error, "读取结算详情失败");
     settlementDetailLoadError.value = `未能读取结算详情：${reason}。当前页面数据不能用于业务判断，请确认账号权限和网络状态后重试。`;
@@ -1183,12 +936,6 @@ function routeSettlementId() {
 
 function clearSettlementDetailTransientState() {
   settlementDetailRequestId += 1;
-  settlementWithdrawalSubmissionToken += 1;
-  settlementWithdrawalDialogGeneration += 1;
-  settlementWithdrawalDialogContext = null;
-  settlementWithdrawalInFlight = null;
-  settlementWithdrawalResultUnknown = false;
-  settlementApprovalCapability.value = null;
   settlementDetail.value = null;
   settlementDetailLoadError.value = "";
   activeTab.value = "overview";
@@ -1199,10 +946,7 @@ function clearSettlementDetailTransientState() {
   sensitiveAction.kind = null;
   sensitiveAction.error = "";
   settlementArchiveForm.archiveFileId = "";
-  settlementArchiveForm.assignmentUserId = "";
   settlementArchiveForm.downloadFileId = "";
-  settlementArchiveForm.approvalComment = "";
-  settlementArchiveForm.selfReviewReason = "";
 }
 
 function requiredText(raw: string, label: string) {
@@ -1272,42 +1016,6 @@ async function runArchiveAction(key: string, action: () => Promise<unknown>) {
   } finally {
     archiveActionBusy.value = "";
   }
-}
-
-async function reviewSettlementApprovalWithCapability(
-  settlementId: string,
-  body: Parameters<typeof reviewSettlementApproval>[1]
-) {
-  const capability = await fetchSettlementActionCapability(settlementId);
-  const matchesRequestedSettlement = capability.settlementId === settlementId;
-  if (!matchesRequestedSettlement) throw new Error("结算已变化，请刷新详情后重试");
-  const operationAllowed = capability.availableActions.includes("review_approval");
-  if (!operationAllowed) throw new Error("当前用户不能审批该结算");
-  return reviewSettlementApproval(settlementId, body);
-}
-
-async function transferSettlementApprovalWithCapability(
-  settlementId: string,
-  toUserId: string
-) {
-  const capability = await fetchSettlementActionCapability(settlementId);
-  const matchesRequestedSettlement = capability.settlementId === settlementId;
-  if (!matchesRequestedSettlement) throw new Error("结算已变化，请刷新详情后重试");
-  const operationAllowed = capability.availableActions.includes("transfer_approval");
-  if (!operationAllowed) throw new Error("当前用户不能转交该结算审批");
-  return transferSettlementApproval(settlementId, { toUserId });
-}
-
-async function delegateSettlementApprovalWithCapability(
-  settlementId: string,
-  toUserId: string
-) {
-  const capability = await fetchSettlementActionCapability(settlementId);
-  const matchesRequestedSettlement = capability.settlementId === settlementId;
-  if (!matchesRequestedSettlement) throw new Error("结算已变化，请刷新详情后重试");
-  const operationAllowed = capability.availableActions.includes("delegate_approval");
-  if (!operationAllowed) throw new Error("当前用户不能委托该结算审批");
-  return delegateSettlementApproval(settlementId, { toUserId });
 }
 
 async function downloadSettlementApprovalPdfWithCapability(
@@ -1458,58 +1166,6 @@ function requestSettlementSignatureRegeneration() {
   });
 }
 
-function requestSettlementReview(decision: SettlementReviewDecision) {
-  try {
-    currentSettlementId();
-    if (decision !== "approve") requiredText(settlementArchiveForm.approvalComment, "审批原因");
-    if (requiresSettlementSelfReviewConfirmation.value) {
-      buildApprovalSelfReviewPayload(true, {
-        selfReviewReason: settlementArchiveForm.selfReviewReason,
-        confirmationPassword: "validation"
-      });
-    }
-  } catch (error) {
-    setActionError(error, "结算审批信息不完整，请修正后重试。");
-    return;
-  }
-
-  const configByDecision = {
-    approve: {
-      kind: "approvalApprove" as const,
-      title: "确认通过结算审批？",
-      description: "通过后将推进到下一审批节点或归档环节；审批通过不代表结算已经生效。",
-      confirmText: "确认通过",
-      confirmTheme: "primary" as const
-    },
-    reject: {
-      kind: "approvalReject" as const,
-      title: "确认驳回结算审批？",
-      description: "驳回后本轮审批终止，原因会写入审批记录。",
-      confirmText: "确认驳回",
-      confirmTheme: "danger" as const
-    },
-    reject_previous: {
-      kind: "approvalRejectPrevious" as const,
-      title: "确认退回上级节点？",
-      description: "结算将返回上一个可处理节点，退回原因会写入审批记录。",
-      confirmText: "确认退回",
-      confirmTheme: "danger" as const
-    },
-    return_to_applicant: {
-      kind: "approvalReturnApplicant" as const,
-      title: "确认打回发起人？",
-      description: "结算将退回发起人处理，原因会写入审批记录。",
-      confirmText: "确认打回",
-      confirmTheme: "danger" as const
-    }
-  };
-  const config = configByDecision[decision];
-  openSensitiveAction(config.kind, {
-    ...config,
-    requirePassword: requiresSettlementSelfReviewConfirmation.value
-  });
-}
-
 function requestApprovalFormDownload() {
   try {
     currentSettlementId();
@@ -1527,85 +1183,6 @@ function requestApprovalFormDownload() {
   });
 }
 
-function currentSettlementWithdrawalCoordinates(): SettlementWithdrawalDialogContext | null {
-  const capability = settlementApprovalCapability.value;
-  const coordinates = capability?.withdrawApprovalContext;
-  const enabledActions = capability?.availableActions.filter(
-    (action) => action.key === "withdraw_approval" && action.enabled
-  ) ?? [];
-  const currentRouteSettlementId = routeSettlementId();
-  if (
-    !capability ||
-    !coordinates ||
-    enabledActions.length !== 1 ||
-    !settlementWithdrawalActionEnabled() ||
-    !currentRouteSettlementId ||
-    (capability.id !== currentRouteSettlementId &&
-      capability.settlementId !== currentRouteSettlementId) ||
-    !capability.id ||
-    !capability.settlementId ||
-    capability.lifecycleUpdatedAt !==
-      coordinates.expectedSettlementUpdatedAt ||
-    !coordinates.expectedSettlementUpdatedAt ||
-    Number.isNaN(
-      new Date(coordinates.expectedSettlementUpdatedAt).getTime()
-    ) ||
-    !coordinates.expectedApprovalInstanceId ||
-    !Number.isInteger(coordinates.expectedNodeIndex) ||
-    coordinates.expectedNodeIndex < 0 ||
-    !coordinates.expectedApprovalUpdatedAt ||
-    Number.isNaN(new Date(coordinates.expectedApprovalUpdatedAt).getTime())
-  ) {
-    return null;
-  }
-
-  return Object.freeze({
-    routeGeneration: settlementDetailRequestId,
-    detailEpoch: settlementDetailRequestId,
-    dialogGeneration: settlementWithdrawalDialogGeneration,
-    routeSettlementId: currentRouteSettlementId,
-    settlementCode: capability.id,
-    settlementId: capability.settlementId,
-    expectedSettlementUpdatedAt:
-      coordinates.expectedSettlementUpdatedAt,
-    expectedApprovalInstanceId: coordinates.expectedApprovalInstanceId,
-    expectedNodeIndex: coordinates.expectedNodeIndex,
-    expectedApprovalUpdatedAt: coordinates.expectedApprovalUpdatedAt
-  });
-}
-
-function requestSettlementWithdrawal() {
-  const context = currentSettlementWithdrawalCoordinates();
-  if (!context || settlementWithdrawalResultUnknown) return;
-  settlementWithdrawalDialogGeneration += 1;
-  settlementWithdrawalDialogContext = Object.freeze({
-    ...context,
-    dialogGeneration: settlementWithdrawalDialogGeneration
-  });
-  openSensitiveAction("withdrawal", {
-    title: "确认撤回结算审批？",
-    description: "撤回会中止当前审批流并将结算终态置为已撤回（withdrawn）；历史审批和撤回记录不会删除。",
-    confirmText: "确认撤回",
-    confirmTheme: "danger"
-  });
-}
-
-function requestSettlementAssignment(kind: "transfer" | "delegate") {
-  try {
-    requiredText(settlementArchiveForm.assignmentUserId, "目标处理人");
-  } catch (error) {
-    setActionError(error, "请选择目标处理人后重试。");
-    return;
-  }
-  openSensitiveAction(kind, {
-    title: kind === "transfer" ? "确认转审？" : "确认委托？",
-    description: kind === "transfer"
-      ? "当前审批任务将转交给所选处理人，并写入完整审批记录。"
-      : "当前审批任务将委托给所选处理人，并保留委托关系与审计记录。",
-    confirmText: kind === "transfer" ? "确认转审" : "确认委托"
-  });
-}
-
 function requestSettlementFileDownload() {
   try {
     requiredText(settlementArchiveForm.downloadFileId, "结算归档文件");
@@ -1615,11 +1192,8 @@ function requestSettlementFileDownload() {
   }
   openSensitiveAction("fileDownload", {
     title: "确认下载敏感结算文件？",
-    description: "系统将校验当前密码，签发短时效下载链接，并记录文件、单据和下载原因。",
-    confirmText: "确认下载",
-    requireReason: true,
-    requirePassword: true,
-    reasonLabel: "下载原因"
+    description: "系统将校验当前单据可见权限，签发短时效下载链接，并记录文件、单据和访问审计。",
+    confirmText: "确认下载"
   });
 }
 
@@ -1633,18 +1207,6 @@ async function executeSensitiveAction(values: { reason: string; password: string
   let succeeded = false;
   try {
     switch (sensitiveAction.kind) {
-      case "approvalApprove":
-        succeeded = await performSettlementReview("approve", values.password);
-        break;
-      case "approvalReject":
-        succeeded = await performSettlementReview("reject", values.password);
-        break;
-      case "approvalRejectPrevious":
-        succeeded = await performSettlementReview("reject_previous", values.password);
-        break;
-      case "approvalReturnApplicant":
-        succeeded = await performSettlementReview("return_to_applicant", values.password);
-        break;
       case "approvalFormDownload":
         succeeded = await runArchiveAction("approvalForm", () =>
           downloadSettlementApprovalPdfWithCapability(currentSettlementId(), {
@@ -1660,10 +1222,6 @@ async function executeSensitiveAction(values: { reason: string; password: string
             confirmationPassword: values.password
           })
         );
-        break;
-      case "transfer":
-      case "delegate":
-        succeeded = await performSettlementAssignment(sensitiveAction.kind);
         break;
       case "generationRegeneration":
         succeeded = await runArchiveAction("regeneration", () =>
@@ -1690,240 +1248,6 @@ async function executeSensitiveAction(values: { reason: string; password: string
     return;
   }
   sensitiveAction.error = archiveActionMessage.value || "操作未完成，请核对信息后重试。";
-}
-
-function settlementWithdrawalOwnerScope(
-  context:
-    | SettlementWithdrawalDialogContext
-    | SettlementApprovalWithdrawalActionContext
-) {
-  return [
-    context.routeSettlementId,
-    context.settlementCode,
-    context.settlementId,
-    context.expectedApprovalInstanceId
-  ].join("\u0000");
-}
-
-function sameSettlementWithdrawalCoordinates(
-  expected: SettlementWithdrawalDialogContext,
-  actual: SettlementWithdrawalDialogContext
-) {
-  return (
-    expected.routeGeneration === actual.routeGeneration &&
-    expected.detailEpoch === actual.detailEpoch &&
-    expected.dialogGeneration === actual.dialogGeneration &&
-    expected.routeSettlementId === actual.routeSettlementId &&
-    expected.settlementCode === actual.settlementCode &&
-    expected.settlementId === actual.settlementId &&
-    expected.expectedSettlementUpdatedAt ===
-      actual.expectedSettlementUpdatedAt &&
-    expected.expectedApprovalInstanceId ===
-      actual.expectedApprovalInstanceId &&
-    expected.expectedNodeIndex === actual.expectedNodeIndex &&
-    expected.expectedApprovalUpdatedAt ===
-      actual.expectedApprovalUpdatedAt
-  );
-}
-
-function captureSettlementWithdrawalContext(): SettlementApprovalWithdrawalActionContext | null {
-  const dialog = settlementWithdrawalDialogContext;
-  const fresh = currentSettlementWithdrawalCoordinates();
-  if (
-    !dialog ||
-    !fresh ||
-    !sameSettlementWithdrawalCoordinates(dialog, fresh) ||
-    archiveActionBusy.value ||
-    settlementWithdrawalResultUnknown ||
-    !sensitiveAction.visible ||
-    sensitiveAction.kind !== "withdrawal"
-  ) {
-    return null;
-  }
-
-  const operationId = ++settlementWithdrawalOperationId;
-  settlementWithdrawalSubmissionToken = operationId;
-  archiveActionBusy.value = "withdrawApproval";
-  archiveActionMessage.value = "";
-  sensitiveAction.error = "";
-  return Object.freeze({
-    action: "withdraw",
-    ownerScope: settlementWithdrawalOwnerScope(dialog),
-    routeGeneration: dialog.routeGeneration,
-    detailEpoch: dialog.detailEpoch,
-    dialogGeneration: dialog.dialogGeneration,
-    operationId,
-    routeSettlementId: dialog.routeSettlementId,
-    settlementCode: dialog.settlementCode,
-    settlementId: dialog.settlementId,
-    expectedSettlementUpdatedAt: dialog.expectedSettlementUpdatedAt,
-    expectedApprovalInstanceId: dialog.expectedApprovalInstanceId,
-    expectedNodeIndex: dialog.expectedNodeIndex,
-    expectedApprovalUpdatedAt: dialog.expectedApprovalUpdatedAt
-  });
-}
-
-function ownsSettlementWithdrawalSubmission(
-  context: SettlementApprovalWithdrawalActionContext
-) {
-  return context.operationId === settlementWithdrawalSubmissionToken &&
-    context.ownerScope === settlementWithdrawalOwnerScope(context) &&
-    routeSettlementId() === context.routeSettlementId;
-}
-
-function settlementWithdrawalSubmissionIsCurrent(
-  context: SettlementApprovalWithdrawalActionContext
-) {
-  const current = currentSettlementWithdrawalCoordinates();
-  return ownsSettlementWithdrawalSubmission(context) &&
-    context.routeGeneration === settlementDetailRequestId &&
-    context.detailEpoch === settlementDetailRequestId &&
-    context.dialogGeneration === settlementWithdrawalDialogGeneration &&
-    sensitiveAction.visible &&
-    sensitiveAction.kind === "withdrawal" &&
-    Boolean(current) &&
-    current?.settlementCode === context.settlementCode &&
-    current.settlementId === context.settlementId &&
-    current.expectedSettlementUpdatedAt ===
-      context.expectedSettlementUpdatedAt &&
-    current.expectedApprovalInstanceId ===
-      context.expectedApprovalInstanceId &&
-    current.expectedNodeIndex === context.expectedNodeIndex &&
-    current.expectedApprovalUpdatedAt ===
-      context.expectedApprovalUpdatedAt;
-}
-
-async function completeSettlementWithdrawal(
-  context: SettlementApprovalWithdrawalActionContext
-) {
-  if (!ownsSettlementWithdrawalSubmission(context)) return;
-  const refreshed = await reloadSettlementDetail();
-  if (!ownsSettlementWithdrawalSubmission(context)) {
-    throw new SettlementApprovalWithdrawalResultUnknownError(
-      new Error("结算审批撤回后页面归属已变化")
-    );
-  }
-  const authoritative = settlementApprovalCapability.value;
-  const stillWithdrawable = authoritative?.availableActions.some(
-    (action) => action.key === "withdraw_approval" && action.enabled
-  ) === true;
-  if (
-    !refreshed ||
-    authoritative?.id !== context.settlementCode ||
-    authoritative.settlementId !== context.settlementId ||
-    authoritative.withdrawApprovalContext !== null ||
-    stillWithdrawable
-  ) {
-    throw new SettlementApprovalWithdrawalResultUnknownError(
-      new Error("结算审批撤回后权威详情未确认已撤回终态")
-    );
-  }
-  archiveActionMessageTone.value = "success";
-  archiveActionMessage.value = "结算审批已撤回，权威结算详情已刷新。";
-  settlementWithdrawalDialogContext = null;
-  sensitiveAction.visible = false;
-  sensitiveAction.kind = null;
-}
-
-function staleSettlementWithdrawal(
-  context: SettlementApprovalWithdrawalActionContext
-) {
-  if (!ownsSettlementWithdrawalSubmission(context)) return;
-  archiveActionMessageTone.value = "danger";
-  archiveActionMessage.value =
-    "结算撤回资格或审批坐标已变化，本次没有提交；请关闭对话框并刷新详情。";
-  sensitiveAction.error = archiveActionMessage.value;
-}
-
-async function failSettlementWithdrawal(
-  context: SettlementApprovalWithdrawalActionContext,
-  error: unknown
-) {
-  if (!ownsSettlementWithdrawalSubmission(context)) return;
-  if (error instanceof SettlementApprovalWithdrawalResultUnknownError) {
-    const refreshed = await reloadSettlementDetail();
-    if (!ownsSettlementWithdrawalSubmission(context)) return;
-    settlementWithdrawalResultUnknown = true;
-    archiveActionMessageTone.value = "danger";
-    archiveActionMessage.value = refreshed
-      ? "结算审批撤回结果暂时无法确认，系统已续读权威详情；请人工核对当前状态，不要重复提交。"
-      : "结算审批撤回结果暂时无法确认，权威详情也未能刷新；请重新进入结算详情核对，不要重复提交。";
-    settlementWithdrawalDialogContext = null;
-    sensitiveAction.visible = false;
-    sensitiveAction.kind = null;
-    return;
-  }
-
-  archiveActionMessageTone.value = "danger";
-  const message = formatUnknownApiError(error, "结算审批撤回失败");
-  archiveActionMessage.value = `结算审批撤回未完成：${message}`;
-  sensitiveAction.error = archiveActionMessage.value;
-}
-
-function finishSettlementWithdrawal(
-  context: SettlementApprovalWithdrawalActionContext
-) {
-  if (
-    ownsSettlementWithdrawalSubmission(context) &&
-    archiveActionBusy.value === "withdrawApproval"
-  ) {
-    archiveActionBusy.value = "";
-  }
-}
-
-function confirmSettlementWithdrawal() {
-  if (settlementWithdrawalInFlight) return settlementWithdrawalInFlight;
-  const execution = executeSettlementApprovalWithdrawalAction({
-    action: "withdraw",
-    capture: captureSettlementWithdrawalContext,
-    preflight: (context) => prepareSettlementApprovalWithdrawalAction({
-      ...context,
-      isCurrent: settlementWithdrawalSubmissionIsCurrent
-    }),
-    current: settlementWithdrawalSubmissionIsCurrent,
-    stale: staleSettlementWithdrawal,
-    complete: completeSettlementWithdrawal,
-    fail: failSettlementWithdrawal,
-    finish: finishSettlementWithdrawal
-  }).then((result) => result.status === "completed");
-  settlementWithdrawalInFlight = execution;
-  void execution.finally(() => {
-    if (settlementWithdrawalInFlight === execution) {
-      settlementWithdrawalInFlight = null;
-    }
-  });
-  return execution;
-}
-
-async function performSettlementReview(decision: SettlementReviewDecision, password: string) {
-  const selfReviewPayload = buildApprovalSelfReviewPayload(
-    requiresSettlementSelfReviewConfirmation.value,
-    {
-      selfReviewReason: settlementArchiveForm.selfReviewReason,
-      confirmationPassword: password
-    }
-  );
-  const succeeded = await runArchiveAction("reviewApproval", () =>
-    reviewSettlementApprovalWithCapability(currentSettlementId(), {
-      decision,
-      comment: settlementArchiveForm.approvalComment.trim() || undefined,
-      ...selfReviewPayload
-    })
-  );
-  if (succeeded) {
-    settlementArchiveForm.approvalComment = "";
-    settlementArchiveForm.selfReviewReason = "";
-  }
-  return succeeded;
-}
-
-async function performSettlementAssignment(kind: "transfer" | "delegate") {
-  const toUserId = requiredText(settlementArchiveForm.assignmentUserId, "目标处理人");
-  return runArchiveAction(kind === "transfer" ? "transferApproval" : "delegateApproval", () =>
-    kind === "transfer"
-      ? transferSettlementApprovalWithCapability(currentSettlementId(), toUserId)
-      : delegateSettlementApprovalWithCapability(currentSettlementId(), toUserId)
-  );
 }
 
 async function performSettlementFileDownload(values: { reason: string; password: string }) {
@@ -1974,12 +1298,8 @@ function formatFrozenAt(value: string) {
   }).format(new Date(value));
 }
 
-onMounted(async () => {
-  const [, users] = await Promise.all([
-    reloadSettlementDetail(),
-    fetchApprovalDelegationUserOptions().catch(() => [])
-  ]);
-  assignmentUsers.value = users;
+onMounted(() => {
+  void reloadSettlementDetail();
 });
 
 onBeforeUnmount(() => {

@@ -1,11 +1,12 @@
 import {
-  IsArray,
+  ArrayMaxSize, ArrayMinSize, IsArray, ValidateNested,
   IsDateString,
   IsIn,
   IsOptional,
   IsString,
   MaxLength
 } from "class-validator";
+import { Type } from "class-transformer";
 import {
   SPOT_PROCUREMENT_PAYMENT_METHODS,
   type SpotProcurementPaymentMethod
@@ -15,7 +16,23 @@ import {
   IsRequiredText
 } from "../../validation/static-field-validation";
 
+class SpotRegisteredSourceDto {
+  @IsString() @MaxLength(128) sourceBatchId!: string;
+  @IsCanonicalMoneyText({ typeMessage: "资金来源金额格式不正确", formatMessage: "资金来源金额须按整数分填写" })
+  amountCents!: string;
+}
+
+class SpotRegisteredFundingDto {
+  @IsString() @MaxLength(200) scopeKey!: string;
+  @IsString() @MaxLength(128) expectedRegistrationId!: string;
+  @IsArray() @ArrayMinSize(1) @ArrayMaxSize(100) @ValidateNested({ each: true })
+  @Type(() => SpotRegisteredSourceDto) sourceAllocations!: SpotRegisteredSourceDto[];
+}
+
 export class RecordSpotProcurementPaymentDto {
+  @IsOptional() @ValidateNested() @Type(() => SpotRegisteredFundingDto)
+  registeredFunding?: SpotRegisteredFundingDto;
+
   @IsCanonicalMoneyText({
     typeMessage: "实付金额格式不正确",
     formatMessage: "实付金额必须按分填写为 0 或更大的整数"

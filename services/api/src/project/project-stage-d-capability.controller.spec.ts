@@ -5,10 +5,10 @@ import { ProjectController } from "./project.controller";
 
 describe("project stage D capability controller wiring", () => {
   it.each(["createCapability", "updateCapability"])(
-    "keeps %s aligned with global master-data permission",
+    "keeps %s aligned with project basic-data permission",
     (method) => {
       const handler = (ProjectController.prototype as unknown as Record<string, object>)[method];
-      expect(Reflect.getMetadata(REQUIRED_PROJECT_ACTION_KEY, handler)).toBe("project.master_data.manage");
+      expect(Reflect.getMetadata(REQUIRED_PROJECT_ACTION_KEY, handler)).toBe("project.basics.manage");
     }
   );
 

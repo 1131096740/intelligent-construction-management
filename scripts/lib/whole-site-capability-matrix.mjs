@@ -117,7 +117,8 @@ const LIVE_WEB_MANIFESTS = new WeakSet();
 const ACTION_USAGES = new Set(["page_action", "background"]);
 const ACTION_SEMANTICS = new Set([
   "business_write",
-  "technical_write"
+  "technical_write",
+  "read_only"
 ]);
 const EXIT_CANDIDATE_SEMANTICS =
   "candidate_only_no_deletion_authorization";
@@ -1218,14 +1219,21 @@ function validatePageSummary(
     )
   );
   for (const { action, binding } of actionBindings) {
+    const recoveryRead = isPaymentRecoveryReadBinding(action, binding);
+    if (action.semantic === "read_only" && !recoveryRead) continue;
     for (const consumer of binding.productionConsumers) {
       const key = mutationConsumerKey(
         binding.apiFile,
         binding.wrapper,
         consumer
       );
+      // Candidate consumers are the production mutation consumers counted by
+      // the page-action manifest. The verified read-only payment recovery
+      // proof is a POST transport but not a production mutation wrapper, so it
+      // is accepted/covered below without becoming a candidate mutation.
       if (
-        registeredWrapperKeys.has(
+        action.semantic !== "read_only" &&
+        (registeredWrapperKeys.has(
           wrapperKey(binding.apiFile, binding.wrapper)
         ) ||
         isExactSelfProfileFacadeBinding(
@@ -1233,7 +1241,7 @@ function validatePageSummary(
           webManifest.authTransportExceptions.find(
             (entry) => entry.normalizedKey === binding.normalizedKey
           )
-        )
+        ))
       ) {
         candidateKeys.add(key);
       }
@@ -1247,8 +1255,7 @@ function validatePageSummary(
       acceptedKeys.add(key);
       if (
         binding.causalVerified &&
-        action.capability.serverDerived &&
-        action.capability.dominatesTrigger
+        (recoveryRead || action.capability.serverDerived && action.capability.dominatesTrigger)
       ) {
         coveredKeys.add(key);
       }
@@ -1286,6 +1293,30 @@ function validatePageSummary(
     "CAPABILITY_MATRIX_INVALID_PAGE_SUMMARY",
     { expected, actual: manifest.summary }
   );
+}
+
+// POST keeps the original payment command in a body. The live page-action
+// guard verifies this exact handler's read-only database call closure.
+function isPaymentRecoveryReadBinding(action, binding) {
+  return action.id === "registered-payment.lookup-original" &&
+    action.semantic === "read_only" &&
+    action.sourceFile === "apps/web-admin/src/pages/payments/RegisteredPaymentExecutionPanel.vue" &&
+    action.trigger.handler === "queryOriginal" &&
+    binding.apiFile === "apps/web-admin/src/api/registered-payment-execution.api.ts" &&
+    binding.wrapper === "verifyRegisteredPaymentRecovery" &&
+    binding.method === "POST" &&
+    binding.normalizedKey === "POST /payment-executions/:param/recovery-proof" &&
+    binding.bodyKind === "json" &&
+    binding.nestRoute?.controller === "RegisteredPaymentExecutionController" &&
+    binding.nestRoute.handler === "recoveryProof" &&
+    binding.nestRoute.authentication === "authenticated" &&
+    !binding.nestRoute.isPublic &&
+    binding.causalVerified &&
+    binding.productionConsumers.length === 1 &&
+    binding.productionConsumers[0] === action.sourceFile &&
+    binding.acceptedProductionConsumers.length === 1 &&
+    binding.acceptedProductionConsumers[0] === action.sourceFile &&
+    binding.ticketFollowups.length === 0;
 }
 
 function validatePageManifestShape(manifest) {
@@ -1416,6 +1447,27 @@ function validatePageManifestShape(manifest) {
     );
     for (const binding of action.bindings) {
       validateBindingShape(binding);
+    }
+    if (action.semantic === "read_only") {
+      const [binding, recovery] = action.bindings;
+      const singleRead = action.bindings.length === 1;
+      const originalRecovery = action.bindings.length === 2 &&
+        binding.wrapper === "fetchRegisteredPaymentResult" &&
+        binding.normalizedKey === "GET /payment-executions/results/:param" &&
+        isPaymentRecoveryReadBinding(action, recovery);
+      assert(
+        (singleRead || originalRecovery) &&
+          action.capability.kind === "none" &&
+          !action.capability.serverDerived &&
+          !action.capability.dominatesTrigger &&
+          !Object.hasOwn(action.capability, "key") &&
+          binding.method === "GET" &&
+          binding.bodyKind === "none" &&
+          binding.acceptedProductionConsumers.length === 0 &&
+          binding.ticketFollowups.length === 0,
+        "CAPABILITY_MATRIX_INVALID_READ_ONLY_ACTION",
+        { actionId: action.id }
+      );
     }
   }
 }
@@ -1785,6 +1837,9 @@ function actionBindingReasons(
   binding,
   { hasMutationBinding }
 ) {
+  if (action.semantic === "read_only") {
+    return binding.causalVerified ? [] : ["causal_unverified"];
+  }
   const reasons = [];
   const hasFreshRead = Object.hasOwn(action.capability, "freshRead");
   if (
@@ -1795,9 +1850,15 @@ function actionBindingReasons(
     reasons.push("binding_not_mutation");
   }
   if (!binding.causalVerified) reasons.push("causal_unverified");
+  // A non-mutation support read (for example the archive download-package
+  // capability GET) is part of a write action's causal chain but is not itself
+  // a production mutation consumer. It needs no accepted mutation consumer as
+  // long as the same action carries a verified mutation binding.
+  const supportRead = !MUTATION_METHODS.has(binding.method) && hasMutationBinding;
   if (
     binding.acceptedProductionConsumers.length === 0 &&
-    !hasFreshRead
+    !hasFreshRead &&
+    !supportRead
   ) {
     reasons.push("no_accepted_consumer");
   }
@@ -1885,6 +1946,16 @@ function buildActionBindings({
         "CAPABILITY_MATRIX_ACTION_NEST_ROUTE_DRIFT",
         { actionId: action.id }
       );
+      if (action.semantic === "read_only") {
+        assert(
+          wrapper?.returnProvenance === "transparent_main_response" &&
+            wrapper.requests.length === 1 &&
+            nestRoute.authentication === "authenticated" &&
+            !nestRoute.isPublic,
+          "CAPABILITY_MATRIX_INVALID_READ_ONLY_TRANSPORT",
+          { actionId: action.id }
+        );
+      }
       for (const consumer of binding.productionConsumers) {
         assert(
           !wrapper ||
@@ -2144,8 +2215,8 @@ export function buildWholeSiteCapabilityMatrix({
   for (const { action, binding } of actionBindings) {
     if (
       !binding.causalVerified ||
-      !action.capability.serverDerived ||
-      !action.capability.dominatesTrigger ||
+      !(isPaymentRecoveryReadBinding(action, binding) ||
+        action.capability.serverDerived && action.capability.dominatesTrigger) ||
       !MUTATION_METHODS.has(binding.method)
     ) {
       continue;

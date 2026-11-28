@@ -242,6 +242,40 @@ if [[ "$APPLY_CANDIDATE_MIGRATIONS" == true ]]; then
   fi
 fi
 
+# Logical dumps can restore a migration ledger and all rows while carrying an
+# archive binding from a different database. Verify the binding before issuing evidence.
+archive_closure_state="$(
+  run_restore_database_client psql --no-psqlrc --no-password --tuples-only --no-align --set=ON_ERROR_STOP=1 \
+    --command "SELECT CASE
+      WHEN pg_catalog.to_regprocedure('public.jg_require_contract_direct_upward_source_v2()') IS NOT NULL THEN 'present'
+      WHEN pg_catalog.to_regclass('public.jg_contract_direct_upward_closure_v2') IS NOT NULL OR EXISTS (
+        SELECT 1 FROM public.\"_prisma_migrations\"
+        WHERE migration_name = '20261111120000_contract_direct_upward_closure_source_v2'
+          AND finished_at IS NOT NULL AND rolled_back_at IS NULL
+      ) THEN 'incomplete'
+      ELSE 'legacy'
+    END;"
+)"
+case "$archive_closure_state" in
+  present)
+    if ! archive_closure_sha256="$(
+      run_restore_database_client psql --no-psqlrc --no-password --quiet --tuples-only --no-align --set=ON_ERROR_STOP=1 \
+        --command 'BEGIN READ ONLY; SELECT public.jg_require_contract_direct_upward_source_v2(); COMMIT;' 2>/dev/null
+    )" || [[ ! "$archive_closure_sha256" =~ ^[0-9a-f]{64}$ ]]; then
+      echo "Restored archive closure verification failed for the target database identity" >&2
+      exit 1
+    fi
+    archive_closure_status=verified
+    ;;
+  legacy)
+    archive_closure_status=not_applicable
+    ;;
+  *)
+    echo "Restored archive closure catalog is incomplete or unreadable" >&2
+    exit 1
+    ;;
+esac
+
 printf 'restore_database=%s\n' "$target_database"
 printf 'backup_file=%s\n' "$(basename "$BACKUP_FILE")"
 printf 'backup_sha256=%s\n' "$actual_checksum"
@@ -251,6 +285,7 @@ if [[ "$APPLY_CANDIDATE_MIGRATIONS" == true ]]; then
   printf 'candidate_migration_count=%s\n' "$EXPECTED_MIGRATION_COUNT"
 fi
 printf 'completed_migration_count=%s\n' "$completed_migrations"
+printf 'archive_closure_status=%s\n' "$archive_closure_status"
 
 for table in User Project Contract ContractTakeover Settlement PaymentRequest ProjectExpenseRequest FileObject AuditLog; do
   run_restore_database_client psql --no-password --tuples-only --no-align --set=ON_ERROR_STOP=1 \

@@ -1,0 +1,113 @@
+--- installer.cjs
++++ installer.cjs
+@@ -174 +174,7 @@
+-async function migrateNativeTask16(plan,root,port,password,sql,jsonSql,command,enter,fromHistory){
++const retainedFinanceValidMaterial=path.join(__dirname,'task12-expense-finance-retained-valid.json');
++async function verifyRetainedFinanceValid(material,sql) {
++  need((await sql(material.readback)).stdout.trim()===material.expected,'FINANCE_RETAINED_VALID_FACTS');
++  need((await sql(`SELECT status::text FROM public."ProjectExpenseRequest"
++    WHERE id='finance_valid_request'`)).stdout.trim()==='payment_blocked','FINANCE_RETAINED_VALID_PAYMENT_BLOCKED');
++}
++async function migrateNativeTask16(plan,root,port,password,sql,jsonSql,command,enter,fromHistory,receipt){
+@@ -180 +186 @@
+- for(const size of [...new Set([203,205,213,215,218,221,ledger.length])]){
++ for(const size of [...new Set([...({execution:[110],finance:[111,112],receipt:[112,113]}[receipt.lane]),203,205,213,215,218,221,ledger.length])]){
+@@ -194,0 +201,46 @@
++ let retainedIdentity;
++ if(receipt.lane==='finance'){
++  const material=JSON.parse(fs.readFileSync(retainedFinanceValidMaterial,'utf8'));
++  need(material.prefix===111&&
++    ledger[110]?.name==='20260728140000_project_expense_execution_idempotency'&&
++    ledger[110].sha256==='b18cb2fe11c734bf144bff12181c4179a0c30089cd517361f53c601bce9cd7fe'&&
++    ledger[111]?.name==='20260728150000_project_expense_finance_idempotency'&&
++    ledger[111].sha256==='3455616a471743268c4bf0ab7ef7ce06ba57d880d5033f90dcd4c25f0d2fe7e5'&&
++    hash(material.seed)===material.seedSha256&&hash(material.readback)===material.readbackSha256&&
++    material.expected==='1|1|400','FINANCE_RETAINED_VALID_SOURCE');
++  await deploy(111);
++  const before=await jsonSql(controls.inspectSql());
++  retainedIdentity=identity(before);checkLedger(before,111);
++  enter('FINANCE_RETAINED_VALID_ORIGINAL_SEED');
++  await sql(material.seed);
++  await deploy(112);
++  const after=await jsonSql(controls.inspectSql());
++  need(equal(identity(after),retainedIdentity),'FINANCE_RETAINED_VALID_IDENTITY');
++  checkLedger(after,112);
++  await verifyRetainedFinanceValid(material,sql);
++  receipt.retainedFinanceValid={prefix:111,originalMigration:112,identity:retainedIdentity,after112:material.expected,paymentBlocked:true};
++ }
++ if(receipt.lane==='receipt'){
++  need(ledger[112]?.name==='20260728160000_project_expense_receipt_confirmation'&&ledger[112].sha256===
++   '96c4e08921d9bca2e67fe3b2695ce2d7243865c00c66de1b22a48aec83ad7875','RETAINED_RECEIPT_SOURCE');
++  const seed=JSON.parse(fs.readFileSync(path.join(__dirname,'task12-expense-receipt-retained-seed.json'),'utf8'));
++  need(typeof seed==='string'&&hash(seed)==='e1fb6f43ae3f784aef2902cb9902f80966f1a5a069bdc7675667423e8743d9ee','RETAINED_RECEIPT_SEED');
++  await deploy(112);
++  const prefix=await jsonSql(controls.inspectSql());retainedIdentity=identity(prefix);checkLedger(prefix,112);
++  enter('RETAINED_RECEIPT_ORIGINAL_SEED');
++  await sql(seed);
++  await deploy(113);
++  const upgraded=await jsonSql(controls.inspectSql());checkLedger(upgraded,113);
++  need(equal(identity(upgraded),retainedIdentity),'RETAINED_RECEIPT_IDENTITY');
++ }
++ if(receipt.lane==='execution'){
++   const {prefix,preceding,target,seed}=require('./task12-expense-execution-retained-valid.json');
++   const matches=(ordinal,record)=>ledger[ordinal]?.name===record.name&&ledger[ordinal]?.sha256===record.sha256;
++   need(prefix===110&&matches(109,preceding)&&matches(110,target),'RETAINED_EXPENSE_EXECUTION_PREFIX_SOURCE');
++   await deploy(110);
++   const before=await jsonSql(controls.inspectSql());retainedIdentity=identity(before);checkLedger(before,110);
++   enter('RETAINED_EXPENSE_EXECUTION_ORIGINAL_VALID_SEED');
++   await sql(seed);
++   const after=await jsonSql(controls.inspectSql());checkLedger(after,110);
++   need(equal(identity(after),retainedIdentity),'RETAINED_EXPENSE_EXECUTION_IDENTITY');
++ }
+@@ -195,0 +248 @@
++ need(equal(bound,retainedIdentity),'EXPENSE_RETAINED_PREFIX_IDENTITY');
+@@ -207 +260 @@
+-function runCommand(file, args, {stdin, timeoutMs = 120_000, extra, allowFailure} = {}) {
++function runCommand(file, args, {stdin, timeoutMs = 120_000, extra, allowFailure, cwd} = {}) {
+@@ -210 +263 @@
+-    cwd:process.env.JG_RUN_ROOT || '/tmp', env:{ ...baseEnv, HOME:'/tmp', ...extra },
++    cwd:cwd ?? (process.env.JG_RUN_ROOT || '/tmp'), env:{ ...baseEnv, HOME:'/tmp', ...extra },
+@@ -243 +296,2 @@
+-  if(purpose===installOnly290) need(!probeOnly && !consume && release===outsideRelease,'INSTALL_ONLY_290_PREDECESSOR');
++  if(purpose===installOnly290) need(!probeOnly && release===outsideRelease,'INSTALL_ONLY_290_PREDECESSOR');
++  let consumerLedger;
+@@ -584,0 +639 @@
++      consumerLedger=expected;
+@@ -619 +674 @@
+-      enter('EXACT_'+release.count+'_CONSUMER');
++      enter(consumerLedger ? 'EXACT_290_EXPENSE_APP_CONSUMER' : 'EXACT_'+release.count+'_CONSUMER');
+@@ -638 +693 @@
+-      need(equal(afterConsumer.ledger,ledger) && ['database','databaseOid','namespaceOid','systemIdentifier','ownerOid','actorOid','sessionActor'].every(key => afterConsumer[key] === roleIdentity[key]), 'CONSUMER_DATABASE_CONTINUITY');
++      need(equal(afterConsumer.ledger,consumerLedger ?? ledger) && ['database','databaseOid','namespaceOid','systemIdentifier','ownerOid','actorOid','sessionActor'].every(key => afterConsumer[key] === roleIdentity[key]), 'CONSUMER_DATABASE_CONTINUITY');
+@@ -639,0 +695,5 @@
++      if (consumerLedger) {
++        const successor=require('./successor.cjs');
++        assertOutsideWitness(289,await jsonSql(outsideWitnessSql(289)));
++        need(successor.exactCatalog(await jsonSql(successor.catalogSql)),'SETTLEMENT_290_CATALOG_CONTINUITY');
++      }
+@@ -655 +715 @@
+-const migration=await migrateNativeTask16(plan,root,port,credentials.owner,sql,jsonSql,command,enter,fromHistory);
++const migration=await migrateNativeTask16(plan,root,port,credentials.owner,sql,jsonSql,command,enter,fromHistory,receipt);
+@@ -929 +989,2 @@
+-module.exports.withOutside290InstallOnly = receipt => {
++module.exports.withOutside290Fresh = (receipt,lane) => {
++  need(['execution','finance','receipt'].includes(lane),'EXPENSE_290_APP_LANE');
+@@ -935 +996,17 @@
+-  return installer(receipt,false,undefined,outsideRelease,installOnly290);
++  return installer(receipt,false,async context=>{
++    if(lane==='execution'){
++      const {readback,expected}=require('./task12-expense-execution-retained-valid.json');
++      need((await context.sql(readback)).stdout.trim()===expected,'EXPENSE_EXECUTION_ORIGINAL_RETAINED_VALUES');
++      receipt.retainedExpenseExecution={prefix:110,bootstrapOid:10,legacyKeyCount:2,includesPaymentBlocked:true};
++    }else if(lane==='finance'){
++      need(context.database===receipt.retainedFinanceValid.identity.database,'FINANCE_RETAINED_VALID_CONTEXT');
++      const material=require('./task12-expense-finance-retained-valid.json');
++      await verifyRetainedFinanceValid(material,context.sql);
++      receipt.retainedFinanceValid.after290=material.expected;
++    }else{
++      const legacyKey=await context.sql(`SELECT COALESCE("receiptConfirmationIdempotencyKey", '<NULL>')
++        FROM "ProjectExpenseRequest" WHERE "id"='receipt_valid_request'`);
++      need(legacyKey.stdout.trim()==='<NULL>','RETAINED_RECEIPT_ORIGINAL_ASSERTION');
++      receipt.retainedReceipt={prefix:112,originalMigration:113,originalLegacyKeyNull:true,bootstrapOid:10};
++    }
++  },outsideRelease,installOnly290);

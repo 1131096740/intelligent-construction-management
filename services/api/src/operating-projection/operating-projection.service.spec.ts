@@ -23,7 +23,7 @@ function emptyProjectionTx(
     $queryRaw: jest.fn().mockResolvedValue([{ readAt, workFactCount: 0n, workImpactCount: 0n, workBytes: 0n, targetCount: 0n }]),
     project: { findMany: jest.fn().mockResolvedValue(projects) },
     projectAffiliateAssignment: { findMany: jest.fn().mockResolvedValue([]) },
-    interEntityRelationshipEntry:{findMany:jest.fn().mockResolvedValue([])},companyTransfer:{findMany:jest.fn().mockResolvedValue([])},companyTransferEvent:{findMany:jest.fn().mockResolvedValue([])},
+    interEntityRelationshipEntry:{findMany:jest.fn().mockResolvedValue([])},registeredOperationalPayment:{findMany:jest.fn().mockResolvedValue([])},companyTransfer:{findMany:jest.fn().mockResolvedValue([])},companyTransferEvent:{findMany:jest.fn().mockResolvedValue([])},
     projectParticipatingCompany: { findMany: jest.fn().mockResolvedValue([]) },
     companyEntityVersion: { findMany: jest.fn().mockResolvedValue([]) },
     clearingCase: { findMany: jest.fn().mockResolvedValue([]) },
@@ -74,6 +74,188 @@ function overviewVisibility(projectIds: string[]) {
 
 describe("OperatingProjectionService", () => {
   const project = { id: "project-1", code: "XM-001", name: "一号项目" };
+
+  it("applies a linked cash slice to only its company and retains original cost and post-refund history", async () => {
+    const readAt = new Date("2026-11-26T02:00:00Z");
+    const occurredAt = new Date("2026-11-20T00:00:00Z");
+    const costFact = {
+      id: "approval-fact", projectId: project.id, sourceType: "expense_claim_approval",
+      sourceBusinessId: "claim-1", sourceBusinessCode: "BX-0001", sourceVersion: 1,
+      occurredAt, confirmedAt: occurredAt, affiliateBusinessPartyVersionId: "enterprise-v1",
+      affiliateNameSnapshot: "施工单位", factKind: "expense", operatingLevel: "project", evidenceLevel: "A",
+      amountCents: 800n, numericProtocolVersion: 1, direction: "outflow", sourceSnapshot: {},
+      subjectSnapshot: {}, entryKind: "original", costBearingCompanySubjectKind: null, costBearingCompanySubjectId: null
+    };
+    const originalImpact = {
+      id: "cost-1", factId: costFact.id, impactKind: "confirmed_cost", amountCents: 800n,
+      direction: "increase", numericProtocolVersion: 1, subjectKind: null, subjectId: null,
+      costCategoryCode: "project_daily_expense", fact: costFact
+    };
+    const link = {
+      id: "link-1", amountCents: 300n, costImpact: { id: originalImpact.id, fact: { ...costFact, adjustments: [] } },
+      operationalPayment: { amountCents: 300n, expensePublicCashCosts: [{ id: "link-1" }],
+        expenseExecution: { expenseClaimId: "claim-1", refunds: [] as Array<{ amountCents: bigint; receivedAt: Date }> } },
+      confirmations: [{ companyEntityVersionId: "bearing-v1", companyNameSnapshot: "承担公司", attributedAmountCents: 300n }]
+    };
+    const tx = {
+      ...emptyProjectionTx(readAt, [project]),
+      expensePublicCashCostLink: { findMany: jest.fn().mockResolvedValue([link]) }
+    };
+    tx.companyEntityVersion.findMany.mockResolvedValue([{ id: "bearing-v1", name: "承担公司" }]);
+    const visibility = overviewVisibility([project.id]);
+    visibility.effectiveRoleKeysByProjectInTransaction.mockResolvedValue(new Map([[project.id, ["finance_staff"]]]));
+    const service = new OperatingProjectionService(
+      { $transaction: jest.fn((work) => work(tx)) } as never, visibility as never, zeroRiskReader() as never,
+      { record: jest.fn() } as never, { confirmPassword: jest.fn() } as never
+    );
+    const prepareScan = () => {
+      tx.operatingFact.findMany.mockResolvedValueOnce([]).mockResolvedValueOnce([costFact]);
+      tx.operatingImpactEntry.findMany.mockResolvedValueOnce([originalImpact]);
+    };
+    prepareScan();
+    const projectView = await service.getProjectView("finance", { projectId: project.id });
+    expect(projectView.operating.confirmedCostCents).toBe("800");
+    expect(projectView.costAttribution).toEqual({
+      byBearingCompany: [{ kind: "participating_company", id: "bearing-v1", name: "承担公司", costCents: "300" }],
+      unattributedCostCents: "500", publicCashCostCents: "300"
+    });
+    prepareScan();
+    const bearingView = await service.getProjectView("finance", { projectId: project.id, companyEntityId: "bearing-company" });
+    expect(bearingView.operating.confirmedCostCents).toBe("300");
+    expect(bearingView.costAttribution.unattributedCostCents).toBe("0");
+
+    link.operationalPayment.expenseExecution.refunds.push({ amountCents: 300n, receivedAt: new Date("2026-11-25") });
+    prepareScan();
+    const afterRefund = await service.getProjectView("finance", { projectId: project.id });
+    expect(afterRefund.operating.confirmedCostCents).toBe("800");
+    expect(afterRefund.costAttribution).toEqual({ ...projectView.costAttribution, publicCashCostCents: "0", needsReview: true });
+    expect(afterRefund.integrity.notices).toContain("原公共现金费用已有归属确认，后续退款或更正影响承担关系的范围待核对。");
+  });
+
+  it("returns each exact reimbursement line and only the linked whole-cent cost in a company view", async () => {
+    const readAt = new Date("2026-11-26T02:00:00Z");
+    const occurredAt = new Date("2026-11-20T00:00:00Z");
+    const exact = (amountYuan: string) => ({ numericProtocolVersion: 2, amountCents: null, amountYuan: new Prisma.Decimal(amountYuan) });
+    const costFact = {
+      ...exact("8.0051"), id: "approval-fact", projectId: project.id, sourceType: "expense_claim_approval",
+      sourceBusinessId: "claim-1", sourceBusinessCode: "BX-0001", sourceVersion: 1,
+      occurredAt, confirmedAt: occurredAt, affiliateBusinessPartyVersionId: "enterprise-v1", affiliateNameSnapshot: "施工单位",
+      factKind: "expense", operatingLevel: "project", evidenceLevel: "A", direction: "outflow", entryKind: "original",
+      costBearingCompanySubjectKind: null, costBearingCompanySubjectId: null, subjectSnapshot: {},
+      sourceSnapshot: {
+        formalStatus: "confirmed", claimType: "reimbursement", costBearingCompanyEntityId: null,
+        requestedAmountYuan: "8.0051", requestedAmountCents: "801", companyPayableAmountCents: "801", actualPurchaseBatchId: null,
+        numericFacts: { protocolVersion: 2, amountState: "known", amountYuan: "8.0051" },
+        reimbursementLines: [{ id: "line-1", sortOrder: "1", amountYuan: "8.0050" }, { id: "line-2", sortOrder: "2", amountYuan: "0.0001" }]
+      }
+    };
+    const impacts = [["8.0050", "1"], ["0.0001", "2"]].map(([amount, number]) => ({
+      ...exact(amount), id: `cost-${number}`, factId: costFact.id, fact: costFact,
+      sourceType: costFact.sourceType, sourceBusinessId: costFact.sourceBusinessId, sourceImpactKey: `confirmed_cost:${number}`,
+      impactKind: "confirmed_cost", direction: "increase", subjectRole: null, subjectKind: null, subjectId: null,
+      costCategoryCode: "project_daily_expense", fundPurpose: null,
+      impactSnapshot: { lineId: `line-${number}`, numericFacts: { protocolVersion: 2, amountState: "known", amountYuan: amount } }
+    }));
+    const payable = {
+      ...exact("8.0100"), id: "payable", factId: costFact.id, fact: costFact,
+      sourceType: costFact.sourceType, sourceBusinessId: costFact.sourceBusinessId, sourceImpactKey: "payable_increase",
+      impactKind: "payable_increase", direction: "increase", subjectRole: "payee", subjectKind: "employee", subjectId: "payee-1",
+      costCategoryCode: null, fundPurpose: null, impactSnapshot: { numericFacts: { protocolVersion: 2, amountState: "known", amountYuan: "8.0100" } }
+    };
+    const link = {
+      id: "link-1", amountCents: 300n, costImpact: { id: "cost-1", fact: { ...costFact, adjustments: [] } },
+      operationalPayment: { amountCents: 801n, expensePublicCashCosts: [{ id: "link-1" }],
+        expenseExecution: { expenseClaimId: "claim-1", refunds: [] } },
+      confirmations: [{ companyEntityVersionId: "bearing-v1", companyNameSnapshot: "承担公司", attributedAmountCents: 300n }]
+    };
+    const tx = {
+      ...emptyProjectionTx(readAt, [project]),
+      expensePublicCashCostLink: { findMany: jest.fn().mockResolvedValue([link]) }
+    };
+    tx.companyEntityVersion.findMany.mockResolvedValue([{ id: "bearing-v1", name: "承担公司" }]);
+    tx.operatingFact.findMany.mockImplementation(async (query) => query.where.sourceType ? [] : [costFact]);
+    tx.operatingImpactEntry.findMany.mockResolvedValue([...impacts, payable]);
+    const visibility = overviewVisibility([project.id]);
+    visibility.effectiveRoleKeysByProjectInTransaction.mockResolvedValue(new Map([[project.id, ["finance_staff"]]]));
+    const service = new OperatingProjectionService(
+      { $transaction: jest.fn((work) => work(tx)) } as never, visibility as never, zeroRiskReader() as never,
+      { record: jest.fn() } as never, { confirmPassword: jest.fn() } as never
+    );
+
+    await expect(service.readProjectInTransaction(tx as never, "finance", { projectId: project.id }))
+      .rejects.toThrow("报销成本含不足一分的金额");
+
+    const request = { projectId: project.id, numericProtocolVersion: 2 as const };
+    const overall = await service.getProjectDetailPage("finance", request);
+    expect(overall.projection.operating).toMatchObject({ confirmedCostYuan: "8.0051", payableCents: "801" });
+    expect(overall.items.map(item => item.signedImpactYuan)).toEqual(["8.0050", "0.0001", "8.0100"]);
+
+    const companyRequest = { ...request, companyEntityId: "bearing-company" };
+    const filtered = await service.getProjectDetailPage("finance", companyRequest);
+    expect(filtered.projection.operating).toMatchObject({ confirmedCostYuan: "3.0000" });
+    expect(filtered.items).toEqual([expect.objectContaining({ signedImpactYuan: "3.0000", signedImpactCents: null })]);
+
+    const exported = await service.exportView("finance", { ...companyRequest, scopeKind: "project" },
+      "current-password", "project_operating_ledger_detail");
+    const csv = await readUtf8Stream(exported.stream);
+    const rows = csv.split("\n").filter((row) => row.includes('"BX-0001"'));
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toContain('"正式成本（四位元）"');
+    expect(rows[0]).toContain('"3.0000"');
+
+    link.amountCents = 801n;
+    link.confirmations[0].attributedAmountCents = 801n;
+    await expect(service.getProjectView("finance", request)).rejects.toThrow("公共现金归属金额超过原确认费用");
+  });
+
+  it("reads and exports the original signed settlement cost and the separate payable amount", async () => {
+    const readAt = new Date("2026-11-26T02:00:00Z");
+    const occurredAt = new Date("2026-11-20T00:00:00Z");
+    const fact = {
+      id: "settlement-fact", projectId: project.id, sourceType: "signed_contract_settlement",
+      sourceBusinessId: "signed-1", sourceBusinessCode: "JS-0001", sourceVersion: 1,
+      occurredAt, confirmedAt: occurredAt, affiliateBusinessPartyVersionId: "enterprise-v1", affiliateNameSnapshot: "施工单位",
+      factKind: "downstream_settlement", operatingLevel: "project", evidenceLevel: "A", direction: "neutral", entryKind: "original",
+      numericProtocolVersion: 2, amountCents: null, amountYuan: new Prisma.Decimal("0.0050"), subjectSnapshot: {},
+      sourceSnapshot: {
+        formalStatus: "confirmed", contractKind: "downstream", relationship: "inside", contractId: "contract-1",
+        signedAmountYuan: "-0.0050", numericFacts: { protocolVersion: 2, amountState: "known", amountYuan: "0.0050" },
+        operatingNumericFacts: { protocolVersion: 2, cumulativeBeforeYuan: "1.0050", cumulativeAfterYuan: "1.0000", payableDeltaCents: "-1" }
+      }
+    };
+    const impacts = [["confirmed_cost", "0.0050"], ["payable_decrease", "0.0100"]].map(([impactKind, amount]) => ({
+      id: impactKind, factId: fact.id, fact, sourceType: fact.sourceType, sourceBusinessId: fact.sourceBusinessId,
+      sourceImpactKey: impactKind, impactKind, direction: "decrease", subjectRole: null, subjectKind: null,
+      subjectId: null, costCategoryCode: impactKind === "confirmed_cost" ? "material" : null, fundPurpose: null,
+      numericProtocolVersion: 2, amountCents: null, amountYuan: new Prisma.Decimal(amount), impactSnapshot: {}
+    }));
+    const tx = emptyProjectionTx(readAt, [project]);
+    tx.operatingFact.findMany.mockResolvedValue([fact]);
+    tx.operatingImpactEntry.findMany.mockResolvedValue(impacts);
+    const visibility = overviewVisibility([project.id]);
+    visibility.effectiveRoleKeysByProjectInTransaction.mockResolvedValue(new Map([[project.id, ["finance_staff"]]]));
+    const service = new OperatingProjectionService(
+      { $transaction: jest.fn((work) => work(tx)) } as never, visibility as never, zeroRiskReader() as never,
+      { record: jest.fn() } as never, { confirmPassword: jest.fn() } as never
+    );
+    await expect(service.readProjectInTransaction(tx as never, "finance", { projectId: project.id }))
+      .rejects.toThrow("已签结算含不足一分的金额");
+    const request = { projectId: project.id, numericProtocolVersion: 2 as const };
+    const read = await service.getProjectDetailPage("finance", request);
+    expect(read.projection.operating).toMatchObject({ confirmedCostYuan: "-0.0050", payableCents: "-1" });
+    expect(read.projection.profitAndLoss).toMatchObject({ currentOperatingProfitYuan: "0.0050" });
+    expect(read.items).toEqual([
+      expect.objectContaining({ amountYuan: "0.0050", signedImpactYuan: "-0.0050", signedImpactCents: null }),
+      expect.objectContaining({ amountYuan: "0.0100", signedImpactYuan: "-0.0100", signedImpactCents: null })
+    ]);
+    const exported = await service.exportView("finance", { ...request, scopeKind: "project" },
+      "current-password", "project_operating_ledger_detail");
+    const rows = (await readUtf8Stream(exported.stream)).split("\n").filter(row => row.includes('"JS-0001"'));
+    expect(rows).toHaveLength(2);
+    expect(rows[0]).toContain('"正式成本（四位元）"');
+    expect(rows[0]).toContain('"-0.0050"');
+    expect(rows[1]).toContain('"-0.0100"');
+  });
 
   it.each([
     [20_000n, 100_000n, 67_108_864n, false],
@@ -134,7 +316,7 @@ describe("OperatingProjectionService", () => {
       additional: { marker: "same-snapshot" },
       canExportDetail: expected
     }));
-    expect(additional).toHaveBeenCalledWith(tx, [project.id]);
+    expect(additional).toHaveBeenCalledWith(tx, [project.id], expect.objectContaining({ numericProtocolVersion: 2 }));
   });
 
   it("limits per-actor concurrent and minute-rate projection reads", () => {
@@ -244,6 +426,154 @@ describe("OperatingProjectionService", () => {
     expect(detailQuery?.select).not.toHaveProperty("description");
   });
 
+  it.each([
+    {
+      scenario: "明确两来源匹配",
+      mixedHistory: true,
+      repeatSigned: false,
+      expectedCodes: ["SETTLEMENT-B", "SETTLEMENT-A"],
+      amount: "200",
+      suppressed: 1
+    },
+    {
+      scenario: "同一来源重复编号及负向冲减",
+      mixedHistory: false,
+      repeatSigned: true,
+      expectedCodes: ["SIGNED-CORRECTION", "SIGNED-REPEAT", "SIGNED-DUPLICATE", "SETTLEMENT-B"],
+      amount: "250",
+      suppressed: 0
+    },
+    {
+      scenario: "多来源且存在多笔同编号结算",
+      mixedHistory: true,
+      repeatSigned: true,
+      expectedCodes: ["SIGNED-CORRECTION", "SIGNED-REPEAT", "SIGNED-DUPLICATE", "SETTLEMENT-B", "SETTLEMENT-A"],
+      amount: null,
+      suppressed: 0
+    }
+  ])("明细分页和导出保留经营结算记录：$scenario", async ({
+    mixedHistory, repeatSigned, expectedCodes, amount, suppressed
+  }) => {
+    const tx = emptyProjectionTx(new Date("2026-09-11T01:02:03Z"), [project]);
+    const settlement = {
+      id: "fact-a", projectId: project.id, sourceType: "settlement",
+      sourceBusinessId: "settlement-a", sourceBusinessCode: "SETTLEMENT-A", sourceVersion: 1,
+      occurredAt: new Date("2026-09-01"), confirmedAt: new Date("2026-09-01"),
+      factKind: "downstream_settlement", operatingLevel: "project", evidenceLevel: "A",
+      amountCents: 100n, numericProtocolVersion: 1, direction: "neutral", entryKind: "original",
+      sourceSnapshot: { contractVersionId: "contract-v1", periodLabel: "第1期" }, subjectSnapshot: {}
+    };
+    const otherPeriod = {
+      ...settlement,
+      id: "fact-b", sourceBusinessId: "settlement-b", sourceBusinessCode: "SETTLEMENT-B",
+      occurredAt: new Date("2026-09-03"), confirmedAt: new Date("2026-09-03"),
+      sourceSnapshot: { contractVersionId: "contract-v1", periodLabel: "第2期" }
+    };
+    const duplicate = {
+      ...settlement,
+      id: "fact-c", sourceType: "signed_contract_settlement",
+      sourceBusinessId: "signed-settlement-c", sourceBusinessCode: "SIGNED-DUPLICATE",
+      occurredAt: new Date("2026-09-05"), confirmedAt: new Date("2026-09-05"),
+      sourceSnapshot: { contractVersionId: "contract-v1", contractKind: "downstream", settlementNumber: "第１期" }
+    };
+    const repeated = {
+      ...duplicate, id: "fact-d", sourceBusinessId: "signed-settlement-d",
+      sourceBusinessCode: "SIGNED-REPEAT",
+      occurredAt: new Date("2026-09-06"), confirmedAt: new Date("2026-09-06")
+    };
+    const correction = {
+      ...duplicate, id: "fact-e", sourceBusinessId: "signed-settlement-e",
+      sourceBusinessCode: "SIGNED-CORRECTION", amountCents: 50n,
+      occurredAt: new Date("2026-09-07"), confirmedAt: new Date("2026-09-07")
+    };
+    const facts = [
+      ...(mixedHistory ? [settlement] : []), otherPeriod, duplicate,
+      ...(repeatSigned ? [repeated, correction] : [])
+    ];
+    const ambiguous = mixedHistory && repeatSigned;
+    // Fill the first fact page so its apparent match precedes the two later signed facts.
+    const olderPageRows = ambiguous ? Array.from({ length: 497 }, (_, index) => ({
+      ...duplicate,
+      id: `fact-c-filler-${String(index).padStart(3, "0")}`,
+      sourceBusinessId: `signed-settlement-filler-${index}`,
+      sourceSnapshot: { ...duplicate.sourceSnapshot, settlementNumber: `其他期次-${index}` }
+    })) : [];
+    const aggregateRows = [...facts, ...olderPageRows].sort((left, right) => left.id.localeCompare(right.id));
+    const impacts = facts.map((fact) => ({
+      id: `impact-${fact.id}`, factId: fact.id, fact, impactKind: "confirmed_cost",
+      amountCents: fact.amountCents, numericProtocolVersion: 1, direction: fact.id === correction.id ? "decrease" : "increase",
+      subjectKind: null, subjectId: null, costCategoryCode: "material", fundPurpose: null
+    }));
+    tx.operatingFact.findMany.mockImplementation(async (query) => {
+      const eligible = query.where.sourceType
+        ? aggregateRows.filter((row) => query.where.sourceType.in.includes(row.sourceType))
+        : aggregateRows;
+      const first = eligible.findIndex(({ id }) => id === query.cursor?.id) + 1;
+      return eligible.slice(first, first + query.take);
+    });
+    tx.operatingImpactEntry.findMany.mockImplementation(async (query) => {
+      if (!query.select?.fact) return impacts.filter(({ factId }) => query.where.factId.in.includes(factId));
+      const detailOrder = [...impacts].reverse();
+      const cursorImpactId = query.where.OR?.[1].id.gt;
+      return detailOrder.slice(detailOrder.findIndex(({ id }) => id === cursorImpactId) + 1);
+    });
+    const visibility = overviewVisibility([project.id]);
+    visibility.effectiveRoleKeysByProjectInTransaction.mockResolvedValue(new Map([[project.id, ["finance_staff"]]]));
+    const audit = { record: jest.fn() };
+    const service = new OperatingProjectionService(
+      { $transaction: jest.fn((work) => work(tx)) } as never, visibility as never,
+      zeroRiskReader() as never, audit as never, { confirmPassword: jest.fn() } as never
+    );
+
+    const request = { projectId: project.id, pageSize: 1 };
+    const first = await service.getProjectDetailPage("finance", request);
+    expect(first.projection.operating.confirmedCostCents).toBe(amount);
+    expect(first.projection.integrity.moneyComplete).toBe(!ambiguous);
+    if (ambiguous) {
+      expect(first.projection.integrity.notices).toEqual(expect.arrayContaining([
+        expect.stringContaining("无法确定对应关系")
+      ]));
+      expect(first.projection.distribution.currentDistributableProfitCents).toBeNull();
+    }
+    expect(first.projection.asOf.crossSourceDedupedFactCount).toBe(suppressed);
+    const pagedCodes = first.items.map((item) => item.sourceBusinessCode);
+    if (repeatSigned) {
+      expect(first.items[0]).toMatchObject({ sourceBusinessCode: "SIGNED-CORRECTION", signedImpactCents: "-50" });
+    }
+    let cursor = first.page.nextCursor;
+    for (const expectedCode of expectedCodes.slice(1)) {
+      expect(cursor).toEqual(expect.any(String));
+      const page = await service.getProjectDetailPage("finance", { ...request, cursor: cursor! });
+      expect(page.items.map((item) => item.sourceBusinessCode)).toEqual([expectedCode]);
+      pagedCodes.push(...page.items.map((item) => item.sourceBusinessCode));
+      cursor = page.page.nextCursor;
+    }
+    expect(pagedCodes).toEqual(expectedCodes);
+    if (cursor) {
+      const terminalPage = await service.getProjectDetailPage("finance", { ...request, cursor });
+      expect(terminalPage.items).toEqual([]);
+      expect(terminalPage.page.nextCursor).toBeNull();
+    }
+
+    const exported = await service.exportView("finance", { scopeKind: "project", projectId: project.id },
+      "current-password", "project_operating_ledger_detail");
+    const csv = await readUtf8Stream(exported.stream);
+    for (const row of facts) {
+      if (expectedCodes.includes(row.sourceBusinessCode)) expect(csv).toContain(`"${row.sourceBusinessCode}"`);
+      else expect(csv).not.toContain(`"${row.sourceBusinessCode}"`);
+    }
+    if (repeatSigned) {
+      const correctionRow = csv.split("\n").find((line) => line.includes('"SIGNED-CORRECTION"'));
+      expect(correctionRow).toContain(`"'-0.50"`);
+    }
+    const pendingSettlementRows = csv.split("\n").filter(line => line.includes("同一期次多来源结算待核对"));
+    expect(pendingSettlementRows).toHaveLength(ambiguous ? 4 : 0);
+    expect(pendingSettlementRows.every(line => !line.includes('"SETTLEMENT-B"'))).toBe(true);
+    expect(audit.record).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({
+      action: "operating_projection.export", metadata: expect.objectContaining({ rowCount: expectedCodes.length })
+    }));
+  });
+
   it("fails a subject-filtered detail page on snapshot bytes before ORM materialization", async () => {
     const readAt = new Date("2026-09-11T01:02:03.000Z");
     const tx = emptyProjectionTx(readAt, [project]);
@@ -341,7 +671,7 @@ describe("OperatingProjectionService", () => {
       $queryRaw: jest.fn().mockResolvedValue([{ readAt, workFactCount: 0n, workImpactCount: 0n, workBytes: 0n, targetCount: 0n }]),
       project: { findMany: jest.fn().mockResolvedValue([project]) },
       projectAffiliateAssignment: { findMany: jest.fn().mockResolvedValue([]) },
-      interEntityRelationshipEntry:{findMany:jest.fn().mockResolvedValue([])},companyTransfer:{findMany:jest.fn().mockResolvedValue([])},companyTransferEvent:{findMany:jest.fn().mockResolvedValue([])},
+      interEntityRelationshipEntry:{findMany:jest.fn().mockResolvedValue([])},registeredOperationalPayment:{findMany:jest.fn().mockResolvedValue([])},companyTransfer:{findMany:jest.fn().mockResolvedValue([])},companyTransferEvent:{findMany:jest.fn().mockResolvedValue([])},
     projectParticipatingCompany: { findMany: jest.fn().mockResolvedValue([]) },
       operatingFact: {
         count: jest.fn().mockResolvedValue(0),
@@ -710,7 +1040,7 @@ describe("OperatingProjectionService", () => {
           snapshotBytes: 0n,
           maxSnapshotBytes: 0n
         }]).mockResolvedValue([{ workFactCount: 0n, workImpactCount: 0n, workBytes: 0n, targetCount: 0n }]),
-      interEntityRelationshipEntry:{findMany:jest.fn().mockResolvedValue([])},companyTransfer:{findMany:jest.fn().mockResolvedValue([])},companyTransferEvent:{findMany:jest.fn().mockResolvedValue([])},
+      interEntityRelationshipEntry:{findMany:jest.fn().mockResolvedValue([])},registeredOperationalPayment:{findMany:jest.fn().mockResolvedValue([])},companyTransfer:{findMany:jest.fn().mockResolvedValue([])},companyTransferEvent:{findMany:jest.fn().mockResolvedValue([])},
     projectParticipatingCompany: {
         findMany: jest.fn().mockResolvedValue([{
           projectId: "project-1",
@@ -814,7 +1144,7 @@ describe("OperatingProjectionService", () => {
         )
       },
       projectAffiliateAssignment: { findMany: jest.fn().mockResolvedValue([]) },
-      interEntityRelationshipEntry:{findMany:jest.fn().mockResolvedValue([])},companyTransfer:{findMany:jest.fn().mockResolvedValue([])},companyTransferEvent:{findMany:jest.fn().mockResolvedValue([])},
+      interEntityRelationshipEntry:{findMany:jest.fn().mockResolvedValue([])},registeredOperationalPayment:{findMany:jest.fn().mockResolvedValue([])},companyTransfer:{findMany:jest.fn().mockResolvedValue([])},companyTransferEvent:{findMany:jest.fn().mockResolvedValue([])},
     projectParticipatingCompany: { findMany: jest.fn().mockResolvedValue([]) },
       operatingFact: {
         count: jest.fn(),
@@ -852,7 +1182,7 @@ describe("OperatingProjectionService", () => {
       scope: { label: "多项目汇总口径", projectCount: 101 }
     }));
     expect(tx.project.findMany).toHaveBeenCalledTimes(3); // Two scoped batches plus transfer project labels.
-    expect(tx.operatingFact.findMany).toHaveBeenCalledTimes(2);
+    expect(tx.operatingFact.findMany.mock.calls.filter(([query]) => !query.select)).toHaveLength(2);
   });
 
   it("resolves company membership across internal project batches", async () => {
@@ -879,7 +1209,7 @@ describe("OperatingProjectionService", () => {
           snapshotBytes: 0n,
           maxSnapshotBytes: 0n
         }]).mockResolvedValue([{ workFactCount: 0n, workImpactCount: 0n, workBytes: 0n, targetCount: 0n }]),
-      interEntityRelationshipEntry:{findMany:jest.fn().mockResolvedValue([])},companyTransfer:{findMany:jest.fn().mockResolvedValue([])},companyTransferEvent:{findMany:jest.fn().mockResolvedValue([])},
+      interEntityRelationshipEntry:{findMany:jest.fn().mockResolvedValue([])},registeredOperationalPayment:{findMany:jest.fn().mockResolvedValue([])},companyTransfer:{findMany:jest.fn().mockResolvedValue([])},companyTransferEvent:{findMany:jest.fn().mockResolvedValue([])},
       projectParticipatingCompany,
       projectAffiliateAssignment: { findMany: jest.fn().mockResolvedValue([]) },
       companyEntityVersion: { findMany: jest.fn().mockResolvedValue([{ id: "company-v1" }]) },
@@ -1044,7 +1374,7 @@ describe("OperatingProjectionService", () => {
         )
       },
       projectAffiliateAssignment: { findMany: jest.fn().mockResolvedValue([]) },
-      interEntityRelationshipEntry:{findMany:jest.fn().mockResolvedValue([])},companyTransfer:{findMany:jest.fn().mockResolvedValue([])},companyTransferEvent:{findMany:jest.fn().mockResolvedValue([])},
+      interEntityRelationshipEntry:{findMany:jest.fn().mockResolvedValue([])},registeredOperationalPayment:{findMany:jest.fn().mockResolvedValue([])},companyTransfer:{findMany:jest.fn().mockResolvedValue([])},companyTransferEvent:{findMany:jest.fn().mockResolvedValue([])},
     projectParticipatingCompany: { findMany: jest.fn().mockResolvedValue([]) },
       operatingFact: {
         count: jest.fn().mockResolvedValue(0),
@@ -1219,17 +1549,18 @@ describe("OperatingProjectionService", () => {
       costBearingCompanySubjectKind: null,
       costBearingCompanySubjectId: null
     });
-    const firstPage = Array.from({ length: 10_000 }, (_, index) => storedFact(index));
-    const finalPage = [storedFact(10_000)];
-    const findMany = jest.fn()
-      .mockResolvedValueOnce(firstPage)
-      .mockResolvedValueOnce(finalPage);
+    const rows = Array.from({ length: 10_001 }, (_, index) => storedFact(index));
+    const findMany = jest.fn().mockImplementation(async (query) => {
+      if (query.where.sourceType) return [];
+      const first = rows.findIndex(({ id }) => id === query.cursor?.id) + 1;
+      return rows.slice(first, first + query.take);
+    });
     const tx = {
       $executeRawUnsafe: jest.fn().mockResolvedValue(0),
       $queryRaw: jest.fn().mockResolvedValue([{ readAt, workFactCount: 0n, workImpactCount: 0n, workBytes: 0n, targetCount: 0n }]),
       project: { findMany: jest.fn().mockResolvedValue([project]) },
       projectAffiliateAssignment: { findMany: jest.fn().mockResolvedValue([]) },
-      interEntityRelationshipEntry:{findMany:jest.fn().mockResolvedValue([])},companyTransfer:{findMany:jest.fn().mockResolvedValue([])},companyTransferEvent:{findMany:jest.fn().mockResolvedValue([])},
+      interEntityRelationshipEntry:{findMany:jest.fn().mockResolvedValue([])},registeredOperationalPayment:{findMany:jest.fn().mockResolvedValue([])},companyTransfer:{findMany:jest.fn().mockResolvedValue([])},companyTransferEvent:{findMany:jest.fn().mockResolvedValue([])},
     projectParticipatingCompany: { findMany: jest.fn().mockResolvedValue([]) },
       operatingFact: {
         count: jest.fn().mockResolvedValue(10_001),
@@ -1267,7 +1598,7 @@ describe("OperatingProjectionService", () => {
       }));
     expect(tx.operatingFact.count).not.toHaveBeenCalled();
     expect(tx.operatingImpactEntry.count).not.toHaveBeenCalled();
-    expect(findMany).toHaveBeenCalledTimes(2);
+    expect(findMany.mock.calls.filter(([query]) => !query.select)).toHaveLength(21);
   });
 
   it("does not let a narrowed holder filter bypass the total aggregate work budget", async () => {

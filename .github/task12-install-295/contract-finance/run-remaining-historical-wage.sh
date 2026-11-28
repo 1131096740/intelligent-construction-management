@@ -1,0 +1,106 @@
+#!/bin/bash
+set -euo pipefail
+umask 077
+
+[[ $# == 4 || ( $# == 5 && ( $5 == --current-320 || $5 == --text-direct-330 || $5 == --payment-remainder-331 || $5 == --upward-archive-332 || $5 == --historical-settlement-334 || $5 == --expense-witness-346 || $5 == --expense-witness-349 || $5 == --signed-settlement-350 || $5 == --company-history-352 ) ) ||
+  ( $# == 6 && ( $5 == --expense-witness-346 || $5 == --expense-witness-349 || $5 == --signed-settlement-350 || $5 == --company-history-352 ) && $6 == --host-only ) ]] || exit 64
+if [[ ${5-} == --signed-settlement-350 && ${GITHUB_ACTIONS:-} == true ]]; then exit 64; fi
+repo=$(cd "$1" && pwd -P)
+prepared=$(cd "$2" && pwd -P)
+sha=$3
+plan=$(cd "$(dirname "$0")" && pwd -P)
+count=$(node -e '
+  const source=require(process.argv[1]);
+  if(source.sourceSha!==process.argv[2])process.exit(65);
+  if(source.mode==="current-320"&&source.migrationCount===329)console.log(source.migrationCount);
+  else if(source.mode==="text-direct-330"&&source.migrationCount===330)console.log(330);
+  else if(source.mode==="payment-remainder-331"&&source.migrationCount===331)console.log(331);
+  else if(source.mode==="historical-settlement-334") {
+    require(process.argv[5]).assertSource(source,require(process.argv[4]).final);
+    console.log(334);
+  }
+  else if(source.mode==="upward-archive-332") {
+    require(process.argv[3]).assertSource(source,process.argv[2],require(process.argv[4]).final);
+    console.log(332);
+  }
+  else if(source.mode==="expense-witness-346"&&source.migrationCount===346)console.log(346);
+  else if(source.mode==="expense-witness-349"&&source.migrationCount===349)console.log(349);
+  else if(source.mode==="signed-settlement-350"&&source.migrationCount===350)console.log(350);
+  else if(source.mode==="company-history-352"&&source.migrationCount===352)console.log(352);
+  else if(source.mode===undefined&&source.migrationCount===295)console.log(295);
+  else process.exit(65);
+' "$prepared/source.json" "$sha" "$plan/upward-archive-332-profile.cjs" "$plan/common/multi-witness.cjs" "$plan/historical-settlement-334-profile.cjs")
+mode_args=()
+case "$count" in 329) mode_args=(--current-320);; 330) mode_args=(--text-direct-330);; 331) mode_args=(--payment-remainder-331);; 332) mode_args=(--upward-archive-332);; 334) mode_args=(--historical-settlement-334);; 346|349) mode_args=("--expense-witness-$count");; 350) mode_args=(--signed-settlement-350);; 352) mode_args=(--company-history-352);; esac
+if [[ $# -ge 5 && ${mode_args[0]:-} != "$5" ]]; then exit 65; fi
+[[ $sha =~ ^[a-f0-9]{40}$ ]] || exit 65
+common="$plan/common"
+scope=historical-wage
+
+if (( count >= 346 )); then
+  [[ ${5-} == "${mode_args[0]}" ]] || exit 65
+  source "$plan/remaining-history-346.sh"
+  verify_history_346 "$repo" "$prepared" "$sha" "$plan" "$count"
+fi
+if [[ ${6-} != --host-only ]]; then
+  build=$(cd "$4" && pwd -P)
+  image=$(cat "$build/image.id")
+  fingerprint=$(cat "$build/context.sha256")
+  [[ $image =~ ^sha256:[a-f0-9]{64}$ && $fingerprint =~ ^[a-f0-9]{64}$ ]] || exit 65
+  [[ $(node "$plan/context-sha.cjs" "$prepared/prepared/context" "$build/Dockerfile" "$prepared/source.json") == "$fingerprint" ]] || exit 65
+  [[ $(docker image inspect "$image" --format '{{.Id}} {{.Os}}/{{.Architecture}} {{index .Config.Labels "org.jiangkong.contract-finance.source-sha"}} {{index .Config.Labels "org.jiangkong.contract-finance.context-sha256"}}') == "$image linux/amd64 $sha $fingerprint" ]] || exit 65
+fi
+
+work=$(mktemp -d "${RUNNER_TEMP:-/tmp}/jg-finance-$scope.XXXXXXXX")
+[[ $(git -C "$repo" rev-parse HEAD) == "$sha" ]] || exit 65
+relative=services/api/src/operating-takeover/historical-wage-takeover.pg.spec.ts
+mkdir -p "$work/${relative%/*}"
+cp "$prepared/prepared/context/workspace/$relative" "$work/$relative"
+printf '%s  %s\n' '9cced06f63fc1ee4911244a3f45bfc0a043f4966ca5c754c321a8c489daa4519' "$work/$relative" |
+  shasum -a 256 -c >/dev/null
+patch --batch --forward --fuzz=0 --silent -p1 -d "$work" < "$plan/wage-readback-only.patch"
+printf '%s  %s\n' '696096a30aaf82a25dd8c4d71008ae53016e5e4f5b7246bc7bcad278227a0727' "$work/$relative" |
+  shasum -a 256 -c >/dev/null
+chmod 0644 "$work/$relative"
+
+args=(--platform linux/amd64 --rm --pull never --network none --read-only --cap-drop ALL
+  --security-opt no-new-privileges --user postgres --init --pids-limit 256 --memory 4g
+  --tmpfs /tmp:rw,noexec,nosuid,nodev,size=1024m --env HOME=/tmp --env PLAYWRIGHT_BROWSERS_PATH=/opt/jg-playwright
+  --mount "type=bind,src=$prepared/prepared/product/predecessor,dst=/qualification/product289,readonly"
+  --mount "type=bind,src=$prepared/prepared/product/intermediate,dst=/qualification/product,readonly"
+  --mount "type=bind,src=$prepared/prepared/context/successor.sql,dst=/qualification/successor.sql,readonly"
+  --mount "type=bind,src=$prepared/source.json,dst=/qualification/contract-finance-source.json,readonly"
+  --mount "type=bind,src=$prepared/tails/20261119003600_fund_balance_notice_lock/migration.sql,dst=/qualification/terminal.sql,readonly"
+  --mount "type=bind,src=$prepared/tails/20261119003700_company_transfer_ordinary_loan_payout_checkpoints/migration.sql,dst=/qualification/payout-terminal.sql,readonly"
+  --mount "type=bind,src=$prepared/tails/20261119003800_company_transfer_ordinary_loan_multi_witness/migration.sql,dst=/qualification/multi-witness.sql,readonly"
+  --mount "type=bind,src=$plan/remaining-historical-wage-entry.cjs,dst=/qualification/remaining-historical-wage-entry.cjs,readonly")
+for file in install-only292.cjs checkout.cjs successor.cjs scope.json tree-proof.json   terminal.cjs terminal.json payout-terminal.cjs multi-witness.cjs multi-witness-diagnostic.cjs owner-observation.cjs; do
+  args+=(--mount "type=bind,src=$common/$file,dst=/qualification/$file,readonly")
+done
+source "$plan/remaining-installer-mounts.sh"
+source_mode=$(node -p 'require(process.argv[1]).mode ?? ""' "$prepared/source.json")
+if (( count < 346 )); then
+  args+=(--mount "type=bind,src=$plan/upward-archive-332-profile.cjs,dst=/qualification/upward-archive-332-profile.cjs,readonly")
+fi
+append_remaining_installer "$source_mode" owner
+if (( count >= 346 )); then append_history_346; fi
+for file in remaining-historical-wage-runner.cjs historical-wage-profiles.json wage-observation.cjs; do
+  args+=(--mount "type=bind,src=$plan/$file,dst=/qualification/$file,readonly")
+done
+args+=(--mount "type=bind,src=$work/$relative,dst=/qualification/workspace/$relative,readonly")
+
+if [[ ${6-} == --host-only ]]; then
+  receipt_history_346 "$scope" "$work/$relative" "$plan/historical-wage-profiles.json" "$plan/remaining-historical-wage-runner.cjs"
+  exit 0
+fi
+[[ -z $(docker ps -q) ]] || exit 65
+if pgrep -x postgres >/dev/null; then exit 65; fi
+exit_code=0
+docker run "${args[@]}" --entrypoint node "$image" /qualification/remaining-historical-wage-entry.cjs ${mode_args[@]+"${mode_args[@]}"}   > "$work/receipt.json" 2> "$work/private.stderr" || exit_code=$?
+[[ ! -s "$work/receipt.json" ]] || cat "$work/receipt.json"
+(( exit_code == 0 )) || exit "$exit_code"
+node -e '
+  const proof=require(process.argv[1]);
+  const expected="REMAINING_HISTORICAL_WAGE_"+process.argv[4]+"_PASSED";
+  if(proof.status!==expected||proof.sourceSha!==process.argv[3])process.exit(1);
+' "$work/receipt.json" "$scope" "$sha" "$count"

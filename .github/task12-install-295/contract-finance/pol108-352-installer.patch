@@ -1,0 +1,52 @@
+--- installer.cjs
++++ installer.cjs
+@@ -234,10 +234,10 @@
+  return {plan:migrationPlan,setup,materials};
+ }
+ 
+-function runCommand(file, args, {stdin, timeoutMs = 120_000, extra, allowFailure, multiWitnessDiagnostic} = {}) {
++function runCommand(file, args, {stdin, timeoutMs = 120_000, extra, allowFailure, multiWitnessDiagnostic, cwd} = {}) {
+   const result = spawnSync(file, args, {
+     input: stdin, encoding:'utf8', timeout:timeoutMs, maxBuffer:16 * 1024 * 1024,
+-    cwd:process.env.JG_RUN_ROOT || '/tmp', env:{ ...baseEnv, HOME:'/tmp', ...extra },
++    cwd:cwd ?? (process.env.JG_RUN_ROOT || '/tmp'), env:{ ...baseEnv, HOME:'/tmp', ...extra },
+   });
+   if (result.status !== 0 && !allowFailure) {
+     if (process.argv[2] === '--tls-probe' && typeof result.stderr === 'string') {
+@@ -372,7 +372,7 @@
+ log_min_error_statement='panic'
+ log_parameter_max_length_on_error=0
+ log_error_verbosity='terse'
+-statement_timeout='60s'
++${receipt.purpose==='ORIGINAL_POL108_EXACT_352' ? "track_functions='all'\ntrack_io_timing=on\n" : ''}statement_timeout='60s'
+ `;
+     fs.writeFileSync(abs('data/postgresql.conf'),config);
+     const ownerEnv = {
+@@ -1653,6 +1653,27 @@
+   const precision=require('./expense-witness-349-profile.cjs');
+   precision.assertSource(material,require('./multi-witness.cjs').final);
+   return withCombinedOrdinaryLoan(receipt,consume,exactMultiWitness295,false,readForward320(material,precision.count));
+ };
++
++
++module.exports.withPol108At352 = (receipt,shard,material) => {
++  need(receipt.purpose==='ORIGINAL_POL108_EXACT_352' && ['core','facts','impacts'].includes(shard),'POL108_352_SCOPE');
++  const source=require('./contract-finance-source.json');
++  return module.exports.withCombinedCompanyHistory352(receipt,context=>{
++    need(context.candidateTree===source.sourceTree,'POL108_352_SOURCE_TREE');
++    const {predecessor334,predecessor346,predecessor349,predecessor350}=source;
++    require('./historical-settlement-334-profile.cjs').assertFinanceInstallation(receipt,
++      {...source,tails:source.tails.slice(0,predecessor334.migrationCount-295)});
++    const checkpoint=(start,end)=>({
++      count:end.migrationCount,ledgerSha256:end.ledgerSha256,sameIdentity:true,sourceTree:source.sourceTree,
++      tails:source.tails.slice(start.migrationCount-295,end.migrationCount-295).map(({name,sha256})=>({name,sha256}))
++    });
++    need(equal(receipt.expenseWitnessForward,checkpoint(predecessor334,predecessor346)) &&
++      equal(receipt.expenseWitnessPrecisionForward,checkpoint(predecessor346,predecessor349)) &&
++      equal(receipt.signedSettlementForward,checkpoint(predecessor349,predecessor350)) &&
++      equal(receipt.companyHistoryForward,checkpoint(predecessor350,source)),'POL108_352_FORWARD_LEDGER');
++    return require('./pol108-289.cjs').runPol108(context,shard,receipt,runCommand,baseEnv,need);
++  },material);
++};
+ 
+ 

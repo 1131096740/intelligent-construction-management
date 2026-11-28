@@ -1,0 +1,40 @@
+{
+  "schemaVersion": 1,
+  "executionAllowed": false,
+  "combinedReferenceTree": "add300e1e0026f5e34a9597faa4d8635cc60cd06",
+  "sourceApplicationTree": "80e2de6cbf25e960c1876f9a5c1232f866948369",
+  "productTree": "a1be083076018686dd8afba68c44ff9c75502014",
+  "ledgerSha256": "5c5e77dc94502b706c6e52c5761f52573e27cca46efb812f9b8b22216ec52f67",
+  "group": "general_procurement",
+  "originalRunner": "services/api/prisma/run-general-procurement-local.cjs",
+  "cases": [
+    {
+      "mode": "general16",
+      "role": "general_procurement_runtime",
+      "tests": 16,
+      "specs": [
+        [
+          "services/api/src/database/general-procurement-http-postgres.spec.ts",
+          15
+        ],
+        [
+          "services/api/src/database/approval-v6-migration-postgres.spec.ts",
+          1
+        ]
+      ]
+    },
+    {
+      "mode": "project11",
+      "role": "project_business_scope_runtime",
+      "tests": 11,
+      "specs": [
+        [
+          "services/api/src/database/project-business-scope-http-postgres.spec.ts",
+          11
+        ]
+      ]
+    }
+  ],
+  "workspaceSha256": "25e4ec13e2bbe74d703ab09af7aff3b8e4edeb4f825b9dc50a6e5abb5eb73444",
+  "supportSha256": "252260358ca60807966d3238deaaf2aabf21c9e2cf0800fd4fd4ad61f1218662"
+}

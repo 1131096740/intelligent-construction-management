@@ -1,5 +1,7 @@
+import { PAYMENT_TEXT_AGREEMENT_BASIS } from "./payment-text-agreement";
 import { BadRequestException } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
+import { registeredPaymentInstalled } from "../database/registered-payment-catalog";
 
 import {
   frozenAffiliateFromJson,
@@ -53,7 +55,9 @@ export class PaymentExecutionOperatingSourceAdapter
       },
       orderBy: [{ paidAt: "asc" }, { id: "asc" }]
     });
-    return Promise.all(rows.map((row) => this.snapshot(tx, row)));
+    if (!rows.length) return [];
+    const readRegisteredFunding = await registeredPaymentInstalled(tx);
+    return Promise.all(rows.map((row) => this.snapshot(tx, row, readRegisteredFunding)));
   }
 
   async readSourceSnapshot(
@@ -61,24 +65,27 @@ export class PaymentExecutionOperatingSourceAdapter
     locator: OperatingSourceLocator
   ): Promise<OperatingSourceSnapshot | null> {
     const row = await tx.paymentExecution.findUnique({
-      where: { id: locator.sourceBusinessId },
-      include: {
-        payerAttestation: {
-          select: {
-            holderCompanyEntityId: true,
-            holderNameSnapshot: true,
-            holderCreditCodeSnapshot: true,
-            verificationEvidenceContentSha256: true
-          }
-        }
-      }
+      where: { id: locator.sourceBusinessId }
     });
     if (!row) return null;
     const request = await tx.paymentRequest.findUnique({
       where: { id: row.paymentRequestId }
     });
     if (!request || request.projectId !== locator.projectId) return null;
-    return this.snapshot(tx, row, request);
+    const installed = await registeredPaymentInstalled(tx);
+    const funding = installed
+      ? await tx.registeredPaymentFunding.findUnique({ where: { executionId: row.id } })
+      : null;
+    const payerAttestation = funding ? null : await tx.paymentExecutionPayerAttestation.findUnique({
+      where: { paymentExecutionId: row.id },
+      select: {
+        holderCompanyEntityId: true,
+        holderNameSnapshot: true,
+        holderCreditCodeSnapshot: true,
+        verificationEvidenceContentSha256: true
+      }
+    });
+    return this.snapshot(tx, { ...row, payerAttestation }, installed, request, funding);
   }
 
   toOperatingFactInput(snapshot: OperatingSourceSnapshot): OperatingSourceFactInput {
@@ -123,14 +130,15 @@ export class PaymentExecutionOperatingSourceAdapter
         description: "实际付款清偿下游应付"
       })
     );
-    impacts.push({
+    const registeredFunding = source.registeredFunding ? requiredJsonRecord(source.registeredFunding,"登记资金来源") : null;
+    if (registeredFunding?.openingTreatment !== "included") impacts.push({
       idempotencyKey: `${snapshot.sourceType}:${snapshot.sourceBusinessId}:funds`,
       sourceImpactKey:
-        actualPayer.kind === "construction_enterprise"
+        actualPayer.kind === "public_cash" ? "public_cash_funds_decrease" : actualPayer.kind === "construction_enterprise"
           ? "construction_enterprise_funds_decrease"
           : "company_project_funds_decrease",
       impactKind:
-        actualPayer.kind === "construction_enterprise"
+        actualPayer.kind === "public_cash" ? "public_cash_funds_decrease" : actualPayer.kind === "construction_enterprise"
           ? "construction_enterprise_funds_decrease"
           : "company_project_funds_decrease",
       amountCents,
@@ -139,7 +147,7 @@ export class PaymentExecutionOperatingSourceAdapter
       subject: actualPayer,
       description: "实际付款减少付款主体项目资金"
     });
-    if (!sameSubject(debtor, actualPayer)) {
+    if (actualPayer.kind !== "public_cash" && !sameSubject(debtor, actualPayer)) {
       impacts.push({
         idempotencyKey: `${snapshot.sourceType}:${snapshot.sourceBusinessId}:proxy`,
         sourceImpactKey: "inter_subject_proxy_payment",
@@ -169,7 +177,7 @@ export class PaymentExecutionOperatingSourceAdapter
         "付款执行"
       ),
       factKind: "downstream_payment",
-      operatingLevel: sameSubject(debtor, actualPayer)
+      operatingLevel: actualPayer.kind === "public_cash" || sameSubject(debtor, actualPayer)
         ? "project"
         : "inter_subject",
       evidenceLevel: "A",
@@ -188,9 +196,10 @@ export class PaymentExecutionOperatingSourceAdapter
         : {}),
       sourceSnapshot: snapshot.sourceSnapshot,
       basisSnapshot: sourceJson({
-        authority: "payment_execution_with_voucher",
+        authority: registeredFunding ? "registered_payment_execution" : "payment_execution_with_voucher",
         financeRecordRole: "financial_evidence_only",
-        voucherFileId: requiredJsonText(source, "voucherFileId", "付款执行")
+        voucherFileId: registeredFunding ? source.voucherFileId ?? null : requiredJsonText(source, "voucherFileId", "付款执行"),
+        voucherPending: registeredFunding ? source.voucherFileId === null : false
       }),
       subjects: {
         debtor,
@@ -206,7 +215,9 @@ export class PaymentExecutionOperatingSourceAdapter
   private async snapshot(
     tx: Parameters<OperatingSourceAdapter["readSourceSnapshot"]>[0],
     row: PaymentExecutionRow,
-    loadedRequest?: PaymentRequestRow
+    readRegisteredFunding: boolean,
+    loadedRequest?: PaymentRequestRow,
+    loadedFunding?: Prisma.RegisteredPaymentFundingGetPayload<Record<string, never>> | null
   ): Promise<OperatingSourceSnapshot> {
     const request =
       loadedRequest ??
@@ -252,9 +263,25 @@ export class PaymentExecutionOperatingSourceAdapter
     if (!version || !counterparty?.businessPartyVersionId) {
       throw new BadRequestException("付款执行缺少合同主体或下游相对方快照");
     }
-    const approvedAmountCents =
-      request.approvedAmountCents ?? request.requestedAmountCents;
-    if ((executionTotal._sum.amountCents ?? 0n) > approvedAmountCents) {
+    const textAgreement = request.contractDueBasis === PAYMENT_TEXT_AGREEMENT_BASIS;
+    const netExecutionBasis = textAgreement || request.sourceType === "signed_settlement";
+    const approvedAmountCents = request.approvedAmountCents ?? request.requestedAmountCents;
+    let executionTotalCents = executionTotal._sum.amountCents ?? 0n;
+    if (netExecutionBasis) {
+      const [refunds, corrections] = await Promise.all([
+        tx.paymentExecutionRefund.aggregate({
+          where: { paymentRequestId: request.id, executionType: "payment_execution" },
+          _sum: { amountCents: true }
+        }),
+        tx.paymentExecutionCorrection.aggregate({
+          where: { paymentRequestId: request.id, status: "confirmed" },
+          _sum: { amountDeltaCents: true }
+        })
+      ]);
+      executionTotalCents += (corrections._sum.amountDeltaCents ?? 0n) - (refunds._sum.amountCents ?? 0n);
+    }
+    if (executionTotalCents > approvedAmountCents || (netExecutionBasis && executionTotalCents < 0n) ||
+        (textAgreement && request.approvedAmountCents === null)) {
       throw new BadRequestException("付款执行累计金额超过付款申请批复金额");
     }
     const affiliate = await readAffiliateSnapshot(tx, {
@@ -265,11 +292,12 @@ export class PaymentExecutionOperatingSourceAdapter
     });
     const debtor = approvedPayerIdentity(version, { paymentSubjectType: version.signingSubjectType });
     const approvedPayer = approvedPayerIdentity(version, request);
-    const actualPayer = actualPayerIdentity(
-      row,
-      affiliate.businessPartyVersionId,
-      row.payerAttestation
-    );
+    const registeredFunding = loadedFunding !== undefined ? loadedFunding : readRegisteredFunding
+      ? await tx.registeredPaymentFunding.findUnique({where:{executionId:row.id}})
+      : null;
+    const actualPayer = registeredFunding
+      ? {type:registeredFunding.actualPayerKind === "public_cash" ? "public_cash" : "our_company", id:registeredFunding.actualPayerId}
+      : actualPayerIdentity(row, affiliate.businessPartyVersionId, row.payerAttestation);
     const dueAllocations = allocations.filter(
       (allocation) => allocation.allocationType === "contract_due_payment"
     );
@@ -284,12 +312,21 @@ export class PaymentExecutionOperatingSourceAdapter
     ) {
       throw new BadRequestException("合同到期付款必须完整关联本次应付核销来源");
     }
+    if (textAgreement && (dueAllocations.length !== 1 || dueAllocations[0].settlementId !== null ||
+        dueAllocations[0].sourceRowId !== `payment-request:${request.id}`)) {
+      throw new BadRequestException("实付分摊缺少本次合同付款申请批准依据");
+    }
     const payable = dueAllocations.map((allocation) => ({
       sourceId: allocation.settlementId ?? allocation.sourceRowId,
       amountCents: allocation.amountCents.toString()
     }));
-    if (request.settlementId && payable.length === 0) {
-      payable.push({ sourceId: request.settlementId, amountCents: row.amountCents.toString() });
+    if (payable.length === 0) {
+      // 旧结算与已签结算都以“最近确认一期”作为应付冲减依据；一次实付
+      // 未拆分多来源时完整核销该依据，但绝不再生成成本影响。
+      const settlementSourceId = request.signedSettlementId ?? request.settlementId;
+      if (settlementSourceId) {
+        payable.push({ sourceId: settlementSourceId, amountCents: row.amountCents.toString() });
+      }
     }
     return {
       projectId: request.projectId,
@@ -309,6 +346,7 @@ export class PaymentExecutionOperatingSourceAdapter
         companyEntityVersionId: version.companyEntityVersionId,
         companyEntityIdSnapshot: version.companyEntityIdSnapshot,
         settlementId: request.settlementId,
+        signedSettlementId: request.signedSettlementId,
         approvedAmountCents: approvedAmountCents.toString(),
         amountCents: row.amountCents.toString(),
         paidAt: row.paidAt.toISOString(),
@@ -319,6 +357,7 @@ export class PaymentExecutionOperatingSourceAdapter
         debtorId: debtor.id,
         approvedPayerType: approvedPayer.type,
         approvedPayerId: approvedPayer.id,
+        ...(registeredFunding ? { registeredFunding: { accountId: registeredFunding.accountId, balanceRegistrationId: registeredFunding.balanceRegistrationId, openingTreatment: registeredFunding.openingTreatment, actualPayerSnapshot: registeredFunding.actualPayerSnapshot } } : {}),
         actualPayerType: actualPayer.type,
         actualPayerId: actualPayer.id,
         payeeVersionId: counterparty.businessPartyVersionId,
@@ -339,7 +378,7 @@ interface PaymentExecutionRow {
   amountCents: bigint;
   paidAt: Date;
   executedByUserId: string;
-  voucherFileId: string;
+  voucherFileId: string | null;
   payerAttestationFingerprint?: string | null;
   payerAttestation?: {
     holderCompanyEntityId: string;
@@ -354,6 +393,8 @@ interface PaymentRequestRow {
   id: string;
   projectId: string;
   settlementId: string | null;
+  signedSettlementId?: string | null;
+  contractDueBasis?: string | null;
   sourceType: string;
   contractId: string;
   contractVersionId: string;
@@ -421,6 +462,7 @@ function payerSubject(
   type: string,
   id: string
 ): OperatingSubjectReference {
+  if (type === "public_cash" && id === "public_cash") return { kind: "public_cash", id };
   if (type === "affiliate") return { kind: "construction_enterprise", id };
   if (type === "our_company") return { kind: "participating_company", id };
   throw new BadRequestException("付款主体类型不正确");

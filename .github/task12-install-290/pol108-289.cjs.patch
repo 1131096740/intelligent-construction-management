@@ -1,0 +1,13 @@
+--- pol108-289.cjs
++++ pol108-289.cjs
+@@ -72,0 +73,10 @@
++      receipt.operatingProjection.failedFrames = results.testResults.flatMap(suite => suite.assertionResults)
++        .filter(test => test.status === 'failed').slice(0, 3).map(test => {
++          const message = (test.failureMessages ?? []).join("\n");
++          return {
++            prismaCodes:[...new Set(message.match(/\bP[0-9]{4}\b/gu) ?? [])].slice(0, 4),
++            sqlstates:[...message.matchAll(/\b(?:SQLSTATE|Code:)\s*[`']?([0-9A-Z]{5})\b/gu)].slice(0, 4).map(row=>row[1]),
++            frames:[...message.matchAll(/operating-projection-postgresql\.cases\.ts:(\d+):(\d+)/gu)]
++              .slice(0, 5).map(row=>[Number(row[1]),Number(row[2])]),
++          };
++        });

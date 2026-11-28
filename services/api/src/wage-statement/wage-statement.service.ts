@@ -2804,9 +2804,8 @@ export class WageStatementService {
   }
 
   /**
-   * Returns only action booleans derived from the canonical active-role resolver.
-   * It is deliberately a separate read seam so clients can re-check immediately
-   * before an irreversible command instead of treating aggregate-read hints as authority.
+   * Historical clients can still check access to protected reads and exports.
+   * Keep the old write fields in the response so those clients see them disabled.
    */
   async capabilities(actorUserId: string) {
     const roles = await this.companyRoles.resolveActiveRoleScopes(actorUserId);
@@ -2815,10 +2814,10 @@ export class WageStatementService {
 
   private capabilitiesForRoles(roles: RoleKey[]) {
     return {
-      canPrepare: canPerform("wage_statement.prepare", roles),
-      canSubmit: canPerform("wage_statement.submit", roles),
-      canReturn: canPerform("wage_statement.return", roles),
-      canConfirm: canPerform("wage_statement.confirm", roles),
+      canPrepare: false,
+      canSubmit: false,
+      canReturn: false,
+      canConfirm: false,
       canReadSensitive: canPerform("wage_sensitive_read", roles),
       canDownloadSensitive: canPerform("wage_sensitive_download", roles),
       canExportSensitive: canPerform("wage_sensitive_export", roles)

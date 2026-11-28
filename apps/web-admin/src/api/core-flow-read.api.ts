@@ -17,19 +17,18 @@ import type {
   LifecycleLedgerViewCount,
   PaymentDetailReadModel,
   ProjectExpenseApprovalDetailReadModel,
-  SettlementApprovalWithdrawalContextReadModel,
   SettlementDetailReadModel
 } from "@jiangkong/shared-domain";
 import type { OperatingProjectionExportKind, OperatingProjectionExportFilters } from "@jiangkong/shared-domain";
-import type { SettlementLineDraftPayload } from "./settlement-workbench.api";
+import type { SettlementLineDraftPayload } from "./settlement-drafts.api";
 import type { SettlementSignedDocumentRecordReadModel } from "./settlement-drafts.api";
 import {
   ContractApprovalReviewResultUnknownError,
   ContractApprovalWithdrawalResultUnknownError
 } from "../lib/contract-approval-result";
 import { ContractSigningMaterialChangeResultUnknownError } from "../lib/contract-signing-material-change-result";
-import { SettlementApprovalWithdrawalResultUnknownError } from "../lib/settlement-approval-result";
 import { apiFetch } from "./api-fetch";
+import type { ApiFetchInit } from "./http";
 import { formatApiErrorMessage } from "./error-message";
 
 export class CoreFlowApiError extends Error {
@@ -75,17 +74,18 @@ async function ensureOk(response: Response, fallback: string): Promise<void> {
   );
 }
 
-async function readJson<T>(path: string): Promise<T> {
-  const response = await apiFetch(path);
+async function readJson<T>(path: string, headers?: Record<string, string>, options?: Pick<ApiFetchInit, "retryUnauthorized" | "responseIsCurrent">): Promise<T> {
+  const response = await apiFetch(path, headers || options ? { headers, ...options } : undefined);
   await ensureOk(response, "读取失败");
   return response.json() as Promise<T>;
 }
 
-async function postJson<TResponse>(path: string, body?: unknown): Promise<TResponse> {
+async function postJson<TResponse>(path: string, body?: unknown, options?: Pick<ApiFetchInit, "retryUnauthorized" | "responseIsCurrent">): Promise<TResponse> {
   const response = await apiFetch(path, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body ?? {})
+    body: JSON.stringify(body ?? {}),
+    ...options
   });
   await ensureOk(response, "提交失败");
   return response.json() as Promise<TResponse>;
@@ -111,8 +111,8 @@ async function putJson<TResponse>(path: string, body?: unknown): Promise<TRespon
   return response.json() as Promise<TResponse>;
 }
 
-async function postForm<TResponse>(path: string, body: FormData): Promise<TResponse> {
-  const response = await apiFetch(path, { method: "POST", body });
+async function postForm<TResponse>(path: string, body: FormData, options?: Pick<ApiFetchInit, "retryUnauthorized" | "responseIsCurrent">): Promise<TResponse> {
+  const response = await apiFetch(path, { method: "POST", body, ...options });
   await ensureOk(response, "上传失败");
   return response.json() as Promise<TResponse>;
 }
@@ -128,8 +128,67 @@ export function fetchContractDetail(contractId: string, options?: { versionId?: 
     ? `?versionId=${encodeURIComponent(options.versionId)}`
     : "";
   return readJson<ContractDetailReadModel>(
-    `/contracts/${encodeURIComponent(contractId)}${query}`
+    `/contracts/${encodeURIComponent(contractId)}${query}`,
+    { "x-contract-numeric-protocol": "2" }
   );
+}
+
+export interface ContractSealConfirmationV2Payload {
+  expectedApprovalInstanceId: string;
+  expectedSealTaskId: string;
+  documentContentRevision: number;
+  documentContentFingerprint: string;
+  confirmed: true;
+}
+
+export function confirmContractSealV2(versionId: string, body: ContractSealConfirmationV2Payload, responseIsCurrent: () => boolean) {
+  return postJson<{ contractVersionId: string; approvalInstanceId: string; sealTaskId: string; status: "seal_approved_pending_archive" }>(
+    `/contracts/${encodeURIComponent(versionId)}/seal-confirmation`, body, { retryUnauthorized: false, responseIsCurrent }
+  );
+}
+
+export interface ContractSignedArchiveV2Payload extends Omit<ContractSealConfirmationV2Payload, "confirmed"> {
+  archiveProtocolVersion: 2;
+  archiveSource: "generated_approval";
+  idempotencyKey: string;
+  fileIds: string[];
+  confirmedMatchingSignedDocument: true;
+}
+export interface ContractSignedArchiveV2Result {
+  archiveId: string; contractVersionId: string; status: "effective"; fileIds: string[];
+}
+export type ContractSignedArchiveV2Lookup = { status: "unknown" } | {
+  status: "archived"; requestSha256: string; intent: ContractSignedArchiveV2Payload; result: ContractSignedArchiveV2Result;
+};
+export function fetchSignedContractArchiveV2Result(versionId: string, key: string) {
+  return readJson<ContractSignedArchiveV2Lookup>(`/contracts/${encodeURIComponent(versionId)}/archive-requests/${encodeURIComponent(key)}`);
+}
+
+export interface ContractDirectRegistrationPayload {
+  archiveProtocolVersion: 2;
+  archiveSource: "direct_signed";
+  idempotencyKey: string;
+  expectedDraftRevision: number;
+  expectedInputSha256: string;
+  fileIds: string[];
+  confirmedMatchingSignedDocument: true;
+}
+export type ContractDirectRegistrationLookup = { status: "unknown" } | {
+  status: "archived"; requestSha256: string; intent: ContractDirectRegistrationPayload; result: ContractSignedArchiveV2Result;
+};
+export function archiveSignedContractV2(versionId: string, body: ContractSignedArchiveV2Payload, responseIsCurrent: () => boolean): Promise<ContractSignedArchiveV2Result>;
+export function archiveSignedContractV2(versionId: string, body: ContractDirectRegistrationPayload, responseIsCurrent: () => boolean): Promise<ContractSignedArchiveV2Result>;
+export function archiveSignedContractV2(
+  versionId: string,
+  body: ContractSignedArchiveV2Payload | ContractDirectRegistrationPayload,
+  responseIsCurrent: () => boolean
+) {
+  const options = { retryUnauthorized: false, responseIsCurrent };
+  return postJson<ContractSignedArchiveV2Result>(`/contracts/${encodeURIComponent(versionId)}/signed-archive`, body, options);
+}
+export function fetchDirectSignedContractResult(versionId: string, key: string, responseIsCurrent: () => boolean) {
+  return readJson<ContractDirectRegistrationLookup>(`/contracts/${encodeURIComponent(versionId)}/archive-requests/${encodeURIComponent(key)}`,
+    undefined, { retryUnauthorized: false, responseIsCurrent });
 }
 
 export interface ContractSigningMaterialChangeActionContext {
@@ -316,27 +375,88 @@ export interface ContractChangeEligibilityReadModel {
   activeChange: ContractChangeVersionProjection | null;
 }
 
-export interface CreateContractChangeDraftPayload {
-  changeType: "change";
-  changeReason: string;
-  changeDirection: "increase" | "decrease" | "unchanged";
-  changeAmountCents: string;
-}
-
 export function fetchContractChangeEligibility(contractVersionId: string) {
   return readJson<ContractChangeEligibilityReadModel>(
     `/contracts/${encodeURIComponent(contractVersionId)}/change-eligibility`
   );
 }
 
-export function createContractChangeDraft(
-  contractVersionId: string,
-  body: CreateContractChangeDraftPayload
-) {
-  return postJson<ContractChangeVersionProjection>(
-    `/contracts/${encodeURIComponent(contractVersionId)}/change-drafts`,
-    body
+export interface SignedContractChange {
+  id: string;
+  baseVersionId: string;
+  sequenceNo: number;
+  status: "pending_review" | "approved" | "rejected";
+  summary: string;
+  paymentAgreementText: string | null;
+  amountDeltaYuan: string;
+  precedingAmountYuan: string | null;
+  effectiveAmountYuan: string | null;
+  appendixFileId: string;
+  requiresSelfReview: boolean;
+  reviewReason: string | null;
+}
+
+export interface SignedContractChanges {
+  baseVersionId: string;
+  originalAmountYuan: string | null;
+  currentPaymentAgreementText: string | null;
+  effectiveAmountYuan: string | null;
+  totalEffectiveSettlementYuan: string;
+  cumulativePaidYuan: string;
+  belowSettled: boolean;
+  belowPaid: boolean;
+  canSubmit: boolean;
+  canReview: boolean;
+  canDownloadOriginals: boolean;
+  changes: SignedContractChange[];
+}
+
+export function fetchSignedContractChanges(versionId: string) {
+  return readJson<SignedContractChanges>(`/contracts/${encodeURIComponent(versionId)}/signed-changes`);
+}
+
+export function submitSignedContractChange(versionId: string, body: {
+  fileId: string; summary: string; amountDeltaYuan: string; paymentAgreementText?: string;
+}) {
+  return postJson(`/contracts/${encodeURIComponent(versionId)}/signed-changes`, body);
+}
+
+export function reviewSignedContractChange(versionId: string, changeId: string, body: {
+  decision: "approve" | "reject"; reason?: string; selfReviewReason?: string; confirmationPassword?: string;
+}) {
+  return postJson(`/contracts/${encodeURIComponent(versionId)}/signed-changes/${encodeURIComponent(changeId)}/review`, body);
+}
+
+export interface EffectiveTaxFacts {
+  invoiceType: string | null;
+  taxRate: string | null;
+}
+
+export interface ContractTaxRevision {
+  id: string;
+  kind: "supplement" | "correction";
+  status: "pending_contract_confirmation" | "confirmed" | "rejected";
+  before: EffectiveTaxFacts;
+  proposed: EffectiveTaxFacts;
+  explanation: string | null;
+  reviewComment: string | null;
+  requiresSelfReview: boolean;
+}
+
+export function fetchContractTaxRevisions(versionId: string) {
+  return readJson<{ versionId: string; current: EffectiveTaxFacts; revisions: ContractTaxRevision[]; canSubmit: boolean; canReview: boolean }>(
+    `/contracts/${encodeURIComponent(versionId)}/tax-revisions`
   );
+}
+
+export function submitContractTaxRevision(versionId: string, body: { explanation: string; invoiceType?: string; taxRate?: string }) {
+  return postJson(`/contracts/${encodeURIComponent(versionId)}/tax-revisions`, body);
+}
+
+export function reviewContractTaxRevision(versionId: string, revisionId: string, body: {
+  decision: "approve" | "reject"; reason?: string; selfReviewReason?: string; confirmationPassword?: string;
+}) {
+  return postJson(`/contracts/${encodeURIComponent(versionId)}/tax-revisions/${encodeURIComponent(revisionId)}/review`, body);
 }
 
 export function fetchSettlementDetail(settlementId: string) {
@@ -375,6 +495,7 @@ export function fetchPaymentCreateCapability(projectId: string) {
 export interface PaymentActionCapabilityReadModel {
   paymentId: string;
   availableActions: string[];
+  delegationApprovalContext?: PaymentDelegationApprovalContext;
 }
 
 export function fetchPaymentActionCapability(paymentId: string) {
@@ -388,10 +509,18 @@ export interface PaymentReviewApprovalContext {
   expectedApprovalInstanceId: string;
   expectedNodeIndex: number;
   expectedApprovalUpdatedAt: string;
+  canReturnForRevision?: true;
+  executionMode?: "parallel";
 }
 
 export interface PaymentExecutionContext {
   expectedPaymentUpdatedAt: string;
+}
+
+export interface PaymentDelegationApprovalContext {
+  expectedApprovalInstanceId: string;
+  expectedApprovalUpdatedAt: string;
+  duties: Array<{ index: number; name: string }>;
 }
 
 export type PaymentLifecycleDetailReadModel = PaymentDetailReadModel & {
@@ -400,6 +529,15 @@ export type PaymentLifecycleDetailReadModel = PaymentDetailReadModel & {
   lifecycleUpdatedAt: string | null;
   reviewApprovalContext: PaymentReviewApprovalContext | null;
   executionContext: PaymentExecutionContext | null;
+  withdrawApprovalContext?: { expectedApprovalInstanceId: string };
+  remainderWithdrawalContext?: { expectedUpdatedAt: string; remainingAmountCents: string };
+  delegationApprovalContext?: PaymentDelegationApprovalContext;
+  revisionSubmissionContext?: {
+    expectedUpdatedAt: string;
+    requestedAmountCents: string;
+    paymentMatter: string | null;
+    amountCalculationExplanation: string | null;
+  };
   blockedReasons: string[];
 };
 
@@ -410,7 +548,7 @@ export function fetchContractPaymentApplication(contractVersionId: string) {
   );
 }
 
-export type ContractTakeoverLevel = "A" | "B" | "C";
+export type ContractTakeoverLevel = "A" | "B" | "C" | "NONE";
 
 export type ContractLifecycleStatus =
   | "signed_not_started"
@@ -422,6 +560,7 @@ export type ContractLifecycleStatus =
 
 export type ContractTakeoverStatus =
   | "draft"
+  | "pending_finance"
   | "pending_review"
   | "confirmed"
   | "needs_supplement"
@@ -504,6 +643,8 @@ export interface ContractTakeoverContractSideReadModel {
     contractName: string;
     contractTypeKey: string;
     counterparty: string;
+    counterpartyVersionId?: string;
+    signingPartyVersionId?: string;
     originalAmountCents: string;
     settlementCutoffDate?: string;
     zeroSettlementDeclared: boolean;
@@ -672,6 +813,21 @@ export interface ContractTakeoverReadModel {
   taxFactExplanation: string | null;
   taxFactMissingFields: string[];
   pricingItems: HistoricalPricingItemReadModel[];
+  relationship: "inside" | "outside" | "upward";
+  relationshipLabel: string;
+  frameworkNoTotal: boolean;
+  historicalFactStatus: "confirmed" | "pending_verification";
+  historicalFactStatusLabel: string;
+  historicalPaidTotalCents: ContractTakeoverCentsValue;
+  historicalOverpaidCents: ContractTakeoverCentsValue;
+  historicalOverpaymentKind:
+    | "none"
+    | "unsettled_advance"
+    | "pending_verification";
+  historicalOverpaymentLabel: string;
+  historicalReceiptsCents: ContractTakeoverCentsValue;
+  historicalOverReceivedCents: ContractTakeoverCentsValue;
+  historicalOverReceivedPendingVerification: boolean;
   takeoverLevel: ContractTakeoverLevel;
   suggestedTakeoverLevel: ContractTakeoverLevel | null;
   takeoverLevelAdjustmentReason: string | null;
@@ -716,6 +872,50 @@ export interface ContractTakeoverReadModel {
   availableActions?: DetailActionReadModel[];
   createdAt: string;
   updatedAt: string;
+}
+
+export type ContractTakeoverHandoverDuty = "contract" | "finance" | "supervisor";
+
+export interface ContractTakeoverHandoverAssignmentReadModel {
+  duty: ContractTakeoverHandoverDuty;
+  dutyLabel: string;
+  userId: string;
+  userName: string | null;
+  roleKeys: string[];
+}
+
+export interface ContractTakeoverHandoverHistoryReadModel {
+  revision: number;
+  action: "handover_register" | "handover_reassign";
+  actionLabel: string;
+  reason: string | null;
+  actorUserId: string;
+  actorUserName: string | null;
+  createdAt: string;
+  assignments: ContractTakeoverHandoverAssignmentReadModel[];
+}
+
+export interface ContractTakeoverHandoverReadModel {
+  projectId: string;
+  takeoverId: string;
+  contractId: string;
+  takeoverStatus: ContractTakeoverStatus;
+  takeoverLevel: ContractTakeoverLevel;
+  takeoverLevelLabel: string;
+  requiresHandover: boolean;
+  registered: boolean;
+  revision: number | null;
+  assignments: ContractTakeoverHandoverAssignmentReadModel[];
+  history: ContractTakeoverHandoverHistoryReadModel[];
+  actorDuty: ContractTakeoverHandoverDuty | null;
+}
+
+export interface SaveContractTakeoverHandoverPayload {
+  contractUserId: string;
+  financeUserId: string;
+  supervisorUserId: string;
+  reason?: string;
+  idempotencyKey?: string;
 }
 
 export interface AbandonContractTakeoverPayload {
@@ -814,9 +1014,11 @@ export interface CreateContractTakeoverPayload {
   taxFactExplanation?: string;
   taxFactEvidenceFileId?: string;
   pricingItems?: HistoricalPricingItemPayload[];
-  amountCents: string;
+  amountCents?: string;
   signedAt: string;
-  takeoverLevel: ContractTakeoverLevel;
+  relationship?: "inside" | "outside" | "upward";
+  frameworkNoTotal?: boolean;
+  takeoverLevel?: ContractTakeoverLevel;
   lifecycleStatus: ContractLifecycleStatus;
   paymentTermsOriginalText?: string;
   paymentStages?: HistoricalTakeoverDirectPaymentStagePayload[];
@@ -994,10 +1196,12 @@ export interface CreateSettlementReadModel {
 }
 
 export interface CreatePaymentRequestPayload {
-  sourceType?: "settlement" | "contract_advance" | "contract_due";
+  sourceType?: "settlement" | "signed_settlement" | "contract_advance" | "contract_due";
   settlementId?: string;
+  signedSettlementId?: string;
   contractVersionId?: string;
   paymentTermsVersionId?: string;
+  expectedAgreementFingerprint?: string;
   paymentTermsStageId?: string;
   paymentMatter?: string;
   amountCalculationExplanation?: string;
@@ -1011,7 +1215,7 @@ export interface CreatePaymentRequestReadModel {
 }
 
 export interface ReviewPaymentApprovalPayload {
-  decision: "approve" | "reject";
+  decision: PaymentApprovalReviewActionDecision;
   approvedAmountCents?: string;
   comment?: string;
   selfReviewReason?: string;
@@ -1022,7 +1226,7 @@ export interface ReviewPaymentApprovalPayload {
   expectedApprovalUpdatedAt: string;
 }
 
-export type PaymentApprovalReviewActionDecision = "approve" | "reject";
+export type PaymentApprovalReviewActionDecision = "approve" | "reject" | "return_to_applicant";
 
 export interface PaymentApprovalReviewActionContext
   extends PaymentReviewApprovalContext {
@@ -1096,6 +1300,7 @@ export type ExecutePaymentApprovalReviewActionResult =
     };
 
 export interface ReviewContractApprovalPayload {
+  expectedParallelApprovalEpoch?: string;
   decision: "approve" | "reject";
   comment?: string;
   selfReviewReason?: string;
@@ -1109,6 +1314,7 @@ export interface ReviewContractApprovalPayload {
 }
 
 export interface ContractReviewApprovalCoordinates {
+  expectedParallelApprovalEpoch?: string;
   expectedContractUpdatedAt: string;
   expectedApprovalInstanceId: string;
   expectedNodeIndex: number;
@@ -1283,91 +1489,6 @@ export type ExecuteContractApprovalWithdrawalActionResult =
       error: unknown;
     };
 
-export type SettlementApprovalWithdrawalCoordinates =
-  SettlementApprovalWithdrawalContextReadModel;
-
-export interface SettlementApprovalWithdrawalActionContext
-  extends SettlementApprovalWithdrawalCoordinates {
-  action: "withdraw";
-  ownerScope: string;
-  routeGeneration: number;
-  detailEpoch: number;
-  dialogGeneration: number;
-  operationId: number;
-  routeSettlementId: string;
-  settlementCode: string;
-  settlementId: string;
-}
-
-export interface PrepareSettlementApprovalWithdrawalActionInput
-  extends SettlementApprovalWithdrawalActionContext {
-  isCurrent: (
-    context: SettlementApprovalWithdrawalActionContext
-  ) => boolean;
-}
-
-type SettlementApprovalWithdrawalPreflightReadModel =
-  SettlementDetailReadModel;
-
-export type PrepareSettlementApprovalWithdrawalActionResult =
-  | {
-      status: "ready";
-      context: SettlementApprovalWithdrawalActionContext;
-      preflight: SettlementApprovalWithdrawalPreflightReadModel;
-    }
-  | {
-      status: "stale";
-      context: SettlementApprovalWithdrawalActionContext;
-    };
-
-export interface ExecuteSettlementApprovalWithdrawalActionInput {
-  action: "withdraw";
-  capture: (
-    action: "withdraw"
-  ) => SettlementApprovalWithdrawalActionContext | null;
-  preflight: (
-    context: SettlementApprovalWithdrawalActionContext
-  ) => Promise<PrepareSettlementApprovalWithdrawalActionResult>;
-  current: (
-    context: SettlementApprovalWithdrawalActionContext,
-    prepared: PrepareSettlementApprovalWithdrawalActionResult
-  ) => boolean;
-  stale: (
-    context: SettlementApprovalWithdrawalActionContext
-  ) => void | Promise<void>;
-  complete: (
-    context: SettlementApprovalWithdrawalActionContext,
-    response: SettlementApprovalWithdrawalResponse
-  ) => void | Promise<void>;
-  fail: (
-    context: SettlementApprovalWithdrawalActionContext,
-    error: unknown
-  ) => void | Promise<void>;
-  finish: (context: SettlementApprovalWithdrawalActionContext) => void;
-}
-
-export interface SettlementApprovalWithdrawalResponse {
-  id: string;
-  status: "withdrawn";
-}
-
-export type ExecuteSettlementApprovalWithdrawalActionResult =
-  | { status: "not_started" }
-  | {
-      status: "stale";
-      context: SettlementApprovalWithdrawalActionContext;
-    }
-  | {
-      status: "completed";
-      context: SettlementApprovalWithdrawalActionContext;
-      response: SettlementApprovalWithdrawalResponse;
-    }
-  | {
-      status: "failed";
-      context: SettlementApprovalWithdrawalActionContext;
-      error: unknown;
-    };
-
 export interface ContractNumberRuleReadModel {
   id: string;
   name: string;
@@ -1378,13 +1499,6 @@ export interface ContractNumberRuleReadModel {
   nextSequence: number;
   sequenceWidth: number;
   isActive: boolean;
-}
-
-export interface ReviewSettlementApprovalPayload {
-  decision: "approve" | "reject" | "reject_previous" | "return_to_applicant";
-  comment?: string;
-  selfReviewReason?: string;
-  confirmationPassword?: string;
 }
 
 export interface AssignSettlementApprovalPayload {
@@ -1498,6 +1612,10 @@ export interface ContractLedgerListReadModel {
   rows: Array<{
     contractRelationshipLabel?: string;
     id: string;
+    contractId?: string;
+    contractVersionId?: string;
+    originalSignedNumber?: string | null;
+    originalSignedNumberState?: "available" | "unavailable";
     contractNo: string;
     name: string;
     project: string;
@@ -1714,13 +1832,41 @@ export interface OperatingProjectionAggregateReadModel {
   asOf: { businessDate: string; readAt: string; retroactiveFactCount: number };
   integrity: { statusLabel: string; moneyComplete: boolean; notices: string[] };
   commitments: { contractCommitmentCents: string };
-  relationshipTotals?: Array<{ relationship: string; label: string; contractCommitmentCents: string; confirmedCostCents: string; receivableCents: string; payableCents: string; interSubjectBalanceCents: string; interSubjectReceivableCents: string; interSubjectPayableCents: string }>;
+  relationshipTotals?: Array<{
+    relationship: string;
+    label: string;
+    contractCommitmentCents: string;
+    confirmedCostCents: string | null;
+    confirmedCostYuan?: string | null;
+    receivableCents: string | null;
+    receivableYuan?: string | null;
+    payableCents: string | null;
+    interSubjectBalanceCents: string;
+    interSubjectReceivableCents: string;
+    interSubjectPayableCents: string;
+  }>;
   operating: {
     confirmedIncomeCents: string;
-    confirmedCostCents: string;
-    internalReceivableCents?: string;
-    receivableCents: string;
-    payableCents: string;
+    confirmedCostCents: string | null;
+    confirmedCostYuan?: string | null;
+    internalReceivableCents?: string | null;
+    internalReceivableYuan?: string | null;
+    receivableCents: string | null;
+    receivableYuan?: string | null;
+    payableCents: string | null;
+  };
+  costAttribution?: {
+    byBearingCompany: Array<{
+      kind: string;
+      id: string;
+      name: string | null;
+      costCents: string | null;
+      costYuan?: string | null;
+    }>;
+    unattributedCostCents: string | null;
+    unattributedCostYuan?: string | null;
+    publicCashCostCents: string | null;
+    needsReview?: true;
   };
   actualFunds: {
     constructionEnterpriseFundsCents: string;
@@ -1729,6 +1875,8 @@ export interface OperatingProjectionAggregateReadModel {
     nonNegativeUsableCashStartCents: string;
     confirmedProjectInflowsCents: string;
     confirmedProjectOutflowsCents: string;
+    constructionEnterprisePaidCents?: string;
+    projectExternalPaidCents?: string;
     companyAdvanceForProjectCents: string;
     companyReturnableToProjectCents: string;
     interSubjectBalanceCents: string;
@@ -1746,15 +1894,17 @@ export interface OperatingProjectionAggregateReadModel {
     relationshipCompletenessLabel: string;
   };
   profitAndLoss: {
-    currentOperatingProfitCents: string;
+    currentOperatingProfitCents: string | null;
+    currentOperatingProfitYuan?: string | null;
     estimatedClearingExpenseCents: string;
-    currentEstimatedProfitCents: string;
+    currentEstimatedProfitCents: string | null;
+    currentEstimatedProfitYuan?: string | null;
     finalConfirmedProfitCents: string | null;
     finalConfirmable: boolean;
   };
   distribution: {
     cashCeilingCents: string | null;
-    projectedProfitCeilingCents: string;
+    projectedProfitCeilingCents: string | null;
     currentDistributableProfitCents: string | null;
   };
   evidence: Record<"A" | "B" | "C", { factCount: number; amountCents: string }> & {
@@ -1769,7 +1919,43 @@ export interface OperatingProjectionAggregateReadModel {
   }>;
 }
 
+export interface ProjectConstructionEnterprisePaidSummaryReadModel {
+  paidCents: string;
+  downstreamCents: string;
+  remittanceCents: string;
+  overpaidCents: string;
+  externalPaymentMetric?: "project_external_payment";
+}
+
+export interface ProjectConstructionEnterprisePaidEntryReadModel {
+  id: string;
+  sourceType: "project_affiliate_payment_fact" | "project_upstream_fund_fact";
+  kind: "downstream_payment" | "affiliate_remittance_to_company";
+  counterpartyName: string;
+  occurredAt: string;
+  amountCents: string;
+  direction: "increase" | "decrease";
+  settlementLedgerId: string | null;
+  paymentKind: string | null;
+  overpaidCents: string;
+}
+
+export interface ProjectContractDrilldownRowReadModel {
+  contractKey: string;
+  contractCode: string;
+  contractName: string;
+  contractKindLabel: string;
+  settledCents: string | null;
+  paidCents: string;
+  unpaidCents: string | null;
+  approvalPendingRequestCents: string;
+  approvedPendingPaymentCents: string;
+}
+
 export interface ProjectOperatingOverviewReadModel {
+  ownerBalance?: { settlementYuan: string; receivedYuan: string; outstandingYuan: string; advanceYuan: string } | null;
+  constructionEnterprisePaid?: ProjectConstructionEnterprisePaidSummaryReadModel;
+  contractDrilldown?: ProjectContractDrilldownRowReadModel[];
   project: ProjectOptionReadModel;
   cash: {
     actualReceiptsCents: string | null;
@@ -1787,9 +1973,16 @@ export interface ProjectOperatingOverviewReadModel {
     effectiveSettlementAmountCents: string | null;
     payableSettlementAmountCents: string | null;
     operatingIncomeCents: string | null;
+    operatingIncomeYuan?: string | null;
     affiliateDownstreamPaymentCents: string | null;
+    /** OPS-12：施工企业直接付下游 + 转我方；与 projectExternalPaidCents 成对定义，禁止相加。 */
+    constructionEnterprisePaidCents?: string;
+    /** OPS-12：项目整体对外支付 = 施工企业直接付下游 + 我方直接付下游；不含内部转款与扣费。 */
+    projectExternalPaidCents?: string;
     operatingCostCents: string | null;
+    operatingCostYuan?: string | null;
     grossProfitCents: string | null;
+    grossProfitYuan?: string | null;
   };
   upstreamFunds: {
     ownerPaymentCents: string | null;
@@ -1862,6 +2055,8 @@ export interface ProjectUpstreamFundFactPageReadModel {
 }
 
 export interface RecordProjectUpstreamFundFactPayload {
+  confirmedReceipt?: boolean;
+  confirmationPassword?: string;
   bankObservationReference?:string;
   factType: ProjectUpstreamFundFactType;
   basisType: ProjectUpstreamFundBasisType;
@@ -1887,7 +2082,22 @@ export interface ConfirmProjectUpstreamFundFactPayload {
   confirmationActionId: string;
 }
 
+export interface ProjectAffiliatePaymentRequestOptionReadModel {
+  id: string;
+  code: string;
+  sourceType: "settlement" | "contract_advance" | "contract_due";
+  status: string;
+  contractId: string;
+  contractVersionId: string;
+  settlementId: string | null;
+  requestedAmountCents: string;
+  approvedAmountCents: string;
+  paidAmountCents: string;
+  remainingAmountCents: string;
+}
+
 export interface ProjectUpstreamFundReferenceOptionsReadModel {
+  affiliatePaymentRequests?: ProjectAffiliatePaymentRequestOptionReadModel[];
   projectId: string;
   affiliateCompanyContracts: Array<{
     id: string;
@@ -2433,61 +2643,6 @@ export interface ProjectExpenseFinanceCompletionBaseline {
   amountCents: string;
 }
 
-export interface ConfirmProjectExpenseReceiptPayload {
-  confirmationPassword: string;
-  note?: string;
-  expectedExpenseUpdatedAt: string;
-  idempotencyKey: string;
-}
-
-export interface ProjectExpenseReceiptConfirmationReadModel {
-  projectId: string;
-  expenseRequestId: string;
-  idempotencyKey: string;
-  confirmedByUserId: string;
-  confirmedAt: string;
-  note: string | null;
-  updatedAt: string;
-}
-
-export interface ConfirmProjectExpenseReceiptWithPreflightInput<TContext> {
-  confirmationPassword: string;
-  note?: string;
-  expectedExpenseUpdatedAt: string;
-  idempotencyKey: string;
-  context: TContext;
-  isCurrent: (context: TContext) => boolean;
-}
-
-export interface ProjectExpenseReceiptConfirmationSubmission {
-  projectId: string;
-  expenseRequestId: string;
-  confirmationPassword: string;
-  note?: string;
-  expectedExpenseUpdatedAt: string;
-  idempotencyKey: string;
-  isCurrent: () => boolean;
-}
-
-export interface ProjectExpenseReceiptConfirmationAttemptState {
-  submission: ProjectExpenseReceiptConfirmationSubmission | null;
-  confirmationPasswordRejected: boolean;
-  preflightVerified: boolean;
-  preflightPromise:
-    | Promise<ProjectExpenseApprovalLifecycleDetailReadModel>
-    | null;
-  requestPromise:
-    | Promise<ProjectExpenseReceiptConfirmationReadModel>
-    | null;
-}
-
-export interface ProjectExpenseReceiptCompletionBaseline {
-  projectId: string;
-  expenseRequestId: string;
-  expectedExpenseUpdatedAt: string;
-  idempotencyKey: string;
-}
-
 export interface ProjectExpenseRequestListReadModel {
   rows: Array<{
     id: string;
@@ -2557,17 +2712,14 @@ export interface WorkbenchSummaryReadModel {
 }
 
 export type WorkItemQueueKey = "pending" | "blocked" | "started" | "drafts";
-export type ApprovalCenterViewKey =
-  | "pendingApproval"
-  | "startedByMe"
-  | "handledByMe"
-  | "delegatedToMe"
-  | "overdueReminder";
+export type ApprovalCenterViewKey = "pendingApproval" | "startedByMe" | "handledByMe";
 
 export interface WorkItemReadModel {
+  reminderId?: string;
+  noticeKey?: string;
   contractRelationshipLabel?: string; signingParty?: string; accountingEffect?: string;
   id: string;
-  type: "draft" | "contract_takeover" | "archive" | "approval" | "payment_execution" | "blocker";
+  type: "draft" | "contract_takeover" | "archive" | "approval" | "payment_execution" | "procurement" | "blocker";
   title: string;
   projectName: string;
   projectId?: string;
@@ -2582,9 +2734,35 @@ export interface WorkItemReadModel {
   tone: WorkbenchCardTone;
   ageDays?: number;
   agingStatus?: "current" | "long_running" | "stale";
+  applicantName?: string;
+  businessStatus?: string;
+  overdue?: boolean;
+  canHandle?: boolean;
+  parallelCompletion?: { completed: number; total: number };
+  actionGroup?: WorkItemActionGroupKey;
+}
+
+export type WorkItemActionGroupKey =
+  | "approval"
+  | "review"
+  | "procurement"
+  | "payment"
+  | "supplement"
+  | "other";
+
+export interface WorkItemActionGroupReadModel {
+  key: Exclude<WorkItemActionGroupKey, "other">;
+  title: string;
+  description: string;
+  count: number;
+  targetPath: string;
+  items: WorkItemReadModel[];
 }
 
 export interface WorkItemsReadModel {
+  noticePage?: { offset: number; size: number };
+  noticeIndexVersion?: string;
+  recentNotices?: WorkItemReadModel[];
   generatedAt: string;
   visibleProjectCount: number;
   queues: Record<WorkItemQueueKey, WorkItemReadModel[]>;
@@ -2594,14 +2772,26 @@ export interface WorkItemsReadModel {
     truncated: boolean;
   }>;
   approvalCenter: Record<ApprovalCenterViewKey, WorkItemReadModel[]>;
+  /** 首页动作分组；缺失时首页降级到四队列（兼容旧接口桩）。 */
+  groups?: WorkItemActionGroupReadModel[];
 }
 
 export function fetchWorkbenchSummary() {
   return readJson<WorkbenchSummaryReadModel>("/me/workbench-summary");
 }
 
-export function fetchWorkItems() {
-  return readJson<WorkItemsReadModel>("/me/work-items");
+export function fetchWorkItems(noticeOffset?: number) {
+  return readJson<WorkItemsReadModel>("/me/work-items", noticeOffset === undefined ? undefined : { "x-work-item-notices": String(noticeOffset) });
+}
+
+export function fetchWorkItemNoticeKeys(version: string, after?: string) {
+  const query = new URLSearchParams({ version, ...(after ? { after } : {}) });
+  return readJson<{ version: string; keys: string[]; nextCursor: string | null }>(`/me/work-item-notice-keys?${query}`);
+}
+
+export function fetchWorkItemNoticeDetails(version: string, keys: string[]) {
+  const query = new URLSearchParams({ version, keys: keys.join(",") });
+  return readJson<{ version: string; items: WorkItemReadModel[] }>(`/me/work-item-notice-details?${query}`);
 }
 
 export interface DraftRetentionPreviewReadModel {
@@ -2665,7 +2855,7 @@ export interface ProjectActionCapabilityReadModel {
 }
 
 export function validateProjectCreation(body: CreateProjectPayload) {
-  return postJson<BusinessEntryValidationResult>("/projects/create-validation", body);
+  return postJson<BusinessEntryValidationResult & { warnings: string[] }>("/projects/create-validation", body);
 }
 
 export function fetchProjectCreateCapability() {
@@ -2686,10 +2876,18 @@ export function fetchProjectOperatingOverview(projectId: string) {
   return readJson<ProjectOperatingOverviewReadModel>(`/projects/${projectId}/operating-funds-overview`);
 }
 
-export function fetchProjectSetOperatingProjection(projectIds?: string[]) {
+export type ProjectSetOperatingProjectionV2 = Pick<OperatingProjectionAggregateReadModel,
+  "scope" | "actualFunds" | "distribution" | "evidence" | "integrity"> & {
+  commitments: { contractCommitmentCents: string | null; contractCommitmentYuan: string | null };
+};
+
+export function fetchProjectSetOperatingProjection(projectIds?: string[]): Promise<OperatingProjectionAggregateReadModel>;
+export function fetchProjectSetOperatingProjection(projectIds: string[] | undefined, numericProtocolVersion: 2): Promise<ProjectSetOperatingProjectionV2>;
+export function fetchProjectSetOperatingProjection(projectIds?: string[], numericProtocolVersion?: 2) {
   const query = new URLSearchParams({ scopeKind: "projects" });
   if (projectIds) query.set("projectIds", projectIds.join(","));
-  return readJson<OperatingProjectionAggregateReadModel>(
+  if (numericProtocolVersion === 2) query.set("numericProtocolVersion", "2");
+  return readJson<OperatingProjectionAggregateReadModel | ProjectSetOperatingProjectionV2>(
     `/operating-projections/as-of?${query.toString()}`
   );
 }
@@ -2712,7 +2910,7 @@ export async function downloadOperatingProjectionExport(body: {
   const response = await apiFetch("/operating-projections/export", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body)
+    body: JSON.stringify({ ...body, numericProtocolVersion: "2" })
   });
   await ensureOk(response, "导出经营投影失败");
   const blob = await response.blob();
@@ -2778,6 +2976,33 @@ export function fetchProjectUpstreamFundConfirmationCapability(
 ) {
   return readJson<ProjectUpstreamFundConfirmationCapabilityReadModel>(
     `/projects/${encodeURIComponent(projectId)}/upstream-fund-facts/${encodeURIComponent(fundFactId)}/confirmation-capability`
+  );
+}
+
+export interface RecordProjectOwnerSettlementPayload {
+  ownerName: string;
+  settledAt: string;
+  amountYuan: string;
+  voucherFileId: string;
+  idempotencyKey: string;
+}
+
+export function fetchProjectOwnerSettlementCapability(projectId: string) {
+  return readJson<{ projectId: string; availableActions: string[] }>(
+    `/projects/${encodeURIComponent(projectId)}/owner-settlements/record-capability`
+  );
+}
+
+export function uploadProjectOwnerSettlementFile(projectId: string, file: File, idempotencyKey: string) {
+  return postForm<PrivateFileReadModel>(
+    `/projects/${encodeURIComponent(projectId)}/owner-settlements/file-uploads`,
+    projectDomainPrivateFileForm(file, file.name, undefined, idempotencyKey)
+  );
+}
+
+export function recordProjectOwnerSettlement(projectId: string, body: RecordProjectOwnerSettlementPayload) {
+  return postJson<{ id: string; amountYuan: string }>(
+    `/projects/${encodeURIComponent(projectId)}/owner-settlements`, body
   );
 }
 
@@ -2932,6 +3157,158 @@ export function confirmProjectAffiliatePaymentFact(
 ) {
   return postJson<ProjectAffiliatePaymentFactReadModel>(
     `/projects/${encodeURIComponent(projectId)}/affiliate-payment-facts/${encodeURIComponent(factId)}/confirmation`,
+    body
+  );
+}
+
+export interface RequestConstructionPaymentCorrectionPayload {
+  sourceType: "downstream_payment" | "affiliate_remittance_to_company" | "affiliate_deduction";
+  originalFactId: string;
+  correctionReason: string;
+  idempotencyKey: string;
+  amountCents?: string;
+  occurredAt?: string;
+  counterpartyName?: string;
+  feeName?: string;
+  contractLedgerId?: string;
+  settlementLedgerId?: string;
+  paymentRequestId?: string;
+  companyEntityId?: string;
+  affiliateCompanyContractId?: string;
+  affiliateSettlementFactId?: string;
+  invoiceRecordId?: string;
+  evidenceFileId?: string;
+  description?: string;
+}
+
+export interface ConstructionPaymentCorrectionReadModel {
+  sourceType: "downstream_payment" | "affiliate_remittance_to_company" | "affiliate_deduction";
+  originalFactId: string;
+  reversalFactId: string;
+  replacementFactId: string;
+  correctionMode: "reversal_and_re_register";
+  status: "pending_confirm";
+  availableAction: "confirm_construction_payment_correction";
+}
+
+export interface ConfirmConstructionPaymentCorrectionPayload {
+  confirmationPassword: string;
+  confirmationActionId: string;
+  selfReviewReason?: string;
+}
+
+export interface ProjectConstructionEnterpriseDeductionReadModel {
+  id: string;
+  projectId: string;
+  feeName: string;
+  occurredAt: string;
+  amountCents: string;
+  direction: "increase" | "decrease";
+  entryKind: "original" | "correction" | "reversal";
+  adjustsFactId: string | null;
+  status: "pending_confirm" | "confirmed";
+  basisType: "written" | "oral";
+  evidenceFileId: string | null;
+  deductionCategory: "management_fee" | "tax" | "deposit" | "insurance" | "other" | null;
+  counterpartyName: string;
+  confirmedAt: string | null;
+  createdAt: string;
+}
+
+export interface ProjectConstructionEnterpriseDeductionListItemReadModel
+  extends ProjectConstructionEnterpriseDeductionReadModel {
+  signedAmountCents: string;
+  hasReversal: boolean;
+  correctable: boolean;
+}
+
+export interface ProjectConstructionEnterpriseDeductionPageReadModel {
+  projectId: string;
+  items: ProjectConstructionEnterpriseDeductionListItemReadModel[];
+  summary: {
+    deductedCents: string;
+    pendingCents: string;
+  };
+  nextCursor: string | null;
+}
+
+export interface RecordProjectConstructionEnterpriseDeductionPayload {
+  feeName: string;
+  amountCents: string;
+  occurredAt: string;
+  evidenceFileId?: string;
+  idempotencyKey: string;
+}
+
+export function recordProjectConstructionEnterpriseDeduction(
+  projectId: string,
+  body: RecordProjectConstructionEnterpriseDeductionPayload
+) {
+  return postJson<ProjectConstructionEnterpriseDeductionReadModel>(
+    `/projects/${encodeURIComponent(projectId)}/construction-enterprise-deductions`,
+    body
+  );
+}
+
+export function fetchProjectConstructionEnterpriseDeductions(
+  projectId: string,
+  input: { cursor?: string; pageSize?: number } = {}
+) {
+  const query = new URLSearchParams();
+  if (input.cursor) query.set("cursor", input.cursor);
+  if (input.pageSize !== undefined) query.set("pageSize", String(input.pageSize));
+  const suffix = query.toString() ? `?${query.toString()}` : "";
+  return readJson<ProjectConstructionEnterpriseDeductionPageReadModel>(
+    `/projects/${encodeURIComponent(projectId)}/construction-enterprise-deductions${suffix}`
+  );
+}
+
+export function fetchProjectConstructionEnterpriseDeductionCapability(projectId: string) {
+  return readJson<{ projectId: string; availableActions: string[] }>(
+    `/projects/${encodeURIComponent(projectId)}/construction-enterprise-deductions/capability`
+  );
+}
+
+export function fetchConstructionEnterprisePaid(
+  projectId: string,
+  input: { cursor?: string; pageSize?: number } = {}
+) {
+  const query = new URLSearchParams();
+  if (input.cursor) query.set("cursor", input.cursor);
+  if (input.pageSize !== undefined) query.set("pageSize", String(input.pageSize));
+  const suffix = query.toString() ? `?${query.toString()}` : "";
+  return readJson<{
+    projectId: string;
+    items: ProjectConstructionEnterprisePaidEntryReadModel[];
+    summary: ProjectConstructionEnterprisePaidSummaryReadModel;
+    nextCursor: string | null;
+  }>(`/projects/${encodeURIComponent(projectId)}/construction-enterprise-paid${suffix}`);
+}
+
+export function requestConstructionPaymentCorrection(
+  projectId: string,
+  body: RequestConstructionPaymentCorrectionPayload
+) {
+  return postJson<ConstructionPaymentCorrectionReadModel>(
+    `/projects/${encodeURIComponent(projectId)}/construction-payment-corrections`,
+    body
+  );
+}
+
+export function fetchConstructionPaymentCorrectionCapability(projectId: string) {
+  return readJson<{ projectId: string; availableActions: string[] }>(
+    `/projects/${encodeURIComponent(projectId)}/construction-payment-corrections/capability`
+  );
+}
+
+export function confirmConstructionPaymentCorrection(
+  projectId: string,
+  sourceType: string,
+  originalFactId: string,
+  body: ConfirmConstructionPaymentCorrectionPayload
+) {
+  return postJson<ConstructionPaymentCorrectionReadModel>(
+    `/projects/${encodeURIComponent(projectId)}/construction-payment-corrections/${encodeURIComponent(sourceType)}/${encodeURIComponent(originalFactId)}/confirmation`,
     body
   );
 }
@@ -3589,17 +3966,6 @@ export function recordProjectExpenseFinance(
   );
 }
 
-function confirmProjectExpenseReceipt(
-  projectId: string,
-  expenseRequestId: string,
-  body: ConfirmProjectExpenseReceiptPayload
-) {
-  return postJson<ProjectExpenseReceiptConfirmationReadModel>(
-    `/projects/${encodeURIComponent(projectId)}/expense-requests/${encodeURIComponent(expenseRequestId)}/receipt-confirmation`,
-    body
-  );
-}
-
 export function downloadProjectExpenseAttachment(
   projectId: string,
   expenseRequestId: string,
@@ -3625,8 +3991,8 @@ export async function downloadProjectExpenseApprovalPdf(
   saveBlob(await response.blob(), name ? decodeURIComponent(name) : "项目费用审批单.pdf");
 }
 
-export function fetchContractLedger() {
-  return readJson<ContractLedgerListReadModel>("/contracts");
+export function fetchContractLedger(options?: Pick<ApiFetchInit, "retryUnauthorized" | "responseIsCurrent">) {
+  return readJson<ContractLedgerListReadModel>("/contracts", { "x-contract-numeric-protocol": "2" }, options);
 }
 
 export type ContractLifecycleLedgerRow = ContractLedgerListReadModel["rows"][number] & {
@@ -3661,15 +4027,23 @@ export function copyAbandonedContractDraft(contractVersionId: string, expectedUp
 export function fetchContractLifecycleLedger(
   view: DraftLedgerView,
   page: number,
-  pageSize: number
+  pageSize: number,
+  formalFilters?: Pick<LedgerExportQueryParams, "projectId" | "dateFrom" | "dateTo" | "status" | "keyword" | "sort">
 ) {
   const query = new URLSearchParams({
     view,
     page: String(page),
     pageSize: String(pageSize)
   });
+  if (formalFilters) {
+    query.set("scope", "formal_ledger");
+    for (const [key, value] of Object.entries(formalFilters)) {
+      if (value) query.set(key, value);
+    }
+  }
   return readJson<LifecycleLedgerPage<ContractLifecycleLedgerRow>>(
-    `/contracts/lifecycle-ledger?${query.toString()}`
+    `/contracts/lifecycle-ledger?${query.toString()}`,
+    { "x-contract-numeric-protocol": "2" }
   );
 }
 
@@ -3688,12 +4062,45 @@ export function fetchContractWorkbenchLedger(
     pageSize: String(pageSize)
   });
   return readJson<ContractWorkbenchLedgerPage<ContractLifecycleLedgerRow>>(
-    `/contracts/workbench?${query.toString()}`
+    `/contracts/workbench?${query.toString()}`,
+    { "x-contract-numeric-protocol": "2" }
   );
 }
 
-export function downloadContractLedgerExport() {
-  return downloadWorkbook("/contracts/ledger-export", "合同台账.xlsx", "导出合同台账失败");
+export interface LedgerExportQueryParams {
+  projectId?: string;
+  dateFrom?: string;
+  dateTo?: string;
+  status?: string;
+  keyword?: string;
+  columns?: readonly string[];
+  sort?: string;
+}
+
+export function downloadContractLedgerExport(query?: LedgerExportQueryParams & { scope?: "formal_ledger" }) {
+  const params = new URLSearchParams();
+  if (query?.scope) params.set("scope", query.scope);
+  if (query?.projectId) params.set("projectId", query.projectId);
+  if (query?.dateFrom) params.set("dateFrom", query.dateFrom);
+  if (query?.dateTo) params.set("dateTo", query.dateTo);
+  if (query?.status) params.set("status", query.status);
+  if (query?.keyword) params.set("keyword", query.keyword);
+  if (query?.sort) params.set("sort", query.sort);
+  if (query?.columns?.length) params.set("columns", query.columns.join(","));
+  const suffix = params.toString();
+  return suffix
+    ? downloadWorkbook(
+        `/contracts/ledger-export?${suffix}`,
+        "合同台账.xlsx",
+        "导出合同台账失败",
+        { "x-contract-numeric-protocol": "2" }
+      )
+    : downloadWorkbook(
+        "/contracts/ledger-export",
+        "合同台账.xlsx",
+        "导出合同台账失败",
+        { "x-contract-numeric-protocol": "2" }
+      );
 }
 
 export function fetchSettlementContractOptions(projectId: string) {
@@ -3768,12 +4175,106 @@ export function fetchSettlementWorkbenchLedger(
   );
 }
 
+/**
+ * @deprecated 旧 `Settlement` 台账导出，仅用于历史数据兼容。
+ * 正式结算台账请使用 {@link downloadSignedSettlementLedgerExport}。
+ */
 export function downloadSettlementLedgerExport() {
   return downloadWorkbook(
     "/settlements/ledger-export",
     "结算台账.xlsx",
     "导出结算台账失败"
   );
+}
+
+export type SignedSettlementLedgerRow = {
+  id: string;
+  settlementId: string;
+  settlementNo: string;
+  confirmationNo: string | null;
+  contractKind: string;
+  contractKindLabel: string;
+  relationship: string;
+  relationshipLabel: string;
+  contractName: string;
+  projectId: string;
+  project: string;
+  signingParty: string;
+  counterparty: string;
+  amountYuan: string | null;
+  amount: string;
+  amountKnown: boolean;
+  confirmedAt: string | null;
+  confirmedDate: string | null;
+  confirmedAtText: string;
+  reviewerName: string;
+  status: string;
+  statusLabel: string;
+  updatedAt: string;
+};
+
+export interface SignedSettlementLedgerPage {
+  rows: SignedSettlementLedgerRow[];
+  meta: { page: number; pageSize: number; total: number; totalPages: number };
+  summary: {
+    total: number;
+    knownAmountRows: number;
+    unknownAmountRows: number;
+    totalAmountYuan: string | null;
+    projectCount: number;
+    latestConfirmedAt: string | null;
+  };
+  filters: {
+    projectId: string | null;
+    dateFrom: string | null;
+    dateTo: string | null;
+    status: string | null;
+    keyword: string | null;
+  };
+  columns: Array<{ key: string; header: string; required: boolean }>;
+}
+
+/** 正式结算台账：只读已复核 `SignedContractSettlement`（跨项目入账）。 */
+export function fetchSignedSettlementLedger(
+  query: LedgerExportQueryParams & { page?: number; pageSize?: number } = {}
+) {
+  const params = new URLSearchParams();
+  if (query.projectId) params.set("projectId", query.projectId);
+  if (query.dateFrom) params.set("dateFrom", query.dateFrom);
+  if (query.dateTo) params.set("dateTo", query.dateTo);
+  if (query.status) params.set("status", query.status);
+  if (query.keyword) params.set("keyword", query.keyword);
+  if (query.sort) params.set("sort", query.sort);
+  if (query.columns?.length) params.set("columns", query.columns.join(","));
+  if (query.page !== undefined) params.set("page", String(query.page));
+  if (query.pageSize !== undefined) params.set("pageSize", String(query.pageSize));
+  const suffix = params.toString();
+  return readJson<SignedSettlementLedgerPage>(
+    suffix ? `/settlements/signed-ledger?${suffix}` : "/settlements/signed-ledger"
+  );
+}
+
+export function downloadSignedSettlementLedgerExport(query?: LedgerExportQueryParams) {
+  const params = new URLSearchParams();
+  if (query?.projectId) params.set("projectId", query.projectId);
+  if (query?.dateFrom) params.set("dateFrom", query.dateFrom);
+  if (query?.dateTo) params.set("dateTo", query.dateTo);
+  if (query?.status) params.set("status", query.status);
+  if (query?.keyword) params.set("keyword", query.keyword);
+  if (query?.sort) params.set("sort", query.sort);
+  if (query?.columns?.length) params.set("columns", query.columns.join(","));
+  const suffix = params.toString();
+  return suffix
+    ? downloadWorkbook(
+        `/settlements/signed-ledger-export?${suffix}`,
+        "已签结算台账.xlsx",
+        "导出已签结算台账失败"
+      )
+    : downloadWorkbook(
+        "/settlements/signed-ledger-export",
+        "已签结算台账.xlsx",
+        "导出已签结算台账失败"
+      );
 }
 
 export function fetchPaymentLedger() {
@@ -3784,6 +4285,10 @@ export type PaymentLifecycleLedgerRow = PaymentLedgerListReadModel["rows"][numbe
   lifecycleKind: "approval_draft" | "formal_record";
   ledgerView: DraftLedgerView;
   lifecycleUpdatedAt: string | null;
+  projectId: string;
+  contractId: string;
+  signingParty: string;
+  counterparty: string;
   requestedAmountCents: string;
   paidAmountCents: string;
   availableActions: string[];
@@ -3803,19 +4308,59 @@ export interface PaymentLifecycleLedgerPage {
     pendingPayment: number;
     paid: number;
   };
+  filters?: {
+    projectId: string | null;
+    dateFrom: string | null;
+    dateTo: string | null;
+    status: string | null;
+    keyword: string | null;
+    sort: string | null;
+  };
+  columns?: Array<{ key: string; header: string; required: boolean }>;
+}
+
+export interface PaymentLedgerQueryParams {
+  projectId?: string;
+  dateFrom?: string;
+  dateTo?: string;
+  status?: string;
+  keyword?: string;
+  sort?: string;
+  columns?: string;
 }
 
 export function fetchPaymentLifecycleLedger(
   view: DraftLedgerView,
   page: number,
-  pageSize: number
+  pageSize: number,
+  extra: PaymentLedgerQueryParams = {}
 ) {
   const query = new URLSearchParams({
     view,
     page: String(page),
     pageSize: String(pageSize)
   });
+  for (const [key, value] of Object.entries(extra)) {
+    if (value === undefined || value.trim() === "") continue;
+    query.set(key, value);
+  }
   return readJson<PaymentLifecycleLedgerPage>(`/payments?${query.toString()}`);
+}
+
+export function downloadPaymentLedgerExport(
+  view: DraftLedgerView,
+  extra: PaymentLedgerQueryParams = {}
+) {
+  const query = new URLSearchParams({ view });
+  for (const [key, value] of Object.entries(extra)) {
+    if (value === undefined || value.trim() === "") continue;
+    query.set(key, value);
+  }
+  return downloadWorkbook(
+    `/payments/ledger-export?${query.toString()}`,
+    "付款台账.xlsx",
+    "导出付款台账失败"
+  );
 }
 
 export function fetchAuditLogs() {
@@ -3826,21 +4371,54 @@ export function fetchFileDownloadAudits() {
   return readJson<FileDownloadAuditListReadModel>("/audit-logs/file-downloads");
 }
 
-export function fetchArchives() {
-  return readJson<ArchiveListReadModel>("/archives");
+export interface ArchiveSearchFilters {
+  project?: string;
+  contract?: string;
+  counterparty?: string;
+  documentType?: string;
+  archiveStatus?: string;
+  dateFrom?: string;
+  dateTo?: string;
+  keyword?: string;
+  limit?: number;
+}
+
+export function fetchArchives(filters: ArchiveSearchFilters = {}) {
+  const params = new URLSearchParams();
+  const project = filters.project?.trim();
+  const contract = filters.contract?.trim();
+  const counterparty = filters.counterparty?.trim();
+  const documentType = filters.documentType?.trim();
+  const archiveStatus = filters.archiveStatus?.trim();
+  const dateFrom = filters.dateFrom?.trim();
+  const dateTo = filters.dateTo?.trim();
+  const keyword = filters.keyword?.trim();
+  if (project) params.set("project", project);
+  if (contract) params.set("contract", contract);
+  if (counterparty) params.set("counterparty", counterparty);
+  if (documentType) params.set("documentType", documentType);
+  if (archiveStatus) params.set("archiveStatus", archiveStatus);
+  if (dateFrom) params.set("dateFrom", dateFrom);
+  if (dateTo) params.set("dateTo", dateTo);
+  if (keyword) params.set("keyword", keyword);
+  if (filters.limit !== undefined) params.set("limit", String(filters.limit));
+  const suffix = params.size ? `?${params.toString()}` : "";
+  return readJson<ArchiveListReadModel>(`/archives${suffix}`);
 }
 
 export function uploadPrivateFile(
   file: Blob,
   fileName: string,
-  idempotencyKey?: string
+  idempotencyKey?: string,
+  responseIsCurrent?: () => boolean
 ) {
   const form = new FormData();
   form.append("file", file, fileName);
   if (idempotencyKey !== undefined) {
     form.append("idempotencyKey", idempotencyKey);
   }
-  return postForm<PrivateFileReadModel>("/files", form);
+  const options = responseIsCurrent ? { retryUnauthorized: false, responseIsCurrent } : undefined;
+  return postForm<PrivateFileReadModel>("/files", form, options);
 }
 
 function projectDomainPrivateFileForm(
@@ -4929,337 +5507,6 @@ function requiredProjectExpenseFinanceText(
   return normalized;
 }
 
-export type ProjectExpenseReceiptFailureDisposition =
-  | "same_fact"
-  | "password_only"
-  | "restart";
-
-export function projectExpenseReceiptFailureDisposition(
-  error: unknown
-): ProjectExpenseReceiptFailureDisposition {
-  if (
-    error instanceof Error &&
-    error.message.includes("当前密码不正确")
-  ) {
-    return "password_only";
-  }
-  if (
-    error instanceof CoreFlowApiError &&
-    error.status >= 500
-  ) {
-    return "same_fact";
-  }
-  if (
-    error instanceof Error &&
-    /网络连接失败|网络请求失败|Failed to fetch|fetch failed|NetworkError|Load failed|ECONNREFUSED/iu.test(
-      error.message
-    )
-  ) {
-    return "same_fact";
-  }
-  return "restart";
-}
-
-export function createProjectExpenseReceiptConfirmationAttemptState(): ProjectExpenseReceiptConfirmationAttemptState {
-  return {
-    submission: null,
-    confirmationPasswordRejected: false,
-    preflightVerified: false,
-    preflightPromise: null,
-    requestPromise: null
-  };
-}
-
-export function confirmProjectExpenseReceiptWithPreflight<TContext>(
-  projectId: string,
-  expenseRequestId: string,
-  input: ConfirmProjectExpenseReceiptWithPreflightInput<TContext>,
-  state: ProjectExpenseReceiptConfirmationAttemptState
-) {
-  if (state.requestPromise) return state.requestPromise;
-  let submission: ProjectExpenseReceiptConfirmationSubmission;
-  try {
-    const existingSubmission = state.submission;
-    submission =
-      existingSubmission && state.confirmationPasswordRejected
-        ? Object.freeze({
-            ...existingSubmission,
-            confirmationPassword:
-              requiredProjectExpenseReceiptText(
-                input.confirmationPassword,
-                "当前密码",
-                false
-              )
-          })
-        : existingSubmission ??
-          normalizeProjectExpenseReceiptConfirmation(
-            projectId,
-            expenseRequestId,
-            input
-          );
-    if (
-      submission.projectId !== projectId.trim() ||
-      submission.expenseRequestId !==
-        expenseRequestId.trim()
-    ) {
-      throw new Error(
-        "项目支出收货确认重试单据已变化，请重新打开确认窗口"
-      );
-    }
-    state.submission = submission;
-    state.confirmationPasswordRejected = false;
-  } catch (error) {
-    return Promise.reject(error);
-  }
-
-  const request = executeProjectExpenseReceiptConfirmation(
-    submission,
-    state
-  );
-  state.requestPromise = request;
-  void request.catch((error) => {
-    const disposition =
-      projectExpenseReceiptFailureDisposition(error);
-    if (disposition === "password_only") {
-      state.confirmationPasswordRejected = true;
-    } else if (disposition === "restart") {
-      state.submission = null;
-      state.confirmationPasswordRejected = false;
-      state.preflightVerified = false;
-      state.preflightPromise = null;
-    }
-    if (state.requestPromise === request) {
-      state.requestPromise = null;
-    }
-  });
-  return request;
-}
-
-function normalizeProjectExpenseReceiptConfirmation<TContext>(
-  projectId: string,
-  expenseRequestId: string,
-  input: ConfirmProjectExpenseReceiptWithPreflightInput<TContext>
-): ProjectExpenseReceiptConfirmationSubmission {
-  if (!input.isCurrent(input.context)) {
-    throw new Error(
-      "项目支出收货确认上下文已失效，请重新读取当前单据"
-    );
-  }
-  const idempotencyKey =
-    requiredProjectExpenseReceiptText(
-      input.idempotencyKey,
-      "项目支出收货确认幂等键"
-    ).toLowerCase();
-  if (
-    !/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu.test(
-      idempotencyKey
-    )
-  ) {
-    throw new Error(
-      "项目支出收货确认幂等键必须为 UUIDv4"
-    );
-  }
-  const expectedExpenseUpdatedAt =
-    requiredProjectExpenseReceiptText(
-      input.expectedExpenseUpdatedAt,
-      "项目支出版本"
-    );
-  if (
-    Number.isNaN(
-      new Date(expectedExpenseUpdatedAt).getTime()
-    )
-  ) {
-    throw new Error("项目支出版本格式不正确");
-  }
-  const normalizedNote = input.note?.trim();
-  return Object.freeze({
-    projectId: requiredProjectExpenseReceiptText(
-      projectId,
-      "项目编号"
-    ),
-    expenseRequestId:
-      requiredProjectExpenseReceiptText(
-        expenseRequestId,
-        "项目支出编号"
-      ),
-    confirmationPassword:
-      requiredProjectExpenseReceiptText(
-        input.confirmationPassword,
-        "当前密码",
-        false
-      ),
-    ...(normalizedNote ? { note: normalizedNote } : {}),
-    expectedExpenseUpdatedAt,
-    idempotencyKey,
-    isCurrent: () => input.isCurrent(input.context)
-  });
-}
-
-async function executeProjectExpenseReceiptConfirmation(
-  submission: ProjectExpenseReceiptConfirmationSubmission,
-  state: ProjectExpenseReceiptConfirmationAttemptState
-): Promise<ProjectExpenseReceiptConfirmationReadModel> {
-  assertProjectExpenseReceiptCurrent(submission);
-  await verifyProjectExpenseReceiptPreflight(
-    submission,
-    state
-  );
-  assertProjectExpenseReceiptCurrent(submission);
-  const response = await confirmProjectExpenseReceipt(
-    submission.projectId,
-    submission.expenseRequestId,
-    {
-      confirmationPassword:
-        submission.confirmationPassword,
-      ...(submission.note
-        ? { note: submission.note }
-        : {}),
-      expectedExpenseUpdatedAt:
-        submission.expectedExpenseUpdatedAt,
-      idempotencyKey: submission.idempotencyKey
-    }
-  );
-  assertProjectExpenseReceiptCurrent(submission);
-  assertProjectExpenseReceiptConfirmationResponse(
-    response,
-    submission
-  );
-  return response;
-}
-
-function assertProjectExpenseReceiptConfirmationResponse(
-  response: ProjectExpenseReceiptConfirmationReadModel,
-  submission: ProjectExpenseReceiptConfirmationSubmission
-) {
-  const confirmedAt = new Date(response?.confirmedAt).getTime();
-  const updatedAt = new Date(response?.updatedAt).getTime();
-  const expectedUpdatedAt = new Date(
-    submission.expectedExpenseUpdatedAt
-  ).getTime();
-  if (
-    !response ||
-    response.projectId !== submission.projectId ||
-    response.expenseRequestId !==
-      submission.expenseRequestId ||
-    response.idempotencyKey !== submission.idempotencyKey ||
-    typeof response.confirmedByUserId !== "string" ||
-    !response.confirmedByUserId.trim() ||
-    Number.isNaN(confirmedAt) ||
-    Number.isNaN(updatedAt) ||
-    updatedAt <= expectedUpdatedAt ||
-    confirmedAt > updatedAt ||
-    response.note !== (submission.note ?? null)
-  ) {
-    throw new Error(
-      "项目支出收货确认响应与本次持久事实不一致，请刷新后核对"
-    );
-  }
-}
-
-export function projectExpenseReceiptCompletionIsAuthoritative(
-  detail: ProjectExpenseApprovalLifecycleDetailReadModel,
-  baseline: ProjectExpenseReceiptCompletionBaseline,
-  response: ProjectExpenseReceiptConfirmationReadModel
-) {
-  const enabledActions = detail.availableActions.filter(
-    (action) =>
-      action.key === "confirm_receipt" && action.enabled
-  );
-  const lifecycleUpdatedAt = new Date(
-    detail.lifecycleUpdatedAt ?? ""
-  ).getTime();
-  const responseUpdatedAt = new Date(
-    response.updatedAt
-  ).getTime();
-  return (
-    detail.projectId === baseline.projectId &&
-    detail.id === baseline.expenseRequestId &&
-    response.projectId === baseline.projectId &&
-    response.expenseRequestId === baseline.expenseRequestId &&
-    response.idempotencyKey === baseline.idempotencyKey &&
-    typeof detail.lifecycleUpdatedAt === "string" &&
-    !Number.isNaN(lifecycleUpdatedAt) &&
-    !Number.isNaN(responseUpdatedAt) &&
-    lifecycleUpdatedAt >= responseUpdatedAt &&
-    detail.lifecycleUpdatedAt !==
-      baseline.expectedExpenseUpdatedAt &&
-    typeof detail.receiptConfirmedAt === "string" &&
-    detail.receiptConfirmedAt === response.confirmedAt &&
-    detail.receiptConfirmedByUserId ===
-      response.confirmedByUserId &&
-    detail.receiptConfirmationNote === response.note &&
-    detail.receiptConfirmationIdempotencyKey ===
-      baseline.idempotencyKey &&
-    enabledActions.length === 0 &&
-    detail.receiptContext === null
-  );
-}
-
-async function verifyProjectExpenseReceiptPreflight(
-  submission: ProjectExpenseReceiptConfirmationSubmission,
-  state: ProjectExpenseReceiptConfirmationAttemptState
-) {
-  if (state.preflightVerified) return;
-  const preflight =
-    state.preflightPromise ??
-    fetchProjectExpenseApprovalDetail(
-      submission.projectId,
-      submission.expenseRequestId
-    );
-  state.preflightPromise = preflight;
-  let detail: ProjectExpenseApprovalLifecycleDetailReadModel;
-  try {
-    detail = await preflight;
-  } catch (error) {
-    if (state.preflightPromise === preflight) {
-      state.preflightPromise = null;
-    }
-    throw error;
-  }
-  assertProjectExpenseReceiptCurrent(submission);
-  const enabledActions = detail.availableActions.filter(
-    (action) =>
-      action.key === "confirm_receipt" && action.enabled
-  );
-  if (
-    detail.projectId !== submission.projectId ||
-    detail.id !== submission.expenseRequestId ||
-    enabledActions.length !== 1 ||
-    detail.lifecycleUpdatedAt !==
-      submission.expectedExpenseUpdatedAt ||
-    detail.receiptContext?.expectedExpenseUpdatedAt !==
-      submission.expectedExpenseUpdatedAt ||
-    detail.receiptConfirmedAt !== null ||
-    detail.receiptConfirmationIdempotencyKey !== null
-  ) {
-    state.preflightPromise = null;
-    throw new Error(
-      "项目支出收货确认资格或版本已变化，请刷新详情后重试"
-    );
-  }
-  state.preflightVerified = true;
-}
-
-function assertProjectExpenseReceiptCurrent(
-  submission: ProjectExpenseReceiptConfirmationSubmission
-) {
-  if (!submission.isCurrent()) {
-    throw new Error(
-      "项目支出收货确认上下文已失效，请重新读取当前单据"
-    );
-  }
-}
-
-function requiredProjectExpenseReceiptText(
-  value: string,
-  label: string,
-  trim = true
-) {
-  const normalized = trim ? value.trim() : value;
-  if (!normalized.trim()) throw new Error(`请填写${label}`);
-  return normalized;
-}
-
 export function createProjectAffiliateCompanyContractRecordAttemptState(): ProjectAffiliateCompanyContractRecordAttemptState {
   return {
     submission: null,
@@ -5416,8 +5663,8 @@ function requiredAffiliateCompanyContractRecordText(
 }
 
 export interface CreatePrivateFileDownloadTicketPayload {
-  confirmationPassword: string;
-  downloadReason: string;
+  confirmationPassword?: string;
+  downloadReason?: string;
   accessMode?: "download" | "preview";
 }
 
@@ -5466,14 +5713,40 @@ export async function downloadPrivateFileByTicket(
   }
   const blob = await response.blob();
   if (delivery === "pdf-blob") return { blob, fileName: ticket.fileName };
-  const url = URL.createObjectURL(blob);
-  const anchor = document.createElement("a");
-  anchor.href = url;
-  anchor.download = ticket.fileName;
-  document.body.appendChild(anchor);
-  anchor.click();
-  anchor.remove();
-  URL.revokeObjectURL(url);
+  saveBlob(blob, ticket.fileName);
+}
+
+export interface ArchiveDownloadPackageCapability {
+  availableActions: Array<"download_archive_package">;
+  action: {
+    key: "download_archive_package";
+    enabled: boolean;
+  };
+  fileCount: number;
+  totalBytes: number;
+}
+
+export function getArchiveDownloadPackageCapability(fileIds: string[]) {
+  const query = fileIds.map((fileId) => encodeURIComponent(fileId)).join(",");
+  return readJson<ArchiveDownloadPackageCapability>(
+    `/files/download-package-capability?fileIds=${query}`
+  );
+}
+
+/** 后端逐份鉴权后流式返回 ZIP，前端只负责保存。 */
+export async function createArchiveDownloadPackage(fileIds: string[]) {
+  const response = await apiFetch("/files/download-package", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ fileIds })
+  });
+  await ensureOk(response, "打包下载失败");
+  const disposition = response.headers.get("Content-Disposition") ?? "";
+  const encodedName = /filename\*=UTF-8''([^;]+)/iu.exec(disposition)?.[1];
+  return {
+    blob: await response.blob(),
+    fileName: encodedName ? decodeURIComponent(encodedName) : "资料库打包.zip"
+  };
 }
 
 export function listContractTakeovers(projectId: string) {
@@ -5495,7 +5768,9 @@ export type ContractTakeoverProjectAction =
   | "update_takeover"
   | "abandon_takeover"
   | "submit_review"
+  | "register_handover"
   | "return_for_supplement"
+  | "return_finance_for_supplement"
   | "confirm_change_baseline"
   | "attach_contract_evidence"
   | "attach_payment_voucher"
@@ -5621,6 +5896,23 @@ export function reviewContractTakeoverImportBatch(
 export function getContractTakeover(projectId: string, takeoverId: string) {
   return readJson<ContractTakeoverReadModel>(
     `/projects/${projectId}/contract-takeovers/${takeoverId}`
+  );
+}
+
+export function getContractTakeoverHandover(projectId: string, takeoverId: string) {
+  return readJson<ContractTakeoverHandoverReadModel>(
+    `/projects/${encodeURIComponent(projectId)}/contract-takeovers/${encodeURIComponent(takeoverId)}/handover`
+  );
+}
+
+export function saveContractTakeoverHandover(
+  projectId: string,
+  takeoverId: string,
+  body: SaveContractTakeoverHandoverPayload
+) {
+  return putJson<ContractTakeoverHandoverReadModel>(
+    `/projects/${encodeURIComponent(projectId)}/contract-takeovers/${encodeURIComponent(takeoverId)}/handover`,
+    body
   );
 }
 
@@ -5908,6 +6200,17 @@ export function submitContractTakeoverReview(projectId: string, takeoverId: stri
   );
 }
 
+export function returnContractTakeoverForFinanceSupplement(
+  projectId: string,
+  takeoverId: string,
+  body: ReturnContractTakeoverForSupplementPayload
+) {
+  return postJson<ContractTakeoverReadModel>(
+    `/projects/${projectId}/contract-takeovers/${takeoverId}/finance-supplement-return`,
+    body
+  );
+}
+
 export function returnContractTakeoverForSupplement(
   projectId: string,
   takeoverId: string,
@@ -5950,6 +6253,26 @@ export function createSettlementDraft(body: CreateSettlementPayload) {
 
 export function createPaymentRequest(body: CreatePaymentRequestPayload) {
   return postJson<CreatePaymentRequestReadModel>("/payments", body);
+}
+
+export function reviseAndSubmitPaymentRequest(paymentId: string, body: {
+  expectedUpdatedAt: string;
+  requestedAmountCents: string;
+  paymentMatter?: string;
+  amountCalculationExplanation?: string;
+}) {
+  return postJson<CreatePaymentRequestReadModel>(`/payments/${encodeURIComponent(paymentId)}/revision-submission`, body);
+}
+
+export function withdrawPaymentRemainder(paymentId: string, body: {
+  expectedUpdatedAt: string;
+  requestedAmountCents: string;
+  code?: string;
+  reason: string;
+}) {
+  return postJson<{ revised: CreatePaymentRequestReadModel | null }>(
+    `/payments/${encodeURIComponent(paymentId)}/remainder-withdrawal`, body
+  );
 }
 
 export function uploadContractArchiveFile(
@@ -6087,7 +6410,10 @@ function contractApprovalReviewActionPayload(
     expectedContractUpdatedAt: context.expectedContractUpdatedAt,
     expectedApprovalInstanceId: context.expectedApprovalInstanceId,
     expectedNodeIndex: context.expectedNodeIndex,
-    expectedApprovalUpdatedAt: context.expectedApprovalUpdatedAt
+    expectedApprovalUpdatedAt: context.expectedApprovalUpdatedAt,
+    ...(context.expectedParallelApprovalEpoch !== undefined
+      ? { expectedParallelApprovalEpoch: context.expectedParallelApprovalEpoch }
+      : {})
   };
 }
 
@@ -6122,6 +6448,9 @@ function normalizeContractApprovalReviewAction(
     !expectedContractUpdatedAt ||
     !expectedApprovalInstanceId ||
     !expectedApprovalUpdatedAt ||
+    (input.expectedParallelApprovalEpoch !== undefined &&
+      (typeof input.expectedParallelApprovalEpoch !== "string" ||
+        !/^[a-f0-9]{64}$/u.test(input.expectedParallelApprovalEpoch))) ||
     !Number.isInteger(input.routeGeneration) ||
     input.routeGeneration < 0 ||
     !Number.isInteger(input.detailEpoch) ||
@@ -6160,6 +6489,9 @@ function normalizeContractApprovalReviewAction(
     expectedApprovalInstanceId,
     expectedNodeIndex: input.expectedNodeIndex,
     expectedApprovalUpdatedAt,
+    ...(input.expectedParallelApprovalEpoch !== undefined
+      ? { expectedParallelApprovalEpoch: input.expectedParallelApprovalEpoch }
+      : {}),
     decision: input.decision,
     requiresSelfReviewConfirmation:
       input.requiresSelfReviewConfirmation,
@@ -6191,6 +6523,7 @@ function sameContractApprovalReviewContext(
     expected.expectedNodeIndex === actual.expectedNodeIndex &&
     expected.expectedApprovalUpdatedAt ===
       actual.expectedApprovalUpdatedAt &&
+    expected.expectedParallelApprovalEpoch === actual.expectedParallelApprovalEpoch &&
     expected.decision === actual.decision &&
     expected.comment === actual.comment &&
     expected.requiresSelfReviewConfirmation ===
@@ -6243,20 +6576,22 @@ function assertContractApprovalReviewPreflight(
     (action) => action.key === "review_approval" && action.enabled
   );
   const coordinates = preflight.reviewApprovalContext;
+  const matchesReviewCoordinates = coordinates &&
+    (context.expectedParallelApprovalEpoch === undefined
+      ? coordinates.expectedContractUpdatedAt === context.expectedContractUpdatedAt &&
+        coordinates.expectedApprovalUpdatedAt === context.expectedApprovalUpdatedAt
+      : coordinates.expectedParallelApprovalEpoch === context.expectedParallelApprovalEpoch);
   if (
     preflight.id !== context.contractId ||
     preflight.contractVersionId !== context.contractVersionId ||
-    preflight.lifecycleUpdatedAt !== context.expectedContractUpdatedAt ||
+    preflight.lifecycleUpdatedAt !== coordinates?.expectedContractUpdatedAt ||
     enabledReviewActions.length !== 1 ||
     (enabledReviewActions[0]?.requiresSelfReviewConfirmation === true) !==
       context.requiresSelfReviewConfirmation ||
-    coordinates?.expectedContractUpdatedAt !==
-      context.expectedContractUpdatedAt ||
+    !coordinates || !matchesReviewCoordinates ||
     coordinates.expectedApprovalInstanceId !==
       context.expectedApprovalInstanceId ||
     coordinates.expectedNodeIndex !== context.expectedNodeIndex ||
-    coordinates.expectedApprovalUpdatedAt !==
-      context.expectedApprovalUpdatedAt ||
     !sameContractApprovalOwnerRisk(
       context.ownerContractRisk,
       preflight.ownerContractRisk ?? null
@@ -6503,10 +6838,6 @@ export function delegateContractApproval(
   return postJson<unknown>(`/contracts/${contractVersionId}/approval-delegation`, body);
 }
 
-export function approveContractSeal(contractVersionId: string) {
-  return postJson<unknown>(`/contracts/${contractVersionId}/seal-approval`);
-}
-
 export interface CompleteContractSealPayload {
   firstPartySignedOrStamped: boolean;
   companySealCompleted: boolean;
@@ -6534,24 +6865,6 @@ export interface ConfirmMutuallySignedContractPayload extends CompleteContractSe
 
 function governedContractPath(contractVersionId: string, suffix: string) {
   return `/contracts/${encodeURIComponent(contractVersionId)}/${suffix}`;
-}
-
-export interface ApproveContractSealPayload {
-  confirmationPassword: string;
-}
-
-export function approveGovernedContractSeal(
-  contractVersionId: string,
-  body: ApproveContractSealPayload
-) {
-  return postJson<unknown>(governedContractPath(contractVersionId, "seal/approve"), body);
-}
-
-export function completeContractSeal(
-  contractVersionId: string,
-  body: CompleteContractSealPayload
-) {
-  return postJson<unknown>(governedContractPath(contractVersionId, "seal/complete"), body);
 }
 
 export function uploadMutuallySignedContract(
@@ -6617,316 +6930,6 @@ export function regenerateSettlementSignedDocument(
   );
 }
 
-export function reviewSettlementApproval(
-  settlementId: string,
-  body: ReviewSettlementApprovalPayload
-) {
-  return postJson<unknown>(`/settlements/${settlementId}/approval`, body);
-}
-
-export async function prepareSettlementApprovalWithdrawalAction(
-  input: PrepareSettlementApprovalWithdrawalActionInput
-): Promise<PrepareSettlementApprovalWithdrawalActionResult> {
-  const context = normalizeSettlementApprovalWithdrawalAction(input);
-  if (!input.isCurrent(context)) {
-    return { status: "stale", context };
-  }
-
-  const preflight = normalizeSettlementApprovalWithdrawalPreflight(
-    await fetchSettlementDetail(context.routeSettlementId)
-  );
-  if (!input.isCurrent(context)) {
-    return { status: "stale", context };
-  }
-  assertSettlementApprovalWithdrawalPreflight(context, preflight);
-  if (!input.isCurrent(context)) {
-    return { status: "stale", context };
-  }
-
-  return { status: "ready", context, preflight };
-}
-
-export async function executeSettlementApprovalWithdrawalAction(
-  input: ExecuteSettlementApprovalWithdrawalActionInput
-): Promise<ExecuteSettlementApprovalWithdrawalActionResult> {
-  const capturedContext = input.capture(input.action);
-  if (!capturedContext) return { status: "not_started" };
-  let activeContext = capturedContext;
-
-  try {
-    const frozenCapturedContext = normalizeSettlementApprovalWithdrawalAction(
-      capturedContext
-    );
-    activeContext = frozenCapturedContext;
-    const prepared = await input.preflight(frozenCapturedContext);
-    activeContext = prepared.context;
-    if (
-      prepared.status !== "ready" ||
-      !sameSettlementApprovalWithdrawalContext(
-        frozenCapturedContext,
-        prepared.context
-      ) ||
-      !input.current(frozenCapturedContext, prepared)
-    ) {
-      await input.stale(frozenCapturedContext);
-      return { status: "stale", context: frozenCapturedContext };
-    }
-
-    let response: SettlementApprovalWithdrawalResponse;
-    try {
-      response = await postSettlementApprovalWithdrawalRequest(activeContext);
-    } catch (error) {
-      if (error instanceof CoreFlowApiError && error.status < 500) {
-        throw error;
-      }
-      throw new SettlementApprovalWithdrawalResultUnknownError(error);
-    }
-
-    try {
-      if (!input.current(frozenCapturedContext, prepared)) {
-        throw new SettlementApprovalWithdrawalResultUnknownError(
-          new Error("结算审批撤回请求已发出，但提交后的页面归属已变化")
-        );
-      }
-      await input.complete(activeContext, response);
-    } catch (error) {
-      if (error instanceof SettlementApprovalWithdrawalResultUnknownError) {
-        throw error;
-      }
-      throw new SettlementApprovalWithdrawalResultUnknownError(error);
-    }
-    return { status: "completed", context: activeContext, response };
-  } catch (error) {
-    await input.fail(activeContext, error);
-    return { status: "failed", context: activeContext, error };
-  } finally {
-    input.finish(activeContext);
-  }
-}
-
-async function postSettlementApprovalWithdrawalRequest(
-  context: SettlementApprovalWithdrawalActionContext
-) {
-  const response = await postJson<unknown>(
-    `/settlements/${encodeURIComponent(context.settlementId)}/approval-withdrawal`,
-    settlementApprovalWithdrawalPayload(context)
-  );
-  return normalizeSettlementApprovalWithdrawalResponse(response, context);
-}
-
-function normalizeSettlementApprovalWithdrawalAction(
-  input: SettlementApprovalWithdrawalActionContext
-): SettlementApprovalWithdrawalActionContext {
-  const ownerScope = input.ownerScope.trim();
-  const routeSettlementId = input.routeSettlementId.trim();
-  const settlementCode = input.settlementCode.trim();
-  const settlementId = input.settlementId.trim();
-  const expectedSettlementUpdatedAt =
-    input.expectedSettlementUpdatedAt.trim();
-  const expectedApprovalInstanceId =
-    input.expectedApprovalInstanceId.trim();
-  const expectedApprovalUpdatedAt =
-    input.expectedApprovalUpdatedAt.trim();
-  if (
-    input.action !== "withdraw" ||
-    !ownerScope ||
-    !routeSettlementId ||
-    !settlementCode ||
-    !settlementId ||
-    !expectedSettlementUpdatedAt ||
-    !expectedApprovalInstanceId ||
-    !expectedApprovalUpdatedAt ||
-    Number.isNaN(new Date(expectedSettlementUpdatedAt).getTime()) ||
-    Number.isNaN(new Date(expectedApprovalUpdatedAt).getTime()) ||
-    !Number.isInteger(input.routeGeneration) ||
-    input.routeGeneration < 0 ||
-    !Number.isInteger(input.detailEpoch) ||
-    input.detailEpoch < 0 ||
-    !Number.isInteger(input.dialogGeneration) ||
-    input.dialogGeneration < 0 ||
-    !Number.isInteger(input.operationId) ||
-    input.operationId < 1 ||
-    !Number.isInteger(input.expectedNodeIndex) ||
-    input.expectedNodeIndex < 0
-  ) {
-    throw new Error(
-      "结算审批撤回上下文无效，请重新读取当前结算后再操作"
-    );
-  }
-
-  return Object.freeze({
-    action: "withdraw",
-    ownerScope,
-    routeGeneration: input.routeGeneration,
-    detailEpoch: input.detailEpoch,
-    dialogGeneration: input.dialogGeneration,
-    operationId: input.operationId,
-    routeSettlementId,
-    settlementCode,
-    settlementId,
-    expectedSettlementUpdatedAt,
-    expectedApprovalInstanceId,
-    expectedNodeIndex: input.expectedNodeIndex,
-    expectedApprovalUpdatedAt
-  });
-}
-
-function sameSettlementApprovalWithdrawalContext(
-  expected: SettlementApprovalWithdrawalActionContext,
-  actual: SettlementApprovalWithdrawalActionContext
-) {
-  return (
-    expected.action === actual.action &&
-    expected.ownerScope === actual.ownerScope &&
-    expected.routeGeneration === actual.routeGeneration &&
-    expected.detailEpoch === actual.detailEpoch &&
-    expected.dialogGeneration === actual.dialogGeneration &&
-    expected.operationId === actual.operationId &&
-    expected.routeSettlementId === actual.routeSettlementId &&
-    expected.settlementCode === actual.settlementCode &&
-    expected.settlementId === actual.settlementId &&
-    expected.expectedSettlementUpdatedAt ===
-      actual.expectedSettlementUpdatedAt &&
-    expected.expectedApprovalInstanceId ===
-      actual.expectedApprovalInstanceId &&
-    expected.expectedNodeIndex === actual.expectedNodeIndex &&
-    expected.expectedApprovalUpdatedAt ===
-      actual.expectedApprovalUpdatedAt
-  );
-}
-
-function normalizeSettlementApprovalWithdrawalPreflight(
-  input: unknown
-): SettlementApprovalWithdrawalPreflightReadModel {
-  if (!isSettlementWithdrawalRecord(input)) {
-    throw new Error("结算审批撤回权威详情无效，请重新读取当前结算");
-  }
-  const { availableActions, withdrawApprovalContext } = input;
-  if (
-    typeof input.id !== "string" ||
-    !input.id.trim() ||
-    typeof input.settlementId !== "string" ||
-    !input.settlementId.trim() ||
-    typeof input.lifecycleUpdatedAt !== "string" ||
-    !input.lifecycleUpdatedAt.trim() ||
-    Number.isNaN(new Date(input.lifecycleUpdatedAt).getTime()) ||
-    !Array.isArray(availableActions) ||
-    availableActions.some(
-      (action) =>
-        !isSettlementWithdrawalRecord(action) ||
-        typeof action.key !== "string" ||
-        typeof action.enabled !== "boolean"
-    ) ||
-    (withdrawApprovalContext !== null &&
-      (!isSettlementWithdrawalRecord(withdrawApprovalContext) ||
-        typeof withdrawApprovalContext.expectedSettlementUpdatedAt !==
-          "string" ||
-        Number.isNaN(
-          new Date(
-            withdrawApprovalContext.expectedSettlementUpdatedAt
-          ).getTime()
-        ) ||
-        typeof withdrawApprovalContext.expectedApprovalInstanceId !==
-          "string" ||
-        typeof withdrawApprovalContext.expectedNodeIndex !== "number" ||
-        !Number.isInteger(withdrawApprovalContext.expectedNodeIndex) ||
-        withdrawApprovalContext.expectedNodeIndex < 0 ||
-        typeof withdrawApprovalContext.expectedApprovalUpdatedAt !==
-          "string" ||
-        Number.isNaN(
-          new Date(
-            withdrawApprovalContext.expectedApprovalUpdatedAt
-          ).getTime()
-        )))
-  ) {
-    throw new Error("结算审批撤回权威详情无效，请重新读取当前结算");
-  }
-  return input as unknown as SettlementApprovalWithdrawalPreflightReadModel;
-}
-
-function assertSettlementApprovalWithdrawalPreflight(
-  context: SettlementApprovalWithdrawalActionContext,
-  preflight: SettlementApprovalWithdrawalPreflightReadModel
-) {
-  const enabledWithdrawalActions = preflight.availableActions.filter(
-    (action) => action.key === "withdraw_approval" && action.enabled
-  );
-  const coordinates = preflight.withdrawApprovalContext;
-  if (
-    preflight.id !== context.settlementCode ||
-    preflight.settlementId !== context.settlementId ||
-    preflight.lifecycleUpdatedAt !== context.expectedSettlementUpdatedAt ||
-    enabledWithdrawalActions.length !== 1 ||
-    coordinates?.expectedSettlementUpdatedAt !==
-      context.expectedSettlementUpdatedAt ||
-    coordinates.expectedApprovalInstanceId !==
-      context.expectedApprovalInstanceId ||
-    coordinates.expectedNodeIndex !== context.expectedNodeIndex ||
-    coordinates.expectedApprovalUpdatedAt !==
-      context.expectedApprovalUpdatedAt
-  ) {
-    throw new Error(
-      "结算审批撤回资格或审批坐标已变化，请重新读取当前结算"
-    );
-  }
-}
-
-function settlementApprovalWithdrawalPayload(
-  context: SettlementApprovalWithdrawalActionContext
-): SettlementApprovalWithdrawalCoordinates {
-  if (context.action !== "withdraw") {
-    throw new Error(
-      "结算审批撤回上下文无效，请重新读取当前结算后再操作"
-    );
-  }
-  return {
-    expectedSettlementUpdatedAt: context.expectedSettlementUpdatedAt,
-    expectedApprovalInstanceId: context.expectedApprovalInstanceId,
-    expectedNodeIndex: context.expectedNodeIndex,
-    expectedApprovalUpdatedAt: context.expectedApprovalUpdatedAt
-  };
-}
-
-function normalizeSettlementApprovalWithdrawalResponse(
-  input: unknown,
-  context: SettlementApprovalWithdrawalActionContext
-): SettlementApprovalWithdrawalResponse {
-  if (
-    !isSettlementWithdrawalRecord(input) ||
-    typeof input.id !== "string" ||
-    input.id !== context.settlementId ||
-    typeof input.status !== "string" ||
-    input.status !== "withdrawn"
-  ) {
-    throw new Error("结算审批撤回响应无效，请读取权威结算详情核对结果");
-  }
-  return Object.freeze({ id: input.id, status: input.status });
-}
-
-function isSettlementWithdrawalRecord(
-  input: unknown
-): input is Record<string, unknown> {
-  return typeof input === "object" && input !== null && !Array.isArray(input);
-}
-
-export function remindSettlementApproval(settlementId: string) {
-  return postJson<unknown>(`/settlements/${settlementId}/approval-reminder`);
-}
-
-export function transferSettlementApproval(
-  settlementId: string,
-  body: AssignSettlementApprovalPayload
-) {
-  return postJson<unknown>(`/settlements/${settlementId}/approval-transfer`, body);
-}
-
-export function delegateSettlementApproval(
-  settlementId: string,
-  body: AssignSettlementApprovalPayload
-) {
-  return postJson<unknown>(`/settlements/${settlementId}/approval-delegation`, body);
-}
-
 export async function preparePaymentApprovalReviewAction(
   input: PreparePaymentApprovalReviewActionInput
 ): Promise<PreparePaymentApprovalReviewActionResult> {
@@ -6978,7 +6981,7 @@ function paymentApprovalReviewActionPayload(
 ): ReviewPaymentApprovalPayload {
   if (
     context.decision !== decision ||
-    (decision === "reject" && !context.comment) ||
+    (decision !== "approve" && !context.comment) ||
     (context.requiresSelfReviewConfirmation &&
       (!context.selfReviewReason || !context.confirmationPassword?.trim()))
   ) {
@@ -7041,10 +7044,10 @@ function normalizePaymentApprovalReviewAction(
     input.operationId < 1 ||
     !Number.isInteger(input.expectedNodeIndex) ||
     input.expectedNodeIndex < 0 ||
-    (input.decision !== "approve" && input.decision !== "reject") ||
+    !["approve", "reject", "return_to_applicant"].includes(input.decision) ||
     (approvedAmountCents !== undefined &&
       !/^(?:0|[1-9]\d*)$/.test(approvedAmountCents)) ||
-    (input.decision === "reject" && !comment) ||
+    (input.decision !== "approve" && !comment) ||
     (input.requiresSelfReviewConfirmation &&
       (!selfReviewReason || !confirmationPassword?.trim()))
   ) {
@@ -7093,7 +7096,9 @@ function assertPaymentApprovalReviewPreflight(
       context.expectedApprovalInstanceId ||
     coordinates.expectedNodeIndex !== context.expectedNodeIndex ||
     coordinates.expectedApprovalUpdatedAt !==
-      context.expectedApprovalUpdatedAt
+      context.expectedApprovalUpdatedAt ||
+    (context.decision === "return_to_applicant" && coordinates.canReturnForRevision !== true) ||
+    (coordinates.executionMode === "parallel" && context.approvedAmountCents !== undefined)
   ) {
     throw new Error(
       "付款审批资格或审批坐标已变化，请重新读取当前付款"
@@ -7101,8 +7106,11 @@ function assertPaymentApprovalReviewPreflight(
   }
 }
 
-export function withdrawPaymentApproval(paymentId: string) {
-  return postJson<unknown>(`/payments/${paymentId}/approval-withdrawal`);
+export function withdrawPaymentApproval(paymentId: string, expectedApprovalInstanceId?: string) {
+  return postJson<unknown>(
+    `/payments/${encodeURIComponent(paymentId)}/approval-withdrawal`,
+    expectedApprovalInstanceId ? { expectedApprovalInstanceId } : undefined
+  );
 }
 
 export function abandonPaymentRequest(
@@ -7123,11 +7131,16 @@ export function transferPaymentApproval(paymentId: string, body: AssignSettlemen
   return postJson<unknown>(`/payments/${paymentId}/approval-transfer`, body);
 }
 
-export function delegatePaymentApproval(paymentId: string, body: AssignSettlementApprovalPayload) {
+export function delegatePaymentApproval(paymentId: string, body: AssignSettlementApprovalPayload & {
+  expectedApprovalInstanceId?: string;
+  expectedApprovalUpdatedAt?: string;
+  expectedNodeIndex?: number;
+  endsAt?: string;
+}) {
   return postJson<unknown>(`/payments/${paymentId}/approval-delegation`, body);
 }
 
-function saveBlob(blob: Blob, fileName: string): void {
+export function saveBlob(blob: Blob, fileName: string): void {
   const url = URL.createObjectURL(blob);
   const anchor = document.createElement("a");
   anchor.href = url;
@@ -7141,9 +7154,10 @@ function saveBlob(blob: Blob, fileName: string): void {
 async function downloadWorkbook(
   path: string,
   fallbackFileName: string,
-  fallbackError: string
+  fallbackError: string,
+  headers?: Record<string, string>
 ): Promise<void> {
-  const response = await apiFetch(path);
+  const response = await apiFetch(path, headers ? { headers } : undefined);
   await ensureOk(response, fallbackError);
   const blob = await response.blob();
   const disposition = response.headers.get("Content-Disposition") ?? "";
@@ -7157,7 +7171,7 @@ async function downloadWorkbook(
 export async function downloadApprovalForm(
   businessType: string,
   businessId: string,
-  body: CreatePrivateFileDownloadTicketPayload
+  body: CreatePrivateFileDownloadTicketPayload & { expectedApprovalInstanceId?: string }
 ): Promise<void> {
   const response = await apiFetch(`/approval-forms/${businessType}/${businessId}/download`, {
     method: "POST",
@@ -7296,6 +7310,11 @@ export function generateSettlementPdfArchive(
 }
 
 export interface ApprovalDelegationReadModel {
+  reviewPath?: string;
+  actionKey?: string | null;
+  resourceType?: string | null;
+  resourceId?: string | null;
+  scopeLabel?: string;
   id: string;
   fromUserId: string;
   fromUserName?: string;
@@ -7312,18 +7331,24 @@ export interface UserOptionReadModel {
   name: string;
 }
 
-export interface CreateApprovalDelegationPayload {
-  toUserId: string;
-  startsAt: string;
-  endsAt: string;
-}
+export type ApprovalDelegationDutyScope =
+  | { actionKey: "spot_procurement.approve"; resourceType: "spot_procurement_approval_duty" }
+  | { actionKey: "general_procurement.approve"; resourceType: "general_procurement_approval_duty" }
+  | { actionKey: "fund_account.balance.review"; resourceType: "fund_account_balance_review_duty" };
+export type CreateApprovalDelegationPayload = {
+  resourceId?: string; toUserId: string; startsAt: string; endsAt: string;
+} & (ApprovalDelegationDutyScope | { actionKey?: never; resourceType?: never });
 
 export function listApprovalDelegations() {
   return readJson<ApprovalDelegationReadModel[]>("/approval-delegations");
 }
 
-export function fetchApprovalDelegationUserOptions() {
-  return readJson<UserOptionReadModel[]>("/approval-delegations/user-options");
+export function fetchApprovalDelegationDutyOptions() {
+  return readJson<Array<{value: string; label: string} & ApprovalDelegationDutyScope>>("/approval-delegations/duty-options");
+}
+
+export function fetchApprovalDelegationUserOptions(dutyId?: string) {
+  return readJson<UserOptionReadModel[]>(`/approval-delegations/user-options${dutyId ? `?dutyId=${encodeURIComponent(dutyId)}` : ""}`);
 }
 
 export function createApprovalDelegation(body: CreateApprovalDelegationPayload) {
@@ -7335,11 +7360,73 @@ export function revokeApprovalDelegation(delegationId: string) {
 }
 
 export function fetchContractFinancialBalances(input:{projectId?:string;companyEntityId?:string;asOf?:string}) {
- const query=new URLSearchParams();
+ const query=new URLSearchParams({ numericProtocolVersion: "2" });
  if(input.companyEntityId)query.set("companyEntityId",input.companyEntityId);
  if(input.asOf)query.set("asOf",input.asOf);
  if(input.projectId)return readJson<OperatingProjectionAggregateReadModel>(`/operating-projections/project/${encodeURIComponent(input.projectId)}?${query}`);
  if(input.companyEntityId)return readJson<OperatingProjectionAggregateReadModel>(`/operating-projections/company/${encodeURIComponent(input.companyEntityId)}?${query}`);
  query.set("scopeKind","projects");
  return readJson<OperatingProjectionAggregateReadModel>(`/operating-projections/as-of?${query}`);
+}
+
+export interface ApprovalRuleAssignmentsReadModel {
+  projects: Array<{id: string; name: string}>;
+  projectId: string | null;
+  roles: Array<{roleKey: string; people: Array<{id: string; name: string}>; missing: boolean}>;
+}
+export function fetchApprovalRuleAssignments(projectId?: string) {
+  return readJson<ApprovalRuleAssignmentsReadModel>(`/approval-rule-assignments${projectId ? `?projectId=${encodeURIComponent(projectId)}` : ""}`);
+}
+
+export function fetchApprovalDelegationDutyCapability(dutyId: string) {
+  return readJson<{canDelegate: boolean; actionKey?: CreateApprovalDelegationPayload["actionKey"]; resourceType?: CreateApprovalDelegationPayload["resourceType"]; resourceId?: string}>(`/approval-delegations/duty-capability?dutyId=${encodeURIComponent(dutyId)}`);
+}
+export function fetchApprovalDelegationRevokeCapability(id: string) {
+  return readJson<{canRevoke: boolean}>(`/approval-delegations/${encodeURIComponent(id)}/revoke-capability`);
+}
+
+export interface WorkCompletionEntry {
+  id: string;
+  status: string;
+  work: string;
+  amountYuan: string;
+  exceedsContractAmount: boolean;
+  approvalInstanceId: string | null;
+  canSubmit: boolean;
+  canRevise: boolean;
+  rejectionReason: string | null;
+  duties: { index: number; name: string; selfReview: boolean; canReview: boolean }[];
+}
+
+export function fetchWorkCompletions(versionId: string) {
+  return readJson<{ canRegister: boolean; entries: WorkCompletionEntry[] }>(
+    `/contracts/${encodeURIComponent(versionId)}/work-completions`
+  );
+}
+
+export function saveWorkCompletionDraft(versionId: string, body: { work: string; amountYuan: string; requestKey: string }) {
+  return postJson<{ id: string; exceedsContractAmount: boolean }>(
+    `/contracts/${encodeURIComponent(versionId)}/work-completion-drafts`, body
+  );
+}
+
+export function reviseWorkCompletionDraft(versionId: string, entryId: string, body: { work: string; amountYuan: string }) {
+  return patchJson<{ id: string; status: string; work: string; amountYuan: string; exceedsContractAmount: boolean }>(
+    `/contracts/${encodeURIComponent(versionId)}/work-completions/${encodeURIComponent(entryId)}`, body
+  );
+}
+
+export function submitWorkCompletion(versionId: string, entryId: string) {
+  return postJson<{ status: string }>(`/contracts/${encodeURIComponent(versionId)}/work-completions/${encodeURIComponent(entryId)}/submission`, {});
+}
+
+export function reviewWorkCompletion(versionId: string, entryId: string, body: {
+  approvalInstanceId: string;
+  dutyIndex: number;
+  decision: "approve" | "reject";
+  comment?: string;
+  selfReviewReason?: string;
+  confirmationPassword?: string;
+}) {
+  return postJson<{ status: string }>(`/contracts/${encodeURIComponent(versionId)}/work-completions/${encodeURIComponent(entryId)}/approval`, body);
 }

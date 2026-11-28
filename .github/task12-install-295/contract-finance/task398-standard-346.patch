@@ -1,0 +1,53 @@
+--- predecessor/fixture
++++ forward/fixture
+@@ -199,8 +199,9 @@
+ }
+ async function runBusiness(options,{candidate,short,storage,url,sql,env,current280=false,readPostgresLog,ownedMigrationBaseline,correctionCatalog,standard290,textDirectReceipt}){
++ const textDirect346=textDirectReceipt?.purpose==="TASK425_TEXT_DIRECT_FINANCE_346";
+  const textDirect334=textDirectReceipt?.purpose==="TASK425_TEXT_DIRECT_FINANCE_334";
+  const textDirect332=textDirectReceipt?.purpose==="TASK425_TEXT_DIRECT_FINANCE_332";
+  const textDirect331=textDirectReceipt?.purpose==="TASK425_TEXT_DIRECT_FINANCE_331";
+- const textDirectFinance=textDirect334||textDirect332||textDirect331||textDirectReceipt?.purpose==="TASK425_TEXT_DIRECT_FINANCE_330";
++ const textDirectFinance=textDirect346||textDirect334||textDirect332||textDirect331||textDirectReceipt?.purpose==="TASK425_TEXT_DIRECT_FINANCE_330";
+  const {scenario,overpayScenario,ledgerLossScenario,transferRejection,transferBrowser,handoverScenario,advanceScenario,principalRoleCoverage,principalScenario,companyProxyScenario,usesAdvanceRuntime,advanceExcludedReads,transferScenario,browserScenario}=options;
+  if(!current280){
+@@ -351,4 +352,5 @@
+  if(textDirect332)env.TASK425_TEXT_FINANCE_332="1";
+  if(textDirect334)env.TASK425_TEXT_FINANCE_334="1";
++ if(textDirect346)env.TASK425_TEXT_FINANCE_346="1";
+  if(overpayScenario)env.TASK398_OVERPAY_MODE="1";
+  if(ledgerLossScenario)env.TASK398_LEDGER_LOSS_MODE="1";
+@@ -545,14 +547,15 @@
+ }
+ async function runTask398Owned282Voucher(context, mode="standard", receipt){
+- const modes=new Map([["text-direct-334",["--text-direct-finance"]],["standard-334",[]],["text-direct-332",["--text-direct-finance"]],["standard-332",[]],["text-direct-331",["--text-direct-finance"]],["standard-331",[]],["text-direct-330",["--text-direct-finance"]],["standard-330",[]],["standard-329",[]],["standard-295",[]],["standard-290",[]],["standard",[]],["principal-return",["--principal-return-real"]],["cash-handover",["--cash-handover-real"]],["correction-catalog",["--cash-handover-real"]]]);
++ const modes=new Map([["text-direct-346",["--text-direct-finance"]],["standard-346",[]],["text-direct-334",["--text-direct-finance"]],["standard-334",[]],["text-direct-332",["--text-direct-finance"]],["standard-332",[]],["text-direct-331",["--text-direct-finance"]],["standard-331",[]],["text-direct-330",["--text-direct-finance"]],["standard-330",[]],["standard-329",[]],["standard-295",[]],["standard-290",[]],["standard",[]],["principal-return",["--principal-return-real"]],["cash-handover",["--cash-handover-real"]],["correction-catalog",["--cash-handover-real"]]]);
+  const standard295=mode==="standard-295";
+  const standard320=mode==="standard-329";
++ const expenseWitness=mode==="text-direct-346"||mode==="standard-346"?require("/qualification/expense-witness-346-profile.cjs"):null;
+  const current334=mode==="text-direct-334"||mode==="standard-334";
+  const current332=current334||mode==="text-direct-332"||mode==="standard-332";
+  const current331=current332||mode==="text-direct-331"||mode==="standard-331";
+- const textDirect=mode==="text-direct-334"||mode==="text-direct-330"||mode==="text-direct-331"||mode==="text-direct-332";
+- const standard=mode==="standard-334"||mode==="standard-330"||mode==="standard-331"||mode==="standard-332";
++ const textDirect=mode==="text-direct-346"||mode==="text-direct-334"||mode==="text-direct-330"||mode==="text-direct-331"||mode==="text-direct-332";
++ const standard=mode==="standard-346"||mode==="standard-334"||mode==="standard-330"||mode==="standard-331"||mode==="standard-332";
+  const current330=textDirect||standard;
+- const paymentCount=current334?334:current332?332:current331?331:330;
++ const paymentCount=expenseWitness?.count??(current334?334:current332?332:current331?331:330);
+  if(standard&&receipt?.purpose!=="TASK398_STANDARD_EXACT_"+paymentCount)throw Error("TASK398_STANDARD_SCOPE");
+  if(textDirect&&receipt?.purpose!=="TASK425_TEXT_DIRECT_FINANCE_"+paymentCount)throw Error("TASK425_TEXT_FINANCE_SCOPE");
+@@ -566,5 +569,5 @@
+  const {candidateTree,sourceBaseSha: candidate,runId,database,workDir,sql:ownerSql,readPostgresLog}=context;
+  const short=runId.replaceAll("-","");
+- if(candidateTree!==(standard320||current330?receipt.forward320?.sourceTree:standard295?"67644d9465a0ab4ee80ede099139d9c129d66f14":(mode==="correction-catalog"||mode==="standard-290")?"23b1c98bc15f36e986d17059579e6673315b9be8":"8d3e50a0c525a68e717b74fbecbcceabc80840f7")||candidate!=="0a5b607cf912ffbb50237af2608ac8b2a5360c16"||containerName(runId)===""||database!==`jg_task01_${short}`
++ if(candidateTree!==(expenseWitness?receipt.expenseWitnessForward?.sourceTree:standard320||current330?receipt.forward320?.sourceTree:standard295?"67644d9465a0ab4ee80ede099139d9c129d66f14":(mode==="correction-catalog"||mode==="standard-290")?"23b1c98bc15f36e986d17059579e6673315b9be8":"8d3e50a0c525a68e717b74fbecbcceabc80840f7")||candidate!=="0a5b607cf912ffbb50237af2608ac8b2a5360c16"||containerName(runId)===""||database!==`jg_task01_${short}`
+    ||!path.isAbsolute(workDir)||typeof ownerSql!=="function"||typeof readPostgresLog!=="function")throw new Error("TASK398_OWNED_280_IDENTITY");
+  const roleUrls={jg_task01_owner:context.ownerUrl,jg_task01_runtime:context.runtimeUrl,jg_task01_observer:context.observerUrl};
+@@ -607,5 +610,5 @@
+  if(readback.database!==database||readback.actor!=="jg_task01_owner"||readback.ownerOid!=="10"
+    ||readback.sameActor!==true||readback.tls!==true||readback.inactiveLedger!==0||ledger.length!==(current330?paymentCount:standard320?329:standard295?295:(mode==="correction-catalog"||mode==="standard-290")?290:282)
+-   ||createHash("sha256").update(JSON.stringify(ledger)).digest("hex")!==(current334?"27f3af946003d07582efb288b443362fcf61bed0281feb548f9978b739fb5411":current332?"b9cd72d795d2ae6d9d61f038c8c89b2391375bc5fdc56337c9dab6d3a18858f4":current331?"0ad8b165cbf5c974596c4da840ab327e438ef84fd1beb3788ef980c8f28dd014":current330?"12a3ffa7cae1b9a54294ebaf38f71788ff4ccb2670a8d539148c84597b5aa99f":standard320?"3e88a4a2ad3ebb128572fafd29f08a816bada6d61795ce35c6c8a4b73ba08bd2":standard295?"b0d398a46c4c6a3209e1448ddd415938ea95425c3d823f1f8a77d81dde396f2d":(mode==="correction-catalog"||mode==="standard-290")?"8741d9da09253efb803af9e132b4cde09de0dfef86da7edf952b6c0056a057a5":"be6d9aed22658af5e273010a2e1e839544fa27e74e998701fb3d9e9248f88cfc"))throw new Error("TASK398_OWNED_280_LEDGER");
++   ||createHash("sha256").update(JSON.stringify(ledger)).digest("hex")!==(expenseWitness?expenseWitness.ledgerSha256:current334?"27f3af946003d07582efb288b443362fcf61bed0281feb548f9978b739fb5411":current332?"b9cd72d795d2ae6d9d61f038c8c89b2391375bc5fdc56337c9dab6d3a18858f4":current331?"0ad8b165cbf5c974596c4da840ab327e438ef84fd1beb3788ef980c8f28dd014":current330?"12a3ffa7cae1b9a54294ebaf38f71788ff4ccb2670a8d539148c84597b5aa99f":standard320?"3e88a4a2ad3ebb128572fafd29f08a816bada6d61795ce35c6c8a4b73ba08bd2":standard295?"b0d398a46c4c6a3209e1448ddd415938ea95425c3d823f1f8a77d81dde396f2d":(mode==="correction-catalog"||mode==="standard-290")?"8741d9da09253efb803af9e132b4cde09de0dfef86da7edf952b6c0056a057a5":"be6d9aed22658af5e273010a2e1e839544fa27e74e998701fb3d9e9248f88cfc"))throw new Error("TASK398_OWNED_280_LEDGER");
+  const protectedExec=await snapshotOwned280CashProfile(sql,fences);
+  const storage=mkdtempSync(path.join(workDir,"cash-storage-"));

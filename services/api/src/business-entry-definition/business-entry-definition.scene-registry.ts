@@ -1,3 +1,4 @@
+import { PROJECT_BASIC_MAINTAINER_ROLES } from "@jiangkong/shared-domain";
 import { SETTLEMENT_TEMPLATE_ENTRY_DEFINITION } from "../settlement/settlement-template-entry-definition";
 import {
   createBusinessEntryDefinitionRegistry,
@@ -22,11 +23,12 @@ const projectFinanceRoles = ["finance_staff", "finance_director"] as const;
 const projectMaintenanceRoles = MASTER_DATA_MAINTAINER_ROLES;
 const organizationRoles = ORGANIZATION_ENTRY_MANAGER_ROLE_KEYS;
 const companyRoles = MASTER_DATA_MAINTAINER_ROLES;
-const contractTemplateRoles = ["contract_staff", "contract_director"] as const;
+const contractTemplateRoles = ["contract_director"] as const;
 const businessPartyCreateRoles = MASTER_DATA_MAINTAINER_ROLES;
 const settlementTemplateRoles = ["contract_director", "super_admin"] as const;
 const authenticatedSelf = ["authenticated_self"] as unknown as readonly RoleKey[];
 const spotProcurementCreateRoles = ["material_staff"] as const;
+const spotProcurementRequestRoles = ["material_staff", "material_director"] as const;
 const upstreamFundFactTypes = [
   { value: "owner_payment_to_affiliate", label: "业主向施工企业付款" },
   { value: "affiliate_remittance_to_company", label: "施工企业向我方拨款" },
@@ -188,7 +190,7 @@ const projectBaseFields = (entries: Array<[string, string, "text" | "long_text" 
 export const PROJECT_CREATE_DEFINITION: BusinessEntrySceneDefinition = {
   key: "project_create", entityType: "project", name: "新建项目", version: 1,
   description: "项目编号和名称，沿用项目创建岗位及原事务。",
-  fields: projectBaseFields([["code", "项目编号", "text"], ["name", "项目名称", "text"]], projectMaintenanceRoles), rules: []
+  fields: projectBaseFields([["code", "项目编号", "text"], ["name", "项目名称", "text"]], PROJECT_BASIC_MAINTAINER_ROLES), rules: []
 };
 export const PARTICIPANT_DEACTIVATION_DEFINITION: BusinessEntrySceneDefinition = {
   key: "project_participating_company_deactivate", entityType: "project_participating_company",
@@ -313,7 +315,7 @@ export const BUSINESS_ENTRY_SCENE_DEFINITIONS: readonly BusinessEntrySceneDefini
     textField("changeReason", "加入原因", projectMaintenanceRoles, { type: "long_text", required: true, bulk: { enabled: false, maxRows: 1, strategy: "replace" } })
   ]),
   globalDefinition("project_rename", "project", "项目名称", [
-    textField("name", "项目名称", projectMaintenanceRoles, {
+    textField("name", "项目名称", PROJECT_BASIC_MAINTAINER_ROLES, {
       required: true,
       bulk: { enabled: false, maxRows: 1, strategy: "replace" }
     })
@@ -359,6 +361,50 @@ export const BUSINESS_ENTRY_SCENE_DEFINITIONS: readonly BusinessEntrySceneDefini
         excel: { column: "数量", paste: "multi", errorLocation: "cell" }
       },
       { ...textField("note", "明细备注", spotProcurementCreateRoles), type: "long_text", scope: "line" }
+    ],
+    rules: []
+  },
+  {
+    key: "spot_procurement.request_v2",
+    entityType: "spot_procurement_version",
+    name: "零星材料采购申请",
+    description: "零星材料采购申请表头的统一填写与提交快照。",
+    version: 1,
+    fields: [
+      textField("applicationDepartment", "申请部门", spotProcurementRequestRoles, { required: true }),
+      textField("applicationName", "申请人", spotProcurementRequestRoles, { required: true }),
+      { ...textField("requestedArrivalAt", "要求采购到位日期", spotProcurementRequestRoles), type: "date", unit: "日" },
+      textField("reason", "采购原因", spotProcurementRequestRoles),
+      { ...textField("estimatedTotalAmount", "申请预计总金额", spotProcurementRequestRoles), type: "money", precision: 4, exactDecimalString: { sign: "nonnegative", maximumExclusive: "100000000000000000000" } },
+      { ...textField("note", "采购备注", spotProcurementRequestRoles), type: "long_text" }
+    ],
+    rules: []
+  },
+  {
+    key: "spot_procurement.request_line_v2",
+    entityType: "spot_procurement_line",
+    name: "零星材料采购明细",
+    description: "零星材料采购明细的统一填写与提交快照。",
+    version: 1,
+    fields: [
+      { ...textField("materialName", "材料名称", spotProcurementRequestRoles, { required: true }), scope: "line" },
+      { ...textField("specification", "规格型号", spotProcurementRequestRoles), scope: "line" },
+      { ...textField("unit", "单位", spotProcurementRequestRoles), scope: "line" },
+      {
+        ...textField("quantity", "数量", spotProcurementRequestRoles),
+        type: "number",
+        scope: "line",
+        precision: 4,
+        exactDecimalString: {
+          sign: "nonnegative",
+          minimumExclusive: "0",
+          maximumExclusive: "1000000000000000000"
+        },
+        unit: "",
+        excel: { column: "数量", paste: "multi", errorLocation: "cell" }
+      },
+      ...["estimatedUnitPrice", "estimatedAmount"].map((key, index) => ({ ...textField(key, index === 0 ? "预计单价" : "预计金额", spotProcurementRequestRoles), type: "money" as const, scope: "line" as const, precision: 4, exactDecimalString: { sign: "nonnegative" as const, maximumExclusive: "100000000000000000000" } })),
+      { ...textField("note", "明细备注", spotProcurementRequestRoles), type: "long_text", scope: "line" }
     ],
     rules: []
   },
@@ -523,12 +569,12 @@ export const BUSINESS_ENTRY_SCENE_ACCESS_POLICIES: readonly BusinessEntrySceneAc
     {
       sceneKey: "project_rename",
       target: { scope: "project", entityType: "project" },
-      permission: { kind: "role_keys", roleKeys: projectMaintenanceRoles, roleScope: "effective" }
+      permission: { kind: "role_keys", roleKeys: PROJECT_BASIC_MAINTAINER_ROLES, roleScope: "effective" }
     },
     {
       sceneKey: "project_create",
       target: { scope: "project", entityType: "project" },
-      permission: { kind: "role_keys", roleKeys: projectMaintenanceRoles, roleScope: "effective" }
+      permission: { kind: "role_keys", roleKeys: PROJECT_BASIC_MAINTAINER_ROLES, roleScope: "effective" }
     },
     {
       sceneKey: "project_participating_company_deactivate",
@@ -559,6 +605,32 @@ export const BUSINESS_ENTRY_SCENE_ACCESS_POLICIES: readonly BusinessEntrySceneAc
         kind: "business_action",
         action: "spot_procurement.create",
         roleScope: "project"
+      }
+    },
+    {
+      sceneKey: "spot_procurement.request_v2",
+      target: {
+        scope: "project",
+        entityType: "spot_procurement_version",
+        resolve: resolveSpotProcurementVersion
+      },
+      permission: {
+        kind: "business_action",
+        action: "spot_procurement.create",
+        roleScope: "effective"
+      }
+    },
+    {
+      sceneKey: "spot_procurement.request_line_v2",
+      target: {
+        scope: "project",
+        entityType: "spot_procurement_line",
+        resolve: resolveSpotProcurementLine
+      },
+      permission: {
+        kind: "business_action",
+        action: "spot_procurement.create",
+        roleScope: "effective"
       }
     },
     {

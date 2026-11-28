@@ -1,0 +1,14 @@
+--- a/installer.cjs
++++ b/installer.cjs
+@@ -1622,0 +1623,11 @@
++
++function withCombined349Retained(receipt,consume,material,mode) {
++  need(typeof consume==='function' && material && typeof material==='object','EXPENSE_PRECISION_349_ARGUMENTS');
++  require('./expense-witness-349-profile.cjs').assertSource(material,require('./multi-witness.cjs').final);
++  return withCombinedOrdinaryLoan(receipt,consume,exactMultiWitness295,false,readForward320(material,349),mode);
++}
++
++module.exports.withCombined349RetainedCleanup = (receipt,consume,material) =>
++  withCombined349Retained(receipt,consume,material,'cleanup');
++module.exports.withCombined349MultiWitnessForProfile = (receipt,consume,material) =>
++  withCombined349Retained(receipt,consume,material,'profile');

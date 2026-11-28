@@ -40,6 +40,23 @@ describe("formal approval evidence", () => {
     const current = [approve("1", "material_director"), approve("2", "project_manager"), approve("3", "general_manager")];
     expect(finalApprovalEvidence("approved", nodes, [...old, { id: "reset", action: "payer_changed_reapproval" }, ...current])).toEqual(current);
   });
+  it("uses only post-change signatures in a migrated parallel payment round", () => {
+    const old = [approve("old-last", "general_manager"), approve("old-first", "material_director")];
+    const first = approve("new-first", "material_director");
+    const middle = approve("new-middle", "project_manager");
+    const last = approve("new-last", "chairman");
+    const parallel = nodes.map((node, index) => ({
+      ...node,
+      protocolVersion: 1,
+      executionMode: "parallel",
+      legacySerialCutover: true,
+      approvedRoleKeys: [[first, middle, last][index].approvedRoleKey]
+    }));
+    const actions = [...old, { id: "reset", action: "payer_changed_reapproval" }, last, first, middle];
+    expect(finalApprovalEvidence("approved", parallel, actions)).toEqual([first, middle, last]);
+    expect(() => finalApprovalEvidence("approved", parallel, actions.slice(0, -1))).toThrow();
+    expect(actions.slice(0, 2)).toEqual(old);
+  });
   it.each(["in_progress", "rejected", "withdrawn", "terminated"])("rejects %s", status => {
     expect(() => finalApprovalEvidence(status, nodes, [])).toThrow("最终审批通过");
   });

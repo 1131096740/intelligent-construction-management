@@ -1,0 +1,28 @@
+--- valid.cjs
++++ valid.cjs
+@@ -1,12 +1,13 @@
+ "use strict";
+-const {withCombined295MultiWitness,withCombined320ContractPayment,withCombined330TextAgreement,withCombined331PaymentRemainder}=require("./installer.cjs");
++const {withCombined295MultiWitness,withCombined320ContractPayment,withCombined330TextAgreement,withCombined331PaymentRemainder,withCombined332UpwardArchive}=require("./installer.cjs");
+ const {load,verifyFacts}=require("./retained-payment.cjs");
+ const source=require('./contract-finance-source.json');
++const upwardArchive=source.mode==='upward-archive-332';
+ const paymentRemainder=source.mode==='payment-remainder-331';
+-const forward=paymentRemainder||source.mode==='current-320'||source.mode==='text-direct-330';
+-const count=paymentRemainder?331:source.mode==='text-direct-330'?330:forward?329:295;
++const forward=upwardArchive||paymentRemainder||source.mode==='current-320'||source.mode==='text-direct-330';
++const count=upwardArchive?332:paymentRemainder?331:source.mode==='text-direct-330'?330:forward?329:295;
+ const install=(receipt,consume)=>forward
+-  ? (paymentRemainder?withCombined331PaymentRemainder:count===330?withCombined330TextAgreement:withCombined320ContractPayment)(receipt,consume,{sourceTree:source.sourceTree,
++  ? (upwardArchive?withCombined332UpwardArchive:paymentRemainder?withCombined331PaymentRemainder:count===330?withCombined330TextAgreement:withCombined320ContractPayment)(receipt,consume,{sourceTree:source.sourceTree,
+     migrations:'/qualification/workspace/services/api/prisma/migrations',tails:source.tails})
+   : withCombined295MultiWitness(receipt,consume);
+ const receipt={schemaVersion:1,sourceSha:source.sourceSha,purpose:"PAYMENT_EXECUTION_ORIGINAL_RETAINED_VALID_"+count,status:"STOPPED",stages:[]};
+@@ -15,6 +16,7 @@
+      context.database!==receipt.retainedPayment?.identity.database)throw new Error("PAYMENT_RETAINED_FINAL_CONTEXT");
+   receipt.retainedPayment["at"+count]=await verifyFacts(load("/qualification/retained-payment.json"),context.sql);
+ }).then(()=>{
++  if(upwardArchive) require('./upward-archive-332-profile.cjs').assertInstallation(receipt,source);
+   if(forward && (receipt.forward320?.ledgerSha256!==source.ledgerSha256 ||
+     receipt.combinedAfterBusiness?.ledgerSha256!==source.ledgerSha256 || receipt.combinedAfterBusiness?.count!==count))
+     throw new Error("PAYMENT_FORWARD_320_LEDGER");

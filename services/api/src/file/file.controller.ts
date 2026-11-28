@@ -1,5 +1,4 @@
 import {
-  BadRequestException,
   Controller,
   Body,
   Get,
@@ -15,8 +14,8 @@ import { CurrentUser } from "../auth/decorators/current-user.decorator";
 import { Public } from "../auth/decorators/public.decorator";
 import { RequirePositions } from "../auth/decorators/require-positions.decorator";
 import type { AuthenticatedUser } from "../auth/auth.types";
-import { AuthService } from "../auth/auth.service";
 import { CreateDownloadTicketDto } from "./dto/create-download-ticket.dto";
+import { CreateFilePackageDto } from "./dto/create-file-package.dto";
 import { UploadPrivateFileDto } from "./dto/upload-private-file.dto";
 import { FileService } from "./file.service";
 import {
@@ -25,9 +24,14 @@ import {
   normalizeUploadedOriginalName
 } from "./uploaded-file";
 
+function parsePackageFileIds(raw: string | string[] | undefined): string[] {
+  const values = Array.isArray(raw) ? raw : raw === undefined ? [] : [raw];
+  return values.flatMap((value) => value.split(",")).map((value) => value.trim()).filter(Boolean);
+}
+
 @Controller("files")
 export class FileController {
-  constructor(private readonly files: FileService, private readonly auth: AuthService) {}
+  constructor(private readonly files: FileService) {}
 
   @Post()
   @RequirePositions(
@@ -64,23 +68,40 @@ export class FileController {
     });
   }
 
+  @Get("download-package-capability")
+  downloadPackageCapability(
+    @CurrentUser() user: AuthenticatedUser,
+    @Query("fileIds") fileIds?: string | string[]
+  ) {
+    return this.files.getDownloadPackageCapability(parsePackageFileIds(fileIds), user.id);
+  }
+
+  @Post("download-package")
+  async downloadPackage(
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() input: CreateFilePackageDto,
+    @Res({ passthrough: true }) response: { set: (headers: Record<string, string>) => void }
+  ) {
+    const result = await this.files.createDownloadPackage(input.fileIds, user.id);
+
+    response.set({
+      "Content-Type": "application/zip",
+      "Content-Length": String(result.buffer.length),
+      "Content-Disposition": `attachment; filename*=UTF-8''${encodeURIComponent(result.fileName)}`
+    });
+
+    return new StreamableFile(result.buffer);
+  }
+
   @Post(":fileId/download-ticket")
   async createDownloadTicket(
     @Param("fileId") fileId: string,
     @CurrentUser() user: AuthenticatedUser,
     @Body() input: CreateDownloadTicketDto
   ) {
-    if (!input.confirmationPassword.trim()) {
-      throw new BadRequestException("请输入当前登录密码后再下载资料");
-    }
-    if (!input.downloadReason?.trim()) {
-      throw new BadRequestException("请填写下载原因，便于留痕审计");
-    }
-
-    await this.auth.confirmPassword(user.id, input.confirmationPassword);
     return this.files.createDownloadTicket(fileId, {
       actorUserId: user.id,
-      downloadReason: input.downloadReason,
+      ...(input.downloadReason?.trim() ? { downloadReason: input.downloadReason } : {}),
       ...(input.delegatorUserId ? { delegatorUserId: input.delegatorUserId } : {}),
       ...(input.accessMode ? { accessMode: input.accessMode } : {})
     });

@@ -30,6 +30,8 @@ export async function mockApprovalProgress(
       currentNodeName: business.pending ? "审批节点" : "流程已结束",
       nodes: [{ name: "审批节点", mode: "或签", status: business.pending ? "处理中" : "已通过", participants: [reviewer], pending: business.pending ? [reviewer] : [], legacyRoster: false }],
       pendingRecipients: business.pending ? [reviewer] : [],
+      viewerOnly: false,
+      canHandle: false,
       reminderToken: "a".repeat(64),
       canRemind: false,
       reminderUnavailableReason: business.pending ? "本场景不发送短信" : "流程已结束",

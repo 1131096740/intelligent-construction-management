@@ -1,0 +1,62 @@
+--- installer.cjs
++++ installer.cjs
+@@ -80 +80,5 @@
+-function outsideWitnessSql(count, signedSettlementInstalled = false) {
++const upwardArchivePostimages = Object.freeze({
++  'jg_upward_archive_catalog_projection_v2()':'486032556ec79adeaaf134eace64e6348cbf667abf3f9a7ba38e29176ebe2cc7',
++  'jg_upward_direct_archive_admission_v1()':'0a647f271a6ff2ec4bdf776c7a4950b26c4885babe980e08dec0182b2c1bae30',
++});
++function outsideWitnessSql(count, signedSettlementInstalled = false, upwardArchiveInstalled = false) {
+@@ -82,0 +87 @@
++  need(!upwardArchiveInstalled || signedSettlementInstalled,'UPWARD_ARCHIVE_332_OUTSIDE_MILESTONE');
+@@ -84 +89,2 @@
+-    const digest=(signedSettlementInstalled ? signedSettlementOutsidePostimages[name] : undefined) ?? bodies[count-288];
++    const digest=(upwardArchiveInstalled ? upwardArchivePostimages[name] : undefined)
++      ?? (signedSettlementInstalled ? signedSettlementOutsidePostimages[name] : undefined) ?? bodies[count-288];
+@@ -281,2 +287,2 @@
+-  const named331=purpose===named292&&receipt.purpose==='NAMED_POL113_POL114_EXACT_331';
+-  const named320=named331||(purpose===named292&&receipt.purpose==='NAMED_POL113_POL114_EXACT_329');
++  const named332=purpose===named292&&receipt.purpose==='NAMED_POL113_POL114_EXACT_332';
++  const named320=named332||(purpose===named292&&receipt.purpose==='NAMED_POL113_POL114_EXACT_329');
+@@ -689 +695 @@
+-      const verifyLedger=async (expected,signedSettlementInstalled=false)=>{
++      const verifyLedger=async (expected,signedSettlementInstalled=false,upwardArchiveInstalled=false)=>{
+@@ -693 +699 @@
+-        const outside=await jsonSql(outsideWitnessSql(289,signedSettlementInstalled));
++        const outside=await jsonSql(outsideWitnessSql(289,signedSettlementInstalled,upwardArchiveInstalled));
+@@ -732,3 +738,4 @@
+-        need(named331&&material.migrationCount===331 && /^[0-9a-f]{40}$/u.test(material.sourceTree) &&
+-          Array.isArray(rows) && rows.length===36 && rows.at(-2)?.name==='20261128000000_text_agreement_direct_payment' &&
+-          rows.at(-1)?.name==='20261129000000_payment_remaining_withdrawal','NAMED_331_SOURCE');
++        need(named332&&material.migrationCount===332 && /^[0-9a-f]{40}$/u.test(material.sourceTree) &&
++          Array.isArray(rows) && rows.length===37 && rows.at(-3)?.name==='20261128000000_text_agreement_direct_payment' &&
++          rows.at(-2)?.name==='20261129000000_payment_remaining_withdrawal' &&
++          rows.at(-1)?.name==='20261129001000_contract_upward_archive_verifier_pin_forward','NAMED_332_SOURCE');
+@@ -738 +745 @@
+-        for(const batch of [rows.slice(0,34), rows.slice(34,35), rows.slice(35)]){
++        for(const batch of [rows.slice(0,34), rows.slice(34,35), rows.slice(35,36), rows.slice(36)]){
+@@ -751,2 +758,2 @@
+-          const expected=count===329?material.ledger329:count===330?material.ledger330:material.ledger320;
+-          need(hash(JSON.stringify(consumerLedger))===expected,'NAMED_331_LEDGER_SOURCE');
++          const expected=[material.ledger329,material.ledger330,material.ledger331,material.ledger332][count-329];
++          need(hash(JSON.stringify(consumerLedger))===expected,'NAMED_332_LEDGER_SOURCE');
+@@ -755 +762 @@
+-          outside=await verifyLedger(consumerLedger,true);
++          outside=await verifyLedger(consumerLedger,true,count===332);
+@@ -758,0 +766 @@
++          if(count===331) receipt.upwardArchivePredecessor={count,ledgerSha256:expected,sameIdentity:true,exactB7:true};
+@@ -760 +768 @@
+-        receipt.forward320={count:consumerLedger.length,ledgerSha256:material.ledger320,sourceTree:material.sourceTree,
++        receipt.forward332={count:consumerLedger.length,ledgerSha256:material.ledger332,sourceTree:material.sourceTree,
+@@ -764 +772 @@
+-        outside:await jsonSql(outsideWitnessSql(289,named320)),
++        outside:await jsonSql(outsideWitnessSql(289,named320,named332)),
+@@ -790 +798 @@
+-      enter(named331?'EXACT_331_NAMED_FRESH_CONSUMER':named320?'EXACT_329_NAMED_FRESH_CONSUMER':named295?'EXACT_295_NAMED_FRESH_CONSUMER':exact292?'EXACT_292_NAMED_FRESH_CONSUMER':consumerLedger?'EXACT_290_FRESH_CONSUMER':'EXACT_'+release.count+'_CONSUMER');
++      enter(named332?'EXACT_332_NAMED_FRESH_CONSUMER':named320?'EXACT_329_NAMED_FRESH_CONSUMER':named295?'EXACT_295_NAMED_FRESH_CONSUMER':exact292?'EXACT_292_NAMED_FRESH_CONSUMER':consumerLedger?'EXACT_290_FRESH_CONSUMER':'EXACT_'+release.count+'_CONSUMER');
+@@ -820 +828 @@
+-          if(named320) receipt.postBehavior320={exactB7:true,sameIdentity:true,
++          if(named320) receipt.postBehavior332={exactB7:true,sameIdentity:true,
+@@ -1162 +1170 @@
+-module.exports.withNamedPol113Pol114331=(receipt,mode,consume)=>withNamedPol113Pol114(receipt,mode,consume,331);
++module.exports.withNamedPol113Pol114332=(receipt,mode,consume)=>withNamedPol113Pol114(receipt,mode,consume,332);

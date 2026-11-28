@@ -1,0 +1,5 @@
+--- a/historical-expense-335-race.cjs
++++ b/historical-expense-335-race.cjs
+@@ -73 +73 @@
+-  assert.ok(migrationCount === 335 || migrationCount === 346 || migrationCount === 349, 'ISSUE417_RACE_MIGRATION_COUNT');
++  assert.ok([335, 346, 349, 350].includes(migrationCount), 'ISSUE417_RACE_MIGRATION_COUNT');

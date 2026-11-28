@@ -815,6 +815,9 @@ export class ProjectAffiliateBusinessService {
             await loadActorRoleKeys(tx, actorUserId, projectId)
           );
         }
+        if (entryKind === "original" && paymentKind === "advance") {
+          throw new BadRequestException("施工企业预付款已停止新增登记");
+        }
         await this.requireActiveProject(tx, projectId, true);
         const projectClient = (tx as unknown as {
           project?: {
@@ -887,13 +890,17 @@ export class ProjectAffiliateBusinessService {
           resolvedPaymentRequestId = paymentRequest.id;
         }
         const roleKeys = await loadActorRoleKeys(tx, actorUserId, projectId);
-        const recordedByRoleKey = roleKeys.includes("finance_director")
-          ? "finance_director"
-          : roleKeys.includes("finance_staff")
-            ? "finance_staff"
-            : null;
+        const recordedByRoleKey = roleKeys.includes("comprehensive_director")
+          ? "comprehensive_director"
+          : roleKeys.includes("finance_director")
+            ? "finance_director"
+            : roleKeys.includes("finance_staff")
+              ? "finance_staff"
+              : null;
         if (!recordedByRoleKey) {
-          throw new ForbiddenException("只有财务人员或财务主管可以录入施工企业付款事实");
+          throw new ForbiddenException(
+            "只有综合部主管、财务人员或财务主管可以登记施工企业付款事实"
+          );
         }
         const contract = await loadActiveContractLedger(tx, projectId, contractLedgerId, true);
         assertSameCounterparty(contract.counterpartyName, counterpartyName, "付款");
@@ -1251,7 +1258,8 @@ export class ProjectAffiliateBusinessService {
           }
         }
         await lockSettlementLedger(tx, projectId, settlementFact.ledgerId);
-        await assertSettlementEffectiveAmountCoversExistingPayments(
+        // OPS-05：已结算 10 实际付 12 时，结算仍按真实金额确认，超付另行提示。
+        await measureSettlementEffectiveAmountCoverage(
           tx,
           projectId,
           settlementFact.ledgerId,
@@ -1261,10 +1269,9 @@ export class ProjectAffiliateBusinessService {
         );
       }
       if (businessType === "payment" && (fact as unknown as AffiliatePaymentFactRow).settlementLedgerId!) {
-        const settlement = await loadActiveSettlementLedger(tx, projectId, (fact as unknown as AffiliatePaymentFactRow).settlementLedgerId!, true);
-        const payments = await tx.projectAffiliatePaymentFact.findMany({where:{projectId,settlementLedgerId:(fact as unknown as AffiliatePaymentFactRow).settlementLedgerId!,status:{in:["pending_confirm","confirmed"]}}});
-        const total = netMoneyFacts(payments.filter(p=>p.status==="confirmed"||p.effectDirection!=="decrease"||p.id===factId)) + await contractProxyPaid(tx, `affiliate_settlement:${(fact as unknown as AffiliatePaymentFactRow).settlementLedgerId!}`);
-        if(total > settlement.netAmountCents) throw new ConflictException("结算已被其他付款或代付核销，不能重复付款");
+        // OPS-05：结算已被付满或超付时仍允许确认真实付款；超付作为提示返回，
+        // 防重复登记同一笔由幂等键与外部流水唯一约束保证。
+        await loadActiveSettlementLedger(tx, projectId, (fact as unknown as AffiliatePaymentFactRow).settlementLedgerId!, true);
       }
       const roleKeys = await loadActorRoleKeys(tx, actorUserId, projectId);
       assertCanConfirm(businessType, fact.basisType, roleKeys);
@@ -1334,6 +1341,20 @@ export class ProjectAffiliateBusinessService {
           companyApprovalCreated: false
         }
       });
+      if (businessType === "payment") {
+        const paymentFact = confirmed as unknown as AffiliatePaymentFactRow;
+        const coverage = paymentFact.settlementLedgerId
+          ? await measureSettlementEffectiveAmountCoverage(
+              tx,
+              projectId,
+              paymentFact.settlementLedgerId
+            )
+          : null;
+        return {
+          ...readModelByType(businessType, confirmed, roleKeys),
+          settlementCoverage: settlementCoverageToApi(coverage)
+        };
+      }
       return readModelByType(businessType, confirmed, roleKeys);
     });
   }
@@ -1399,7 +1420,9 @@ export class ProjectAffiliateBusinessService {
     idempotencyKey: string,
     requestFingerprint: string
   ) {
-    if (!isUniqueConstraintError(error)) throw error;
+    const duplicateBankEvent = error instanceof Prisma.PrismaClientUnknownRequestError &&
+      error.message.includes('PostgresError { code: "P0001", message: "施工企业该银行流水已登记，不得跨入口重复付款", severity:');
+    if (!isUniqueConstraintError(error) && !duplicateBankEvent) throw error;
     const existing = await this.prisma.projectAffiliatePaymentFact.findUnique({
       where: { idempotencyKey }
     });
@@ -1630,7 +1653,7 @@ async function assertAffiliatePaymentRequestCapacity(
   }
 }
 
-async function syncAffiliatePaymentRequest(
+export async function syncAffiliatePaymentRequest(
   tx: Prisma.TransactionClient,
   projectId: string,
   paymentRequestId: string
@@ -1843,6 +1866,108 @@ async function assertSettlementAdjustmentCapacity(
   );
 }
 
+export interface SettlementPaymentCoverage {
+  effectiveAmountCents: bigint;
+  paidAmountCents: bigint;
+  remittedAmountCents: bigint;
+  overpaidCents: bigint;
+}
+
+/**
+ * OPS-05：真实已付大于已结算金额允许如实登记，只提示超付，不改写真实金额。
+ *
+ * 防重复登记同一笔仍由幂等键、确认动作幂等键、外部付款流水唯一约束和
+ * 「必须先有已确认结算」共同保证，超付本身不构成重复付款。
+ */
+export async function measureSettlementEffectiveAmountCoverage(
+  tx: Prisma.TransactionClient,
+  projectId: string,
+  settlementLedgerId: string,
+  proposedNetAmountCents?: bigint,
+  additionalRemittanceAmountCents = 0n,
+  confirmingSettlementFactId?: string
+): Promise<SettlementPaymentCoverage> {
+  const settlementFactStatusFilter = confirmingSettlementFactId
+    ? {
+        OR: [
+          { status: "confirmed" },
+          { id: confirmingSettlementFactId, status: "pending_confirm" }
+        ]
+      }
+    : { status: "confirmed" };
+  const effectiveAmountCents =
+    proposedNetAmountCents ??
+    netMoneyFacts(
+      await tx.projectAffiliateSettlementFact.findMany({
+        where: {
+          projectId,
+          ledgerId: settlementLedgerId,
+          ...settlementFactStatusFilter
+        },
+        select: { effectDirection: true, amountCents: true }
+      })
+    );
+  const paidAmountCents =
+    netMoneyFacts(
+      await tx.projectAffiliatePaymentFact.findMany({
+        where: {
+          projectId,
+          settlementLedgerId,
+          OR: [
+            { status: "confirmed" },
+            { status: "pending_confirm", effectDirection: "increase" }
+          ]
+        },
+        select: { effectDirection: true, amountCents: true }
+      })
+    ) +
+    (await contractProxyPaid(
+      tx,
+      `affiliate_settlement:${settlementLedgerId}`,
+      true
+    ));
+  const settlementFacts = await tx.projectAffiliateSettlementFact.findMany({
+    where: {
+      projectId,
+      ledgerId: settlementLedgerId,
+      ...settlementFactStatusFilter
+    },
+    select: { id: true }
+  });
+  const remittedAmountCents = settlementFacts.length
+    ? netMoneyFacts(
+        await tx.projectUpstreamFundFact.findMany({
+          where: {
+            projectId,
+            factType: "affiliate_remittance_to_company",
+            affiliateSettlementFactId: { in: settlementFacts.map((fact) => fact.id) },
+            OR: [
+              { status: "confirmed" },
+              { status: "pending_confirm", effectDirection: "increase" }
+            ]
+          },
+          select: { effectDirection: true, amountCents: true }
+        })
+      )
+    : 0n;
+  const totalCoveredAmountCents =
+    paidAmountCents +
+    remittedAmountCents +
+    additionalRemittanceAmountCents +
+    (await matchedUpwardReceipts(tx, { settlementLedgerId }, true));
+  const excess = totalCoveredAmountCents - effectiveAmountCents;
+  return {
+    effectiveAmountCents,
+    paidAmountCents,
+    remittedAmountCents,
+    overpaidCents: excess > 0n ? excess : 0n
+  };
+}
+
+/**
+ * 结算调减方向的守恒守卫：已确认结算的有效金额不得低于既有已付/已拨。
+ * 保留该方向（SET-07）不随 OPS-05 的“真实超付如实登记”放开。
+ */
 export async function assertSettlementEffectiveAmountCoversExistingPayments(
   tx: Prisma.TransactionClient,
   projectId: string,
@@ -1876,12 +2001,19 @@ export async function assertSettlementEffectiveAmountCoversExistingPayments(
       where: {
         projectId,
         settlementLedgerId,
-        OR:[{status:"confirmed"},{status:"pending_confirm",effectDirection:"increase"}]
+        OR: [
+          { status: "confirmed" },
+          { status: "pending_confirm", effectDirection: "increase" }
+        ]
       },
       select: { effectDirection: true, amountCents: true }
     })
   );
-  if (effectiveAmountCents < paymentAmountCents + await contractProxyPaid(tx,`affiliate_settlement:${settlementLedgerId}`,true)) {
+  if (
+    effectiveAmountCents <
+    paymentAmountCents +
+      (await contractProxyPaid(tx, `affiliate_settlement:${settlementLedgerId}`, true))
+  ) {
     throw new BadRequestException("施工企业结算有效金额不能低于已登记付款金额");
   }
   const settlementFacts = await tx.projectAffiliateSettlementFact.findMany({
@@ -1899,15 +2031,36 @@ export async function assertSettlementEffectiveAmountCoversExistingPayments(
             projectId,
             factType: "affiliate_remittance_to_company",
             affiliateSettlementFactId: { in: settlementFacts.map((fact) => fact.id) },
-            OR:[{status:"confirmed"},{status:"pending_confirm",effectDirection:"increase"}]
+            OR: [
+              { status: "confirmed" },
+              { status: "pending_confirm", effectDirection: "increase" }
+            ]
           },
           select: { effectDirection: true, amountCents: true }
         })
       )
     : 0n;
-  if (effectiveAmountCents < remittanceAmountCents + additionalRemittanceAmountCents + await matchedUpwardReceipts(tx,{settlementLedgerId},true)) {
+  if (
+    effectiveAmountCents <
+    remittanceAmountCents +
+      additionalRemittanceAmountCents +
+      (await matchedUpwardReceipts(tx, { settlementLedgerId }, true))
+  ) {
     throw new BadRequestException("施工企业结算有效金额不能低于已登记拨款金额");
   }
+}
+
+export function settlementCoverageToApi(
+  coverage: SettlementPaymentCoverage | null
+) {
+  if (!coverage) return null;
+  return {
+    effectiveAmountCents: moneyCentsToApi(coverage.effectiveAmountCents),
+    paidAmountCents: moneyCentsToApi(coverage.paidAmountCents),
+    remittedAmountCents: moneyCentsToApi(coverage.remittedAmountCents),
+    overpaidCents: moneyCentsToApi(coverage.overpaidCents),
+    overpaid: coverage.overpaidCents > 0n
+  };
 }
 
 function assertContractAdjustmentTarget(
@@ -2050,8 +2203,11 @@ async function assertPaymentCapacity(
   const delta = input.effectDirection === "decrease" ? -input.amountCents : input.amountCents;
   const next = input.target ? current + delta : current + input.amountCents;
   const limit =
+    // OPS-05：施工企业付下游以真实结算为依据，但真实超付允许如实登记，
+    // 因此正常结算付款不再按结算净额设上限；超付在读模型中提示。
+    // 预付款与直接付款仍保留外部合同冻结上限，不新增无结算预付路径。
     input.paymentKind === "normal"
-      ? input.settlement?.netAmountCents ?? null
+      ? null
       : input.paymentKind === "advance"
         ? input.contract.advanceLimitCents
         : input.contract.amountNature === "fixed"

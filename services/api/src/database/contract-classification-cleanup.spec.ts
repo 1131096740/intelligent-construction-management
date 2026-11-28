@@ -33,6 +33,7 @@ function fixture(mode: Mode = "success") {
   }));
   const containerId = "a".repeat(64);
   const volumeName = "b".repeat(64);
+  const stagedDatabases: string[] = [];
   const calls: { bin: string; args: string[]; env?: Record<string, string> }[] = [];
   let labels: Record<string, string> = {};
   let finishHeld: (() => void) | undefined;
@@ -112,6 +113,24 @@ function fixture(mode: Mode = "success") {
       ...runtime,
       createCommandRuntime: (options: object) => runtime.createCommandRuntime({ ...options, spawnCommand })
     };
+    if (name === "./local-staged-ci-dynamic.cjs") return {
+      CI_DYNAMIC_MIGRATION_LABEL: "jg.local-ci-dynamic-migration",
+      createCiDynamicMigrationFixture(options: {
+        ciFixture: string; container: { id: string; name: string; runId: string }; databaseNames: string[];
+        deploy: (request: { databaseUrl: string; runtimeEnv: Record<string, string> }) => Promise<unknown>;
+      }) {
+        expect(options.ciFixture).toBe("DYNAMIC_CONTRACT_CLASSIFICATION_V1");
+        expect(options.container.id).toBe(containerId);
+        expect(options.container.name).toMatch(/^jiangkong-contract-test-/u);
+        expect(labels["jg.local-ci-dynamic-migration"]).toBe(options.container.runId);
+        expect([...options.databaseNames]).toEqual(["jiangkong_project_affiliate_company_contract_test",
+          "jiangkong_pol114", "jiangkong_payment_execution_concurrency"]);
+        return { async migrate(request: { databaseUrl: string; runtimeEnv: Record<string, string> }) {
+          stagedDatabases.push(new URL(request.databaseUrl).pathname.slice(1));
+          return options.deploy(request);
+        } };
+      }
+    };
     if (name === "./contract-bank-runtime-fixture.cjs") return { prepareContractBankRuntime: ({ target }: { target: string }) => target };
     return createRequire(filename)(name);
   };
@@ -121,7 +140,7 @@ function fixture(mode: Mode = "success") {
     URL, performance, setTimeout, clearTimeout, Atomics, Int32Array, SharedArrayBuffer
   });
   return {
-    main: async () => moduleFixture.exports.main?.(), artifacts, calls, fakeProcess,
+    main: async () => moduleFixture.exports.main?.(), artifacts, calls, fakeProcess, stagedDatabases,
     manifest: () => JSON.parse(readFileSync(join(artifacts, "resource-manifest.json"), "utf8")),
     failureSummary: () => JSON.parse(readFileSync(join(artifacts, "failure-summary.json"), "utf8")),
     volumeExists: () => volumeExists, containerExists: () => exists,
@@ -163,6 +182,22 @@ describe("contract classification disposable resource lifecycle", () => {
     expectNoSecrets(f, f.manifest());
     expect(f.fakeProcess.listenerCount("SIGINT")).toBe(0);
     expect(f.fakeProcess.listenerCount("SIGTERM")).toBe(0);
+  });
+
+  it("qualifies all original deploys before bank roles while preserving backup restore and business order", async () => {
+    const f = fixture();
+    await f.main();
+    expect(f.stagedDatabases).toEqual(["jiangkong_project_affiliate_company_contract_test", "jiangkong_project_affiliate_company_contract_test",
+      "jiangkong_pol114", "jiangkong_payment_execution_concurrency"]);
+    const bank = f.calls.findIndex(call => call.args[0] === "-e");
+    const deployments = f.calls.map((call, index) => call.args.includes("deploy") ? index : -1).filter(index => index >= 0);
+    expect(deployments).toHaveLength(4);
+    expect(deployments.every(index => index < bank)).toBe(true);
+    expect(f.calls.filter(call => call.args.includes("jest")).map(call => call.args.find(arg => arg.endsWith(".spec.ts")))).toEqual([
+      "src/database/project-affiliate-company-contract-db.spec.ts", "src/database/contract-business-entry-http.spec.ts",
+      "src/database/company-transfer-http-postgres.spec.ts", "src/database/payment-execution-concurrency.spec.ts"
+    ]);
+    expect(f.calls.some(call => call.args.includes("pg_restore") && call.args.includes("contract_restored"))).toBe(true);
   });
 
   it("cleans a partially created owned container after docker run fails", async () => {

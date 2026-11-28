@@ -1,0 +1,82 @@
+--- installer.cjs
++++ installer.cjs
+@@ -174 +174 @@
+-async function migrateNativeTask16(plan,root,port,password,sql,jsonSql,command,enter,fromHistory){
++async function migrateNativeTask16(plan,root,port,password,sql,jsonSql,command,enter,fromHistory,receipt){
+@@ -180 +180,2 @@
+- for(const size of [...new Set([203,205,213,215,218,221,ledger.length])]){
++ const historicalNegative=['PAYMENT_EXECUTION_ORIGINAL_REMAINING_13_NEGATIVES','PAYMENT_EXECUTION_ORIGINAL_PAID_MISMATCH_DIAGNOSTIC'].includes(receipt.purpose);
++ for(const size of [...new Set([...(historicalNegative||receipt.purpose==="PAYMENT_EXECUTION_ORIGINAL_RETAINED_VALID_290"?[109,110]:[]),203,205,213,215,218,221,ledger.length])]){
+@@ -192 +193 @@
+- const deploy=async(size,url=baseUrl)=>{enter('MIGRATE_'+size);await command(process.execPath,[cli,'migrate','deploy','--schema',path.join(roots.get(size),'schema.prisma')],{timeoutMs:plan.limits.migrationMs,extra:{DATABASE_URL:url.toString(),PRISMA_SCHEMA_ENGINE_BINARY:engine,PRISMA_HIDE_UPDATE_MESSAGE:'1',CHECKPOINT_DISABLE:'1'}});};
++ const deploy=async(size,url=baseUrl,allowFailure=false)=>{enter('MIGRATE_'+size);return command(process.execPath,[cli,'migrate','deploy','--schema',path.join(roots.get(size),'schema.prisma')],{allowFailure,timeoutMs:plan.limits.migrationMs,extra:{DATABASE_URL:url.toString(),PRISMA_SCHEMA_ENGINE_BINARY:engine,PRISMA_HIDE_UPDATE_MESSAGE:'1',CHECKPOINT_DISABLE:'1'}});};
+@@ -194,0 +196,26 @@
++ if(historicalNegative){
++  const {load,verifyPrefix}=require('/qualification/retained-payment.cjs');
++  const data=load('/qualification/retained-payment.json');
++  const deployTarget=(size,target,allowFailure=false)=>{
++    const url=new URL(baseUrl);url.pathname='/'+target;
++    return deploy(size,url,allowFailure);
++  };
++  receipt.retainedPaymentNegatives=[];
++  receipt.retainedPayment=await verifyPrefix({
++    data,database,deploy:deployTarget,sql,jsonSql,inspect:controls.inspectSql(),ledger,identity,
++    onPhase:enter,onCase:evidence=>receipt.retainedPaymentNegatives.push(evidence),
++    onFailure:observation=>{receipt.retainedPaymentLastObservation=observation;},
++    readLog:()=>fs.readFileSync(path.join(root,'postgres.log'),'utf8')
++  });
++  throw new Error(receipt.purpose==='PAYMENT_EXECUTION_ORIGINAL_PAID_MISMATCH_DIAGNOSTIC'
++    ?'PAYMENT_RETAINED_PAID_MISMATCH_ONLY_COMPLETED':'PAYMENT_RETAINED_OTHER_NEGATIVES_COMPLETED');
++ }
++ if(receipt.purpose==='PAYMENT_EXECUTION_ORIGINAL_RETAINED_VALID_290'){
++  const {load,verifyPrefix}=require('/qualification/retained-payment.cjs');
++  receipt.retainedPayment=await verifyPrefix({
++    data:load('/qualification/retained-payment.json'),database,deploy:(size,target)=>{
++      need(target===database,'PAYMENT_RETAINED_TARGET');
++      return deploy(size);
++    },sql,jsonSql,inspect:controls.inspectSql(),ledger,identity,onPhase:enter
++  });
++ }
+@@ -195,0 +223 @@
++ if(receipt.retainedPayment)need(equal(bound,receipt.retainedPayment.identity),'PAYMENT_RETAINED_POST203_IDENTITY');
+@@ -207 +235 @@
+-function runCommand(file, args, {stdin, timeoutMs = 120_000, extra, allowFailure} = {}) {
++function runCommand(file, args, {stdin, timeoutMs = 120_000, extra, allowFailure, cwd} = {}) {
+@@ -210 +238 @@
+-    cwd:process.env.JG_RUN_ROOT || '/tmp', env:{ ...baseEnv, HOME:'/tmp', ...extra },
++    cwd:cwd ?? (process.env.JG_RUN_ROOT || '/tmp'), env:{ ...baseEnv, HOME:'/tmp', ...extra },
+@@ -238 +266 @@
+-  return {stdout:result.stdout, code:result.status};
++  return {stdout:result.stdout, code:result.status,...(allowFailure?{stderr:result.stderr??""}:{})};
+@@ -614,0 +643 @@
++        schemaPath:path.join(folder,'schema.prisma'),
+@@ -621 +650 @@
+-      enter(consumerLedger ? 'EXACT_290_SETTLEMENT_CONSUMER' : 'EXACT_'+release.count+'_CONSUMER');
++      enter(consumerLedger ? 'EXACT_290_FRESH_CONSUMER' : 'EXACT_'+release.count+'_CONSUMER');
+@@ -662 +691 @@
+-const migration=await migrateNativeTask16(plan,root,port,credentials.owner,sql,jsonSql,command,enter,fromHistory);
++const migration=await migrateNativeTask16(plan,root,port,credentials.owner,sql,jsonSql,command,enter,fromHistory,receipt);
+@@ -936 +965,3 @@
+-module.exports.withOutside290Settlement = receipt => {
++module.exports.withOutside290Fresh = (receipt,lane) => {
++  const names={v7:'fundExecution',invoice:'invoice',pol279:'pol279'};
++  need(Object.hasOwn(names,lane),'FRESH_290_LANE');
+@@ -943 +974 @@
+-    receipt.settlement=require('./contract-ci.cjs').verify('--contract-settlement-ci',context);
++    return require('./fresh-owner289.cjs')[names[lane]](context,receipt,runCommand,need,equal);
+@@ -945,0 +977,15 @@
++
++module.exports.withPayment290 = (receipt,consume) => {
++  const {contract289,verifyMaterialized}=require('./checkout.cjs');
++  verifyMaterialized('/qualification/product',contract289);
++  const {scope,verifySql}=require('./successor.cjs');
++  verifySql('/qualification/successor.sql');
++  Object.assign(receipt,{releaseTree:scope.tree,predecessorTree:outsideRelease.tree,sourceBaseSha:stableRelease.sha,sourceKind:'UNCOMMITTED_EXACT_GIT_TREE'});
++  return installer(receipt,false,async context=>{
++    need(receipt.installOnly290?.count===290 && receipt.installOnly290?.ledgerSha256==='8741d9da09253efb803af9e132b4cde09de0dfef86da7edf952b6c0056a057a5','PAYMENT_EXACT_290_LEDGER');
++    await consume(context);
++  },outsideRelease,installOnly290);
++};
++
++// The original negative drivers deliberately terminate at historical migration 110.
++module.exports.withRetainedPayment282 = module.exports.withPayment290;

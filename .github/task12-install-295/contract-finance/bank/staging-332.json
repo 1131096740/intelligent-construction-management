@@ -1,0 +1,22 @@
+{
+  "bank/overlay/services/api/src/database/contract-finance-owned.test-support.ts": {
+    "kind": "full",
+    "material": "9d31c39c5254b795e692ec11605768d44554566e5fa6fea84c600df3a52f1755.gz",
+    "sha256": "9d31c39c5254b795e692ec11605768d44554566e5fa6fea84c600df3a52f1755"
+  },
+  "bank/overlay/services/api/src/database/project-affiliate-company-contract-db.spec.ts": {
+    "kind": "full",
+    "material": "935b4d0b39c45aa4c2e8fdba8ccdbd5cdb396b87417be241e1744ceb44a50148.gz",
+    "sha256": "935b4d0b39c45aa4c2e8fdba8ccdbd5cdb396b87417be241e1744ceb44a50148"
+  },
+  "bank/overlay/services/api/prisma/contract-finance-owned-ci.cjs": {
+    "kind": "full",
+    "material": "16a4ce7d25b4dc12c064ecdce4ad2f049b0e8ee59cd8299a5cd00d952d799ed3.gz",
+    "sha256": "16a4ce7d25b4dc12c064ecdce4ad2f049b0e8ee59cd8299a5cd00d952d799ed3"
+  },
+  "bank/execution-files.json": {
+    "kind": "execution-manifest",
+    "material": "db8782be2783ac8c1b21d9026ea45ccd0eb4f8c81298ebbb9a898ca37e4c29b2.gz",
+    "sha256": "345b0a1d3e2dc9ed36d07264c0566a78778dfbbb59978befb4dd18405abe9906"
+  }
+}

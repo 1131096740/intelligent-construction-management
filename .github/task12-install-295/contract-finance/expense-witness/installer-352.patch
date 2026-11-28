@@ -1,0 +1,91 @@
+--- a/installer.cjs
++++ b/installer.cjs
+@@ -825,12 +825,15 @@
+       const expenseWitness = forward320.expenseWitness;
+       const precision = forward320.expenseWitnessPrecision;
+       const signedPrecision = forward320.signedSettlementPrecision;
++      const companyHistory = forward320.companyHistory;
+       let priorExpenseCatalog;
+       const precisionCatalog = {};
+       if (signed) batches.push(expenseWitness ? tails.slice(38,39) : tails.slice(38));
+       if (expenseWitness) batches.push(...tails.slice(39).map(row=>[row]));
+       for (const batch of batches) {
+-        if (signedPrecision && qualifiedLedger.length === precision.count) {
++        if (companyHistory && qualifiedLedger.length >= signedPrecision.count) {
++          enter('COMPANY_HISTORY_MIGRATE_'+(qualifiedLedger.length+1));
++        } else if (signedPrecision && qualifiedLedger.length === precision.count) {
+           enter('SIGNED_SETTLEMENT_PRECISION_MIGRATE_350');
+         } else if (precision && qualifiedLedger.length >= expenseWitness.count) {
+           enter('EXPENSE_PRECISION_MIGRATE_'+(qualifiedLedger.length+1));
+@@ -904,7 +907,7 @@
+         }
+         if (expenseWitness) {
+           const count=current.ledger.length;
+-          if (count>=334) (signedPrecision ?? precision ?? expenseWitness).assertPrefix(count,hash(JSON.stringify(current.ledger)));
++          if (count>=334) (companyHistory ?? signedPrecision ?? precision ?? expenseWitness).assertPrefix(count,hash(JSON.stringify(current.ledger)));
+           if ([334,341,342,343,344,345,expenseWitness.count].includes(count)) {
+             const observed=await jsonSql(expenseWitness.catalogSql);
+             expenseWitness.assertCatalog(count,observed,priorExpenseCatalog);
+@@ -935,13 +938,17 @@
+                 'SIGNED_SETTLEMENT_350_CATALOG_PREIMAGE');
+               receipt.signedSettlementCatalogBefore=before;
+             }
++          }
++          if (companyHistory && count===companyHistory.count) {
++            receipt.companyHistoryForward={count,ledgerSha256:companyHistory.ledgerSha256,
++              sameIdentity:true,sourceTree,tails:tails.slice(signedPrecision.count-295)};
+           }
+           if (signedPrecision && count===signedPrecision.count) {
+             const after=await jsonSql(signedPrecision.catalogSql);
+             signedPrecision.assertCatalog(after,receipt.signedSettlementCatalogBefore);
+             receipt.signedSettlementCatalog=after;
+             receipt.signedSettlementForward={count,ledgerSha256:signedPrecision.ledgerSha256,
+-              sameIdentity:true,sourceTree,tails:tails.slice(precision.count-295)};
++              sameIdentity:true,sourceTree,tails:tails.slice(precision.count-295,signedPrecision.count-295)};
+           }
+         }
+       }
+@@ -1054,7 +1061,8 @@
+         const signed=forward320.historicalSettlement ? require('./historical-settlement-334-profile.cjs') : null;
+         const precision=forward320.expenseWitnessPrecision;
+         const signedPrecision=forward320.signedSettlementPrecision;
+-        need(hash(JSON.stringify(afterConsumer.ledger))===(signedPrecision?.ledgerSha256 ?? precision?.ledgerSha256 ?? forward320.expenseWitness?.ledgerSha256 ?? signed?.ledgerSha256 ?? a28.ledgerSha256),'A28_LEDGER_AFTER_CONSUMER');
++        const companyHistory=forward320.companyHistory;
++        need(hash(JSON.stringify(afterConsumer.ledger))===(companyHistory?.ledgerSha256 ?? signedPrecision?.ledgerSha256 ?? precision?.ledgerSha256 ?? forward320.expenseWitness?.ledgerSha256 ?? signed?.ledgerSha256 ?? a28.ledgerSha256),'A28_LEDGER_AFTER_CONSUMER');
+         need(equal(await jsonSql(a28.catalogSql),receipt.historicalTakeover333Catalog),'A28_333_CATALOG_AFTER_CONSUMER');
+         receipt.historicalTakeoverCatalogAfterBusiness=true;
+         if (signed) {
+@@ -1484,9 +1492,10 @@
+   const upwardArchive=target>=332;
+   const historicalTakeover=target>=333;
+   const historicalSettlement=target>=334;
+-  const signedSettlementPrecision=target===350 ? require('./signed-settlement-350-profile.cjs') : null;
+-  const expenseWitnessPrecision=[349,350].includes(target) ? require('./expense-witness-349-profile.cjs') : null;
+-  const expenseWitness=[346,349,350].includes(target) ? require('./expense-witness-346-profile.cjs')
++  const companyHistory=target===352 ? require('./company-history-352-profile.cjs') : null;
++  const signedSettlementPrecision=[350,352].includes(target) ? require('./signed-settlement-350-profile.cjs') : null;
++  const expenseWitnessPrecision=[349,350,352].includes(target) ? require('./expense-witness-349-profile.cjs') : null;
++  const expenseWitness=[346,349,350,352].includes(target) ? require('./expense-witness-346-profile.cjs')
+     : target===345 ? require('./expense-witness-345-profile.cjs') : null;
+   need(typeof sourceTree==='string' && /^[0-9a-f]{40}$/u.test(sourceTree) &&
+     typeof migrations==='string' && path.isAbsolute(migrations) &&
+@@ -1526,7 +1535,7 @@
+     need(hash(bytes)===row.sha256,'FORWARD_320_TAIL_DIGEST');
+     return bytes;
+   });
+-  return {sourceTree,tails:rows,sql,textDirect,paymentRemainder,upwardArchive,historicalTakeover,historicalSettlement,expenseWitness,expenseWitnessPrecision,signedSettlementPrecision};
++  return {sourceTree,tails:rows,sql,textDirect,paymentRemainder,upwardArchive,historicalTakeover,historicalSettlement,expenseWitness,expenseWitnessPrecision,signedSettlementPrecision,companyHistory};
+ }
+ 
+ module.exports.withCombined320ContractPayment = (receipt,consume,material) => {
+@@ -1653,3 +1662,10 @@
+   selected.assertSource(material,require('./multi-witness.cjs').final);
+   return withCombinedOrdinaryLoan(receipt,consume,exactMultiWitness295,false,readForward320(material,selected.count));
+ };
++
++module.exports.withCombinedCompanyHistory352 = (receipt,consume,material) => {
++  need(typeof consume==='function' && material && typeof material==='object','COMPANY_HISTORY_352_ARGUMENTS');
++  const selected=require('./company-history-352-profile.cjs');
++  selected.assertSource(material,require('./multi-witness.cjs').final);
++  return withCombinedOrdinaryLoan(receipt,consume,exactMultiWitness295,false,readForward320(material,selected.count));
++};

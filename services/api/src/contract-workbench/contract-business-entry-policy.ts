@@ -1,7 +1,7 @@
 import { canPerform, resolveEffectiveRoleKeys, type RoleKey } from "@jiangkong/shared-domain";
 import type { BusinessEntryTransactionResolverContext, BusinessEntryTransactionScenePolicy } from "../business-entry-definition/business-entry-transaction-scene-registry";
 import { BadRequestException } from "@nestjs/common";
-import { CONTRACT_COMMERCIAL_ENTRY_DEFINITION, CONTRACT_PARTY_ENTRY_DEFINITION, CONTRACT_PAYMENT_STAGE_ENTRY_DEFINITION, CONTRACT_PAYMENT_TERMS_ENTRY_DEFINITION, resolveContractTemplateEntry, resolveContractBillEntries } from "./contract-business-entry-definition";
+import { contractCommercialEntryDefinition, CONTRACT_PARTY_ENTRY_DEFINITION, CONTRACT_PAYMENT_STAGE_ENTRY_DEFINITION, CONTRACT_PAYMENT_TERMS_ENTRY_DEFINITION, resolveContractTemplateEntry, resolveContractBillEntries } from "./contract-business-entry-definition";
 import { hasGlobalContractDirector } from "./contract-workbench-authority";
 
 export const CONTRACT_BASIC_ENTRY_POLICY: BusinessEntryTransactionScenePolicy = {
@@ -53,7 +53,11 @@ export const CONTRACT_TEMPLATE_ENTRY_POLICY: BusinessEntryTransactionScenePolicy
 
 export const CONTRACT_COMMERCIAL_ENTRY_POLICY: BusinessEntryTransactionScenePolicy = {
   ...CONTRACT_BASIC_ENTRY_POLICY, sceneKey: "contract_commercial_terms",
-  resolveDefinition: async () => CONTRACT_COMMERCIAL_ENTRY_DEFINITION
+  resolveDefinition: async ({ tx, target }) => {
+    const version = await tx.contractVersion.findUnique({ where: { id: target.entityId } });
+    if (!version) throw new BadRequestException("合同版本不存在，请刷新后重试");
+    return contractCommercialEntryDefinition(version);
+  }
 };
 
 async function partyVersionContext(context: BusinessEntryTransactionResolverContext) {

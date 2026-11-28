@@ -176,23 +176,46 @@ cat > "$FAKE_BIN/psql" <<'FAKE'
 set -euo pipefail
 [[ " $* " != *"schema="* ]]
 command_text=""
+sql_file=""
 while (( $# > 0 )); do
   case "$1" in
     --command)
       command_text=$2
       shift 2
       ;;
+    --file=*)
+      sql_file=${1#--file=}
+      shift
+      ;;
     *)
       shift
       ;;
   esac
 done
+if [[ "${PGUSER:-}" == owner ]]; then
+  if [[ -n "$sql_file" ]]; then
+    [[ -r "$sql_file" ]]
+    if [[ "${sql_file##*/}" == operating-ledger-v2-runtime-grants.sql ]]; then
+      printf 'psql grant-ledger-v2 role=%s\n' "${OPERATING_LEDGER_RUNTIME_ROLE:?}" >> "${FAKE_LOG:?}"
+      if [[ "${FAKE_LEDGER_V2_FAILURE:-}" == grant ]]; then exit 31; fi
+    fi
+  elif [[ -z "$command_text" ]]; then
+    sql_input=$(cat)
+    if [[ "$sql_input" == *app.verify_runtime_role* ]]; then
+      printf 'psql verify-ledger-role=%s\n' "${OPERATING_LEDGER_RUNTIME_ROLE:?}" >> "${FAKE_LOG:?}"
+      if [[ "${FAKE_LEDGER_V2_FAILURE:-}" == verify ]]; then exit 32; fi
+    fi
+  fi
+fi
 case "$command_text" in
   *current_database*)
     printf '%s\n' "${FAKE_DATABASE_NAME:-jiangkong_restore_selftest}"
     ;;
   *pg_catalog.pg_tables*)
     printf '%s\n' "${FAKE_PUBLIC_TABLE_COUNT:-0}"
+    ;;
+  *to_regprocedure*)
+    printf '%s\n' legacy
     ;;
   *_prisma_migrations*)
     if [[ -n "${FAKE_MIGRATION_APPLIED_MARKER:-}" && -f "$FAKE_MIGRATION_APPLIED_MARKER" ]]; then
@@ -636,6 +659,8 @@ grep -q '^pre_migration_count=50$' <<< "$candidate_restore_output" ||
   fail "candidate restore evidence did not record the source migration count"
 grep -q '^completed_migration_count=51$' <<< "$candidate_restore_output" ||
   fail "candidate restore evidence did not record the final migration count"
+grep -q '^archive_closure_status=not_applicable$' <<< "$candidate_restore_output" ||
+  fail "candidate restore evidence did not identify the pre-closure fixture"
 
 : > "$FAKE_LOG"
 if PATH="$FAKE_BIN:$PATH" \
@@ -732,6 +757,7 @@ make_deploy_fixture() {
   cp "$SCRIPT_DIR/../../services/api/prisma/employee-onboarding-runtime-grants.sql" "$fixture/repo/services/api/prisma/employee-onboarding-runtime-grants.sql"
   cp "$SCRIPT_DIR/../../services/api/prisma/general-procurement-runtime-grants.sql" "$fixture/repo/services/api/prisma/general-procurement-runtime-grants.sql"
   cp "$SCRIPT_DIR/../../services/api/prisma/contract-bank-verification-runtime-grants.sql" "$fixture/repo/services/api/prisma/contract-bank-verification-runtime-grants.sql"
+  cp "$SCRIPT_DIR/../../services/api/prisma/operating-ledger-v2-runtime-grants.sql" "$fixture/repo/services/api/prisma/operating-ledger-v2-runtime-grants.sql"
   cp "$SCRIPT_DIR/grant-project-participating-company-fence-runtime-role.sh" "$fixture/repo/scripts/ops/grant-project-participating-company-fence-runtime-role.sh"
   cp "$SCRIPT_DIR/verify-operating-ledger-runtime-role.sh" "$fixture/repo/scripts/ops/verify-operating-ledger-runtime-role.sh"
   chmod +x \
@@ -938,6 +964,24 @@ find "$migration_failure_fixture/backups" -name '*.dump' -type f | grep -q . ||
 find "$migration_failure_fixture/backups" -name '*.offsite.json' -type f | grep -q . ||
   fail "deployment did not require a verified offsite pre-migration backup"
 
+for failure_step in grant verify; do
+  ledger_acl_failure_fixture="$TEST_ROOT/deploy-ledger-acl-$failure_step-failure"
+  make_deploy_fixture "$ledger_acl_failure_fixture"
+  : > "$FAKE_LOG"
+  if run_deploy_fixture "$ledger_acl_failure_fixture" env FAKE_LEDGER_V2_FAILURE="$failure_step" \
+    FAKE_RUNTIME_HEALTH_ALLOW_NEW=true >/dev/null 2>&1; then
+    fail "deployment must reject a failed V2 ledger ACL $failure_step"
+  fi
+  grep -q '^psql grant-ledger-v2 role=runtime$' "$FAKE_LOG" || fail "deployment did not reach the V2 ledger grant"
+  if [[ "$failure_step" == verify ]]; then
+    grep -q '^psql verify-ledger-role=runtime$' "$FAKE_LOG" || fail "deployment did not reach the ledger ACL verification"
+  elif grep -q '^psql verify-ledger-role=' "$FAKE_LOG"; then
+    fail "deployment attempted to verify after the V2 ledger grant failed"
+  fi
+  [[ "$(< "$ledger_acl_failure_fixture/runtime/api/dist/release.txt")" == old-api ]] ||
+    fail "a failed ledger ACL $failure_step changed the API runtime"
+done
+
 offsite_failure_fixture="$TEST_ROOT/deploy-offsite-failure"
 make_deploy_fixture "$offsite_failure_fixture"
 : > "$FAKE_LOG"
@@ -985,6 +1029,17 @@ cmp -s "$api_only_fixture/repo/services/api/scripts/operational-write-freeze-pol
   fail "API-only deployment changed the Web runtime"
 grep -q '^pnpm --filter @jiangkong/api build$' "$FAKE_LOG" ||
   fail "API-only deployment did not build the API"
+python3 - "$FAKE_LOG" <<'PY'
+from pathlib import Path
+import sys
+
+log = Path(sys.argv[1]).read_text().splitlines()
+migrate = log.index("pnpm --filter @jiangkong/api exec prisma migrate deploy")
+grant = log.index("psql grant-ledger-v2 role=runtime")
+verify = log.index("psql verify-ledger-role=runtime")
+restart = log.index("systemctl restart jiangkong-api")
+assert migrate < grant < verify < restart, log
+PY
 if grep -q '^pnpm --filter @jiangkong/web-admin build$' "$FAKE_LOG"; then
   fail "API-only deployment built the Web application"
 fi

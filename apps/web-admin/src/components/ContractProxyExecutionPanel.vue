@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { useAuthStore } from "../auth/auth.store";
+import DutySmsStatusPanel from "./DutySmsStatusPanel.vue";
 import ApprovalDocumentDownload from "./approval/ApprovalDocumentDownload.vue";
 import {useRouter} from "vue-router";
 import { computed,onBeforeUnmount,ref,watch } from "vue";
@@ -7,6 +9,7 @@ import { uploadPrivateFile } from "../api/core-flow-read.api";
 import { formatUnknownApiError } from "../api/error-message";
 import { centsTextToYuanText,yuanTextToCentsText } from "../lib/money";
 const router=useRouter();
+const auth = useAuthStore();
 const props=defineProps<{projectId:string}>(),emit=defineEmits<{changed:[]}>();
 const data=ref<ProxyData|null>(null),busy=ref(false),error=ref(""),show=ref(false);
 const source=ref(""),payer=ref(""),kind=ref("payment"),original=ref<ProxyEntry|null>(null);
@@ -111,6 +114,12 @@ async function uploadPrivateFileWithCapability(arg0: Parameters<typeof uploadPri
           登记归还代付款
         </t-button>
       </template>
+      <DutySmsStatusPanel
+        v-if="auth.user?.id && data?.canReview && entry.canConfirm"
+        :key="`${auth.user.id}:${entry.id}`"
+        domain="contract-proxy-executions"
+        :business-id="entry.id"
+      />
       <ApprovalDocumentDownload business-type="contract_proxy_execution" :business-id="entry.id" :refresh-key="entry.status" />
     </article>
     <t-drawer

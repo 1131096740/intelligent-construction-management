@@ -89,6 +89,9 @@ BEGIN
   EXECUTE format('REVOKE ALL ON FUNCTION public."authorizeOperatingLedgerWrite"(TEXT, TEXT) FROM %I', runtime_role);
   EXECUTE format('REVOKE ALL ON FUNCTION public."assertOperatingLedgerWriteContext"(TEXT) FROM %I', runtime_role);
   EXECUTE format('REVOKE ALL ON TABLE public."OperatingLedgerWriteSecret", public."OperatingLedgerWriteContext" FROM %I', runtime_role);
+  IF to_regclass('public.jg_expense_public_cash_voucher_witness') IS NOT NULL THEN
+    EXECUTE format('REVOKE ALL ON TABLE public.jg_expense_public_cash_voucher_witness FROM %I', runtime_role);
+  END IF;
 END;
 $$;
 

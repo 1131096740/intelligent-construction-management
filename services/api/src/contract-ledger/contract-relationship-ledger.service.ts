@@ -1,6 +1,10 @@
+import { fundBalanceWitnessBinding, signFundBalanceWitness } from "../fund-account/fund-balance-witness-signing";
+import { signedReadWitnessKey } from "../settlement/signed-settlement-read-key";
+import { readSignedSettlementContractSource } from "../settlement/signed-settlement-contract-source";
+import { requireLegacyOperatingCents } from "../operating-ledger/operating-money-protocol";
 import { upwardAmountRevisions } from "./upward-contract-amount.service";
 import { excludedAmount, reviewAppliesToVersion, latestEconomicReviews } from "./contract-economic-coverage";
-import { BadRequestException, ForbiddenException, Injectable } from "@nestjs/common";
+import { BadRequestException, ForbiddenException, Injectable, ServiceUnavailableException } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
 import {
   CONTRACT_FULL_VIEW_GLOBAL_ROLE_KEYS, CONTRACT_FULL_VIEW_PROJECT_ROLE_KEYS,
@@ -14,6 +18,16 @@ import { ProjectVisibilityService } from "../auth/project-visibility.service";
 const FULL_ROLES = new Set<RoleKey>([...CONTRACT_FULL_VIEW_GLOBAL_ROLE_KEYS, ...CONTRACT_FULL_VIEW_PROJECT_ROLE_KEYS]);
 const FORMAL_SETTLEMENT = ["effective", "partially_paid", "paid"];
 const MAX_ROWS = 10000;
+interface SignedSettlementLedgerRow {
+  id: string;
+  projectId: string;
+  contractKind: string;
+  number: string | null;
+  amountYuan: string;
+  reviewedAt: string;
+  confirmedContractSource: Prisma.JsonValue;
+}
+
 export interface RelationshipLedgerQuery { projectId?: string; section?: ContractLedgerSection; relationship?: ContractRelationship; companyEntityId?: string; asOf?: string }
 
 /** 分类台账只读取原业务事实，不复制单据，不以实付推算成本。 */
@@ -100,11 +114,12 @@ export class ContractRelationshipLedgerService {
         for (const c of owners) rows.push({ ...base(c.projectId, c.id, "owner"), reference: c.contractCode, name: c.contractName,
           signingParty: c.ownerName, counterparty: c.affiliateNameSnapshot ?? "施工企业", amountCents: c.amountCents.toString(), occurredAt: c.signedAt.toISOString(), accountingEffect: "业主合同依据；结算确认项目收入" });
       } else if (section === "settlements") {
-        const [settlements, externalSettlements, ownerSettlements] = await Promise.all([
+        const [settlements, externalSettlements, ownerSettlements, signedSettlements] = await Promise.all([
           tx.settlement.findMany({ where: { ...scope, status: { in: FORMAL_SETTLEMENT } }, take: MAX_ROWS + 1 }),
           tx.projectAffiliateSettlementFact.findMany({ where: { ...scope, status: "confirmed" }, take: MAX_ROWS + 1 }),
-          tx.projectUpstreamSettlement.findMany({ where: { ...scope, status: "confirmed", OR:[{voidedAt:null},{voidedAt:{gt:cutoff}}] }, take: MAX_ROWS + 1 })
-        ]); assertBounded(settlements, externalSettlements, ownerSettlements);
+          tx.projectUpstreamSettlement.findMany({ where: { ...scope, status: "confirmed", OR:[{voidedAt:null},{voidedAt:{gt:cutoff}}] }, take: MAX_ROWS + 1 }),
+          readSignedSettlements(tx, actorUserId, projectIds, cutoff)
+        ]); assertBounded(settlements, externalSettlements, ownerSettlements, signedSettlements);
         const settlementFacts=await tx.operatingFact.findMany({where:{...scope,sourceType:"settlement",status:"confirmed",sourceBusinessId:{in:settlements.map(s=>s.id)}}});
         const archives=await tx.settlementArchiveFile.findMany({where:{settlementId:{in:settlements.map(s=>s.id)},status:"confirmed"},orderBy:{confirmedAt:"asc"}});
         for (const s of settlements) { const row = normal(s.contractId, s.contractVersionId, s.id); if (row) rows.push({ ...row,
@@ -121,6 +136,24 @@ export class ContractRelationshipLedgerService {
         for (const s of ownerSettlements) rows.push({ ...base(s.projectId, s.id, "owner"), reference: s.periodLabel, name: s.periodLabel,
           signingParty: s.approvingPartyName, counterparty: s.affiliateNameSnapshot ?? "施工企业",
           amountCents: s.approvedAmountCents.toString(), occurredAt: s.settledAt.toISOString(), accountingEffect: "业主确认结算形成项目收入" });
+        for (const s of signedSettlements) {
+          if (!s.reviewedAt || !s.amountYuan) throw new BadRequestException("已确认结算金额或日期待核对");
+          const frozen = readSignedSettlementContractSource(s.confirmedContractSource, s.contractKind);
+          let row: ContractRelationshipLedgerRow | null = null;
+          if (frozen) {
+            row = { ...base(s.projectId, s.id, frozen.relationship), name: frozen.name,
+              signingParty: frozen.signingParty ?? "签约主体待核对", counterparty: frozen.counterparty ?? "相对方待核对", companyEntityId: frozen.companyEntityId };
+          }
+          const effective = row ?? { ...base(s.projectId, s.id, "unclassified"), name: "结算合同关系待核对" };
+          const amountYuan = s.amountYuan;
+          const exactUnits = BigInt(amountYuan.replace(".", ""));
+          rows.push({ ...effective, reference: s.number ?? "编号待核对",
+            amountYuan, amountCents: exactUnits % 100n === 0n ? (exactUnits / 100n).toString() : null,
+            occurredAt: s.reviewedAt,
+            accountingEffect: effective.relationship === "upward" ? "确认对上往来，项目整体不计收入或成本"
+              : effective.relationship === "unclassified" ? "结算已确认，签约关系待核对" : "确认下游结算，付款不再次确认结算",
+            detailPath: `/结算工作台/已签登记?projectId=${encodeURIComponent(s.projectId)}&settlementId=${encodeURIComponent(s.id)}` });
+        }
       } else if (section === "payments") {
         const [proxyPayments, frozenPayments] = await Promise.all([
           tx.projectProxyPayment.findMany({ where: { ...scope, OR:[{voidedAt:null},{voidedAt:{gt:cutoff}}] }, take: MAX_ROWS + 1 }),
@@ -170,8 +203,8 @@ export class ContractRelationshipLedgerService {
           const matched=matches.filter(m=>m.receiptFactId===bank.id).reduce((sum,m)=>sum+(m.originalId?-m.amountCents:m.amountCents),0n);
           const frozen=matches.find(m=>m.receiptFactId===bank.id)?.frozenSource as {companyName?:string}|undefined;
           const reversalFacts=await tx.operatingFact.findMany({where:{projectId:bank.projectId,sourceType:"fund_execution",occurredAt:{lte:cutoff},impacts:{some:{impactSnapshot:{path:["originalOperatingImpactEntryId"],equals:bank.impacts.find(i=>i.impactKind==="company_project_funds_increase"&&i.direction==="increase")?.id??""}}}},include:{impacts:true}});
-          const reversed=reversalFacts.flatMap(f=>f.impacts).filter(i=>i.direction==="decrease").reduce((sum,i)=>sum+i.amountCents,0n);
-          const available=bank.amountCents-reversed;
+          const reversed=reversalFacts.flatMap(f=>f.impacts).filter(i=>i.direction==="decrease").reduce((sum,i)=>sum+requireLegacyOperatingCents(i),0n);
+          const available=requireLegacyOperatingCents(bank)-reversed;
           for(const [relationship,value] of [["upward",matched],["unclassified",available-matched]] as const){
             if(value===0n)continue;
             rows.push({...base(bank.projectId,`${bank.id}:${relationship}`,relationship),reference:"银行实际到账",name:"公司项目到账",signingParty:bank.affiliateNameSnapshot??"待核对拨款方",counterparty:frozen?.companyName??"到账账户所属公司",companyEntityId:bank.payeeSubjectId,actualPayer:bank.affiliateNameSnapshot,amountCents:value.toString(),occurredAt:bank.occurredAt.toISOString(),accountingEffect:relationship==="upward"?"原到账已匹配对上应收；不重复确认现金或收入":"原实际到账待匹配；保留资金，不假定合同或确认收入",detailPath:`/资金执行案件?projectId=${encodeURIComponent(bank.projectId)}`});
@@ -225,12 +258,60 @@ export class ContractRelationshipLedgerService {
 function signed(amount: bigint, direction: string) { return (direction === "decrease" ? -amount : amount).toString(); }
 function assertBounded(...groups: unknown[][]) { if (groups.some((g) => g.length > MAX_ROWS)) throw new BadRequestException("台账范围过大，请选择具体项目；本次未返回不完整合计"); }
 export function summarizeRelationshipLedger(rows: ContractRelationshipLedgerRow[], section: ContractLedgerSection): ContractRelationshipLedger {
-  const groups = new Map<ContractRelationship, { relationship: ContractRelationship; label: string; knownAmountCents: bigint; unknownAmountCount: number; count: number }>();
+  const groups = new Map<ContractRelationship, {
+    relationship: ContractRelationship; label: string; knownAmountCents: bigint; preciseUnits: bigint; hasPrecise: boolean; unknownAmountCount: number; count: number;
+  }>();
   for (const row of rows) {
-    const group = groups.get(row.relationship) ?? { relationship: row.relationship, label: row.relationshipLabel, knownAmountCents: 0n, unknownAmountCount: 0, count: 0 };
-    group.count += 1; if (row.amountCents === null) group.unknownAmountCount += 1; else group.knownAmountCents += BigInt(row.amountCents);
+    const group = groups.get(row.relationship) ?? {
+      relationship: row.relationship, label: row.relationshipLabel, knownAmountCents: 0n, preciseUnits: 0n, hasPrecise: false, unknownAmountCount: 0, count: 0
+    };
+    group.count += 1;
+    if (row.amountCents !== null) group.knownAmountCents += BigInt(row.amountCents);
+    if (row.amountYuan !== undefined) {
+      group.hasPrecise = true;
+      group.preciseUnits += BigInt(row.amountYuan.replace(".", ""));
+    } else if (row.amountCents === null) {
+      group.unknownAmountCount += 1;
+    } else {
+      group.preciseUnits += BigInt(row.amountCents) * 100n;
+    }
     groups.set(row.relationship, group);
   }
-  return { readAt: new Date().toISOString(), rows, totals: [...groups.values()].sort((a, b) => Object.keys(CONTRACT_RELATIONSHIP_LABELS).indexOf(a.relationship) - Object.keys(CONTRACT_RELATIONSHIP_LABELS).indexOf(b.relationship)).map((g) => ({ ...g, knownAmountCents: g.knownAmountCents.toString() })),
+  const groupsInOrder = [...groups.values()].sort((a, b) =>
+    Object.keys(CONTRACT_RELATIONSHIP_LABELS).indexOf(a.relationship) - Object.keys(CONTRACT_RELATIONSHIP_LABELS).indexOf(b.relationship));
+  const totals = groupsInOrder.map(({ preciseUnits, hasPrecise, knownAmountCents, ...group }) => {
+    const absolute = preciseUnits < 0n ? -preciseUnits : preciseUnits;
+    return { ...group, knownAmountCents: knownAmountCents.toString(),
+      ...(hasPrecise ? { knownAmountYuan: `${preciseUnits < 0n ? "-" : ""}${absolute / 10000n}.${String(absolute % 10000n).padStart(4, "0")}` } : {}) };
+  });
+  return { readAt: new Date().toISOString(), rows, totals,
     notice: `按完整授权范围分项汇总${section === "contracts" ? "已确认/生效合同" : "已确认事实"}。对上、业主与下游分别列示，不相加；缺失金额不作为零。办理中的单据请查看下方原业务台账。` };
+}
+
+async function readSignedSettlements(
+  tx: Prisma.TransactionClient, actor: string, projectIds: string[], cutoff: Date
+) {
+  const unavailable = "最新已确认结算台账暂不可用";
+  const key = signedReadWitnessKey(unavailable);
+  const projects = JSON.stringify([...projectIds].sort());
+  const asOf = cutoff.toISOString();
+  const { database, role, xid, backend, expires } = await fundBalanceWitnessBinding(tx);
+  // The witness carries the project scope resolved by the ledger's ordinary role rules above.
+  const proof = signFundBalanceWitness(key, [
+    "signed_settlement_relationship_ledger_v1", database, role, xid, backend, expires, projects, actor, asOf
+  ]);
+  try {
+    const [result] = await tx.$queryRaw<Array<{ rows: SignedSettlementLedgerRow[] }>>`
+      SELECT public.jg_read_signed_settlement_relationship_ledger_v1(
+        ${projects}, ${actor}, ${asOf}, ${expires}, ${proof}
+      ) AS rows
+    `;
+    return result.rows;
+  } catch (error) {
+    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2010" &&
+        ["42501", "42883"].includes(String(error.meta?.code))) {
+      throw new ServiceUnavailableException(unavailable);
+    }
+    throw error;
+  }
 }

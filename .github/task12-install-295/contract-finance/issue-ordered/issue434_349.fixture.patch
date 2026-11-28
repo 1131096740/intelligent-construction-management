@@ -1,0 +1,33 @@
+--- a/fixture.ts
++++ b/fixture.ts
+@@ -97,0 +98,15 @@
++      const db = app.get(PrismaService);
++      const company = await db.companyEntity.findUniqueOrThrow({ where: { id: companyEntityId } });
++      const companyVersion = await db.companyEntityVersion.create({ data: {
++        companyEntityId, versionNo: 1, name: company.name,
++        isActive: true, action: "create", actorUserId: director.id
++      } });
++      await db.projectParticipatingCompany.create({ data: {
++        projectId, companyEntityId, companyEntityVersionId: companyVersion.id,
++        companyNameSnapshot: company.name, effectiveFrom: new Date("2026-01-01"),
++        changeReason: "合成实际采购费用公司参与档案", addedByUserId: director.id
++      } });
++      await db.project.update({
++        where: { id: projectId },
++        data: { operatingLedgerEffectiveDate: new Date("2026-01-01") }
++      });
+@@ -147 +162 @@
+-        expect(await request(`${batchClaimPath}/approval`, "POST", {
++        const approved = await request(`${batchClaimPath}/approval`, "POST", {
+@@ -150 +165,10 @@
+-        }, reviewer.token)).toMatchObject({
++        }, reviewer.token);
++        if (approved.status !== 201) {
++          const message = approved.body?.message;
++          const reason = typeof message === "string" && message.includes("项目尚未启用经营账")
++            ? "LEDGER_NOT_ACTIVE"
++            : typeof message === "string" && message.includes("我方公司未在本项目事实日参与")
++              ? "COMPANY_NOT_PARTICIPATING" : "OTHER";
++          throw new Error(`ISSUE434_APPROVAL_DUTY_${index}_HTTP_${approved.status}_${reason}`);
++        }
++        expect(approved).toMatchObject({

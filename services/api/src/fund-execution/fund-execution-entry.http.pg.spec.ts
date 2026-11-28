@@ -1,3 +1,6 @@
+import { ApprovalSmsService } from "../approval/approval-sms.service";
+import { ApprovalTransitionNotificationService } from "../approval/approval-transition-notification.service";
+import { isOwnedIssue430NativeDatabase, issue430SmsProbe, verifyIssue430CorrectionDelivery } from "../approval/issue430-notification.test-support";
 import { verifyApprovedPdf } from "../database/approval-pdf-acceptance.test-support";
 import "reflect-metadata";
 import type { INestApplication } from "@nestjs/common";
@@ -13,10 +16,14 @@ import { createApiValidationPipe } from "../validation/api-validation";
 import { VerifiedBankTransactionObservationService } from "./verified-bank-transaction-observation.service";
 
 const enabled = process.env.RUN_POL115_ENTRY_PG16 === "1";
-type CaseBody = { caseId: string; revision: number; status: string; entrySnapshots: Array<{ definitionVersion: number; valuesSnapshot: Record<string, unknown> }> };
+const verifySms = process.env.RUN_ISSUE430_SMS === "1";
+type CaseBody = { caseId: string; approvalInstanceId: string; revision: number; status: string; entrySnapshots: Array<{ definitionVersion: number; valuesSnapshot: Record<string, unknown> }> };
 
 describe("资金办理统一录入真实 HTTP 与 PostgreSQL 16", () => {
   let app: INestApplication;
+  const smsProbe = issue430SmsProbe();
+  let smsApplicant: { id: string; phone: string | null };
+  let smsReviewerId: string;
   let baseUrl: string;
   let token: string;
   let reviewerToken: string;
@@ -26,10 +33,12 @@ describe("资金办理统一录入真实 HTTP 与 PostgreSQL 16", () => {
   beforeAll(async () => {
     if (!enabled) return;
     const url = new URL(process.env.DATABASE_URL ?? "");
-    if (process.env.NODE_ENV === "production" || url.hostname !== "127.0.0.1" || url.pathname !== "/jiangkong_pol115_entry_test") throw new Error("仅允许本票本机专用数据库");
+    if (process.env.NODE_ENV === "production" || url.hostname !== "127.0.0.1" || (url.pathname !== "/jiangkong_pol115_entry_test" && !isOwnedIssue430NativeDatabase(url))) throw new Error("仅允许本票本机专用数据库");
     const secret = randomUUID();
     process.env.OPERATING_LEDGER_DB_WRITE_SECRET = secret;
-    const module = await Test.createTestingModule({ imports: [AppModule] }).compile();
+    const builder = Test.createTestingModule({ imports: [AppModule] });
+    if (verifySms) builder.overrideProvider(ApprovalSmsService).useValue(smsProbe.sms);
+    const module = await builder.compile();
     app = module.createNestApplication({ logger: false });
     app.getHttpAdapter().getInstance().set("json replacer", apiJsonReplacer);
     app.useGlobalPipes(createApiValidationPipe());
@@ -40,7 +49,9 @@ describe("资金办理统一录入真实 HTTP 与 PostgreSQL 16", () => {
     const password = randomUUID();
     accountPassword = password;
     const actor = await db.user.create({ data: { name: "资金填写人", phone: suffix, passwordHash: await hash(password, 4), mustChangePassword: false } });
+    smsApplicant = actor;
     const reviewer = await db.user.create({ data: { name: "核验人", phone: `reviewer-${suffix}`, passwordHash: await hash(password, 4), mustChangePassword: false } });
+    smsReviewerId = reviewer.id;
     const role = await db.position.upsert({ where: { key: "finance_staff" }, create: { key: "finance_staff", name: "财务人员" }, update: {} });
     await db.userPosition.create({ data: { userId: actor.id, positionId: role.id } });
     const reviewerRole = await db.position.upsert({ where: { key: "finance_director" }, create: { key: "finance_director", name: "财务主管" }, update: {} });
@@ -107,17 +118,79 @@ describe("资金办理统一录入真实 HTTP 与 PostgreSQL 16", () => {
     expect(await request(`${path}/submit`, "POST", submit)).toEqual(submitted);
     expect((await request<CaseBody>(path)).entrySnapshots).toEqual(detail.entrySnapshots);
 
-    await request(`${path}/approval-actions`, "POST", { action: "return_to_applicant", comment: "分类说明需更精确" }, reviewerToken);
-    const returned = await request<CaseBody>(`${path}/return`, "POST", { expectedRevision: submitted.revision, reason: "补充分项目说明", idempotencyKey: randomUUID() }, reviewerToken);
+    const returnApproval = () => request(`${path}/approval-actions`, "POST", { action: "return_to_applicant", comment: "分类说明需更精确" }, reviewerToken);
+    const returnCase = (revision: number) => request<CaseBody>(`${path}/return`, "POST",
+      { expectedRevision: revision, reason: "补充分项目说明", idempotencyKey: randomUUID() }, reviewerToken);
+    let returned: CaseBody;
+    if (verifySms) {
+      const db = app.get(PrismaService);
+      const notifications = app.get(ApprovalTransitionNotificationService);
+      const where = { businessType: "approval_transition_duty_notification", businessId: submitted.approvalInstanceId, action: "queued" };
+      const dutyRows = await db.auditLog.findMany({ where });
+      expect(dutyRows.filter(row => (row.metadata as { recipientId?: string }).recipientId === smsReviewerId)).toHaveLength(1);
+      await db.$transaction(async tx => { expect(await notifications.queue(tx, submitted.approvalInstanceId, smsApplicant.id)).toBe(false); });
+
+      const originalQueue = notifications.queue.bind(notifications);
+      const queue = jest.spyOn(notifications, "queue").mockImplementationOnce(async (...args) => {
+        expect(args[3]).toBe(true);
+        expect(await originalQueue(...args)).toBe(true);
+        throw new Error("合成短信意图回滚");
+      });
+      await expect(returnApproval()).rejects.toThrow(/"status":500/u);
+      expect(await db.auditLog.count({ where })).toBe(dutyRows.length);
+      expect(await db.approvalInstance.findUnique({ where: { id: submitted.approvalInstanceId } }))
+        .toMatchObject({ status: "in_progress" });
+      queue.mockRestore();
+      await returnApproval();
+      const correction = await db.auditLog.findMany({ where: { ...where, metadata: { path: ["duty"], equals: "correction" } } });
+      expect(correction.map(row => row.metadata)).toEqual([{ duty: "correction", recipientId: smsApplicant.id }]);
+      let returnedAfterUnknown: CaseBody | undefined;
+      await verifyIssue430CorrectionDelivery({
+        scenario: "fund_execution_case", deliveryKey: submitted.approvalInstanceId, applicant: smsApplicant,
+        otherActorId: smsReviewerId, probe: smsProbe, sendPending: () => notifications.afterCommit(),
+        status: (id, actor) => notifications.status(id, actor), retry: (id, actor, attempt) => notifications.retry(id, actor, attempt),
+        queueUnknown: async () => {
+          const firstReturn = await returnCase(submitted.revision);
+          const next = await request<CaseBody>(`${path}/submit`, "POST", {
+            expectedRevision: firstReturn.revision, idempotencyKey: randomUUID()
+          });
+          await returnApproval();
+          returnedAfterUnknown = await returnCase(next.revision);
+          return next.approvalInstanceId;
+        }
+      });
+      returned = returnedAfterUnknown!;
+    } else {
+      await returnApproval();
+      returned = await returnCase(submitted.revision);
+    }
     await request<CaseBody>(`${path}/submit`, "POST", { expectedRevision: returned.revision, idempotencyKey: randomUUID() }, reviewerToken);
     const resubmitted = await request<CaseBody>(path, "GET", undefined, reviewerToken);
-    expect(resubmitted.entrySnapshots).toHaveLength(2);
+    expect(resubmitted.entrySnapshots).toHaveLength(verifySms ? 3 : 2);
     expect(resubmitted.entrySnapshots[0]).toEqual(detail.entrySnapshots[0]);
-    expect(resubmitted.entrySnapshots[1]).toMatchObject({ valuesSnapshot: { reason: "公司项目资金到账", amountCents: "12500", direction: "inflow" } });
-    for (const accessToken of [reviewerToken, generalManagerToken]) {
-      await request(`${path}/approval-actions`, "POST", { action: "approve", comment: "本地逐节点签批核验" }, accessToken);
-    }
-    await verifyApprovedPdf({ db: app.get(PrismaService), baseUrl, token: reviewerToken, password: accountPassword,
+    expect(resubmitted.entrySnapshots.at(-1)).toMatchObject({ valuesSnapshot: { reason: "公司项目资金到账", amountCents: "12500", direction: "inflow" } });
+    const db = app.get(PrismaService);
+    const { approvalInstanceId, submittedByUserId } = await db.fundExecutionCase.findFirstOrThrow({
+      where: { caseKey: created.caseId, revision: resubmitted.revision },
+      select: { approvalInstanceId: true, submittedByUserId: true }
+    });
+    if (!approvalInstanceId || !submittedByUserId) throw new Error("重提审批缺少冻结的提交人或审批实例");
+    const approve = { action: "approve", comment: "本地逐节点签批核验" };
+    const selfReviewReason = "财务主管重提后按当前职责自审核对";
+    const reviewPath = `${path}/approval-actions`;
+    await expect(request(reviewPath, "POST", approve, reviewerToken)).rejects.toThrow(/"status":400.*自审原因/u);
+    await expect(request(reviewPath, "POST", { ...approve, selfReviewReason, confirmationPassword: "wrong-local-password" }, reviewerToken))
+      .rejects.toThrow(/"status":400.*当前密码不正确/u);
+    expect(await db.approvalInstance.findUnique({ where: { id: approvalInstanceId } })).toMatchObject({ status: "in_progress", currentNodeIndex: 0 });
+    expect(await db.approvalActionLog.count({ where: { approvalInstanceId, action: "approve" } })).toBe(0);
+    await request(reviewPath, "POST", { ...approve, selfReviewReason, confirmationPassword: accountPassword }, reviewerToken);
+    expect(await db.approvalActionLog.findFirst({ where: { approvalInstanceId, action: "approve" } })).toMatchObject({
+      actorUserId: submittedByUserId,
+      approvedRoleKey: "finance_director",
+      metadata: { selfReview: true, selfReviewReason }
+    });
+    await request(reviewPath, "POST", approve, generalManagerToken);
+    await verifyApprovedPdf({ db, baseUrl, token: reviewerToken, password: accountPassword,
       businessType: "fund_execution_case", businessId: created.caseId, roles: ["finance_director", "general_manager"], label: "资金执行-退回重提总经理或签" });
   }, 60_000);
 

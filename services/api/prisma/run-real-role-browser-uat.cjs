@@ -77,6 +77,20 @@ function resolveSelfArchiveContractId({ governanceEvidencePath, runId, candidate
   return contractId;
 }
 
+function resolveSignedSettlementReviewFixtures({ governanceEvidencePath, runId, candidateSha }) {
+  const governance = JSON.parse(fs.readFileSync(governanceEvidencePath, "utf8"));
+  assert(governance?.runId === runId && governance?.candidateSha === candidateSha, "真实岗位浏览器 UAT 已签结算证据身份不一致");
+  const lanes = { chromium: "signed_settlement_material_confirmation", webkit: "signed_settlement_labor_confirmation" };
+  return Object.fromEntries(Object.entries(lanes).map(([browser, id]) => {
+    const item = governance.cases?.find((entry) => entry.id === id);
+    const fixture = item?.signedSettlementReviewFixture;
+    assert(item?.passed === true && fixture && /^[A-Za-z0-9_-]{1,128}$/u.test(fixture.projectId) &&
+      contractIdPattern.test(fixture.settlementId) && Number.isSafeInteger(fixture.revision) && fixture.revision > 0 &&
+      item.evidenceIds?.[0] === `${runId}:${fixture.settlementId}`, `真实岗位浏览器 UAT ${browser} 缺少已签结算复核证据`);
+    return [browser, fixture];
+  }));
+}
+
 function writeFailedBrowserEvidence({ evidenceFiles, candidateSha }) {
   for (const file of evidenceFiles) {
     let existing = {};
@@ -132,6 +146,9 @@ async function main() {
     runId,
     candidateSha
   });
+  const signedSettlementApiBaseUrl = process.env.TRIAL_RUN_SIGNED_SETTLEMENT_API_BASE_URL || apiBaseUrl;
+  assert(/^http:\/\/(127\.0\.0\.1|localhost):[0-9]+$/.test(signedSettlementApiBaseUrl), "真实岗位浏览器 UAT 已签结算只允许本机 API");
+  const signedSettlementReviewFixtures = resolveSignedSettlementReviewFixtures({ governanceEvidencePath, runId, candidateSha });
   const freezeApiBaseUrl = process.env.REAL_FREEZE_API_BASE_URL || "";
   assert(/^http:\/\/(127\.0\.0\.1|localhost):[0-9]+$/.test(freezeApiBaseUrl), "真实岗位浏览器 UAT 缺少本机写冻结 API");
   const evidenceFiles = evidenceFilesFor(evidencePath);
@@ -142,12 +159,14 @@ async function main() {
       env: {
         ...process.env,
         REAL_API_BASE_URL: apiBaseUrl,
+        REAL_SIGNED_SETTLEMENT_API_BASE_URL: signedSettlementApiBaseUrl,
         REAL_FREEZE_API_BASE_URL: freezeApiBaseUrl,
         REAL_ROLE_PASSWORD: password,
         REAL_BROWSER_CANDIDATE_SHA: candidateSha,
         REAL_BROWSER_EVIDENCE_PATH: path.resolve(evidencePath),
         REAL_BROWSER_OUTPUT_DIR: path.resolve(`${evidencePath}.artifacts`),
-        REAL_BROWSER_SELF_ARCHIVE_CONTRACT_IDS: JSON.stringify(selfArchiveContractIds)
+        REAL_BROWSER_SELF_ARCHIVE_CONTRACT_IDS: JSON.stringify(selfArchiveContractIds),
+        REAL_BROWSER_SIGNED_SETTLEMENT_REVIEW_FIXTURES: JSON.stringify(signedSettlementReviewFixtures)
       },
       forwardOutput: true,
       timeoutMs: 30 * 60 * 1000
@@ -173,5 +192,6 @@ module.exports = {
   main,
   resolveSelfArchiveContractId,
   resolveSelfArchiveContractIds,
+  resolveSignedSettlementReviewFixtures,
   writeFailedBrowserEvidence
 };

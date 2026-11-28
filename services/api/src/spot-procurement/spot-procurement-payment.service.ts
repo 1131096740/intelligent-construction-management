@@ -1,3 +1,8 @@
+import { appendRegisteredOperationalPayment, readRegisteredOperationalPayment } from "../fund-account/registered-operational-payment";
+import { assertRegisteredPaymentActor } from "../payment/registered-payment-funding";
+import { SpotPaymentExecutionNotificationService } from "./spot-payment-execution-notification.service";
+import { effectiveSpotCompanyPaymentAmount } from "./spot-payment-execution-duty";
+import { requiredPastChinaDate } from "@jiangkong/shared-domain";
 import { assertProjectApprovalNodesConfigured } from "../approval/project-approval-configuration";
 import {
   BadRequestException,
@@ -6,7 +11,8 @@ import {
   HttpException,
   Inject,
   Injectable,
-  NotFoundException
+  NotFoundException,
+  Optional
 } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
 import {
@@ -15,9 +21,16 @@ import {
   type SpotProcurementPaymentMethod
 } from "@jiangkong/shared-domain";
 import { pendingRoleKeysForFrozenApprovalNode } from "../approval/approval-node-access";
+import {
+  hasInvalidLegacySerialCutoverMarker,
+  isLegacySerialCutoverRound,
+  pendingSpotPaymentPayerApprovalRoles,
+  planSpotPaymentApprovalCutover
+} from "./spot-payment-approval-cutover";
+import { activeApprovalNodeIndexes, isParallelApprovalRound } from "../approval/parallel-approval-protocol";
 import { ApprovalFormService } from "../approval/approval-form.service";
 import { confirmApprovalSelfReview } from "../approval/approval-self-review";
-import { snapshotApprovalSignature , withApprovalIdentity } from "../approval/approval-signature-snapshot";
+import { snapshotApprovalSignature, verifyApprovalSignatureSnapshot, withApprovalIdentity } from "../approval/approval-signature-snapshot";
 import { AuditService } from "../audit/audit.service";
 import { AuthService } from "../auth/auth.service";
 import { PrismaService } from "../database/prisma.service";
@@ -46,9 +59,11 @@ import {
   type SpotProcurementPaymentPath,
   type UpdateSpotProcurementPaymentDraftDto
 } from "./dto/update-spot-procurement-payment-draft.dto";
+import { ActualPurchaseBatchService } from "../actual-purchase/actual-purchase-batch.service";
 import { SpotProcurementBalanceService } from "./spot-procurement-balance.service";
 import { SpotProcurementClosureService } from "./spot-procurement-closure.service";
 import {
+  batchPaymentApprovalNodes,
   paymentApprovalNodes,
   type SpotProcurementApprovalNode
 } from "./spot-procurement-approval-nodes";
@@ -101,6 +116,7 @@ const PAYMENT_METHODS = new Set<string>(
 );
 const VAT_RATE_PERCENT = /^(?:(?:0|[1-9]\d?)(?:\.\d{1,2})?|100(?:\.0{1,2})?)$/u;
 type VersionLockRow = {
+  requestProtocolVersion: number;
   id: string;
   procurementId: string;
   projectId: string;
@@ -154,6 +170,7 @@ type PaymentLockRow = {
   paymentType: string | null;
   merchantNameSnapshot: string | null;
   merchantPayeeMismatchNote: string | null;
+  originalDebtorCompanyId: string | null;
   payerCompanyEntityId: string | null;
   payerCompanyNameSnapshot: string | null;
   payerUnifiedSocialCreditCodeSnapshot: string | null;
@@ -230,8 +247,97 @@ export class SpotProcurementPaymentService {
     private readonly archives?: SpotProcurementPaymentArchiveService,
     @Inject(OperatingSourceReplayService)
     private readonly operatingSources: OperatingSourceAppendPort =
-      missingOperatingSourceReplayService()
+      missingOperatingSourceReplayService(),
+    @Optional() private readonly paymentNotifications?: SpotPaymentExecutionNotificationService,
+    @Optional() private readonly actualBatches?: ActualPurchaseBatchService
   ) {}
+
+  /** Internal cutover operation for an authorized caller with application writers frozen. */
+  migrateLegacyApprovalRound(paymentId: string, actorUserId: string) {
+    return this.runWrite(() => this.runSerializable(async (tx) => {
+      const version = await this.requireLockedVersionForPayment(tx, paymentId);
+      const payments = await this.lockProcurementPayments(tx, version.procurementId);
+      const payment = this.requirePayment(payments, paymentId);
+      if (payment.status !== "approval_pending") {
+        throw new ConflictException("只有在途零采付款可迁移审批轮次");
+      }
+      const paymentSource = await tx.spotProcurementPayment.findUnique({
+        where: { id: paymentId },
+        select: { actualPurchaseBatchId: true }
+      });
+      if (!paymentSource || paymentSource.actualPurchaseBatchId) {
+        throw new ConflictException("采购批次付款不适用历史审批迁移");
+      }
+      const approval = await this.requireLockedApproval(tx, paymentId);
+      const pendingRounds = await tx.approvalInstance.count({
+        where: {
+          businessType: SPOT_PROCUREMENT_BUSINESS_TYPES.payment,
+          businessId: paymentId,
+          status: "approval_pending"
+        }
+      });
+      if (pendingRounds !== 1) {
+        throw new ConflictException("在途审批轮次不唯一，请核对原付款记录");
+      }
+      await this.requireActiveUser(tx, actorUserId, "审批迁移经办人不存在或已停用");
+      if (isLegacySerialCutoverRound(approval.frozenNodes)) {
+        return { status: "already_mapped" as const };
+      }
+
+      const methodCount = await tx.spotProcurementPaymentMethodOption.count({
+        where: { paymentId }
+      });
+      if (!isSpotPaymentPayerTaskComplete(payment, methodCount)) {
+        throw new ConflictException("原付款主体或拟付款方式未核对完成");
+      }
+      const actionLogs = await tx.approvalActionLog.findMany({
+        where: { approvalInstanceId: approval.id },
+        orderBy: [{ createdAt: "asc" }, { id: "asc" }]
+      });
+      const plan = planSpotPaymentApprovalCutover({ ...approval, actionLogs });
+      if (plan.status === "blocked") {
+        throw new ConflictException("原审批岗位或签批记录无法唯一对应，请核对后再迁移");
+      }
+      for (const log of actionLogs.filter(({ action }) => action === "approve")) {
+        const signature = await tx.handwrittenSignatureVersion.findUnique({
+          where: { id: log.signatureVersionIdSnapshot! }
+        });
+        if (!signature || signature.source !== "canvas" ||
+            signature.userId !== log.actorUserId ||
+            signature.fileId !== log.signatureFileIdSnapshot ||
+            signature.contentSha256.toLowerCase() !== log.signatureSha256Snapshot?.toLowerCase()) {
+          throw new BadRequestException("原审批签名版本与签批记录不一致");
+        }
+        const { file, buffer } = await this.files.getFileBuffer(signature.fileId, tx);
+        if (file.storageStatus !== "active" ||
+            file.contentSha256?.toLowerCase() !== signature.contentSha256.toLowerCase()) {
+          throw new BadRequestException("原审批签名文件状态或摘要不一致");
+        }
+        verifyApprovalSignatureSnapshot(buffer, signature.contentSha256);
+      }
+
+      await tx.approvalInstance.update({
+        where: { id: approval.id },
+        data: {
+          currentNodeIndex: plan.pendingNodeIndexes[0]!,
+          frozenNodes: plan.frozenNodes as unknown as Prisma.InputJsonValue
+        }
+      });
+      await this.audit.record(tx, {
+        actorUserId,
+        action: "spot_procurement.payment.approval.legacy_cutover",
+        businessType: SPOT_PROCUREMENT_BUSINESS_TYPES.payment,
+        businessId: payment.id,
+        metadata: {
+          approvalInstanceId: approval.id,
+          previousNodeIndex: approval.currentNodeIndex,
+          completedActionIds: plan.completedActionIds,
+          pendingNodeIndexes: plan.pendingNodeIndexes
+        }
+      });
+      return { status: "mapped" as const, pendingNodeIndexes: plan.pendingNodeIndexes };
+    }));
+  }
 
   async recordExecution(
     paymentId: string,
@@ -247,6 +353,7 @@ export class SpotProcurementPaymentService {
       paymentChannelId: string | null;
       idempotencyKey: string;
       voucherFileIds: string[];
+      registeredFunding?: { actualPayerCompanyId: string; relationshipEntryId: string | null };
     };
     payment: {
       id: string;
@@ -258,13 +365,9 @@ export class SpotProcurementPaymentService {
     const amountCents = parsePositiveExecutionAmount(
       input.amountCents
     );
-    const paidAt = new Date(input.paidAt);
-    if (Number.isNaN(paidAt.getTime())) {
-      throw new BadRequestException("实付日期格式不正确");
-    }
-    if (paidAt.getTime() > Date.now()) {
-      throw new BadRequestException("实付日期不能晚于当前时间");
-    }
+    let paidAt: Date;
+    try { paidAt = requiredPastChinaDate(input.paidAt, "实付日期"); }
+    catch (error) { throw new BadRequestException(error instanceof Error ? error.message : "实付日期格式不正确，请核对实际日期"); }
     if (!PAYMENT_METHODS.has(input.paymentMethod)) {
       throw new BadRequestException("实际付款方式不正确");
     }
@@ -303,6 +406,10 @@ export class SpotProcurementPaymentService {
           });
         if (!fundingScope) {
           throw new NotFoundException("付款申请不存在");
+        }
+        if (input.registeredFunding) {
+          await assertRegisteredPaymentActor(tx, actorUserId);
+          await tx.$queryRaw`SELECT id FROM public."RegisteredFundAccount" WHERE "scopeKey" = ${input.registeredFunding.scopeKey} FOR UPDATE`;
         }
         // 统一锁序：项目 -> 垫资来源 -> 采购版本 -> 该采购全部付款 -> 实付明细。
         await this.projectFunding.lockFundingContext(
@@ -352,9 +459,17 @@ export class SpotProcurementPaymentService {
           );
         }
 
+        const registeredOperation = {
+          sourceType: "spot_procurement_payment_execution" as const, actorUserId, projectId: version.projectId,
+          originalDebtorCompanyId: payment.originalDebtorCompanyId ?? null, amountCents, paidAt,
+        };
+        if (input.registeredFunding && (!isRealFormPayment || !registeredOperation.originalDebtorCompanyId)) {
+          throw new ConflictException("原付款首次批准的债务公司未明确，请先核对原单");
+        }
         const existingByIdempotencyKey =
           await tx.spotProcurementPaymentExecution.findUnique({
-            where: { idempotencyKey }
+            where: { idempotencyKey },
+            include: { registeredOperationalPayment: { select: { id: true } } }
           });
         if (existingByIdempotencyKey) {
           if (isRealFormPayment) {
@@ -381,7 +496,11 @@ export class SpotProcurementPaymentService {
               voucherFileId
             });
           }
-          await this.projectFunding.allocateExecution(tx, {
+          const funding = input.registeredFunding || existingByIdempotencyKey.registeredOperationalPayment
+            ? await readRegisteredOperationalPayment(tx, { ...registeredOperation, executionId: existingByIdempotencyKey.id,
+              funding: input.registeredFunding })
+            : null;
+          if (!funding) await this.projectFunding.allocateExecution(tx, {
             projectId: version.projectId,
             executionType:
               "spot_procurement_payment_execution",
@@ -396,7 +515,7 @@ export class SpotProcurementPaymentService {
           return this.executionReadModel(
             existingByIdempotencyKey,
             payment,
-            isRealFormPayment ? voucherFileIds : undefined
+            isRealFormPayment ? voucherFileIds : undefined, funding
           );
         }
         const pendingDiscrepancy =
@@ -474,6 +593,12 @@ export class SpotProcurementPaymentService {
             } 分`
           );
         }
+
+        await this.actualBatches?.assertSpotPaymentExecutionInTransaction(
+          tx,
+          payment.id,
+          amountCents
+        );
 
         const vouchers = isRealFormPayment
           ? await tx.fileObject.findMany({
@@ -573,7 +698,10 @@ export class SpotProcurementPaymentService {
             }))
           });
         }
-        const fundingAllocation =
+        const registeredFunding = input.registeredFunding
+          ? await appendRegisteredOperationalPayment(tx, { ...registeredOperation, executionId: execution.id, funding: input.registeredFunding })
+          : null;
+        const fundingAllocation = registeredFunding ? null :
           await this.projectFunding.allocateExecution(tx, {
             projectId: version.projectId,
             executionType:
@@ -646,7 +774,8 @@ export class SpotProcurementPaymentService {
               effectiveCompanyPaymentAmountCents -
               newPaidAmountCents
             ).toString(),
-            fundingAllocation: {
+            ...(registeredFunding ? { registeredFunding } : {}),
+            fundingAllocation: fundingAllocation ? {
               kind: fundingAllocation.kind,
               projectCashAmountCents:
                 fundingAllocation.projectCashAmountCents.toString(),
@@ -659,19 +788,22 @@ export class SpotProcurementPaymentService {
                   amountCents:
                     allocation.amountCents.toString()
                 }))
-            }
+            } : null
           }
         });
-        await this.closure.recalculateAndClose(
-          tx,
-          version.procurementId,
-          "payment.execution.record",
-          actorUserId
-        );
+        // Later actual purchase batches may still be entered for this request.
+        if (version.requestProtocolVersion !== 2) {
+          await this.closure.recalculateAndClose(
+            tx,
+            version.procurementId,
+            "payment.execution.record",
+            actorUserId
+          );
+        }
         return this.executionReadModel(
           execution,
           paymentAfter,
-          isRealFormPayment ? voucherFileIds : undefined
+          isRealFormPayment ? voucherFileIds : undefined, registeredFunding
         );
       });
       await this.approvalForms.tryRefreshLatestForBusiness(
@@ -690,6 +822,7 @@ export class SpotProcurementPaymentService {
       if (error instanceof HttpException) throw error;
       const code = prismaErrorCode(error);
       if (code === "P2002") {
+        if (input.registeredFunding) throw new ConflictException("实付请求可能已受理，请用原凭据查询并重试");
         const concurrentResult =
           await this.resolveConcurrentExecutionResult({
             paymentId,
@@ -1090,8 +1223,11 @@ export class SpotProcurementPaymentService {
       const approval = payment.status === "approval_pending"
         ? await this.requireLockedApproval(tx, payment.id)
         : null;
+      if (hasInvalidLegacySerialCutoverMarker(approval?.frozenNodes)) {
+        throw new ConflictException("历史付款审批迁移标记不一致，请核对原审批轮次");
+      }
       const pendingRoles = approval
-        ? pendingRoleKeysForFrozenApprovalNode(
+        ? pendingSpotPaymentPayerApprovalRoles(
             approval.frozenNodes,
             approval.currentNodeIndex
           )
@@ -1285,6 +1421,7 @@ export class SpotProcurementPaymentService {
         "paymentType",
         "merchantNameSnapshot",
         "merchantPayeeMismatchNote",
+        "originalDebtorCompanyId",
         "payerCompanyEntityId",
         "payerCompanyNameSnapshot",
         "payerUnifiedSocialCreditCodeSnapshot",
@@ -1469,14 +1606,35 @@ export class SpotProcurementPaymentService {
           actorUserId,
           version.projectId
         );
-        const pendingRoles = pendingRoleKeysForFrozenApprovalNode(
-          approval.frozenNodes,
-          approval.currentNodeIndex
+        const frozenNodes = approval.frozenNodes;
+        if (hasInvalidLegacySerialCutoverMarker(frozenNodes)) {
+          throw new ConflictException("历史付款审批迁移标记不一致，请核对原审批轮次");
+        }
+        const legacyParallelRound = isLegacySerialCutoverRound(frozenNodes);
+        if (isParallelApprovalRound(frozenNodes) && !legacyParallelRound) {
+          return this.reviewBatchParallelPayment(
+            tx,
+            version,
+            payments,
+            payment,
+            approval,
+            actorUserId,
+            actorRoles,
+            input
+          );
+        }
+        const nodeIndexes = legacyParallelRound
+          ? activeApprovalNodeIndexes(approval.frozenNodes, approval.currentNodeIndex)
+          : [approval.currentNodeIndex];
+        const reviewNodeIndex = nodeIndexes.find((index) =>
+          pendingRoleKeysForFrozenApprovalNode(approval.frozenNodes, index)
+            .some((roleKey) => actorRoles.includes(roleKey))
         );
-        const approvedRoleKey = pendingRoles.find((roleKey) =>
-          actorRoles.includes(roleKey)
-        );
-        if (!approvedRoleKey) {
+        const approvedRoleKey = reviewNodeIndex === undefined
+          ? undefined
+          : pendingRoleKeysForFrozenApprovalNode(approval.frozenNodes, reviewNodeIndex)
+            .find((roleKey) => actorRoles.includes(roleKey));
+        if (reviewNodeIndex === undefined || !approvedRoleKey) {
           throw new ForbiddenException("当前用户不是本付款审批节点处理人");
         }
         const selfReview = await confirmApprovalSelfReview({
@@ -1566,7 +1724,7 @@ export class SpotProcurementPaymentService {
           input.decision === "approve"
             ? this.approveCurrentNode(
                 approval.frozenNodes,
-                approval.currentNodeIndex,
+                reviewNodeIndex,
                 approvedRoleKey
               )
             : [];
@@ -1594,6 +1752,9 @@ export class SpotProcurementPaymentService {
                 : {}),
               metadata: {
                 reviewRoleKey: approvedRoleKey,
+                ...(legacyParallelRound
+                  ? { parallel: true, nodeIndex: reviewNodeIndex }
+                  : {}),
                 ...(adjustedBalanceText !== undefined
                   ? {
                       originalSupplierBalanceAmountCents:
@@ -1802,13 +1963,14 @@ export class SpotProcurementPaymentService {
         }
 
         await recordApprovalAction();
-        const isFinal =
-          approval.currentNodeIndex >= nextNodes.length - 1;
-        if (!isFinal) {
+        const nextNodeIndex = legacyParallelRound
+          ? activeApprovalNodeIndexes(nextNodes, reviewNodeIndex)[0]
+          : reviewNodeIndex < nextNodes.length - 1 ? reviewNodeIndex + 1 : undefined;
+        if (nextNodeIndex !== undefined) {
           await tx.approvalInstance.update({
             where: { id: approval.id },
             data: {
-              currentNodeIndex: approval.currentNodeIndex + 1,
+              currentNodeIndex: nextNodeIndex,
               status: "approval_pending",
               frozenNodes: nextNodes as unknown as Prisma.InputJsonValue
             }
@@ -1825,11 +1987,17 @@ export class SpotProcurementPaymentService {
           return this.paymentReadModel(payment);
         }
 
+        await this.actualBatches?.assertSpotPaymentCommitInTransaction(
+          tx,
+          payment.id,
+          payment.approvalAmountCents
+        );
         const now = new Date();
         await tx.approvalInstance.update({
           where: { id: approval.id },
           data: {
             status: "approved",
+            ...(legacyParallelRound ? { currentNodeIndex: nextNodes.length } : {}),
             frozenNodes: nextNodes as unknown as Prisma.InputJsonValue
           }
         });
@@ -1840,6 +2008,12 @@ export class SpotProcurementPaymentService {
             approvedAt: now
           }
         });
+        await this.actualBatches?.confirmCostForSpotPaymentInTransaction(
+          tx,
+          payment.id,
+          actorUserId,
+          now
+        );
         await this.recordReviewAudit(
           tx,
           actorUserId,
@@ -1849,6 +2023,7 @@ export class SpotProcurementPaymentService {
           approvedRoleKey,
           selfReviewMetadata
         );
+        await this.paymentNotifications?.queue(tx,updated,approval.id,actorUserId);
         return this.paymentReadModel(updated);
       });
       await this.approvalForms.tryRefreshLatestForBusiness(
@@ -1858,6 +2033,7 @@ export class SpotProcurementPaymentService {
         `approval.${input.decision}`
       );
       if (result.status === "approved_pending_payment") {
+        void this.paymentNotifications?.afterCommit();
         await this.archives?.tryCreateVersion(
           paymentId,
           actorUserId,
@@ -2435,7 +2611,7 @@ export class SpotProcurementPaymentService {
         p."currentVersionId",
         p."status" AS "rootStatus",
         v."status" AS "versionStatus",
-        v."versionNo",
+        v."versionNo", v."requestProtocolVersion",
         v."supplierPartyId",
         v."supplierKey",
         v."supplierNameSnapshot",
@@ -2465,7 +2641,7 @@ export class SpotProcurementPaymentService {
         p."currentVersionId",
         p."status" AS "rootStatus",
         v."status" AS "versionStatus",
-        v."versionNo",
+        v."versionNo", v."requestProtocolVersion",
         v."supplierPartyId",
         v."supplierKey",
         v."supplierNameSnapshot",
@@ -2543,6 +2719,7 @@ export class SpotProcurementPaymentService {
         "paymentType",
         "merchantNameSnapshot",
         "merchantPayeeMismatchNote",
+        "originalDebtorCompanyId",
         "payerCompanyEntityId",
         "payerCompanyNameSnapshot",
         "payerUnifiedSocialCreditCodeSnapshot",
@@ -2595,10 +2772,7 @@ export class SpotProcurementPaymentService {
       | "canceledCompanyPaymentAmountCents"
     >
   ) {
-    const amount =
-      payment.companyPaymentAmountCents -
-      payment.canceledCompanyPaymentAmountCents;
-    return amount > 0n ? amount : 0n;
+    return effectiveSpotCompanyPaymentAmount(payment);
   }
 
   private assertSameExecutionFacts(
@@ -2695,7 +2869,8 @@ export class SpotProcurementPaymentService {
       | "companyPaymentAmountCents"
       | "canceledCompanyPaymentAmountCents"
     >,
-    voucherFileIds?: readonly string[]
+    voucherFileIds?: readonly string[],
+    funding?: { actualPayerCompanyId: string; relationshipEntryId: string | null } | null
   ) {
     const remaining =
       this.effectiveCompanyPaymentAmount(payment) -
@@ -2709,7 +2884,8 @@ export class SpotProcurementPaymentService {
         paymentChannelId: execution.paymentChannelId ?? null,
         voucherFileId: execution.voucherFileId,
         voucherFileIds: [...(voucherFileIds ?? (execution.voucherFileId ? [execution.voucherFileId] : []))],
-        idempotencyKey: execution.idempotencyKey
+        idempotencyKey: execution.idempotencyKey,
+        ...(funding ? { registeredFunding: funding } : {})
       },
       payment: {
         id: payment.id,
@@ -2734,9 +2910,11 @@ export class SpotProcurementPaymentService {
   }) {
     const existing =
       await this.prisma.spotProcurementPaymentExecution.findUnique({
-        where: { idempotencyKey: input.idempotencyKey }
+        where: { idempotencyKey: input.idempotencyKey },
+        include: { registeredOperationalPayment: { select: { id: true } } }
       });
     if (existing) {
+      if (existing.registeredOperationalPayment) throw new ConflictException("请用原登记资金凭据查询并重试");
       const payment =
         await this.prisma.spotProcurementPayment.findUnique({
           where: { id: input.paymentId },
@@ -3374,6 +3552,167 @@ export class SpotProcurementPaymentService {
     return approval;
   }
 
+  /** #403 批次付款并联审批：综合部主管、项目经理、财务主管、董事长/总经理同时待办。 */
+  private async reviewBatchParallelPayment(
+    tx: Prisma.TransactionClient,
+    version: VersionLockRow,
+    payments: PaymentLockRow[],
+    payment: PaymentLockRow,
+    approval: ApprovalLockRow,
+    actorUserId: string,
+    actorRoles: RoleKey[],
+    input: ReviewSpotProcurementPaymentDto
+  ) {
+    if (!isParallelApprovalRound(approval.frozenNodes)) {
+      throw new ConflictException("付款审批轮次不是并联审批");
+    }
+    const nodes = approval.frozenNodes as Array<Record<string, unknown>>;
+    const indexes = activeApprovalNodeIndexes(nodes, 0);
+    const index = indexes.find((candidate) =>
+      ((nodes[candidate].roleKeys as RoleKey[] | undefined) ?? []).some((role) =>
+        actorRoles.includes(role)
+      )
+    );
+    if (index === undefined) {
+      throw new ForbiddenException("当前用户不是本付款并联审批节点的有效审批人");
+    }
+    const approvedRoleKey = ((nodes[index].roleKeys as RoleKey[] | undefined) ?? []).find((role) =>
+      actorRoles.includes(role)
+    )!;
+    const selfReview = await confirmApprovalSelfReview({
+      applicantUserId: approval.applicantUserId,
+      actorUserId,
+      actorRoleKeys: actorRoles,
+      approvedRoleKey,
+      selfReviewReason: input.selfReviewReason,
+      confirmationPassword: input.confirmationPassword,
+      confirmPassword: (password) => this.auth.confirmPassword(actorUserId, password)
+    });
+    const comment =
+      optionalText(input.comment) ??
+      (input.decision === "approve" ? "同意" : null);
+    if (input.decision !== "approve" && !comment) {
+      throw new BadRequestException("退回付款申请时必须填写原因");
+    }
+    const signature =
+      input.decision === "approve"
+        ? await snapshotApprovalSignature(tx, actorUserId, { required: true })
+        : null;
+    await tx.approvalActionLog.create({
+      data: await withApprovalIdentity(
+        tx,
+        {
+          approvalInstanceId: approval.id,
+          action: input.decision === "approve" ? "approve" : "return_to_applicant",
+          actorUserId,
+          comment,
+          approvedRoleKey,
+          representedUserId: actorUserId,
+          metadata: {
+            parallel: true,
+            nodeIndex: index,
+            nodeName: String(nodes[index].name ?? "批次付款并联审批"),
+            ...selfReview.metadata
+          },
+          ...(signature
+            ? {
+                signatureFileIdSnapshot: signature.fileId,
+                signatureSha256Snapshot: signature.sha256,
+                signatureVersionIdSnapshot: signature.versionId
+              }
+            : {})
+        },
+        signature
+      )
+    });
+    if (input.decision !== "approve") {
+      await tx.approvalInstance.update({
+        where: { id: approval.id },
+        data: { status: "returned_to_applicant", frozenNodes: nodes as unknown as Prisma.InputJsonValue }
+      });
+      const updated = await tx.spotProcurementPayment.update({
+        where: { id: payment.id },
+        data: { status: "returned" }
+      });
+      const clone = await this.cloneSubmittedRealPaymentToDraft(
+        tx,
+        version,
+        payments,
+        payment,
+        actorUserId
+      );
+      await this.recordReviewAudit(
+        tx,
+        actorUserId,
+        payment,
+        approval.id,
+        input.decision,
+        approvedRoleKey,
+        { ...selfReview.metadata, parallel: true, newDraftPaymentId: clone.payment?.id }
+      );
+      return this.paymentReadModel(updated, undefined, {
+        newDraftPaymentId: clone.payment?.id
+      });
+    }
+    nodes[index] = { ...nodes[index], approvedRoleKeys: [approvedRoleKey] };
+    const remaining = activeApprovalNodeIndexes(nodes, 0);
+    if (remaining.length) {
+      await tx.approvalInstance.update({
+        where: { id: approval.id },
+        data: {
+          status: "approval_pending",
+          currentNodeIndex: remaining[0]!,
+          frozenNodes: nodes as unknown as Prisma.InputJsonValue
+        }
+      });
+      await this.recordReviewAudit(
+        tx,
+        actorUserId,
+        payment,
+        approval.id,
+        input.decision,
+        approvedRoleKey,
+        { ...selfReview.metadata, parallel: true, remainingNodes: remaining.length }
+      );
+      return this.paymentReadModel(payment);
+    }
+    await this.actualBatches?.assertSpotPaymentCommitInTransaction(
+      tx,
+      payment.id,
+      payment.approvalAmountCents
+    );
+    const now = new Date();
+    await tx.approvalInstance.update({
+      where: { id: approval.id },
+      data: {
+        status: "approved",
+        currentNodeIndex: nodes.length,
+        frozenNodes: nodes as unknown as Prisma.InputJsonValue
+      }
+    });
+    const updated = await tx.spotProcurementPayment.update({
+      where: { id: payment.id },
+      data: { status: "approved_pending_payment", approvedAt: now }
+    });
+    await this.actualBatches?.confirmCostForSpotPaymentInTransaction(
+      tx,
+      payment.id,
+      actorUserId,
+      now
+    );
+    await this.recordReviewAudit(
+      tx,
+      actorUserId,
+      payment,
+      approval.id,
+      input.decision,
+      approvedRoleKey,
+      { ...selfReview.metadata, parallel: true, completed: true }
+    );
+    await this.paymentNotifications?.queue(tx, updated, approval.id, actorUserId);
+    return this.paymentReadModel(updated);
+  }
+
   private approveCurrentNode(
     frozenNodes: Prisma.JsonValue,
     currentNodeIndex: number,
@@ -3659,31 +3998,44 @@ export class SpotProcurementPaymentService {
             select: { id: true }
           })
         ]);
+        const batchLinked = Boolean(payment.actualPurchaseBatchId);
         if (
           !payment.paymentType ||
           !payment.merchantNameSnapshot ||
           !payment.payeeNameSnapshot ||
-          !lines.length ||
+          (!batchLinked && !lines.length) ||
           !channels.length ||
           !methods.length ||
           channels.filter((channel) => channel.isPrimary).length !== 1
         ) {
           throw new BadRequestException("请完整填写付款商户、明细、收款对象、收款渠道和拟付款方式后再提交");
         }
-        if (siblingPayments.length) {
-          throw new ConflictException("同一材料申请已有活动付款，不能拆分或重复提交");
-        }
-        this.assertCompleteRealFormMaterialScope(procurementLines, lines);
-        const total = lines.reduce((sum, line) => sum + line.amountCents, 0n);
-        if (total <= 0n || total !== payment.approvalAmountCents) {
-          throw new ConflictException("付款申请金额与付款明细不一致，请刷新后重试");
-        }
-        if (total >= SPOT_MATERIAL_PAYMENT_LIMIT_CENTS) {
-          throw new BadRequestException(
-            "材料申请合计达到 3000 元，请重新走材料采购审批流程"
+        if (batchLinked) {
+          if (payment.approvalAmountCents <= 0n) {
+            throw new ConflictException("实际采购批次付款金额必须大于 0，请刷新后重试");
+          }
+          await this.actualBatches?.assertSpotPaymentCommitInTransaction(
+            tx,
+            payment.id,
+            payment.approvalAmountCents
           );
+        } else {
+          if (siblingPayments.length) {
+            throw new ConflictException("同一材料申请已有活动付款，不能拆分或重复提交");
+          }
+          this.assertCompleteRealFormMaterialScope(procurementLines, lines);
+          const total = lines.reduce((sum, line) => sum + line.amountCents, 0n);
+          if (total <= 0n || total !== payment.approvalAmountCents) {
+            throw new ConflictException("付款申请金额与付款明细不一致，请刷新后重试");
+          }
+          if (total >= SPOT_MATERIAL_PAYMENT_LIMIT_CENTS) {
+            throw new BadRequestException(
+              "材料申请合计达到 3000 元，请重新走材料采购审批流程"
+            );
+          }
         }
-        await assertProjectApprovalNodesConfigured(tx, payment.projectId, paymentApprovalNodes(), payment.handlerUserId);
+        const approvalNodes = batchLinked ? batchPaymentApprovalNodes() : paymentApprovalNodes();
+        await assertProjectApprovalNodesConfigured(tx, payment.projectId, approvalNodes, payment.handlerUserId);
         const now = new Date();
         const approval = await tx.approvalInstance.create({
           data: {
@@ -3692,7 +4044,7 @@ export class SpotProcurementPaymentService {
             businessId: payment.id,
             status: "approval_pending",
             currentNodeIndex: 0,
-            frozenNodes: paymentApprovalNodes() as unknown as Prisma.InputJsonValue,
+            frozenNodes: approvalNodes as unknown as Prisma.InputJsonValue,
             applicantUserId: payment.handlerUserId
           }
         });
@@ -3714,7 +4066,7 @@ export class SpotProcurementPaymentService {
             approvalInstanceId: approval.id,
             procurementId: payment.procurementId,
             procurementVersionId: payment.procurementVersionId,
-            approvalAmountCents: total.toString(),
+            approvalAmountCents: payment.approvalAmountCents.toString(),
             payerCompanyEntityId:
               payment.payerCompanyEntityId
           }
@@ -3736,7 +4088,7 @@ export class SpotProcurementPaymentService {
     payment: { handlerUserId: string },
     procurementLines: Array<{
       id: string;
-      quantity: Prisma.Decimal;
+      quantity: Prisma.Decimal | null;
     }>,
     actorUserId: string,
     input: UpdateSpotProcurementPaymentDraftDto
@@ -3781,6 +4133,7 @@ export class SpotProcurementPaymentService {
         unitPrice: line.unitPrice
       });
       const paymentQuantity = new Prisma.Decimal(line.paymentQuantity);
+      if (source.quantity === null) throw new ConflictException("申请数量待确定，请先按实际采购流程办理");
       if (paymentQuantity.greaterThan(source.quantity)) {
         throw new BadRequestException("付款材料数量不能超过采购批准数量");
       }
@@ -3833,7 +4186,7 @@ export class SpotProcurementPaymentService {
   }
 
   private assertCompleteRealFormMaterialScope(
-    procurementLines: Array<{ id: string; quantity: Prisma.Decimal }>,
+    procurementLines: Array<{ id: string; quantity: Prisma.Decimal | null }>,
     paymentLines: Array<{
       procurementLineId: string;
       paymentQuantity: Prisma.Decimal;
@@ -3850,7 +4203,7 @@ export class SpotProcurementPaymentService {
     if (
       procurementLines.some((source) => {
         const paymentLine = paymentLineBySource.get(source.id);
-        return !paymentLine || !paymentLine.paymentQuantity.equals(source.quantity);
+        return !paymentLine || source.quantity === null || !paymentLine.paymentQuantity.equals(source.quantity);
       })
     ) {
       throw new BadRequestException(
@@ -4204,12 +4557,13 @@ function resetPaymentApprovalToComprehensive(frozenNodes: Prisma.JsonValue) {
   if (!Array.isArray(frozenNodes) || frozenNodes.length < 3) {
     throw new ConflictException("付款审批节点快照损坏，不能重新发起审批");
   }
+  const legacyParallelRound = isLegacySerialCutoverRound(frozenNodes);
   return frozenNodes.map((node, index) => {
     if (!node || typeof node !== "object" || Array.isArray(node)) {
       throw new ConflictException("付款审批节点快照损坏，不能重新发起审批");
     }
     const copy = { ...(node as Record<string, Prisma.JsonValue>) };
-    if (index <= 2) delete copy.approvedRoleKeys;
+    if (legacyParallelRound || index <= 2) delete copy.approvedRoleKeys;
     return copy;
   });
 }

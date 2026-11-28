@@ -1,0 +1,102 @@
+--- fresh.cjs
++++ fresh.cjs
+@@ -3,23 +3,57 @@
+ const {createHash,randomUUID}=require("node:crypto");
+ const fs=require("node:fs");
+ const path=require("node:path");
+-const {withPayment290}=require("./installer.cjs");
++const {withCombined295MultiWitness,withCombined320ContractPayment,withCombined330TextAgreement}=require("./installer.cjs");
+ const workspace="/qualification/workspace";
+-const tree="a1be083076018686dd8afba68c44ff9c75502014";
++const tree="67644d9465a0ab4ee80ede099139d9c129d66f14";
+ const suite="src/database/payment-execution-concurrency.spec.ts";
+-const receipt={schemaVersion:1,purpose:"PAYMENT_EXECUTION_ORIGINAL_FRESH_290",status:"STOPPED",stages:[]};
++const source=require('./contract-finance-source.json');
++const forward=source.mode==='current-320'||source.mode==='text-direct-330';
++const count=source.mode==='text-direct-330'?330:forward?329:295;
++const install=(receipt,consume)=>forward
++  ? (count===330?withCombined330TextAgreement:withCombined320ContractPayment)(receipt,consume,{sourceTree:source.sourceTree,
++    migrations:'/qualification/workspace/services/api/prisma/migrations',tails:source.tails})
++  : withCombined295MultiWitness(receipt,consume);
++const receipt={schemaVersion:1,sourceSha:source.sourceSha,purpose:"PAYMENT_EXECUTION_ORIGINAL_FRESH_295",status:"STOPPED",stages:[]};
+ function command(phase,file,args,options) {
+   const child=spawnSync(file,args,{encoding:"utf8",maxBuffer:8*1024*1024,timeout:300_000,...options});
+   if(child.status!==0 || child.error) {
+     const output=(child.stderr??"")+(child.stdout??"");
+-    const denied=/permission denied for (function|table|relation|schema) ([A-Za-z_][A-Za-z0-9_.]{0,95})/u.exec(output);
+-    throw Object.assign(new Error(phase),{exit:child.status,signal:child.signal,os:child.error?.code,
+-      prisma:/\bP[0-9]{4}\b/u.exec(output)?.[0],sqlstate:/SqlState\(E([0-9A-Z]{5})\)/u.exec(output)?.[1],
++    const reportArg=args.indexOf("--outputFile");
++    let summary;
++    if(reportArg>=0) {
++      try { summary=JSON.parse(fs.readFileSync(args[reportArg+1],"utf8")); }
++      catch { /* Jest can fail before writing the report. */ }
++    }
++    const first=summary?.testResults?.[0]?.assertionResults?.find(row=>row.status==="failed");
++    const message=(first?.failureMessages?.[0]??summary?.testResults?.[0]?.message??output).trim();
++    const task07Frame=/task07-formal-payment\.test-support\.ts:(\d+):(\d+)/u.exec(message);
++    const task07Http=/(付款验收请求失败，HTTP 状态为|Task07 签名上传失败|Task07 文件上传失败) ([45][0-9]{2})\b/u.exec(message);
++    const diagnostics=phase==="PAYMENT_FRESH_JEST" ? {
++      kind:/migration baseline drift/u.test(message)?"MIGRATION_BASELINE_DRIFT":
++        /Cannot find module|MODULE_NOT_FOUND/u.test(message)?"MODULE_NOT_FOUND":
++        /PAYMENT_CONCURRENCY_OWNED_(?:295|320|330)_IDENTITY/u.test(message)?"OWNED_IDENTITY":
++        /Test suite failed to run/u.test(message)?"SUITE_LOAD":
++        /exceeded timeout|timed out/u.test(message)?"TIMEOUT":
++        first?"TEST_FAILURE":"JEST_FAILURE",
++      failedCase:first?createHash("sha256").update(first.fullName).digest("hex"):undefined,
++      passed:summary?.numPassedTests,
++      registered:summary?.numTotalTests,
++      task07Frame:task07Frame?.slice(1).map(Number),
++      task07Http:task07Http?{status:Number(task07Http[2]),step:task07Http[1]==="Task07 签名上传失败"?"SIGNATURE_UPLOAD":
++        task07Http[1]==="Task07 文件上传失败"?"EVIDENCE_UPLOAD":"APPROVAL_CHAIN"}:undefined,
++      frames:[...message.matchAll(/(?:payment-execution-concurrency\.spec\.ts|migration-baseline\.cjs):(\d+):(\d+)/gu)]
++        .slice(0,5).map(frame=>[Number(frame[1]),Number(frame[2])]),
++    }:undefined;
++    const denied=/permission denied for (function|table|relation|schema) ([A-Za-z_][A-Za-z0-9_.]{0,95})/u.exec(message);
++    throw Object.assign(new Error(phase),{exit:child.status,signal:child.signal,os:child.error?.code,diagnostics,
++      prisma:/\bP[0-9]{4}\b/u.exec(message)?.[0],
++      sqlstate:/\b(?:SQLSTATE|Code:)\s*([0-9A-Z]{5})\b/u.exec(message)?.[1]??/SqlState\(E([0-9A-Z]{5})\)/u.exec(message)?.[1],
+       denied:denied?{kind:denied[1],object:denied[2]}:undefined});
+   }
+ }
+-withPayment290(receipt,async context=>{
+-  if(context.candidateTree!==tree)throw new Error("PAYMENT_FRESH_TREE");
++install(receipt,async context=>{
++  if(context.candidateTree!==(forward?source.sourceTree:tree))throw new Error("PAYMENT_FRESH_TREE");
+   const {ownerUrl,runId,workDir}=context;
+   const target=new URL(ownerUrl);
+   if(!/^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/u.test(runId) ||
+@@ -33,6 +67,7 @@
+     PATH:"/usr/local/bin:/usr/bin:/bin",HOME:workDir,TMPDIR:workDir,COREPACK_HOME:"/opt/corepack",
+     COREPACK_ENABLE_NETWORK:"0",COREPACK_DEFAULT_TO_LATEST:"0",NODE_ENV:"test",CI:"true",
+     DATABASE_URL:ownerUrl,FILE_STORAGE_DRIVER:"local", FILE_STORAGE_ROOT:path.join(workDir,"storage","private"),
++    ...(forward?{JG_CONTRACT_FINANCE_LEDGER:String(count),JG_CONTRACT_FINANCE_SCOPE:"payment"}:{}),
+     RUN_PAYMENT_EXECUTION_CONCURRENCY:"1",JG_TASK12_OWNED_280_RUN_ID:runId,
+     OPERATING_LEDGER_DB_WRITE_SECRET:randomUUID(),SEED_PASSWORD:randomUUID()
+   }};
+@@ -40,7 +75,7 @@
+   if(result.stdout.trim()!=="true")throw new Error("PAYMENT_FRESH_OWNER");
+   const pnpm=["--filter","@jiangkong/api","exec"];
+   receipt.stages.push("PAYMENT_FRESH_STATUS");
+-  command("PAYMENT_FRESH_STATUS","pnpm",[...pnpm,"prisma","migrate","status","--schema",context.schemaPath],options);
++  command("PAYMENT_FRESH_STATUS","pnpm",[...pnpm,"prisma","migrate","status","--schema",context.combinedSchemaPath],options);
+   const query=fs.readFileSync("/qualification/seed-readback.sql","utf8");
+   receipt.seedChecks=[];
+   for (const stage of ["FIRST","SECOND"]) {
+@@ -58,9 +93,14 @@
+   if(parsed.success!==true || parsed.numPendingTests!==0 || parsed.numPassedTests!==2 || parsed.numPassedTestSuites!==1 ||
+       parsed.testResults.length!==1 || !parsed.testResults[0].name.endsWith("/"+suite))throw new Error("PAYMENT_FRESH_COVERAGE");
+   receipt.scope={suites:1,tests:2,skips:0,reportSha256:createHash("sha256").update(raw).digest("hex")};
+-}).then(()=>{receipt.status="PAYMENT_EXECUTION_FRESH_290_PASSED";}).catch(error=>{
++}).then(()=>{
++  if(forward && (receipt.forward320?.ledgerSha256!==source.ledgerSha256 ||
++    receipt.combinedAfterBusiness?.ledgerSha256!==source.ledgerSha256 || receipt.combinedAfterBusiness?.count!==count))
++    throw new Error("PAYMENT_FORWARD_320_LEDGER");
++  receipt.status="PAYMENT_EXECUTION_FRESH_"+count+"_PASSED";
++}).catch(error=>{
+   receipt.status="STOPPED";
+   receipt.failure={stage:receipt.stages.at(-1),code:error.message,exit:error.exit,signal:error.signal,
+-    operatingSystem:error.os,prisma:error.prisma,sqlstate:error.sqlstate,denied:error.denied};
++    operatingSystem:error.os,prisma:error.prisma,sqlstate:error.sqlstate,denied:error.denied,diagnostics:error.diagnostics};
+   process.exitCode=1;
+ }).finally(()=>console.log(JSON.stringify(receipt)));

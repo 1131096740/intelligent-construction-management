@@ -1,8 +1,89 @@
+import { requireLegacyOperatingCents } from "../operating-ledger/operating-money-protocol";
 import { BadRequestException } from "@nestjs/common";
 
 import { PaymentExecutionOperatingSourceAdapter } from "./payment-operating-source.adapter";
 
 describe("PaymentExecutionOperatingSourceAdapter", () => {
+  it("uses the historical payer in a pre-installation database without reading registered funding", async () => {
+    const adapter = new PaymentExecutionOperatingSourceAdapter();
+    const tx = paymentTx();
+    tx.registeredPaymentFunding.findUnique.mockRejectedValue(new Error("RegisteredPaymentFunding is absent"));
+    const snapshot = await adapter.readSourceSnapshot(tx as never, {
+      projectId: "project-1", sourceType: adapter.sourceType, sourceBusinessId: "execution-1"
+    });
+    expect(adapter.toOperatingFactInput(snapshot!).input.subjects.actualPayer).toEqual({
+      kind: "participating_company", id: "company-entity-1"
+    });
+    expect(tx.registeredPaymentFunding.findUnique).not.toHaveBeenCalled();
+  });
+
+  it("checks the catalog once for all historical payment executions in the project", async () => {
+    const adapter = new PaymentExecutionOperatingSourceAdapter();
+    const tx = paymentTx();
+    const execution = await tx.paymentExecution.findUnique();
+    tx.paymentExecution.findMany.mockResolvedValue([
+      execution,
+      { ...execution, id: "execution-2" }
+    ]);
+
+    const snapshots = await adapter.readProjectSnapshots(tx as never, "project-1");
+
+    expect(snapshots.map((snapshot) => snapshot.sourceBusinessId)).toEqual(["execution-1", "execution-2"]);
+    expect(tx.$queryRaw).toHaveBeenCalledTimes(1);
+    expect(tx.registeredPaymentFunding.findUnique).not.toHaveBeenCalled();
+  });
+
+  it("reads registered funding when installed even if the execution has a legacy voucher", async () => {
+    const adapter = new PaymentExecutionOperatingSourceAdapter();
+    const tx = paymentTx();
+    tx.$queryRaw.mockResolvedValue([{ state: "installed" }]);
+    tx.registeredPaymentFunding.findUnique.mockResolvedValue({
+      actualPayerKind: "participating_company", actualPayerId: "actual-company",
+      accountId: "account-1", balanceRegistrationId: "balance-1",
+      openingTreatment: "not_included", actualPayerSnapshot: { name: "实际付款公司" }
+    });
+    const snapshot = await adapter.readSourceSnapshot(tx as never, {
+      projectId: "project-1", sourceType: adapter.sourceType, sourceBusinessId: "execution-1"
+    });
+    expect(snapshot?.sourceSnapshot).toMatchObject({
+      voucherFileId: "voucher-1", actualPayerId: "actual-company",
+      registeredFunding: { accountId: "account-1" }
+    });
+    expect(tx.registeredPaymentFunding.findUnique).toHaveBeenCalledWith({ where: { executionId: "execution-1" } });
+  });
+
+  it("projects registered funding without reading bank-holder attestation", async () => {
+    const adapter = new PaymentExecutionOperatingSourceAdapter();
+    const tx = paymentTx();
+    const execution = await tx.paymentExecution.findUnique();
+    tx.paymentExecution.findUnique.mockImplementation(async (query?: { include?: unknown }) => {
+      if (query?.include) throw new Error("bank-holder table access denied");
+      return execution;
+    });
+    tx.$queryRaw.mockResolvedValue([{ state: "installed" }]);
+    tx.registeredPaymentFunding.findUnique.mockResolvedValue({
+      actualPayerKind: "public_cash", actualPayerId: "cash-company",
+      accountId: "account-1", balanceRegistrationId: "balance-1",
+      openingTreatment: "not_included", actualPayerSnapshot: { name: "虚构现金" }
+    });
+    const snapshot = await adapter.readSourceSnapshot(tx as never, {
+      projectId: "project-1", sourceType: adapter.sourceType, sourceBusinessId: "execution-1"
+    });
+    expect(snapshot?.sourceSnapshot).toMatchObject({ actualPayerType: "public_cash", actualPayerId: "cash-company" });
+    expect(tx.registeredPaymentFunding.findUnique).toHaveBeenCalledTimes(1);
+    expect(tx.paymentExecutionPayerAttestation.findUnique).not.toHaveBeenCalled();
+  });
+
+  it("rejects a partially installed payment catalog before projecting a historical payer", async () => {
+    const adapter = new PaymentExecutionOperatingSourceAdapter();
+    const tx = paymentTx();
+    tx.$queryRaw.mockResolvedValue([{ state: "unavailable" }]);
+    await expect(adapter.readSourceSnapshot(tx as never, {
+      projectId: "project-1", sourceType: adapter.sourceType, sourceBusinessId: "execution-1"
+    })).rejects.toMatchObject({ status: 503 });
+    expect(tx.registeredPaymentFunding.findUnique).not.toHaveBeenCalled();
+  });
+
   it("maps a partial multi-settlement payment to payable and company funds decreases without cost", async () => {
     const adapter = new PaymentExecutionOperatingSourceAdapter();
     const tx = paymentTx();
@@ -69,6 +150,50 @@ describe("PaymentExecutionOperatingSourceAdapter", () => {
     expect(input.operatingLevel).toBe("project");
   });
 
+  it("maps a signed settlement payment to one payable decrease keyed by the latest confirmed settlement", async () => {
+    const adapter = new PaymentExecutionOperatingSourceAdapter();
+    const tx = paymentTx();
+    tx.paymentRequest.findUnique.mockResolvedValue({
+      id: "payment-request-1",
+      projectId: "project-1",
+      contractId: "contract-1",
+      contractVersionId: "contract-version-1",
+      code: "PAY-202608-002",
+      sourceType: "signed_settlement",
+      settlementId: null,
+      signedSettlementId: "signed-settlement-1",
+      paymentSubjectType: "our_company",
+      requestedAmountCents: 1_000_00n,
+      approvedAmountCents: 1_000_00n
+    });
+    tx.paymentExecutionAllocation.findMany.mockResolvedValue([]);
+
+    const snapshot = await adapter.readSourceSnapshot(tx as never, {
+      projectId: "project-1",
+      sourceType: adapter.sourceType,
+      sourceBusinessId: "execution-1"
+    });
+    const { input } = adapter.toOperatingFactInput(snapshot!);
+
+    expect(snapshot?.sourceSnapshot).toMatchObject({
+      paymentSourceType: "signed_settlement",
+      signedSettlementId: "signed-settlement-1",
+      settlementId: null
+    });
+    expect(input.impacts).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          sourceImpactKey: "payable:signed-settlement-1",
+          impactKind: "payable_decrease",
+          amountCents: 600_00n,
+          direction: "decrease"
+        })
+      ])
+    );
+    expect(input.impacts.some(impact => impact.impactKind === "confirmed_cost"))
+      .toBe(false);
+  });
+
   it("preserves different approved and actual payers and forms one inter-subject balance", async () => {
     const adapter = new PaymentExecutionOperatingSourceAdapter();
     const tx = paymentTx({ companyEntityIdSnapshot: "proxy-company-entity" });
@@ -118,7 +243,7 @@ describe("PaymentExecutionOperatingSourceAdapter", () => {
     expect(input.subjects.approvedPayer).toEqual({ kind: "participating_company", id: "company-entity-1" });
     expect(input.subjects.actualPayer).toEqual(input.subjects.approvedPayer);
     expect(input.impacts.filter((i) => i.impactKind === "inter_subject_balance_increase")).toHaveLength(1);
-    expect(input.impacts.filter((i) => i.impactKind === "payable_decrease").reduce((sum, i) => sum + i.amountCents, 0n)).toBe(600_00n);
+    expect(input.impacts.filter((i) => i.impactKind === "payable_decrease").reduce((sum, i) => sum + requireLegacyOperatingCents(i), 0n)).toBe(600_00n);
     expect(input.impacts.some((i) => i.impactKind === "confirmed_cost")).toBe(false);
   });
 
@@ -157,6 +282,85 @@ describe("PaymentExecutionOperatingSourceAdapter", () => {
     );
   });
 
+  it("retains bank-holder validation when installed funding is absent", async () => {
+    const adapter = new PaymentExecutionOperatingSourceAdapter();
+    const tx = paymentTx({ payerAttestationFingerprint: "f".repeat(64) });
+    tx.$queryRaw.mockResolvedValue([{ state: "installed" }]);
+    await expect(adapter.readSourceSnapshot(tx as never, {
+      projectId: "project-1", sourceType: adapter.sourceType, sourceBusinessId: "execution-1"
+    })).rejects.toThrow("付款执行银行法定持有人核验事实缺失");
+    expect(tx.paymentExecutionPayerAttestation.findUnique).toHaveBeenCalledTimes(1);
+  });
+
+  it("rejects incomplete historical bank-holder evidence", async () => {
+    const adapter = new PaymentExecutionOperatingSourceAdapter();
+    const tx = paymentTx({ payerAttestationFingerprint: "f".repeat(64), payerAttestation: {
+      holderCompanyEntityId: "company-1", holderNameSnapshot: "", holderCreditCodeSnapshot: "synthetic",
+      verificationEvidenceContentSha256: "a".repeat(64)
+    } });
+    await expect(adapter.readSourceSnapshot(tx as never, {
+      projectId: "project-1", sourceType: adapter.sourceType, sourceBusinessId: "execution-1"
+    })).rejects.toThrow("付款执行银行法定持有人核验快照不完整");
+  });
+
+  it("keeps direct agreement repayment after a real refund within the approved net amount", async () => {
+    const adapter = new PaymentExecutionOperatingSourceAdapter();
+    const tx = paymentTx();
+    tx.paymentRequest.findUnique.mockResolvedValue({
+      ...(await tx.paymentRequest.findUnique()), contractDueBasis: "text_agreement_v1"
+    });
+    tx.paymentExecution.aggregate.mockResolvedValue({ _sum: { amountCents: 1_200_00n } });
+    tx.paymentExecutionAllocation.findMany.mockResolvedValue([{
+      allocationType: "contract_due_payment", settlementId: null, allocationOrder: 0,
+      sourceRowId: "payment-request:payment-request-1", amountCents: 600_00n
+    }]);
+    const refunds = jest.fn().mockResolvedValue({ _sum: { amountCents: 200_00n } });
+    Object.assign(tx, {
+      paymentExecutionRefund: { aggregate: refunds },
+      paymentExecutionCorrection: { aggregate: jest.fn().mockResolvedValue({ _sum: { amountDeltaCents: null } }) }
+    });
+    const source = { projectId: "project-1", sourceType: adapter.sourceType, sourceBusinessId: "execution-1" };
+    const snapshot = await adapter.readSourceSnapshot(tx as never, source);
+    expect(adapter.toOperatingFactInput(snapshot!).input.impacts).toEqual(expect.arrayContaining([
+      expect.objectContaining({ sourceImpactKey: "payable:payment-request:payment-request-1", amountCents: 600_00n })
+    ]));
+    refunds.mockResolvedValue({ _sum: { amountCents: 199_99n } });
+    await expect(adapter.readSourceSnapshot(tx as never, source)).rejects.toThrow("超过付款申请批复金额");
+  });
+
+  it("applies refunds when checking signed settlement repayment against approval", async () => {
+    const adapter = new PaymentExecutionOperatingSourceAdapter();
+    const tx = paymentTx();
+    tx.paymentRequest.findUnique.mockResolvedValue({
+      ...(await tx.paymentRequest.findUnique()), sourceType: "signed_settlement", contractDueBasis: null
+    });
+    tx.paymentExecution.aggregate.mockResolvedValue({ _sum: { amountCents: 1_200_00n } });
+    const refunds = jest.fn().mockResolvedValue({ _sum: { amountCents: 200_00n } });
+    const corrections = jest.fn().mockResolvedValue({ _sum: { amountDeltaCents: null } });
+    Object.assign(tx, {
+      paymentExecutionRefund: { aggregate: refunds },
+      paymentExecutionCorrection: { aggregate: corrections }
+    });
+    const source = { projectId: "project-1", sourceType: adapter.sourceType, sourceBusinessId: "execution-1" };
+    await expect(adapter.readSourceSnapshot(tx as never, source)).resolves.toBeDefined();
+    refunds.mockResolvedValue({ _sum: { amountCents: 199_99n } });
+    await expect(adapter.readSourceSnapshot(tx as never, source)).rejects.toThrow("超过付款申请批复金额");
+    refunds.mockResolvedValue({ _sum: { amountCents: 200_00n } });
+    corrections.mockResolvedValue({ _sum: { amountDeltaCents: 1n } });
+    await expect(adapter.readSourceSnapshot(tx as never, source)).rejects.toThrow("超过付款申请批复金额");
+    // The pending +2 must be excluded; including it with confirmed -1 would exceed approval.
+    corrections.mockImplementation(async ({ where }: { where: { status?: string } }) => ({
+      _sum: { amountDeltaCents: where.status === "confirmed" ? -1n : 1n }
+    }));
+    await expect(adapter.readSourceSnapshot(tx as never, source)).resolves.toBeDefined();
+    expect(corrections).toHaveBeenCalledWith({
+      where: { paymentRequestId: "payment-request-1", status: "confirmed" },
+      _sum: { amountDeltaCents: true }
+    });
+    refunds.mockResolvedValue({ _sum: { amountCents: 1_200_00n } });
+    await expect(adapter.readSourceSnapshot(tx as never, source)).rejects.toThrow("超过付款申请批复金额");
+  });
+
   it("fails closed when formal executions exceed the approved amount", async () => {
     const adapter = new PaymentExecutionOperatingSourceAdapter();
     const tx = paymentTx();
@@ -192,6 +396,11 @@ function paymentTx(executionOverrides: Record<string, unknown> = {}) {
     ...executionOverrides
   };
   return {
+    $queryRaw: jest.fn().mockResolvedValue([{ state: "absent" }]),
+    registeredPaymentFunding: { findUnique: jest.fn().mockResolvedValue(null) },
+    paymentExecutionPayerAttestation: { findUnique: jest.fn().mockResolvedValue(executionOverrides.payerAttestation ?? null) },
+    paymentExecutionRefund: { aggregate: jest.fn().mockResolvedValue({ _sum: { amountCents: null } }) },
+    paymentExecutionCorrection: { aggregate: jest.fn().mockResolvedValue({ _sum: { amountDeltaCents: null } }) },
     project: {
       findUnique: jest.fn().mockResolvedValue({
         operatingLedgerEffectiveDate: new Date("2026-08-01T00:00:00.000Z")

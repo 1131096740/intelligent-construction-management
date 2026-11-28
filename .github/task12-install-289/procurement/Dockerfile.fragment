@@ -1,0 +1,17 @@
+# Append after the existing 289 Dockerfile. Produce only from the sealed Git checkout inventories.
+ENV PLAYWRIGHT_BROWSERS_PATH=/opt/jg-playwright
+WORKDIR /qualification/procurement289-nodb
+COPY workspace/ ./
+COPY procurement-support/ /qualification/
+RUN pnpm --filter @jiangkong/api... --filter @jiangkong/web-admin... install --frozen-lockfile \
+ && pnpm --filter @jiangkong/shared-domain build \
+ && pnpm --filter @jiangkong/api exec prisma generate \
+ && pnpm --filter @jiangkong/api build
+# Browser/system dependency fetch is build-only. Its inputs need a separate exact-source qualification.
+COPY --chmod=644 procurement-no-db.cjs procurement-source-head /qualification/
+RUN pnpm --filter @jiangkong/web-admin exec playwright install --with-deps chromium webkit \
+ && test -d /opt/jg-playwright/chromium-1248 \
+ && test -d /opt/jg-playwright/chromium_headless_shell-1248 \
+ && test -d /opt/jg-playwright/webkit-2370 \
+ && test -d /opt/jg-playwright/ffmpeg-1013
+USER postgres

@@ -1,0 +1,546 @@
+'use strict';
+
+const assert = require('node:assert/strict');
+
+const profiles = {
+  issue400: {
+    file: 'src/database/issue400-financial-correction-refund.pg.spec.ts',
+    sourceDigest: '263db63fb01eb5a821669039c92b645f456d45a51766f08d2345a4cb9986f329',
+    fixtureDigest: '4b74d949924a41c7e5e0aa070f616b4d28dcfc0562d06f93086fb6802d3b74b7',
+    orderedDatabaseKey: 'JG_ISSUE400_ORDERED_DATABASE',
+    databaseUrlKey: 'ISSUE400_FINANCIAL_CORRECTION_DATABASE_URL',
+    enableKey: 'ISSUE400_FINANCIAL_CORRECTION_RUN',
+    stage: 'ORDERED_REFUND_CORRECTION_ALTERNATE_JEST',
+    titles: [
+      'registers refunds and corrections as new facts without rewriting the original payment'
+    ]
+  },
+  issue403: {
+    "file": "src/database/issue403-actual-purchase-batch.pg.spec.ts",
+    "sourceDigest": "dc60ff652c24fde0cc2da5ab75a633ee8ca924221b31401a18b2434a7a26f620",
+    "fixtureDigest": "abf05b9a2017b2b80ac3493b6b84341cc44d6006d02c9c487167172428f5eacc",
+    "orderedDatabaseKey": "JG_ORDERED_ISSUE333_DATABASE",
+    "databaseUrlKey": "ISSUE403_DATABASE_URL",
+    "enableKey": "ISSUE403_ACTUAL_PURCHASE_RUN",
+    "stage": "ORIGINAL_ACTUAL_PURCHASE_JEST",
+    "requiresOperatingLedgerWriteSecret": true,
+    "requiredMigrationCount": 340,
+    "requiredTerminalMigration": "20261129009000_general_purchase_batch_claim_guard",
+    "requiredTerminalMigrationSha256": "96f3eb48fc233b32a7f2af85e0f1813ef1e2b25a8dd52bc1bb6f373e98f8a4a6",
+    "titles": [
+      "migrates a legacy pending spot payment atomically and accepts a finance signature through HTTP after reopening",
+      "confirms batch cost once, splits payments, corrects cost and restores capacity after refund",
+      "records a general procurement batch and rejects over-commitment before claim approval"
+    ]
+  },
+  issue404: {
+    "file": "src/database/issue404-reimbursement.pg.spec.ts",
+    "sourceDigest": "f0916a78e40070fef835509251978102531592ec7991c2769942e3feb15dce65",
+    "fixtureDigest": "1e49ca40da9ffb9e65bf8c77abc8c6b3eb239a123398a7207d45fced4f020831",
+    "orderedDatabaseKey": "JG_ISSUE404_ORDERED_344_DATABASE",
+    "databaseUrlKey": "ISSUE404_DATABASE_URL",
+    "enableKey": "ISSUE404_REIMBURSEMENT_RUN",
+    "stage": "ORIGINAL_REIMBURSEMENT_JEST",
+    "requiredMigrationCount": 344,
+    "requiredTerminalMigration": "20261129013000_expense_public_cash_voucher",
+    "requiredTerminalMigrationSha256": "b35a305dbe45edd2822bf850f3ef8abcd6161820dd065db82b7b084463255106",
+    "titles": [
+      "records a multi-category direct claim, confirms cost once and keeps batch cost unique",
+      "lets an employee claim only the advanced part of a purchase batch without a second cost",
+      "carries general procurement and company-daily sources into employee advance claims"
+    ]
+  },
+  issue405: {
+    file: 'src/database/issue405-other-project-payment.pg.spec.ts',
+    sourceDigest: 'cc7b5d5bbdfba6c73f47a808a5c3ce3ebf33b75675c8dc8a253b696c261d0c8e',
+    fixtureDigest: '80708330292b60faa092f8fd9a5c16719b016990d27f6e9dbfc807fbbd8b30c3',
+    orderedDatabaseKey: 'JG_ISSUE405_ORDERED_DATABASE',
+    databaseUrlKey: 'ISSUE405_OTHER_PROJECT_PAYMENT_DATABASE_URL',
+    enableKey: 'ISSUE405_OTHER_PROJECT_PAYMENT_RUN',
+    stage: 'ORIGINAL_OTHER_PROJECT_PAYMENT_JEST',
+    requiresOperatingLedgerWriteSecret: true,
+    titles: [
+      'registers, approves, splits, refunds and corrects a no-contract project payment with one cost'
+    ]
+  },
+  issue411: {
+    file: 'src/database/issue411-third-company-repayment.pg.spec.ts',
+    sourceDigest: '46f2bf46d6b1de968da67fd60fea9d90e249870db283210c330c9f59e4c4d86e',
+    fixtureDigest: '3f1268ce742078f27bf0ae4c77ad2f99c86a7e60bdf5a439e40fa194b783ca21',
+    orderedDatabaseKey: 'JG_ISSUE411_ORDERED_DATABASE',
+    enableKey: 'RUN_ISSUE411_THIRD_COMPANY_REPAYMENT',
+    stage: 'ORIGINAL_THIRD_COMPANY_REPAYMENT_JEST',
+    requiresOperatingLedgerWriteSecret: true,
+    titles: [
+      'moves A-B debt to A-C with one payment, rejects a duplicate, and keeps the corrected net',
+      're-points a settled third-party repayment to the correct original debt and keeps the A-C debt'
+    ]
+  },
+  issue413: {
+    file: 'src/database/issue413-construction-enterprise-paid.pg.spec.ts',
+    sourceDigest: 'ed63b7a21358f3b57b8735c8c6a3e2447b2a321eafc6e8ca3003b20b62b71809',
+    orderedDatabaseKey: 'JG_ISSUE413_ORDERED_DATABASE',
+    enableKey: 'RUN_ISSUE413_CONSTRUCTION_PAID_DATABASE',
+    stage: 'ORIGINAL_PAYMENT_JEST',
+    titles: [
+      'allows overpayment, keeps duplicate registration closed, and re-registers a correction',
+      'rejects new advances and corrects a historical advance against its fully paid request'
+    ]
+  },
+  issue414: {
+    file: 'src/database/issue414-construction-enterprise-deduction.pg.spec.ts',
+    sourceDigest: 'fbf556937ef4b1a5a1a9b496d2810cc78f667966708519dc5fda2e9b8642ac46',
+    fixtureDigest: '7aa536c10c8eb77e845466a1f04a4f302c83bdabebabe47fa2679619fc5a4029',
+    orderedDatabaseKey: 'JG_ISSUE414_ORDERED_DATABASE',
+    enableKey: 'RUN_ISSUE414_CONSTRUCTION_DEDUCTION_DATABASE',
+    stage: 'ORIGINAL_DEDUCTION_JEST',
+    requiresOperatingLedgerWriteSecret: true,
+    titles: [
+      'registers, rejects duplicates, corrects and keeps paid aggregation unchanged'
+    ]
+  },
+  issue416_handover: {
+    file: 'src/database/issue416-takeover-handover.pg.spec.ts',
+    sourceDigest: 'abde4945f276cbe0f1adef32ee7b69dd86ed63369814ce51c55e57b1136d861a',
+    fixtureDigest: '2a4e09cc0cc40d1af577f1eacfb28cd53f750c722013ef44148094f0bd56af17',
+    orderedDatabaseKey: 'JG_ISSUE416_HANDOVER_ORDERED_DATABASE',
+    databaseUrlKey: 'ISSUE416_HANDOVER_DATABASE_URL',
+    enableKey: 'RUN_ISSUE416_HANDOVER_DATABASE',
+    stage: 'ORIGINAL_HISTORY_HANDOVER_JEST',
+    titles: [
+      'blocks a no-grade takeover before its division handover, allows it after registration, keeps facts and traces reassignment'
+    ]
+  },
+  issue416_his: {
+    file: 'src/database/issue416-his-gap.pg.spec.ts',
+    sourceDigest: 'b29b942819024d42e5cdb0a95d614caf84abadf65868a0bada71c6e16e7690e3',
+    orderedDatabaseKey: 'JG_ISSUE416_HIS_ORDERED_DATABASE',
+    databaseUrlKey: 'ISSUE416_HIS_DATABASE_URL',
+    enableKey: 'RUN_ISSUE416_HIS_DATABASE',
+    stage: 'ORIGINAL_HISTORY_GAP_JEST',
+    titles: [
+      'activates a NONE-level history takeover, projects its payments, keeps opening cash untouched and continues 60 + 10 = 70',
+      'relays contract maker -> finance -> contract supervisor and sends both rejections back to the maker',
+      'keeps unknown historical facts in their original stage and only records an explicit zero'
+    ]
+  },
+  issue418: {
+    file: 'src/database/issue418-operating-dedup.pg.spec.ts',
+    sourceDigest: 'ed5cd06cf4f69134d85c2af09e9922175fe60e67abf74eed3d41e81f44b33ad8',
+    fixtureDigest: 'c14f6c17a3f1aa07dda5bc99f422bf59476629dc2152564199c1e9c53923ddee',
+    orderedDatabaseKey: 'JG_ORDERED_ISSUE333_DATABASE',
+    databaseUrlKey: 'ISSUE418_OPERATING_DEDUP_DATABASE_URL',
+    enableKey: 'ISSUE418_OPERATING_DEDUP_RUN',
+    stage: 'ORIGINAL_OPERATING_DEDUP_JEST',
+    requiredMigrationCount: 346,
+    requiredTerminalMigration: '20261129015000_expense_public_cash_operating_source',
+    requiredTerminalMigrationSha256: 'd2f1419df6337020ad7dc5385b4b52a2997f276656dd3ff90f71d8c62f5c8b9a',
+    titles: [
+      '同合同双入口只计一次成本，upward 不进成本，outside 进入成本',
+      '施工企业已付80、项目对外支付70，两指标成对且不可相加',
+      '成本归属读侧分列承担公司、待归属与公共现金来源',
+      '明细可追溯到事实、影响、来源类型和源业务 ID',
+      '数据库来源唯一键阻止同一来源重复入账',
+      '跨来源写入守卫在真实 Settlement/SignedContractSettlement 行上拒绝同期次重复登记',
+      'G4 公共现金待归属确认后转正、幂等且不新增成本',
+      'G5 资金流水与经营事实一致，支持类型过滤与导出',
+      'G9 总览按合同钻取：审批中与已批待付分列，跨合同不抵扣'
+    ]
+  },
+  issue418_guard: {
+    file: 'src/database/issue418-settlement-guard.pg.spec.ts',
+    sourceDigest: '71ba45e4ae1722b5c8fbc52178c1216fdabfc29731c41e65f7a7529443ee365b',
+    orderedDatabaseKey: 'JG_ORDERED_ISSUE333_DATABASE',
+    databaseUrlKey: 'ISSUE418_SETTLEMENT_GUARD_DATABASE_URL',
+    enableKey: 'ISSUE418_SETTLEMENT_GUARD_RUN',
+    stage: 'ORDERED_CROSS_SOURCE_SETTLEMENT_GUARD_JEST',
+    requiredMigrationCount: 346,
+    requiredTerminalMigration: '20261129015000_expense_public_cash_operating_source',
+    requiredTerminalMigrationSha256: 'd2f1419df6337020ad7dc5385b4b52a2997f276656dd3ff90f71d8c62f5c8b9a',
+    titles: ['拒绝合同同版本同期次跨入口登记，允许不同期次']
+  },
+  issue418_signed_operating: {
+    file: 'src/database/issue418-signed-operating.pg.spec.ts',
+    sourceDigest: '86491dd5c87593b600dffa75760b65ae12b741f27a68ef191c17fe03a69d9582',
+    orderedDatabaseKey: 'JG_ORDERED_ISSUE333_DATABASE',
+    databaseUrlKey: 'ISSUE418_SIGNED_OPERATING_DATABASE_URL',
+    enableKey: 'ISSUE418_SIGNED_OPERATING_RUN',
+    stage: 'ORDERED_SIGNED_SETTLEMENT_OPERATING_JEST',
+    requiredMigrationCount: 346,
+    requiredTerminalMigration: '20261129015000_expense_public_cash_operating_source',
+    requiredTerminalMigrationSha256: 'd2f1419df6337020ad7dc5385b4b52a2997f276656dd3ff90f71d8c62f5c8b9a',
+    requiresOperatingLedgerWriteSecret: true,
+    titles: ['对上五十元只形成内部应收，表外三十元进入成本与应付，明细可追溯']
+  },
+  issue418_paired_funds: {
+    file: 'src/database/issue418-paired-funds.pg.spec.ts',
+    sourceDigest: '44333d2f3b22ccafbf0de5012fcf69dc6d71f3afa0973d922a0d5eab42aa7e84',
+    orderedDatabaseKey: 'JG_ORDERED_ISSUE333_DATABASE',
+    databaseUrlKey: 'ISSUE418_PAIRED_FUNDS_DATABASE_URL',
+    enableKey: 'ISSUE418_PAIRED_FUNDS_RUN',
+    stage: 'ORDERED_PAIRED_PAYMENT_METRICS_JEST',
+    requiredMigrationCount: 346,
+    requiredTerminalMigration: '20261129015000_expense_public_cash_operating_source',
+    requiredTerminalMigrationSha256: 'd2f1419df6337020ad7dc5385b4b52a2997f276656dd3ff90f71d8c62f5c8b9a',
+    requiresOperatingLedgerWriteSecret: true,
+    titles: [
+      '施工企业已付八十元、项目对外支付七十元，资金流水使用同一分录',
+      '同一项目业主一百、内部拨款八十及下游成本六十只入账一次'
+    ]
+  },
+  issue418_cash_attribution: {
+    file: 'src/database/issue418-cash-attribution.pg.spec.ts',
+    sourceDigest: 'f0d48bf6551b3eefd8cc13126bebf161f44976f7044f1717171fc1a11eb07586',
+    orderedDatabaseKey: 'JG_ORDERED_ISSUE333_DATABASE',
+    databaseUrlKey: 'ISSUE418_CASH_ATTRIBUTION_DATABASE_URL',
+    enableKey: 'ISSUE418_CASH_ATTRIBUTION_RUN',
+    stage: 'ORDERED_CASH_ATTRIBUTION_AND_FLOW_JEST',
+    requiredMigrationCount: 346,
+    requiredTerminalMigration: '20261129015000_expense_public_cash_operating_source',
+    requiredTerminalMigrationSha256: 'd2f1419df6337020ad7dc5385b4b52a2997f276656dd3ff90f71d8c62f5c8b9a',
+    requiresOperatingLedgerWriteSecret: true,
+    titles: [
+      '成本归属读侧分列承担公司、待归属与公共现金来源',
+      'G4 公共现金待归属确认后转正、幂等且不新增成本',
+      'G5 资金流水与经营事实一致，支持类型过滤与导出'
+    ]
+  },
+  issue418_contract_drilldown: {
+    file: 'src/database/issue418-contract-drilldown.pg.spec.ts',
+    sourceDigest: '79f45daa1bf996e9e9ceb5529d139ca819ff855a6e42e63c2072065f14e728a3',
+    orderedDatabaseKey: 'JG_ORDERED_ISSUE333_DATABASE',
+    databaseUrlKey: 'ISSUE418_CONTRACT_DRILLDOWN_DATABASE_URL',
+    enableKey: 'ISSUE418_CONTRACT_DRILLDOWN_RUN',
+    stage: 'ORDERED_CONTRACT_DRILLDOWN_JEST',
+    requiredMigrationCount: 346,
+    requiredTerminalMigration: '20261129015000_expense_public_cash_operating_source',
+    requiredTerminalMigrationSha256: 'd2f1419df6337020ad7dc5385b4b52a2997f276656dd3ff90f71d8c62f5c8b9a',
+    requiresOperatingLedgerWriteSecret: true,
+    titles: ['审批中与已批待付分列，合同超付不抵扣另一合同未付']
+  },
+  issue418_recognized_dedup: {
+    file: 'src/database/issue418-recognized-dedup.pg.spec.ts',
+    sourceDigest: 'ba5865a7a47471c72a4488dea07dc4f7295bb533bad0dcf837bf3b8bfc5476f8',
+    orderedDatabaseKey: 'JG_ORDERED_ISSUE333_DATABASE',
+    databaseUrlKey: 'ISSUE418_RECOGNIZED_DEDUP_DATABASE_URL',
+    enableKey: 'ISSUE418_RECOGNIZED_DEDUP_RUN',
+    stage: 'ORDERED_RECOGNIZED_SETTLEMENT_DEDUP_JEST',
+    requiredMigrationCount: 346,
+    requiredTerminalMigration: '20261129015000_expense_public_cash_operating_source',
+    requiredTerminalMigrationSha256: 'd2f1419df6337020ad7dc5385b4b52a2997f276656dd3ff90f71d8c62f5c8b9a',
+    requiresOperatingLedgerWriteSecret: true,
+    titles: ['可识别的跨来源结算在总览、明细分页和导出只计一期，保留下一期']
+  },
+  issue418_source_unique: {
+    file: 'src/database/issue418-signed-operating.pg.spec.ts',
+    sourceDigest: '86491dd5c87593b600dffa75760b65ae12b741f27a68ef191c17fe03a69d9582',
+    fixtureDigest: '9ab9fd281245599d6bbad87a91ae58048049a5789b15659963c179e2eefde75b',
+    orderedDatabaseKey: 'JG_ORDERED_ISSUE333_DATABASE',
+    databaseUrlKey: 'ISSUE418_SOURCE_UNIQUE_DATABASE_URL',
+    enableKey: 'ISSUE418_SOURCE_UNIQUE_RUN',
+    stage: 'ORDERED_OPERATING_SOURCE_UNIQUE_JEST',
+    requiredMigrationCount: 346,
+    requiredTerminalMigration: '20261129015000_expense_public_cash_operating_source',
+    requiredTerminalMigrationSha256: 'd2f1419df6337020ad7dc5385b4b52a2997f276656dd3ff90f71d8c62f5c8b9a',
+    requiresOperatingLedgerWriteSecret: true,
+    titles: ['同来源服务重放保留原分录，受控写入重复来源触发唯一键']
+  },
+  issue420: {
+    file: 'src/database/issue420-approval-center.http.pg.spec.ts',
+    sourceDigest: 'd4effcfb32e745737be3278c0556f903c2ae6c55c631016a59a3c0c79588d5a3',
+    fixtureDigest: '108ebe6f851963c968a9cda874024deec0ac121b99a0aab4b76e4d5ad7bcf892',
+    orderedDatabaseKey: 'JG_ISSUE420_ORDERED_DATABASE',
+    enableKey: 'RUN_ISSUE420_REAL_DB',
+    stage: 'ORIGINAL_HTTP_PDF_JEST',
+    titles: [
+      '我方可查看只对管理读取岗位开放，查看权不等于办理权',
+      '办理中可下载当前轮审批单：已签显示签字、未签留空、带水印并记下载审计',
+      '驳回后重提只保留最新轮审批单，旧轮签字不进入新PDF'
+    ]
+  },
+  issue421: {
+    file: 'src/database/issue421-signed-settlement-ledger.http.pg.spec.ts',
+    sourceDigest: '2580650f2a96dac37a6f9b9e2720aec8985f9cac8144bf4f08e0cce7859d8e9e',
+    fixtureDigest: '97ecc2cedbd8ebbb9597602280e4ab4500f389b16dc4c5cefdfdb6d83768c283',
+    orderedDatabaseKey: 'JG_ISSUE421_ORDERED_DATABASE',
+    enableKey: 'ISSUE421_LEDGER_RUN',
+    stage: 'ORIGINAL_SIGNED_LEDGER_JEST',
+    titles: [
+      'only puts confirmed signed settlements into the formal ledger',
+      'merges visible projects and enforces row-level visibility',
+      'filters the whole visible ledger by project, date, status and keyword',
+      'exports the same filtered rows with numeric amount, date and escaped text',
+      'does not let exports bypass row-level visibility',
+      'exports contracts with the current filter, numeric/date cells and unknown amounts kept'
+    ]
+  },
+  issue421b: {
+    file: 'src/database/issue421b-four-ledger.http.pg.spec.ts',
+    sourceDigest: '8ab0d51bf2a9b0b99cc14b690539f081fa753beaef5b1a4508f72a52d0aafab4',
+    fixtureDigest: '925acf589db22eb185b8c94fd036b63266eb4bfa9a005b4674bf9b1dd973887d',
+    orderedDatabaseKey: 'JG_ISSUE421B_ORDERED_DATABASE',
+    enableKey: 'ISSUE421B_LEDGER_RUN',
+    stage: 'ORIGINAL_FOUR_LEDGER_JEST',
+    titles: [
+      'filters payment ledger on the server and exports the same visible filtered rows',
+      'does not let payment export bypass row-level visibility',
+      'filters and exports spot procurement with the same accessible rows',
+      'filters and exports general procurement with the same access scope',
+      'filters and exports expense claims for finance cross-project and employees own-only'
+    ]
+  },
+  issue422: {
+    file: 'src/database/issue422-archives.http.pg.spec.ts',
+    sourceDigest: 'e1b07c48aabe8ce197cb2d26cdd93a065434c7ef5cb3a1ae51547638ad02f826',
+    fixtureDigest: 'bd414e6b5fdc738f0c44c4c439c4cbe75dcdebd5539080564a75c990354c81bf',
+    orderedDatabaseKey: 'JG_ISSUE422_ORDERED_DATABASE',
+    enableKey: 'RUN_ISSUE422_REAL_DB',
+    stage: 'ORIGINAL_ARCHIVE_HTTP_JEST',
+    titles: [
+      'searches archives only inside the current document visibility and filters by project, contract, counterparty, and number',
+      "issues short-lived attachment tickets without password or reason, audits downloads, and rejects another project's file",
+      'rejects an expired short-lived link and a still-valid link after the role is revoked',
+      'authorizes every package file, rejects mixed unauthorized selections, and records package audit'
+    ]
+  }
+};
+
+profiles.issue400_346 = {
+  ...profiles.issue400,
+  fixturePatch: 'issue400.fixture.patch',
+  requiredMigrationCount: 346,
+  requiredTerminalMigration: '20261129015000_expense_public_cash_operating_source',
+  requiredTerminalMigrationSha256: 'd2f1419df6337020ad7dc5385b4b52a2997f276656dd3ff90f71d8c62f5c8b9a'
+};
+
+profiles.issue405_346 = {
+  ...profiles.issue405,
+  fixturePatch: 'issue405.fixture.patch',
+  requiredMigrationCount: 346,
+  requiredTerminalMigration: '20261129015000_expense_public_cash_operating_source',
+  requiredTerminalMigrationSha256: 'd2f1419df6337020ad7dc5385b4b52a2997f276656dd3ff90f71d8c62f5c8b9a'
+};
+
+profiles.issue411_346 = {
+  ...profiles.issue411,
+  fixturePatch: 'issue411.fixture.patch',
+  requiredMigrationCount: 346,
+  requiredTerminalMigration: '20261129015000_expense_public_cash_operating_source',
+  requiredTerminalMigrationSha256: 'd2f1419df6337020ad7dc5385b4b52a2997f276656dd3ff90f71d8c62f5c8b9a'
+};
+
+profiles.issue413_346 = {
+  ...profiles.issue413,
+  requiredMigrationCount: 346,
+  requiredTerminalMigration: '20261129015000_expense_public_cash_operating_source',
+  requiredTerminalMigrationSha256: 'd2f1419df6337020ad7dc5385b4b52a2997f276656dd3ff90f71d8c62f5c8b9a'
+};
+
+profiles.issue414_346 = {
+  ...profiles.issue414,
+  fixturePatch: 'issue414.fixture.patch',
+  requiredMigrationCount: 346,
+  requiredTerminalMigration: '20261129015000_expense_public_cash_operating_source',
+  requiredTerminalMigrationSha256: 'd2f1419df6337020ad7dc5385b4b52a2997f276656dd3ff90f71d8c62f5c8b9a'
+};
+
+profiles.issue416_handover_346 = {
+  ...profiles.issue416_handover,
+  fixturePatch: 'issue416_handover.fixture.patch',
+  requiredMigrationCount: 346,
+  requiredTerminalMigration: '20261129015000_expense_public_cash_operating_source',
+  requiredTerminalMigrationSha256: 'd2f1419df6337020ad7dc5385b4b52a2997f276656dd3ff90f71d8c62f5c8b9a'
+};
+
+profiles.issue416_his_346 = {
+  ...profiles.issue416_his,
+  fixtureDigest: '2bb225e9b408ebccee751228d8b0b2c903e78a3b7a2700bd39216484ed01feaa',
+  requiredMigrationCount: 346,
+  requiredTerminalMigration: '20261129015000_expense_public_cash_operating_source',
+  requiredTerminalMigrationSha256: 'd2f1419df6337020ad7dc5385b4b52a2997f276656dd3ff90f71d8c62f5c8b9a'
+};
+
+profiles.issue420_346 = {
+  ...profiles.issue420,
+  fixturePatch: 'issue420.fixture.patch',
+  requiredMigrationCount: 346,
+  requiredTerminalMigration: '20261129015000_expense_public_cash_operating_source',
+  requiredTerminalMigrationSha256: 'd2f1419df6337020ad7dc5385b4b52a2997f276656dd3ff90f71d8c62f5c8b9a'
+};
+
+profiles.issue421_346 = {
+  ...profiles.issue421,
+  fixturePatch: 'issue421.fixture.patch',
+  requiredMigrationCount: 346,
+  requiredTerminalMigration: '20261129015000_expense_public_cash_operating_source',
+  requiredTerminalMigrationSha256: 'd2f1419df6337020ad7dc5385b4b52a2997f276656dd3ff90f71d8c62f5c8b9a'
+};
+
+profiles.issue421b_346 = {
+  ...profiles.issue421b,
+  fixturePatch: 'issue421b.fixture.patch',
+  requiredMigrationCount: 346,
+  requiredTerminalMigration: '20261129015000_expense_public_cash_operating_source',
+  requiredTerminalMigrationSha256: 'd2f1419df6337020ad7dc5385b4b52a2997f276656dd3ff90f71d8c62f5c8b9a'
+};
+
+profiles.issue422_346 = {
+  ...profiles.issue422,
+  fixturePatch: 'issue422.fixture.patch',
+  requiredMigrationCount: 346,
+  requiredTerminalMigration: '20261129015000_expense_public_cash_operating_source',
+  requiredTerminalMigrationSha256: 'd2f1419df6337020ad7dc5385b4b52a2997f276656dd3ff90f71d8c62f5c8b9a'
+};
+
+const precisionBaseline = {
+  requiredMigrationCount: 349,
+  requiredTerminalMigration: '20261129018000_reimbursement_exact_cash_cost_links',
+  requiredTerminalMigrationSha256: '58b3cc0404a85a97dbb484654245d4bd042e5fb2014f32997244b2597cb5110b'
+};
+
+profiles.issue404_349 = {
+  ...profiles.issue404,
+  fixturePatch: 'issue404.fixture.patch',
+  ...precisionBaseline
+};
+
+profiles.issue416_his_349 = {
+  ...profiles.issue416_his_346,
+  fixturePatch: 'issue416-his-349.fixture.patch',
+  fixtureDigest: 'f3d473f0a238d458f3b3f22bf2ca690fe07b5757721c05340d1d48d6e582566e',
+  ...precisionBaseline
+};
+
+profiles.issue421_349 = {
+  ...profiles.issue421_346,
+  sourceDigest: '2591cfb1fc6ca2830122064f8b0228b5e7b5b622d165efcb2dbe184cac21e9de',
+  fixturePatch: 'issue421-349.fixture.patch',
+  fixtureDigest: '8b6f93691352a0aa5d90ce1d0d3e0dcd7fe60f140ab842f08b50202493e7779a',
+  titles: [
+    ...profiles.issue421_346.titles.slice(0, -1),
+    'exports filtered contracts and preserves original amounts in contract and settlement workbooks'
+  ],
+  ...precisionBaseline
+};
+
+profiles.issue421b_349 = {
+  ...profiles.issue421b_346,
+  sourceDigest: '1f696d01b79762c91bd6e70db90de7fbdae4424a0a5bfa8e914b86a4c0e64a08',
+  fixtureDigest: '45eb0b88da3cf18357e454079bd8b84940c6364b40e3ba492b82b3f80ab2a8ad',
+  titles: [
+    ...profiles.issue421b_346.titles.slice(0, -1),
+    'filters expense claims by access and exports high precision facts in all four ledgers'
+  ],
+  ...precisionBaseline
+};
+
+profiles.issue426_a01_349 = {
+  file: 'src/expense-claim/expense-claim-a01-precision.http.pg.spec.ts',
+  sourceDigest: '501f200bedadd2b7804fc024f407a65381426a8b23e35fc82a5efe57715bc284',
+  orderedDatabaseKey: 'JG_A01_EXPENSE_PRECISION_DATABASE',
+  enableKey: 'RUN_A01_EXPENSE_PRECISION_PG16',
+  stage: 'A01_EXPENSE_PRECISION',
+  requiresOperatingLedgerWriteSecret: true,
+  titles: [
+    '报销四位元金额按明细精确求和、仅在付款总额取整',
+    '报销四位元金额终审保留项目成本并分开整数分待付'
+  ],
+  ...precisionBaseline
+};
+
+profiles.issue434_349 = {
+  file: 'src/database/general-procurement-http-postgres.spec.ts',
+  sourceDigest: 'f15a36a770d87d0728a2a2efe770cd07d4a5ffae69252b0f2f77c1e74410bce9',
+  fixtureDigest: 'a9d017a619fb5052e6522fd0ca9439465f45162ef238377780bb5d6d6e98601e',
+  orderedDatabaseKey: 'JG_ISSUE434_ORDERED_DATABASE',
+  enableKey: 'RUN_GENERAL_PROCUREMENT_PG16',
+  stage: 'ISSUE434_ACTUAL_PURCHASE_APPROVAL_HTTP',
+  requiresOperatingLedgerWriteSecret: true,
+  titles: ['实际综合采购批次付款四岗同时待办，审批单按冻结岗位签署顺序呈现'],
+  ...precisionBaseline
+};
+
+const issue418OperatingScopes = Object.freeze([
+  'issue418_recognized_dedup', 'issue418_signed_operating', 'issue418_paired_funds',
+  'issue418_cash_attribution', 'issue418_source_unique', 'issue418_guard', 'issue418_contract_drilldown'
+]);
+const issue418OperatingScopes349 = Object.freeze(issue418OperatingScopes.map(scope => scope + '_349'));
+
+for (const [scope, predecessor] of Object.entries({
+  issue400_349: 'issue400_346',
+  issue403_349: 'issue403',
+  issue405_349: 'issue405_346',
+  issue411_349: 'issue411_346',
+  issue413_349: 'issue413_346',
+  issue414_349: 'issue414_346',
+  issue416_handover_349: 'issue416_handover_346',
+  issue420_349: 'issue420_346',
+  issue422_349: 'issue422_346',
+  ...Object.fromEntries(issue418OperatingScopes.map(scope => [scope + '_349', scope]))
+})) {
+  const frozen = profiles[predecessor];
+  profiles[scope] = {
+    ...frozen,
+    ...(frozen.fixtureDigest && { fixturePatch: frozen.fixturePatch ?? predecessor + '.fixture.patch' }),
+    ...precisionBaseline
+  };
+}
+
+const signedBaseline = {
+  requiredMigrationCount: 350,
+  requiredTerminalMigration: '20261129019000_signed_settlement_exact_operating_cost',
+  requiredTerminalMigrationSha256: '86ad90ea7fad6231f1d8b24dd8e4eb25d5ba0b1696d3544f5999680ebaa4c6e4'
+};
+const issue418OperatingScopes350 = Object.freeze(issue418OperatingScopes.map(scope => scope + '_350'));
+const issueOrderedScopes350 = Object.freeze([
+  'issue400_350', 'issue403_350', 'issue404_350', 'issue405_350', 'issue411_350', 'issue413_350',
+  'issue414_350', 'issue416_handover_350', 'issue416_his_350', 'issue420_350', 'issue421_350',
+  'issue421b_350', 'issue422_350', 'issue426_a01_350', ...issue418OperatingScopes350
+]);
+
+for (const scope of issueOrderedScopes350) {
+  const predecessor = scope.replace(/_350$/u, '_349');
+  profiles[scope] = { ...profiles[predecessor], ...signedBaseline };
+}
+profiles.issue416_his_350 = {
+  ...profiles.issue416_his_350,
+  fixturePatch: 'issue416-his-350.fixture.patch',
+  fixtureDigest: 'eb629ac5831f1d43f1285535a680da26bf00c44c3337edd2726a19c9a48f54f7'
+};
+
+// The 352 matrix stays local-only while the remaining CI lanes are adapted.
+const companyHistoryBaseline = {
+  requiredMigrationCount: 352,
+  requiredTerminalMigration: '20261129021000_company_history_expense',
+  requiredTerminalMigrationSha256: '8cb43f1ae9a6fb6108280f1ea08df4d2d2edf7c060b39b37dfbeeaff7ae368e5'
+};
+const issueOrderedScopes352 = Object.freeze(issueOrderedScopes350.map(scope => scope.replace(/_350$/u, '_352')));
+for (const scope of issueOrderedScopes352) {
+  profiles[scope] = { ...profiles[scope.replace(/_352$/u, '_350')], ...companyHistoryBaseline };
+}
+profiles.issue416_his_352 = {
+  ...profiles.issue416_his_352,
+  fixturePatch: 'issue416-his-352.fixture.patch',
+  fixtureDigest: '6024ad2000b10821d56327bcb8c999f2736901ff93b0a2d7c77df63f8dffc466'
+};
+
+profiles.issue411_352 = { ...profiles.issue411_352,
+  sourceDigest: 'a8fc660fd21530909405238b2711872509a567041e2a0d86705717d05a485d86',
+  fixtureDigest: '3f1268ce742078f27bf0ae4c77ad2f99c86a7e60bdf5a439e40fa194b783ca21', fixtureGenerator: 'issue411'
+};
+profiles.issue435_352 = { ...profiles.issue411_352,
+  fixtureDigest: 'e848b3f741ea41b60e3b98486c8f4d373de08a259f0eab3ce8d40bbec2665d0f',
+  fixtureGenerator: 'issue435', enableSettledReturn: true, stage: 'ISSUE435_SETTLED_RETURN_JEST',
+  titles: [
+    'issue 435 posts pre-arrival and settled returns, restores both debts, and rolls back a failed posting',
+    'issue 435 keeps the debt correction net and freezes the target for a later refund'
+  ]
+};
+
+function profileFor(scope) {
+  assert.ok(Object.hasOwn(profiles, scope), 'ORDERED_334_SCOPE');
+  return profiles[scope];
+}
+
+module.exports = { profileFor, issue418OperatingScopes, issue418OperatingScopes349,
+  issue418OperatingScopes350, issueOrderedScopes350, issueOrderedScopes352 };

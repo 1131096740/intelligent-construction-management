@@ -22,6 +22,10 @@ const correctionPanel = readFileSync(
   new URL("./components/ContractTakeoverCorrectionPanel.vue", import.meta.url),
   "utf8"
 );
+const handoverPanel = readFileSync(
+  new URL("./components/ContractTakeoverHandoverPanel.vue", import.meta.url),
+  "utf8"
+);
 
 describe("historical takeover unsaved-change governance", () => {
   it("opens a dedicated ledger deep link without falling back to the first project", () => {
@@ -56,6 +60,21 @@ describe("historical takeover unsaved-change governance", () => {
   });
 });
 
+describe("historical takeover division handover", () => {
+  it("wires the handover panel into the takeover detail without changing history", () => {
+    expect(page).toContain("<ContractTakeoverHandoverPanel");
+    expect(page).toContain(':can-manage="canConfirmHistoricalContractTakeovers(roleKeys)"');
+    expect(handoverPanel).toContain("接管分工");
+    expect(handoverPanel).toContain("saveContractTakeoverHandoverWithCapability");
+    expect(handoverPanel).toContain("capability.availableActions.includes(\"register_handover\")");
+    expect(handoverPanel).toContain("更换负责人必须填写原因");
+  });
+
+  it("offers a no-grade choice instead of forcing A/B/C", () => {
+    expect(page).toContain('takeoverLevel: "NONE"');
+  });
+});
+
 describe("historical takeover review recovery", () => {
   it("removes the legacy confirmation dialog and keeps supplement return", () => {
     expect(page).not.toContain("confirmSelectedTakeover");
@@ -68,6 +87,13 @@ describe("historical takeover review recovery", () => {
   it("defaults new takeover responsibility to the signed-in initiator", () => {
     expect(page).toContain("takeoverResponsibleUserOptions");
     expect(page).toContain('responsibleUserId: auth.user?.id ?? ""');
+  });
+
+  it("lets finance reject the maker and keeps the handover relay visible", () => {
+    expect(page).toContain("openFinanceSupplementReturn");
+    expect(page).toContain("returnContractTakeoverForFinanceSupplement");
+    expect(page).toContain(":can-return-finance");
+    expect(confirmationCard).toContain("财务驳回制单人");
   });
 
   it("gives finance a dedicated payment-voucher handoff without takeover editing authority", () => {

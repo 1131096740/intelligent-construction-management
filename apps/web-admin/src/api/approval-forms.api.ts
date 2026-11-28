@@ -18,8 +18,9 @@ export async function listApprovalDocuments(cursor?: string): Promise<{ items: A
   return response.json();
 }
 
-export async function approvalDocumentCapability(businessType: string, businessId: string): Promise<{ available: boolean }> {
-  const response = await apiFetch(`/approval-forms/${encodeURIComponent(businessType)}/${encodeURIComponent(businessId)}/capability`);
+export async function approvalDocumentCapability(businessType: string, businessId: string, expectedApprovalInstanceId?: string): Promise<{ available: boolean; incomplete?: boolean }> {
+  const query = expectedApprovalInstanceId ? `?expectedApprovalInstanceId=${encodeURIComponent(expectedApprovalInstanceId)}` : "";
+  const response = await apiFetch(`/approval-forms/${encodeURIComponent(businessType)}/${encodeURIComponent(businessId)}/capability${query}`);
   if (!response.ok) throw new Error("审批单下载权限读取失败，请刷新后重试");
   return response.json();
 }

@@ -43,7 +43,7 @@ describe("ContractTemplateService", () => {
     ]
   };
 
-  it("returns template detail with descending versions and complete schemas", async () => {
+  it("returns supervisor template detail with descending versions and complete schemas", async () => {
     const template = {
       id: "template-1",
       code: "TPL-001",
@@ -96,8 +96,9 @@ describe("ContractTemplateService", () => {
       }
     ];
     const tx = {
+      user: { findUnique: jest.fn().mockResolvedValue({ isActive: true }) },
       userPosition: { findMany: jest.fn().mockResolvedValue([{ positionId: "position-1" }]) },
-      position: { findMany: jest.fn().mockResolvedValue([{ key: "contract_staff" }]) },
+      position: { findMany: jest.fn().mockResolvedValue([{ id: "position-1", key: "contract_director" }]) },
       contractBusinessTemplate: { findUnique: jest.fn().mockResolvedValue(template) },
       contractBusinessTemplateVersion: { findMany: jest.fn().mockResolvedValue(versions) },
       contractScenarioTemplateMapping: { findFirst: jest.fn().mockResolvedValue(null) },
@@ -141,8 +142,8 @@ describe("ContractTemplateService", () => {
     expect(result.versions[1]?.availableActions).toContainEqual(
       expect.objectContaining({
         key: "risk_stop",
-        enabled: false,
-        disabledReason: "只有合同主管可以风险停用已发布模板版本"
+        enabled: true,
+        disabledReason: null
       })
     );
   });
@@ -168,8 +169,9 @@ describe("ContractTemplateService", () => {
       updatedAt: new Date("2026-07-10T08:00:00.000Z")
     };
     const tx = {
+      user: { findUnique: jest.fn().mockResolvedValue({ isActive: true }) },
       userPosition: { findMany: jest.fn().mockResolvedValue([{ positionId: "position-1" }]) },
-      position: { findMany: jest.fn().mockResolvedValue([{ key: "contract_director" }]) },
+      position: { findMany: jest.fn().mockResolvedValue([{ id: "position-1", key: "contract_director" }]) },
       contractBusinessTemplate: {
         findUnique: jest.fn().mockResolvedValue({
           id: "template-1",
@@ -222,8 +224,9 @@ describe("ContractTemplateService", () => {
       updatedAt: new Date("2026-07-10T08:00:00.000Z")
     };
     const tx = {
+      user: { findUnique: jest.fn().mockResolvedValue({ isActive: true }) },
       userPosition: { findMany: jest.fn().mockResolvedValue([{ positionId: "position-1" }]) },
-      position: { findMany: jest.fn().mockResolvedValue([{ key: "contract_director" }]) },
+      position: { findMany: jest.fn().mockResolvedValue([{ id: "position-1", key: "contract_director" }]) },
       contractBusinessTemplate: {
         findUnique: jest.fn().mockResolvedValue({
           id: "template-1",
@@ -261,8 +264,9 @@ describe("ContractTemplateService", () => {
 
   it("returns a fixed not-found error for missing template detail", async () => {
     const tx = {
+      user: { findUnique: jest.fn().mockResolvedValue({ isActive: true }) },
       userPosition: { findMany: jest.fn().mockResolvedValue([{ positionId: "position-1" }]) },
-      position: { findMany: jest.fn().mockResolvedValue([{ key: "contract_staff" }]) },
+      position: { findMany: jest.fn().mockResolvedValue([{ id: "position-1", key: "contract_staff" }]) },
       contractBusinessTemplate: { findUnique: jest.fn().mockResolvedValue(null) },
       contractBusinessTemplateVersion: { findMany: jest.fn() }
     };
@@ -317,8 +321,9 @@ describe("ContractTemplateService", () => {
         },
         contractScenarioTemplateMapping: { findFirst: jest.fn().mockResolvedValue(null) },
         contractVersion: { findFirst: jest.fn().mockResolvedValue(null) },
+        user: { findUnique: jest.fn().mockResolvedValue({ isActive: true }) },
         userPosition: { findMany: jest.fn().mockResolvedValue([{ positionId: "position-1" }]) },
-        position: { findMany: jest.fn().mockResolvedValue([{ key: "contract_staff" }]) }
+        position: { findMany: jest.fn().mockResolvedValue([{ id: "position-1", key: "contract_staff" }]) }
       };
     const service = new ContractTemplateService(
       { $transaction: jest.fn(async (callback) => callback(tx)) } as never,
@@ -337,11 +342,12 @@ describe("ContractTemplateService", () => {
 
   it("creates version 1 as draft", async () => {
     const tx = {
+      user: { findUnique: jest.fn().mockResolvedValue({ isActive: true }) },
       userPosition: {
         findMany: jest.fn().mockResolvedValue([{ positionId: "pos-1" }])
       },
       position: {
-        findMany: jest.fn().mockResolvedValue([{ key: "contract_staff" }])
+        findMany: jest.fn().mockResolvedValue([{ id: "pos-1", key: "contract_director" }])
       },
       contractBusinessTemplate: {
         create: jest.fn().mockResolvedValue({ id: "template-1", code: "TPL-001" })
@@ -395,8 +401,9 @@ describe("ContractTemplateService", () => {
 
   it("allows a contract director to create a template draft", async () => {
     const tx = {
+      user: { findUnique: jest.fn().mockResolvedValue({ isActive: true }) },
       userPosition: { findMany: jest.fn().mockResolvedValue([{ positionId: "pos-dir" }]) },
-      position: { findMany: jest.fn().mockResolvedValue([{ key: "contract_director" }]) },
+      position: { findMany: jest.fn().mockResolvedValue([{ id: "pos-dir", key: "contract_director" }]) },
       contractBusinessTemplate: {
         create: jest.fn().mockResolvedValue({ id: "template-1", code: "TPL-001" })
       },
@@ -422,11 +429,12 @@ describe("ContractTemplateService", () => {
 
   it("rejects saving a new template whose quantity precision is not exactly two", async () => {
     const tx = {
+      user: { findUnique: jest.fn().mockResolvedValue({ isActive: true }) },
       userPosition: {
         findMany: jest.fn().mockResolvedValue([{ positionId: "pos-staff" }])
       },
       position: {
-        findMany: jest.fn().mockResolvedValue([{ key: "contract_staff" }])
+        findMany: jest.fn().mockResolvedValue([{ id: "pos-staff", key: "contract_director" }])
       },
       contractBusinessTemplate: { create: jest.fn() },
       contractBusinessTemplateVersion: { create: jest.fn() }
@@ -456,11 +464,12 @@ describe("ContractTemplateService", () => {
 
   it("rejects saving a draft that configures a zero-percent tax-rate option", async () => {
     const tx = {
+      user: { findUnique: jest.fn().mockResolvedValue({ isActive: true }) },
       userPosition: {
         findMany: jest.fn().mockResolvedValue([{ positionId: "pos-staff" }])
       },
       position: {
-        findMany: jest.fn().mockResolvedValue([{ key: "contract_staff" }])
+        findMany: jest.fn().mockResolvedValue([{ id: "pos-staff", key: "contract_director" }])
       },
       contractBusinessTemplateVersion: {
         findUnique: jest.fn().mockResolvedValue({
@@ -491,11 +500,12 @@ describe("ContractTemplateService", () => {
 
   it("rechecks new-template precision before submission", async () => {
     const tx = {
+      user: { findUnique: jest.fn().mockResolvedValue({ isActive: true }) },
       userPosition: {
         findMany: jest.fn().mockResolvedValue([{ positionId: "pos-staff" }])
       },
       position: {
-        findMany: jest.fn().mockResolvedValue([{ key: "contract_staff" }])
+        findMany: jest.fn().mockResolvedValue([{ id: "pos-staff", key: "contract_director" }])
       },
       contractBusinessTemplateVersion: {
         findUnique: jest.fn().mockResolvedValue({
@@ -525,11 +535,12 @@ describe("ContractTemplateService", () => {
 
   it("rechecks zero-percent tax configuration before publication", async () => {
     const tx = {
+      user: { findUnique: jest.fn().mockResolvedValue({ isActive: true }) },
       userPosition: {
         findMany: jest.fn().mockResolvedValue([{ positionId: "pos-director" }])
       },
       position: {
-        findMany: jest.fn().mockResolvedValue([{ key: "contract_director" }])
+        findMany: jest.fn().mockResolvedValue([{ id: "pos-director", key: "contract_director" }])
       },
       contractBusinessTemplateVersion: {
         findUnique: jest.fn().mockResolvedValue({
@@ -572,11 +583,12 @@ describe("ContractTemplateService", () => {
     };
 
     const tx = {
+      user: { findUnique: jest.fn().mockResolvedValue({ isActive: true }) },
       userPosition: {
         findMany: jest.fn().mockResolvedValue([{ positionId: "pos-dir" }])
       },
       position: {
-        findMany: jest.fn().mockResolvedValue([{ key: "contract_director" }])
+        findMany: jest.fn().mockResolvedValue([{ id: "pos-dir", key: "contract_director" }])
       },
       contractBusinessTemplateVersion: {
         findUnique: jest.fn().mockResolvedValue({
@@ -608,11 +620,12 @@ describe("ContractTemplateService", () => {
 
   it("does not mutate a published version", async () => {
     const tx = {
+      user: { findUnique: jest.fn().mockResolvedValue({ isActive: true }) },
       userPosition: {
         findMany: jest.fn().mockResolvedValue([{ positionId: "pos-1" }])
       },
       position: {
-        findMany: jest.fn().mockResolvedValue([{ key: "contract_staff" }])
+        findMany: jest.fn().mockResolvedValue([{ id: "pos-1", key: "contract_director" }])
       },
       contractBusinessTemplateVersion: {
         findUnique: jest.fn().mockResolvedValue({
@@ -639,11 +652,12 @@ describe("ContractTemplateService", () => {
 
   it("creates a new draft version from a published version", async () => {
     const tx = {
+      user: { findUnique: jest.fn().mockResolvedValue({ isActive: true }) },
       userPosition: {
         findMany: jest.fn().mockResolvedValue([{ positionId: "pos-1" }])
       },
       position: {
-        findMany: jest.fn().mockResolvedValue([{ key: "contract_staff" }])
+        findMany: jest.fn().mockResolvedValue([{ id: "pos-1", key: "contract_director" }])
       },
       contractBusinessTemplateVersion: {
         findUnique: jest.fn().mockResolvedValue({
@@ -694,11 +708,12 @@ describe("ContractTemplateService", () => {
     const legacyFields = [zeroTaxRateField];
     const legacyBills = [{ ...governedBill, quantityScale: 3 }];
     const tx = {
+      user: { findUnique: jest.fn().mockResolvedValue({ isActive: true }) },
       userPosition: {
         findMany: jest.fn().mockResolvedValue([{ positionId: "pos-1" }])
       },
       position: {
-        findMany: jest.fn().mockResolvedValue([{ key: "contract_staff" }])
+        findMany: jest.fn().mockResolvedValue([{ id: "pos-1", key: "contract_director" }])
       },
       contractBusinessTemplateVersion: {
         findUnique: jest.fn().mockResolvedValue({
@@ -755,11 +770,12 @@ describe("ContractTemplateService", () => {
 
   it("stops a version without changing existing contract snapshots", async () => {
     const tx = {
+      user: { findUnique: jest.fn().mockResolvedValue({ isActive: true }) },
       userPosition: {
         findMany: jest.fn().mockResolvedValue([{ positionId: "pos-dir" }])
       },
       position: {
-        findMany: jest.fn().mockResolvedValue([{ key: "contract_director" }])
+        findMany: jest.fn().mockResolvedValue([{ id: "pos-dir", key: "contract_director" }])
       },
       contractBusinessTemplateVersion: {
         findUnique: jest.fn().mockResolvedValue({
@@ -820,8 +836,9 @@ describe("ContractTemplateService", () => {
 
   it("refuses to stop a template version while an active scenario mapping references it", async () => {
     const tx = {
+      user: { findUnique: jest.fn().mockResolvedValue({ isActive: true }) },
       userPosition: { findMany: jest.fn().mockResolvedValue([{ positionId: "pos-dir" }]) },
-      position: { findMany: jest.fn().mockResolvedValue([{ key: "contract_director" }]) },
+      position: { findMany: jest.fn().mockResolvedValue([{ id: "pos-dir", key: "contract_director" }]) },
       contractBusinessTemplateVersion: {
         findUnique: jest.fn().mockResolvedValue({ templateId: "template-1" }),
         update: jest.fn()
@@ -850,11 +867,12 @@ describe("ContractTemplateService", () => {
 
   it("revokes a version so new drafts cannot use it", async () => {
     const tx = {
+      user: { findUnique: jest.fn().mockResolvedValue({ isActive: true }) },
       userPosition: {
         findMany: jest.fn().mockResolvedValue([{ positionId: "pos-dir" }])
       },
       position: {
-        findMany: jest.fn().mockResolvedValue([{ key: "contract_director" }])
+        findMany: jest.fn().mockResolvedValue([{ id: "pos-dir", key: "contract_director" }])
       },
       contractBusinessTemplateVersion: {
         findUnique: jest.fn().mockResolvedValue({
@@ -910,11 +928,12 @@ describe("ContractTemplateService", () => {
 
   it("rejects revoking a version while an active scenario mapping still points to it", async () => {
     const tx = {
+      user: { findUnique: jest.fn().mockResolvedValue({ isActive: true }) },
       userPosition: {
         findMany: jest.fn().mockResolvedValue([{ positionId: "pos-dir" }])
       },
       position: {
-        findMany: jest.fn().mockResolvedValue([{ key: "contract_director" }])
+        findMany: jest.fn().mockResolvedValue([{ id: "pos-dir", key: "contract_director" }])
       },
       contractBusinessTemplateVersion: {
         findUnique: jest.fn().mockResolvedValue({
@@ -950,11 +969,12 @@ describe("ContractTemplateService", () => {
 
   it("publishes a standard clause version", async () => {
     const tx = {
+      user: { findUnique: jest.fn().mockResolvedValue({ isActive: true }) },
       userPosition: {
         findMany: jest.fn().mockResolvedValue([{ positionId: "pos-dir" }])
       },
       position: {
-        findMany: jest.fn().mockResolvedValue([{ key: "contract_director" }])
+        findMany: jest.fn().mockResolvedValue([{ id: "pos-dir", key: "contract_director" }])
       },
       standardClauseVersion: {
         findUnique: jest.fn().mockResolvedValue({
@@ -1001,11 +1021,12 @@ describe("ContractTemplateService", () => {
 
   it("submits a standard clause draft version", async () => {
     const tx = {
+      user: { findUnique: jest.fn().mockResolvedValue({ isActive: true }) },
       userPosition: {
         findMany: jest.fn().mockResolvedValue([{ positionId: "pos-staff" }])
       },
       position: {
-        findMany: jest.fn().mockResolvedValue([{ key: "contract_staff" }])
+        findMany: jest.fn().mockResolvedValue([{ id: "pos-staff", key: "contract_director" }])
       },
       standardClauseVersion: {
         findUnique: jest.fn().mockResolvedValue({
@@ -1047,11 +1068,12 @@ describe("ContractTemplateService", () => {
 
   it("enforces contract_director role for publishVersion", async () => {
     const tx = {
+      user: { findUnique: jest.fn().mockResolvedValue({ isActive: true }) },
       userPosition: {
         findMany: jest.fn().mockResolvedValue([{ positionId: "pos-1" }])
       },
       position: {
-        findMany: jest.fn().mockResolvedValue([{ key: "contract_staff" }])
+        findMany: jest.fn().mockResolvedValue([{ id: "pos-1", key: "contract_staff" }])
       },
       contractBusinessTemplateVersion: {
         findUnique: jest.fn().mockResolvedValue({
@@ -1083,11 +1105,12 @@ describe("ContractTemplateService", () => {
 
   it("asserts the exact publication call matches the brief assertion", async () => {
     const tx = {
+      user: { findUnique: jest.fn().mockResolvedValue({ isActive: true }) },
       userPosition: {
         findMany: jest.fn().mockResolvedValue([{ positionId: "pos-dir" }])
       },
       position: {
-        findMany: jest.fn().mockResolvedValue([{ key: "contract_director" }])
+        findMany: jest.fn().mockResolvedValue([{ id: "pos-dir", key: "contract_director" }])
       },
       contractBusinessTemplateVersion: {
         findUnique: jest.fn().mockResolvedValue({
@@ -1125,11 +1148,12 @@ describe("ContractTemplateService", () => {
 
   it("rejects cloning a non-published version", async () => {
     const tx = {
+      user: { findUnique: jest.fn().mockResolvedValue({ isActive: true }) },
       userPosition: {
         findMany: jest.fn().mockResolvedValue([{ positionId: "pos-1" }])
       },
       position: {
-        findMany: jest.fn().mockResolvedValue([{ key: "contract_staff" }])
+        findMany: jest.fn().mockResolvedValue([{ id: "pos-1", key: "contract_director" }])
       },
       contractBusinessTemplateVersion: {
         findUnique: jest.fn().mockResolvedValue({
@@ -1158,11 +1182,12 @@ describe("ContractTemplateService", () => {
 
   it("uses Chinese business errors for template version state transitions", async () => {
     const baseTx = (status: string, role: "contract_staff" | "contract_director") => ({
+      user: { findUnique: jest.fn().mockResolvedValue({ isActive: true }) },
       userPosition: {
         findMany: jest.fn().mockResolvedValue([{ positionId: "pos-1" }])
       },
       position: {
-        findMany: jest.fn().mockResolvedValue([{ key: role }])
+        findMany: jest.fn().mockResolvedValue([{ id: "pos-1", key: role }])
       },
       contractBusinessTemplateVersion: {
         findUnique: jest.fn().mockResolvedValue({
@@ -1193,7 +1218,7 @@ describe("ContractTemplateService", () => {
     await expect(
       new ContractTemplateService(
         {
-          $transaction: jest.fn(async (callback) => callback(baseTx("submitted", "contract_staff")))
+          $transaction: jest.fn(async (callback) => callback(baseTx("submitted", "contract_director")))
         } as never,
         audit as never
       ).submitVersion("version-1", "contract-staff")
@@ -1233,11 +1258,12 @@ describe("ContractTemplateService", () => {
       role: "contract_staff" | "contract_director"
     ) => {
       const tx = {
+        user: { findUnique: jest.fn().mockResolvedValue({ isActive: true }) },
         userPosition: {
           findMany: jest.fn().mockResolvedValue([{ positionId: "pos-1" }])
         },
         position: {
-          findMany: jest.fn().mockResolvedValue([{ key: role }])
+          findMany: jest.fn().mockResolvedValue([{ id: "pos-1", key: role }])
         },
         standardClauseVersion: {
           findUnique: jest.fn().mockResolvedValue({
@@ -1258,7 +1284,7 @@ describe("ContractTemplateService", () => {
     };
 
     await expect(
-      serviceWithClauseStatus("submitted", "contract_staff").submitClauseVersion(
+      serviceWithClauseStatus("submitted", "contract_director").submitClauseVersion(
         "version-1",
         "contract-staff"
       )
@@ -1565,8 +1591,9 @@ describe("ContractTemplateService", () => {
 
   it("discards an unreferenced pristine business template draft exactly once", async () => {
     const tx = {
+      user: { findUnique: jest.fn().mockResolvedValue({ isActive: true }) },
       userPosition: { findMany: jest.fn().mockResolvedValue([{ positionId: "position-1" }]) },
-      position: { findMany: jest.fn().mockResolvedValue([{ key: "contract_staff" }]) },
+      position: { findMany: jest.fn().mockResolvedValue([{ id: "position-1", key: "contract_director" }]) },
       contractBusinessTemplate: { updateMany: jest.fn().mockResolvedValue({ count: 1 }) },
       contractBusinessTemplateVersion: {
         findUnique: jest.fn().mockResolvedValue({ templateId: "template-1" }),
@@ -1619,8 +1646,9 @@ describe("ContractTemplateService", () => {
 
   it("rejects stale business template discard before reference or state writes", async () => {
     const tx = {
+      user: { findUnique: jest.fn().mockResolvedValue({ isActive: true }) },
       userPosition: { findMany: jest.fn().mockResolvedValue([{ positionId: "position-1" }]) },
-      position: { findMany: jest.fn().mockResolvedValue([{ key: "contract_staff" }]) },
+      position: { findMany: jest.fn().mockResolvedValue([{ id: "position-1", key: "contract_director" }]) },
       contractBusinessTemplateVersion: {
         findUnique: jest.fn().mockResolvedValue({ templateId: "template-1" }),
         updateMany: jest.fn()
@@ -1662,8 +1690,9 @@ describe("ContractTemplateService", () => {
   it("returns an already discarded business template version idempotently before CAS", async () => {
     const discardedAt = new Date("2026-07-20T00:00:02.000Z");
     const tx = {
+      user: { findUnique: jest.fn().mockResolvedValue({ isActive: true }) },
       userPosition: { findMany: jest.fn().mockResolvedValue([{ positionId: "position-1" }]) },
-      position: { findMany: jest.fn().mockResolvedValue([{ key: "contract_staff" }]) },
+      position: { findMany: jest.fn().mockResolvedValue([{ id: "position-1", key: "contract_director" }]) },
       contractBusinessTemplateVersion: {
         findUnique: jest.fn().mockResolvedValue({ templateId: "template-1" }),
         updateMany: jest.fn()
@@ -1698,8 +1727,9 @@ describe("ContractTemplateService", () => {
 
   it("fails closed when a standard clause draft is referenced in governed JSON", async () => {
     const tx = {
+      user: { findUnique: jest.fn().mockResolvedValue({ isActive: true }) },
       userPosition: { findMany: jest.fn().mockResolvedValue([{ positionId: "position-1" }]) },
-      position: { findMany: jest.fn().mockResolvedValue([{ key: "contract_director" }]) },
+      position: { findMany: jest.fn().mockResolvedValue([{ id: "position-1", key: "contract_director" }]) },
       standardClauseVersion: { updateMany: jest.fn() },
       $queryRaw: jest
         .fn()
@@ -1732,8 +1762,9 @@ describe("ContractTemplateService", () => {
 
   it("rejects stale standard clause discard before its JSON reference query", async () => {
     const tx = {
+      user: { findUnique: jest.fn().mockResolvedValue({ isActive: true }) },
       userPosition: { findMany: jest.fn().mockResolvedValue([{ positionId: "position-1" }]) },
-      position: { findMany: jest.fn().mockResolvedValue([{ key: "contract_director" }]) },
+      position: { findMany: jest.fn().mockResolvedValue([{ id: "position-1", key: "contract_director" }]) },
       standardClauseVersion: { updateMany: jest.fn() },
       $queryRaw: jest.fn().mockResolvedValueOnce([{
         id: "clause-version-1",

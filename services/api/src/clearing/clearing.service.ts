@@ -1385,7 +1385,7 @@ export class ClearingService {
     }
     const sourceBusinessId = suffix === "original" ? version.id : `${version.id}:${suffix}`;
     const constructionEnterprise = { kind: "construction_enterprise" as const, id: assignment.businessPartyId };
-    const impacts: OperatingImpactInput[] = plan.impacts.map((impact) => ({
+    const impacts: Extract<OperatingImpactInput, { amountCents: bigint }>[] = plan.impacts.map((impact) => ({
       idempotencyKey: `${CLEARING_SOURCE_TYPE}:${sourceBusinessId}:${impact.sourceImpactKey}`,
       sourceImpactKey: impact.sourceImpactKey,
       impactKind: impact.impactKind,
@@ -1447,25 +1447,7 @@ export class ClearingService {
       impacts,
       ...(adjustment ? { adjustsFactId: adjustment.adjustsFactId } : {})
     };
-    let linkedFact: {
-      id: string;
-      projectId: string;
-      sourceType: string;
-      sourceBusinessId: string;
-      sourceVersion: number;
-      factKind: string;
-      entryKind: string;
-      amountCents: bigint;
-      status: string;
-      affiliateAssignmentId: string;
-      affiliateBusinessPartyVersionId: string;
-      impacts: Array<{
-        id: string;
-        impactKind: string;
-        amountCents: bigint;
-        direction: string;
-      }>;
-    } | null = null;
+    let linkedFact: Prisma.OperatingFactGetPayload<{ include: { impacts: true } }> | null = null;
     const linkedImpactIds = new Map<string, string>();
     if (linkedOperatingFactId) {
       if (adjustment || suffix !== "original") throw new ConflictException("只有原始历史来源可以绑定既有经营事实");

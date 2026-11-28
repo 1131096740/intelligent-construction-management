@@ -38,20 +38,6 @@ import {
 } from "./dto/settlement-line-attachment.dto";
 import { SettlementLineAttachmentService } from "./settlement-line-attachment.service";
 
-const SETTLEMENT_PROJECT_ACTIONS = [
-  "save_draft",
-  "copy_abandoned_draft",
-  "submit_draft",
-  "preview_lines",
-  "preview_import",
-  "apply_import",
-  "generate_frozen_document",
-  "link_counterparty_signed_document",
-  "attach_line_file",
-  "invalidate_line_attachment",
-  "upload_settlement_file"
-] as const;
-
 @Controller("projects/:projectId/settlement-drafts")
 export class SettlementDraftController {
   constructor(
@@ -68,7 +54,7 @@ export class SettlementDraftController {
   capability(@Param("projectId") projectId: string) {
     return {
       projectId,
-      availableActions: [...SETTLEMENT_PROJECT_ACTIONS]
+      availableActions: []
     };
   }
 
@@ -132,12 +118,13 @@ export class SettlementDraftController {
 
   @Get(":draftId")
   @RequireProjectRole("settlement.create")
-  detail(
+  async detail(
     @Param("projectId") projectId: string,
     @Param("draftId") draftId: string,
     @CurrentUser() user: AuthenticatedUser
   ) {
-    return this.drafts.get(projectId, draftId, user.id);
+    const draft = await this.drafts.get(projectId, draftId, user.id);
+    return { ...draft, availableActions: [] };
   }
 
   @Get(":draftId/final-preparation")

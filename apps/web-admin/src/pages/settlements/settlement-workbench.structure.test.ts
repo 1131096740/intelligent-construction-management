@@ -19,6 +19,11 @@ const routes = readFileSync(new URL("../../routes/route-records.ts", import.meta
 const ledger = readFileSync(new URL("./SettlementListPage.vue", import.meta.url), "utf8");
 
 describe("settlement creation workbench structure", () => {
+  it("lets the operator search a supervisor-approved historical contract by code or name", () => {
+    expect(page).toContain('placeholder="搜索合同编号或名称"');
+    expect(page).toMatch(/label="有效合同"[\s\S]{0,200}filterable/);
+  });
+
   it("uses the governed five-step order and keeps participant and signature controls outside the wide table", () => {
     expect(state).toMatch(
       /录入结算事实[\s\S]*选择现场复核人[\s\S]*生成冻结结算单[\s\S]*上传乙方签章扫描件[\s\S]*提交审批/
@@ -80,19 +85,19 @@ describe("settlement creation workbench structure", () => {
     expect(pdfComparisonPanel).toContain("mobile-document-switch");
   });
 
-  it("uses an independent workbench route and keeps the ledger as the only created-order entry point", () => {
+  it("mounts a historical page on the old route and opens signed registration from the ledger", () => {
     expect(routes).toContain('path: "结算工作台"');
-    expect(routes).toContain('SettlementWorkbenchPage.vue');
+    expect(routes).toContain('/HistoricalSettlementDraftPage.vue');
     expect(page).toContain("<h1>结算工作台</h1>");
     expect(ledger).toMatch(/id="settlement-ledger-title">\s*结算台账\s*<\/h2>/);
-    expect(ledger).toContain('router.push("/结算工作台/新建")');
+    expect(ledger).toContain("router.push('/结算工作台/已签登记')");
     expect(ledger).not.toContain("amountYuan");
   });
 
   it("requires a selected system contract and does not expose a manual contract field", () => {
     expect(page).toContain('v-model="form.projectId"');
     expect(page).toContain('v-model="form.contractOptionValue"');
-    expect(page).toContain('placeholder="请选择已生效合同"');
+    expect(page).toContain('placeholder="搜索合同编号或名称"');
     expect(page).toContain("fetchSettlementContractOptions");
     expect(page).not.toContain('v-model="form.contractNo"');
     expect(page).not.toContain('v-model="form.contractName"');

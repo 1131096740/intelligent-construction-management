@@ -1,0 +1,49 @@
+--- runner
++++ runner
+@@ -322,4 +322,32 @@
+  if(transferScenario&&!usesAdvanceRuntime){env.TASK406_TRANSFER_MODE=transferRejection?"rejection":transferBrowser?"browser":"1";env.TASK406_PRIVATE_FAILURE_PATH=path.join(privateLogDir,"transfer-failure.jsonl");}
+  if(browserScenario){const evidenceDir=realpathSync(mkdtempSync(current280?path.join(storage,"browser-evidence-"):"/private/tmp/jg398-browser-evidence-"));chmodSync(evidenceDir,0o700);env.TASK398_BROWSER_MODE=scenario==="src/database/task16-real-browser-completion.pg.spec.ts"?"2":"1";env.TASK398_CANDIDATE_SHA=candidate;env.TASK398_BROWSER_EVIDENCE=path.join(evidenceDir,"receipt.json");console.log(`TASK398_BROWSER_EVIDENCE_DIR ${evidenceDir}`);}
++ if(companyProxyScenario&&ownedMigrationBaseline?.expectedDirectoryCount===329){
++  const reader=new URL(env.TASK410_REPLAY_DATABASE_URL).username;
++  await sql("jg_task01_owner",`DO $replay$ DECLARE grant_read text; BEGIN
++   FOR grant_read IN
++     SELECT format('GRANT SELECT ON TABLE public.%I TO %I',table_name,'${reader}')
++     FROM information_schema.table_privileges
++     WHERE table_schema='public' AND grantee='jg_task01_runtime' AND privilege_type='SELECT'
++     UNION ALL
++     SELECT format('GRANT SELECT (%I) ON TABLE public.%I TO %I',c.column_name,c.table_name,'${reader}')
++     FROM information_schema.column_privileges c
++     WHERE c.table_schema='public' AND c.grantee='jg_task01_runtime' AND c.privilege_type='SELECT'
++       AND NOT EXISTS (
++         SELECT FROM information_schema.table_privileges t
++         WHERE t.table_schema=c.table_schema AND t.table_name=c.table_name
++           AND t.grantee=c.grantee AND t.privilege_type=c.privilege_type
++       )
++   LOOP EXECUTE grant_read; END LOOP;
++   IF has_any_column_privilege('jg_task01_runtime','public."ProjectOwnerSettlementEntry"','SELECT')
++     OR has_any_column_privilege('${reader}','public."OperatingLedgerWriteSecret"','SELECT,INSERT,UPDATE,REFERENCES')
++     OR has_schema_privilege('${reader}','public','CREATE')
++     OR EXISTS (
++       SELECT FROM pg_catalog.pg_class c WHERE c.relnamespace='public'::regnamespace AND c.relkind IN ('r','p')
++         AND (has_table_privilege('${reader}',c.oid,'INSERT,UPDATE,DELETE,TRUNCATE,REFERENCES,TRIGGER')
++           OR has_any_column_privilege('${reader}',c.oid,'INSERT,UPDATE,REFERENCES'))
++     )
++   THEN RAISE EXCEPTION 'TASK410_REPLAY_SCOPE'; END IF;
++  END $replay$;`);
++ }
+  const scenarios=companyProxyScenario
+   ? [scenario,"src/expense-claim/expense-claim-registered-payment.http.pg.spec.ts"]
+@@ -585,4 +613,13 @@
+  const url=role=>roleUrls[role];
+  const env={PATH:process.env.PATH,HOME:process.env.HOME,COREPACK_HOME:process.env.COREPACK_HOME,COREPACK_DEFAULT_TO_LATEST:"0",COREPACK_ENABLE_NETWORK:"0",TMPDIR:storage,NODE_ENV:"test",CI:"true",FILE_STORAGE_DRIVER:"local",FILE_STORAGE_ROOT:storage,OPERATING_LEDGER_DB_WRITE_SECRET:secret,JWT_ACCESS_SECRET:randomBytes(32).toString("hex"),JWT_REFRESH_SECRET:randomBytes(32).toString("hex"),FILE_DOWNLOAD_SECRET:randomBytes(32).toString("hex"),SMS_ENABLED:"false",APPROVAL_SMS_ENABLED:"false",RUN_TASK398_SHARED_PG16:"1",TASK398_OWNED_282_VOUCHER:"1",TASK398_RUN_ID:short};
++ if(exact320){
++  const replay=new URL(context.replayDatabaseUrl);
++  if(replay.username!=="finance_runtime_"+short||!replay.password||replay.protocol!==urls[0].protocol||
++    replay.hostname!=="127.0.0.1"||replay.port!==urls[0].port||replay.pathname!==urls[0].pathname||
++    replay.searchParams.get("sslmode")!=="require"||replay.searchParams.get("sslaccept")!=="strict"||
++    replay.searchParams.get("sslcert")!==urls[0].searchParams.get("sslcert")||
++    replay.searchParams.get("connection_limit")!=="1")throw Error("TASK410_REPLAY_ENDPOINT");
++  env.TASK410_REPLAY_DATABASE_URL=replay.href;
++ }
+  await sql("jg_task01_owner",`
+    ALTER DATABASE ${database} SET jg.task398_run_id='${short}';

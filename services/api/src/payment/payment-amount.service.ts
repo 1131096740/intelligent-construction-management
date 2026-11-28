@@ -1,4 +1,4 @@
-import { Injectable } from "@nestjs/common";
+import { BadRequestException, Injectable } from "@nestjs/common";
 import {
   dbMoneyToBigInt,
   formatMoneyCentsAsYuan,
@@ -27,14 +27,14 @@ export class PaymentAmountService {
 
   assertCanRequest(input: PaymentCapacity, requestedAmountCents: bigint): void {
     if (requestedAmountCents <= 0n) {
-      throw new Error("付款申请金额必须为大于 0 的整数分");
+      throw new BadRequestException("付款申请金额必须为大于 0 的整数分");
     }
 
     const requested = dbMoneyToBigInt(requestedAmountCents, "付款申请金额");
     const remaining = this.remainingCapacityBigInt(input);
 
     if (requested > remaining) {
-      throw new Error(
+      throw new BadRequestException(
         `付款申请金额超过当前可申请余额，当前最多可申请 ${formatMoneyCentsAsYuan(
           remaining > 0n ? remaining : 0n
         )} 元`

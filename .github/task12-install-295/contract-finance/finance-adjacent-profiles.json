@@ -1,0 +1,55 @@
+{
+  "v7": {
+    "runner": "fresh-owner289.cjs",
+    "method": "fundExecution",
+    "receipt": "fundExecutionV7",
+    "count": 26,
+    "suite": "src/fund-execution/fund-execution-service.pg.spec.ts",
+    "runnerSha256": "9341877301d1bd6268cb3a4871884666e3c835b0c748f0c485dd8f4eca546917",
+    "fixture": false,
+    "suiteSha256": "536bf5d7ffa627e3720e4398539e0db24ec8d91d86e301d5cfe5d5157b103b8f",
+    "legacySeed": {
+      "revision": "704ab8220c9f66e9726d2b7a119a714a6e34e366",
+      "files": {
+        "fund-execution.service.ts": {
+          "fixture": "fund-execution.pre-cutover.fixture.ts",
+          "sha256": "92767e3c0ac3bec38e57b929ee5c06deb13586b1af573038686dac78d448039a"
+        },
+        "fund-execution-selection-options.service.ts": {
+          "fixture": "fund-execution-selection-options.pre-cutover.fixture.ts",
+          "sha256": "e1ca2ed20747aad94e3002819aee0103f9d9a33b210778efccf1c043995d91dd"
+        }
+      }
+    }
+  },
+  "invoice": {
+    "runner": "fresh-owner289.cjs",
+    "method": "invoice",
+    "receipt": "freshOwner",
+    "count": 10,
+    "suite": "src/invoice-ledger/invoice-ledger.postgres.spec.ts",
+    "runnerSha256": "9341877301d1bd6268cb3a4871884666e3c835b0c748f0c485dd8f4eca546917",
+    "fixture": true,
+    "suiteSha256": "762209074671fb72a606cda13a83aa72092df463133b9cb7cd13fffdc34b0114"
+  },
+  "pol279": {
+    "runner": "fresh-owner289.cjs",
+    "method": "pol279",
+    "receipt": "freshOwner",
+    "count": 4,
+    "suite": "src/database/necessary-expense-reserve-postgresql.spec.ts",
+    "runnerSha256": "9341877301d1bd6268cb3a4871884666e3c835b0c748f0c485dd8f4eca546917",
+    "fixture": false,
+    "suiteSha256": "7e7f604d50a0a4fca8ccf70c64336be4e20e4a5f4fdfd598905d3f1a71b638a0"
+  },
+  "pol280": {
+    "runner": "pol280.cjs",
+    "method": "runPol280",
+    "receipt": "pol280",
+    "count": 5,
+    "suite": "src/database/project-fund-dispute-postgresql.spec.ts",
+    "runnerSha256": "5acc0ff5422adee04b1564baea3b6b7b18ae22823fa788c734bc7f4fa208f8c0",
+    "fixture": false,
+    "suiteSha256": "193a56f796bdc4c8851efb119d9225a17534b966204dd63d026390262d3f9cc6"
+  }
+}

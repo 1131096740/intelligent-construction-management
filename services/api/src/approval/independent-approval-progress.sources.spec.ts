@@ -144,12 +144,14 @@ describe("independent review source eligibility", () => {
     payment.paymentType = "normal";
     expect((await load(kind, data))?.nodes[0].status).toBe("未开始");
   });
-  it("only permits business repayment confirmation for project loan accounts", async () => {
+  it("keeps project loan repayment history without advertising a pending finance duty", async () => {
     const account = row({ id: "account", scopeKey: "project:project", userId: "borrower" });
     const data = {
       employeeLoanRepayment: [row({ status: "recorded", recordedByUserId: "recorder", loanAccountId: "account" })], employeeProjectLoanAccount: [account]
     };
-    expect((await load("loan_repayment", data))?.participantIds).toContain("borrower");
+    const historical = await load("loan_repayment", data);
+    expect(historical?.participantIds).toContain("borrower");
+    expect(historical?.nodes[0]).toMatchObject({ status: "未开始", roleKeys: ["finance_director"] });
     account.scopeKey = "company:company";
     expect(await load("loan_repayment", data)).toBeNull();
   });

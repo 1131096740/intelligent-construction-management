@@ -1,0 +1,83 @@
+--- installer.cjs
++++ installer.cjs
+@@ -239,7 +239,10 @@
+         .filter(reason => (result.stderr || '').toLowerCase().includes(reason.toLowerCase())),
+     });
+   }
+-  return {stdout:result.stdout, code:result.status};
++  return {stdout:result.stdout, code:result.status,
++    ...(allowFailure&&path.basename(file)==='psql'&&
++      /42501:[^\n]*permission denied for table jg_company_transfer_loan_repayment_scope_v1\b/u.test(result.stderr??'')
++      ? {scopePermissionDenied:true}: {})};
+ }
+ 
+ const installOnly290 = Symbol('install-only290');
+@@ -267,7 +270,8 @@
+   const exact292=purpose===named292
+     ?verifyNamed292Inputs('/qualification/product/services/api/prisma','/qualification/product291/services/api/prisma','/qualification/named292/successor.sql')
+     :undefined;
+-  let consumerLedger,named292Catalog;
++  const named295=purpose===named292&&receipt.purpose==='NAMED_POL113_POL114_EXACT_295';
++  let consumerLedger,named292Catalog,named295Tail;
+ 
+   const historical = '/qualification/source/services/api/prisma';
+   const product = '/qualification/product/services/api/prisma';
+@@ -705,6 +709,12 @@
+       receipt.installOnly292={count:exact292.final.length,ledgerSha256:hash(JSON.stringify(exact292.final)),
+         sameIdentity:true,exactB7:true,outside,ordinary,balance};
+       consumerLedger=exact292.final;
++      if (named295) {
++        named295Tail=await require('./named295-tail.cjs').installNamed295({
++          receipt,folder,enter,deploy,verifyLedger,jsonSql,sql,credentials,ledger:exact292.final,need,equal,
++        });
++        consumerLedger=named295Tail.ledger;
++      }
+       named292Catalog=async()=>({
+         outside:await jsonSql(outsideWitnessSql(289)),
+         ordinary:await jsonSql(ordinaryClosedSql(true)),
+@@ -732,7 +742,7 @@
+         sql:statement => { onlyWhileOwned(); return sql(statement); },
+         readPostgresLog:() => { onlyWhileOwned(); return fs.readFileSync(logPath, 'utf8'); },
+       });
+-      enter(exact292?'EXACT_292_NAMED_FRESH_CONSUMER':consumerLedger?'EXACT_290_FRESH_CONSUMER':'EXACT_'+release.count+'_CONSUMER');
++      enter(named295?'EXACT_295_NAMED_FRESH_CONSUMER':exact292?'EXACT_292_NAMED_FRESH_CONSUMER':consumerLedger?'EXACT_290_FRESH_CONSUMER':'EXACT_'+release.count+'_CONSUMER');
+       for (const [key,role] of [['runtime','jg_task01_runtime'], ['observer','jg_task01_observer']]) {
+         const observed = await jsonSql(`SELECT jsonb_build_object(
+           'database',current_database(),'role',current_user,'sessionRole',session_user,
+@@ -759,6 +769,10 @@
+         need(equal(ordinary,receipt.installOnly292.ordinary)&&equal(balance,receipt.installOnly292.balance)
+           &&require('./named292/successor.cjs').exactCatalog(balance),'NAMED_292_POST_CONSUMER_CATALOG');
+         receipt.postBehavior292={catalogPreserved:true,keyUnprovisioned:true};
++        if (named295Tail) {
++          await named295Tail.checkTailCatalogs();
++          receipt.postBehavior295={catalogPreserved:true,keyUnprovisioned:true,exactB7:true,sameIdentity:true};
++        }
+       } else if (consumerLedger) {
+         const successor=require('./successor.cjs');
+         assertOutsideWitness(289,await jsonSql(outsideWitnessSql(289)));
+@@ -1073,9 +1087,9 @@
+ 
+ 
+ module.exports.verifyNamed292Inputs=verifyNamed292Inputs;
+-module.exports.withNamedPol113Pol114292 = (receipt, mode, consume) => {
++function withNamedPol113Pol114(receipt, mode, consume, version) {
+   const names={pol113:'pol113',pol114:'jiangkong_pol114'};
+-  need(Object.hasOwn(names,mode)&&receipt.purpose==='NAMED_POL113_POL114_EXACT_292'&&
++  need(Object.hasOwn(names,mode)&&receipt.purpose==='NAMED_POL113_POL114_EXACT_'+version&&
+     typeof consume==='function','POL113_POL114_NAMED_292_PURPOSE');
+   const {contract289,verifyMaterialized}=require('./checkout.cjs');
+   const {scope}=require('./named292/successor.cjs');
+@@ -1087,6 +1101,13 @@
+     need(context.database===namedDatabase&&context.candidateTree===scope.tree&&receipt.archive?.roles===9&&
+       receipt.installOnly292?.count===292&&receipt.installOnly292.ledgerSha256===scope.expectedLedgerSha256,
+       'POL113_POL114_NAMED_292_CONTEXT');
++    if (version===295) {
++      need(receipt.installOnly295?.count===295&&receipt.installOnly295.ledgerSha256===require('./multi-witness.cjs').final,
++        'POL113_POL114_NAMED_295_CONTEXT');
++    }
+     await consume(context);
+   },outsideRelease,named292,namedDatabase);
+ };
++
++module.exports.withNamedPol113Pol114292=(receipt,mode,consume)=>withNamedPol113Pol114(receipt,mode,consume,292);
++module.exports.withNamedPol113Pol114295=(receipt,mode,consume)=>withNamedPol113Pol114(receipt,mode,consume,295);

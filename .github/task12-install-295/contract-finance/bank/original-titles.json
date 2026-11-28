@@ -1,0 +1,14 @@
+[
+  "rejects a production or non-local database target",
+  "公司互转真实PG：独立领导OR终审、两侧流水、在途、借款归还、自有资金与项目权限",
+  "真实HTTP及PG16：表外合同结算→我方代付→退款及归还→一次核销和往来余额",
+  "PG16：全额重复排除后减额仍为零承诺，必须复核目标更正版本且不能变成负合同额",
+  "PG16：施工企业同笔流水跨入口双向排他，统一法人版本及格式后仍不可重复",
+  "PG16：公司之间归还必须同时占用出款和收款流水，缺一侧零确认",
+  "复核在真实事务中幂等、分岗、并发单次确认且确认后不可覆盖",
+  "已生效履约复核必须分开完成合同与财务确认",
+  "accepts only a complete signed confirmation and then rejects update and delete",
+  "rejects reusing the same signed file for a second contract",
+  "serializes advisory-to-company lock order without a deadlock",
+  "waits for an in-flight FileObject discard and refuses to bind the discarded row"
+]

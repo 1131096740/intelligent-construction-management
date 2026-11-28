@@ -1,8 +1,17 @@
+import { formatMoneyCentsAsPlainYuan } from "../money/decimal-money";
+import { currentSpotMaterialRoleKeys } from "./spot-procurement-material-role-scope";
+import {
+  hasInvalidLegacySerialCutoverMarker,
+  pendingSpotPaymentPayerApprovalRoles
+} from "./spot-payment-approval-cutover";
+import {scopedSpotDutyNodeIndexes} from "../approval/spot-approval-duty-access";
+import { activeApprovalNodeIndexes, isParallelApprovalRound } from "../approval/parallel-approval-protocol";
 import {
   BadRequestException,
   ConflictException,
   ForbiddenException,
-  Injectable
+  Injectable,
+  Optional
 } from "@nestjs/common";
 import {
   Prisma,
@@ -33,7 +42,20 @@ import {
   approvalReviewAccessOnFrozenNode,
   pendingRoleKeysForFrozenApprovalNode
 } from "../approval/approval-node-access";
+import { AuditService } from "../audit/audit.service";
+import { exportBusinessLedger } from "../core-flow/business-ledger-export";
 import { approvalTimelineForBusiness } from "../core-flow/approval-timeline-read";
+import {
+  LEDGER_DATE_FORMAT,
+  LEDGER_MONEY_FORMAT,
+  type LedgerExcelColumn
+} from "../core-flow/ledger-excel";
+import {
+  normalizeLedgerExportQuery,
+  shanghaiDateKey,
+  sortLedgerRows,
+  type NormalizedLedgerExportQuery
+} from "../core-flow/ledger-export-query";
 import {
   detailAction,
   disabledActionReasons,
@@ -59,7 +81,7 @@ const MAX_PAGE_SIZE = 100;
 const PAYMENT_TASK_SORT_AT = Symbol("paymentTaskSortAt");
 const PAYMENT_AMOUNT_FACTS = Symbol("paymentAmountFacts");
 const RESOURCE_FORBIDDEN_MESSAGE = "零星采购资源不存在或当前账号无权访问";
-const PROCUREMENT_CREATE_ROLES = new Set<RoleKey>(["material_staff"]);
+const PROCUREMENT_CREATE_ROLES = new Set<RoleKey>(["material_staff", "material_director"]);
 const PROCUREMENT_VOID_ROLES = new Set<RoleKey>([
   "project_manager",
   "finance_director"
@@ -134,6 +156,10 @@ export interface SpotProcurementListQuery {
   projectId?: string;
   status?: string;
   keyword?: string;
+  dateFrom?: string;
+  dateTo?: string;
+  sort?: string;
+  columns?: string | string[];
   page?: string | number;
   pageSize?: string | number;
   view?: string;
@@ -234,7 +260,7 @@ export function deriveSpotPaymentCurrentTask(input: {
     "finance_director"
   ] as const;
   const pendingApprovalRoleKeys = input.approval
-    ? pendingRoleKeysForFrozenApprovalNode(
+    ? pendingSpotPaymentPayerApprovalRoles(
         input.approval.frozenNodes,
         input.approval.currentNodeIndex
       )
@@ -243,6 +269,7 @@ export function deriveSpotPaymentCurrentTask(input: {
     input.payment.status === "draft" ||
     (input.payment.status === "approval_pending" &&
       input.approval?.status === "approval_pending" &&
+      !hasInvalidLegacySerialCutoverMarker(input.approval.frozenNodes) &&
       (input.approval.currentNodeIndex === 0 ||
         (input.roleKeys.includes("finance_director") &&
           pendingApprovalRoleKeys.includes("finance_director"))));
@@ -346,7 +373,7 @@ export function deriveSpotPaymentCurrentTask(input: {
   if (input.roleKeys.includes("material_director")) {
     return {
       ...NO_SPOT_PAYMENT_TASK,
-      hint: "当前无需办理付款；后续需复核收货"
+      hint: "当前无需办理付款；历史资料仍可查询"
     };
   }
   return { ...NO_SPOT_PAYMENT_TASK };
@@ -360,7 +387,8 @@ export class SpotProcurementReadService {
     private readonly access: SpotProcurementAccessService,
     private readonly pilot: SpotProcurementPilotService,
     private readonly invoiceLedger?: InvoiceLedgerService,
-    private readonly paymentInvoices?: SpotProcurementInvoiceService
+    private readonly paymentInvoices?: SpotProcurementInvoiceService,
+    @Optional() private readonly audit?: AuditService
   ) {}
 
   async capabilities(actorUserId: string, projectId: string) {
@@ -378,10 +406,9 @@ export class SpotProcurementReadService {
       throw new ForbiddenException(RESOURCE_FORBIDDEN_MESSAGE);
     }
 
-    const roleKeys = await this.projectVisibility.effectiveRoleKeys(
-      actorUserId,
-      normalizedProjectId
-    );
+    const roleKeys = await currentSpotMaterialRoleKeys(this.prisma, actorUserId, await this.projectVisibility.effectiveRoleKeys(
+      actorUserId, normalizedProjectId
+    ));
     const enabled = this.pilot.isEnabled(normalizedProjectId);
     const canCreate =
       enabled && roleKeys.some((role) => PROCUREMENT_CREATE_ROLES.has(role));
@@ -472,10 +499,9 @@ export class SpotProcurementReadService {
     const options = await Promise.all(
       projects.map(async (project) => ({
         project,
-        roleKeys: await this.projectVisibility.effectiveRoleKeys(
-          actorUserId,
-          project.id
-        )
+        roleKeys: await currentSpotMaterialRoleKeys(this.prisma, actorUserId, await this.projectVisibility.effectiveRoleKeys(
+          actorUserId, project.id
+        ))
       }))
     );
 
@@ -492,15 +518,125 @@ export class SpotProcurementReadService {
     actorUserId: string,
     query: SpotProcurementListQuery
   ) {
+    const normalized = normalizeLedgerExportQuery(query as Record<string, unknown>);
+    const pagination = listPagination(query.page, query.pageSize);
+    const { rows: filteredRows, view, surface, statistics } =
+      await this.filteredProcurementRows(actorUserId, query, normalized);
+    const pageRows = filteredRows.slice(
+      pagination.skip,
+      pagination.skip + pagination.pageSize
+    );
+    const items = await this.procurementListItems(pageRows, actorUserId);
+
+    return {
+      items,
+      view,
+      surface,
+      pagination: paginationResult(pagination, filteredRows.length),
+      statistics,
+      filters: {
+        projectId: normalized.projectId ?? null,
+        dateFrom: normalized.dateFrom ?? null,
+        dateTo: normalized.dateTo ?? null,
+        status: normalized.status ?? null,
+        keyword: normalized.keyword ?? null,
+        sort: normalized.sortField
+          ? `${normalized.sortField}:${normalized.sortDirection}`
+          : null
+      },
+      columns: SPOT_PROCUREMENT_LEDGER_COLUMNS.map((column) => ({
+        key: String(column.key),
+        header: column.header,
+        required: Boolean(column.required)
+      }))
+    };
+  }
+
+  /**
+   * 零星采购台账导出：与列表共用 `filteredProcurementRows`，其中
+   * `scanAccessibleProcurements` 已逐行调用 `accessibleProcurementIds`；
+   * 导出只拿到筛选后的可见行，不扩大读取范围。
+   */
+  async exportLedger(
+    actorUserId: string,
+    rawQuery?: Record<string, unknown>
+  ): Promise<{ buffer: Buffer; fileName: string }> {
+    const normalized = normalizeLedgerExportQuery(rawQuery);
+    const { rows } = await this.filteredProcurementRows(
+      actorUserId,
+      (rawQuery ?? {}) as SpotProcurementListQuery,
+      normalized
+    );
+    const items = await this.procurementListItems(rows, actorUserId);
+    const exported = items.map((item) => {
+      const record = item as Record<string, unknown>;
+      return {
+        ...record,
+        projectName: item.project.name,
+        applicantText:
+          (typeof record.applicationName === "string" && record.applicationName) ||
+          ((record.applicant as { name?: string } | undefined)?.name ?? "待确定"),
+        purchaserText:
+          (typeof record.purchaserName === "string" && record.purchaserName) ||
+          ((record.handler as { name?: string } | undefined)?.name ?? "待确定"),
+        supplierText:
+          typeof record.supplierName === "string" && record.supplierName
+            ? record.supplierName
+            : "待确定",
+        estimatedAmountYuan: spotLedgerAmountYuan(record),
+        updatedAtIso: item.updatedAt,
+        createdAtIso: item.createdAt,
+        arrivalDate:
+          typeof record.requestedArrivalAt === "string"
+            ? record.requestedArrivalAt
+            : null
+      };
+    });
+    return exportBusinessLedger({
+      prisma: this.prisma,
+      audit: this.audit,
+      actorUserId,
+      action: "spot_procurement.ledger.export",
+      businessType: "spot_procurement_ledger",
+      scope: "all_filtered_visible_spot_procurements",
+      sheetName: "零星采购台账",
+      fileNamePrefix: "零星采购台账",
+      columns: SPOT_PROCUREMENT_LEDGER_COLUMNS,
+      rows: exported,
+      columnKeys: normalized.columnKeys,
+      filters: normalized,
+      visibleProjectCount: (await this.visibleProjectIdsForQuery(
+        actorUserId,
+        normalized.projectId
+      )).length
+    });
+  }
+
+  private async filteredProcurementRows(
+    actorUserId: string,
+    query: SpotProcurementListQuery,
+    normalized: NormalizedLedgerExportQuery
+  ): Promise<{
+    rows: SpotProcurement[];
+    view: "active" | "ended";
+    surface: "procurement" | "receipt";
+    statistics: { total: number; byStatus: Record<string, number> };
+  }> {
     const projectIds = await this.visibleProjectIdsForQuery(
       actorUserId,
-      query.projectId
+      normalized.projectId
     );
-    const pagination = listPagination(query.page, query.pageSize);
     const view = lifecycleView(query.view);
     const surface = query.surface === "receipt" ? "receipt" : "procurement";
-    if (!projectIds.length) return emptyPagedList(pagination, view);
-    const status = optionalQueryText(query.status);
+    if (!projectIds.length) {
+      return {
+        rows: [],
+        view,
+        surface,
+        statistics: { total: 0, byStatus: {} }
+      };
+    }
+    const status = optionalQueryText(normalized.status);
     if (
       status &&
       !SPOT_PROCUREMENT_STATUSES.includes(
@@ -509,7 +645,7 @@ export class SpotProcurementReadService {
     ) {
       throw new BadRequestException("零星采购状态筛选值不正确");
     }
-    const keyword = optionalQueryText(query.keyword);
+    const keyword = optionalQueryText(normalized.keyword);
     const keywordMatch = keyword
       ? await this.procurementIdsMatchingVersionKeyword(projectIds, keyword)
       : [];
@@ -534,23 +670,34 @@ export class SpotProcurementReadService {
     const lifecycleRows = accessible.rows.filter((row) =>
       view === "ended" ? row.status === "abandoned" : row.status !== "abandoned"
     );
-    const surfaceRows = surface === "receipt"
-      ? lifecycleRows.filter((row) => ["approved_in_progress", "closed"].includes(row.status))
-      : lifecycleRows;
-    const filteredRows = status
+    let surfaceRows = lifecycleRows;
+    if (surface === "receipt") {
+      const historicalReceipts = await this.prisma.spotProcurementReceipt.findMany({
+        where: { procurementId: { in: lifecycleRows.map((row) => row.id) } },
+        select: { procurementId: true }
+      });
+      const historyIds = new Set(historicalReceipts.map((row) => row.procurementId));
+      surfaceRows = lifecycleRows.filter((row) => historyIds.has(row.id));
+    }
+    const statusRows = status
       ? surfaceRows.filter((row) => row.status === status)
       : surfaceRows;
-    const pageRows = filteredRows.slice(pagination.skip, pagination.skip + pagination.pageSize);
-    const items = await this.procurementListItems(
-      pageRows,
-      actorUserId
-    );
-
+    const dateRows = statusRows.filter((row) => {
+      if (!normalized.dateFrom && !normalized.dateTo) return true;
+      const key = shanghaiDateKey(row.updatedAt);
+      if (key === null) return false;
+      if (normalized.dateFrom && key < normalized.dateFrom) return false;
+      if (normalized.dateTo && key > normalized.dateTo) return false;
+      return true;
+    });
     return {
-      items,
+      rows: sortLedgerRows(dateRows, normalized.sortField, normalized.sortDirection, {
+        updatedAt: (row) => row.updatedAt,
+        createdAt: (row) => row.createdAt,
+        status: (row) => row.status
+      }),
       view,
       surface,
-      pagination: paginationResult(pagination, filteredRows.length),
       statistics: statusCounts(surfaceRows)
     };
   }
@@ -689,12 +836,6 @@ export class SpotProcurementReadService {
         })
       : null;
 
-    const receiptWorkflowFacts = receipt
-      ? await this.receiptWorkflowFacts(
-          receipt.id,
-          receipt.currentRevisionNo
-        )
-      : null;
 
     const [approvalInstances, accessiblePaymentIds] = await Promise.all([
       this.prisma.approvalInstance.findMany({
@@ -809,7 +950,10 @@ export class SpotProcurementReadService {
       SPOT_PROCUREMENT_BUSINESS_TYPES.application,
       currentVersion.id
     );
+    const delegatedReviewIndexes = currentApproval ? await scopedSpotDutyNodeIndexes(this.prisma as never, currentApproval, procurement.projectId, actorUserId) : [];
     const availableActions = this.procurementActions({
+      delegatedReviewIndexes,
+      materialRoleKeys: await currentSpotMaterialRoleKeys(this.prisma, actorUserId, roleKeys),
       procurement,
       currentVersion,
       currentApproval,
@@ -848,7 +992,9 @@ export class SpotProcurementReadService {
         ? {
             expectedVersionId: currentVersion.id,
             expectedApprovalInstanceId: currentApproval.id,
-            expectedNodeIndex: currentApproval.currentNodeIndex
+            expectedNodeIndex: activeApprovalNodeIndexes(currentApproval.frozenNodes, currentApproval.currentNodeIndex).find(index =>
+              pendingRoleKeysForFrozenApprovalNode(currentApproval.frozenNodes, index).some(role => roleKeys.includes(role)) || delegatedReviewIndexes.includes(index)
+            ) ?? currentApproval.currentNodeIndex
           }
         : null;
     const withdrawApprovalContext =
@@ -879,14 +1025,7 @@ export class SpotProcurementReadService {
       ? receiptReadSummary(
           receipt,
           discrepancy,
-          executions.some((execution) => execution.voidedAt === null),
-          receiptWorkflowFacts
-            ? {
-                ...receiptWorkflowFacts,
-                actorUserId,
-                refundCount: refunds.length
-              }
-            : undefined
+          executions.some((execution) => execution.voidedAt === null)
         )
       : futureUnavailable();
 
@@ -1019,109 +1158,15 @@ export class SpotProcurementReadService {
             ? null
             : "采购审批完成后才可下载正式审批单"
       },
+      purchaseTask: this.purchaseTask(procurement.status, currentVersion, await currentSpotMaterialRoleKeys(this.prisma, actorUserId, roleKeys)),
       availableActions,
       primaryAction: primaryActionKey(availableActions),
       disabledReasons: [
         ...disabledActionReasons(availableActions),
         ...(usesRealProcurementForm
           ? []
-          : ["收货确认、收货差异和发票覆盖将在代码阶段 B 开放"])
+          : ["发票覆盖不可用"])
       ]
-    };
-  }
-
-  private async receiptWorkflowFacts(
-    receiptId: string,
-    currentRevisionNo: number
-  ) {
-    const [
-      revision,
-      activeDelegation,
-      review,
-      pdfDocument,
-      line,
-      photo,
-      invoiceAllocation,
-      noInvoiceConfirmation,
-      invoiceException
-    ] = await Promise.all([
-      this.prisma.spotProcurementReceiptRevision.findUnique({
-        where: {
-          receiptId_revisionNo: {
-            receiptId,
-            revisionNo: currentRevisionNo
-          }
-        },
-        select: {
-          submittedAt: true,
-          note: true,
-          actualCostCents: true
-        }
-      }),
-      this.prisma.spotProcurementReceiptDelegation.findFirst({
-        where: { receiptId, revokedAt: null },
-        orderBy: [{ delegatedAt: "desc" }, { id: "desc" }],
-        select: {
-          delegatorUserId: true,
-          delegateUserId: true,
-          scope: true
-        }
-      }),
-      this.prisma.spotProcurementReceiptReview.findFirst({
-        where: { receiptId },
-        orderBy: [{ sequenceNo: "desc" }, { id: "desc" }],
-        select: { id: true }
-      }),
-      this.prisma.pdfDocument.findFirst({
-        where: {
-          businessType: SPOT_PROCUREMENT_BUSINESS_TYPES.receipt,
-          businessId: receiptId
-        },
-        select: { id: true }
-      }),
-      this.prisma.spotProcurementReceiptLine.findFirst({
-        where: {
-          receiptId,
-          receiptRevisionNo: currentRevisionNo
-        },
-        select: { id: true }
-      }),
-      this.prisma.spotProcurementReceiptPhoto.findFirst({
-        where: {
-          receiptId,
-          receiptRevisionNo: currentRevisionNo
-        },
-        select: { id: true }
-      }),
-      this.prisma.invoiceAllocation.findFirst({
-        where: { receiptId },
-        select: { id: true }
-      }),
-      this.prisma.noInvoiceConfirmation.findFirst({
-        where: { receiptId },
-        select: { id: true }
-      }),
-      this.prisma.invoiceExceptionConfirmation.findFirst({
-        where: { receiptId },
-        select: { id: true }
-      })
-    ]);
-    return {
-      currentRevisionSubmittedAt: revision?.submittedAt ?? null,
-      activeDelegation,
-      hasReview: Boolean(review),
-      hasPdf: Boolean(pdfDocument),
-      hasInvoiceFact: Boolean(
-        invoiceAllocation ||
-          noInvoiceConfirmation ||
-          invoiceException
-      ),
-      hasDraftContent: Boolean(
-        line ||
-          photo ||
-          revision?.note ||
-          (revision?.actualCostCents ?? 0n) !== 0n
-      )
     };
   }
 
@@ -1298,6 +1343,7 @@ export class SpotProcurementReadService {
       }),
       this.prisma.spotProcurementPaymentExecution.findMany({
         where: { paymentId: payment.id },
+        include: { registeredOperationalPayment: { select: { id: true, actualPayerCompanyId: true, actualPayerName: true, originalDebtorCompanyId: true } } },
         orderBy: [{ paidAt: "asc" }, { id: "asc" }]
       }),
       this.prisma.supplierBalanceReservation.findMany({
@@ -1720,7 +1766,7 @@ export class SpotProcurementReadService {
               materialName: line.materialName,
               specification: line.specification,
               unit: line.unit,
-              approvedQuantity: line.quantity.toString(),
+              approvedQuantity: line.quantity?.toString() ?? null,
               note: line.note
             })),
             paymentMethods: paymentMethods.map((method) => ({
@@ -1788,7 +1834,15 @@ export class SpotProcurementReadService {
         reservationStatus: reservations[0]?.status ?? null
             }
           }),
+      originalDebtorCompanyId: payment.originalDebtorCompanyId ?? null,
+      originalDebtorCompanyName: payment.originalDebtorCompanyName ?? null,
       executions: executions.map((execution) => ({
+        ...(execution.registeredOperationalPayment ? {
+          actualPayerCompanyId: execution.registeredOperationalPayment.actualPayerCompanyId,
+          actualPayerCompanyName: execution.registeredOperationalPayment.actualPayerName,
+          relationshipEntryId: execution.registeredOperationalPayment.actualPayerCompanyId !== execution.registeredOperationalPayment.originalDebtorCompanyId
+            ? execution.registeredOperationalPayment.id : null,
+        } : {}),
         id: execution.id,
         amountCents: moneyText(execution.amountCents),
         paidAt: execution.paidAt.toISOString(),
@@ -2002,6 +2056,13 @@ export class SpotProcurementReadService {
     };
   }
 
+  private purchaseTask(status: string, version: {requestProtocolVersion?: number}, roles: RoleKey[]) {
+    const pending = version.requestProtocolVersion === 2 && status === "approved_in_progress";
+    return { pending, canHandle: pending && roles.some(role => role === "material_staff" || role === "material_director"),
+      label: pending ? "待采购" : "暂无采购待办", requiresReceipt: false,
+      note: pending ? "按审批需求线下采购；预计与实际差异供经办人核对，无收货登记。实际采购批次及付款在对应办理入口记录。" : null };
+  }
+
   private async procurementListItems(
     rows: SpotProcurement[],
     actorUserId: string
@@ -2146,6 +2207,7 @@ export class SpotProcurementReadService {
         )
       : new Map();
 
+    const purchaseRoles = new Map(await Promise.all(projectIds.map(async projectId => [projectId, await currentSpotMaterialRoleKeys(this.prisma, actorUserId, await this.projectVisibility.effectiveRoleKeys(actorUserId, projectId))] as const)));
     return rows.flatMap((row) => {
       const project = projectById.get(row.projectId);
       const version = row.currentVersionId
@@ -2217,6 +2279,7 @@ export class SpotProcurementReadService {
             userById,
             "采购经办人未读取"
           ),
+          purchaseTask: this.purchaseTask(row.status, version, purchaseRoles.get(row.projectId) ?? []),
           status: row.status,
           statusLabel: procurementStatusLabel(row.status),
           approval: approvalSummary(
@@ -2232,7 +2295,9 @@ export class SpotProcurementReadService {
                 applicationName: version.applicationNameSnapshot,
                 purchaserName: version.purchaserNameSnapshot,
                 purchaserDepartment: version.purchaserDepartmentNameSnapshot,
-                requestedArrivalAt: version.requestedArrivalAt.toISOString(),
+                requestedArrivalAt: version.requestedArrivalAt?.toISOString() ?? null,
+                requestProtocolVersion: version.requestProtocolVersion,
+                estimatedTotalAmount: version.estimatedTotalAmount?.toString() ?? null,
                 payment: {
                   paymentId: currentPaymentId,
                   ...realPayment,
@@ -2725,10 +2790,12 @@ export class SpotProcurementReadService {
   }
 
   private procurementActions(input: {
+    materialRoleKeys: RoleKey[];
     procurement: SpotProcurement;
     currentVersion: SpotProcurementVersion;
     currentApproval: ApprovalInstance | null;
     currentPendingApprovalCount: number;
+    delegatedReviewIndexes?: number[];
     roleKeys: RoleKey[];
     actorUserId: string;
     activePayments: SpotProcurementPayment[];
@@ -2763,7 +2830,7 @@ export class SpotProcurementReadService {
     const isOwner =
       input.actorUserId === input.procurement.applicantUserId ||
       input.actorUserId === input.procurement.handlerUserId;
-    const canCreate = input.roleKeys.some((role) =>
+    const canCreate = input.materialRoleKeys.some((role) =>
       PROCUREMENT_CREATE_ROLES.has(role)
     );
     const reviewAccess =
@@ -2785,7 +2852,7 @@ export class SpotProcurementReadService {
       !hasRevisionDownstreamFacts;
     const canReview =
       canMutateCurrentApplicationRevision &&
-      Boolean(reviewAccess?.canReview);
+      Boolean(reviewAccess?.canReview || input.delegatedReviewIndexes?.length);
     const canWithdraw =
       input.pilotEnabled &&
       canMutateCurrentApplicationRevision &&
@@ -2824,6 +2891,7 @@ export class SpotProcurementReadService {
       !hasActivePayment &&
       hasRecreatableSource;
     const canCreateVersion =
+      !(input.currentVersion.requestProtocolVersion === 2 && input.currentVersion.status === "approved") &&
       input.canonicalRealRevisionSource &&
       !["closed", "voided"].includes(input.procurement.status) &&
       ["approved", "rejected"].includes(input.currentVersion.status) &&
@@ -2917,6 +2985,7 @@ export class SpotProcurementReadService {
         requiredAction: "spot_procurement.approve",
         skipRoleCheck: true,
         enabled: canReview,
+        requiresSelfReviewConfirmation: canReview && input.currentApproval?.applicantUserId === input.actorUserId,
         disabledReason:
           input.currentPendingApprovalCount > 1
             ? "当前采购存在多个待审批实例，请联系管理员处理"
@@ -2924,7 +2993,7 @@ export class SpotProcurementReadService {
               ? "旧版或混合采购申请仅支持只读，请联系管理员处理"
             : hasRevisionDownstreamFacts
               ? "当前采购已存在付款或收货事实，不能处理审批"
-            : "当前账号不是本审批节点处理人"
+            : "当前账号不是本审批职责处理人"
       }),
       detailAction({
         key: "withdraw_approval",
@@ -3011,9 +3080,11 @@ export class SpotProcurementReadService {
         label: "下载采购审批单",
         kind: "normal",
         roleKeys: input.roleKeys,
-        enabled:
-          input.currentApproval?.status === "approved" &&
-          input.currentPdfExists,
+        enabled: Boolean(input.currentApproval && (
+          isParallelApprovalRound(input.currentApproval.frozenNodes)
+            ? ["approved", "approval_pending"].includes(input.currentApproval.status)
+            : input.currentApproval.status === "approved" && input.currentPdfExists
+        )),
         disabledReason:
           input.currentApproval?.status === "approved"
             ? "正式采购审批单尚未生成，请稍后重试"
@@ -3453,10 +3524,8 @@ function approvalSummary(
   }
   const currentRoleKeys =
     approval.status === "approval_pending"
-      ? pendingRoleKeysForFrozenApprovalNode(
-          approval.frozenNodes,
-          approval.currentNodeIndex
-        )
+      ? activeApprovalNodeIndexes(approval.frozenNodes, approval.currentNodeIndex).flatMap(index =>
+          pendingRoleKeysForFrozenApprovalNode(approval.frozenNodes, index))
       : [];
   const currentNodeName =
     approval.status === "approval_pending"
@@ -3676,6 +3745,7 @@ function paymentAmountSummary(
 }
 
 function frozenNodeName(approval: ApprovalInstance) {
+  if (isParallelApprovalRound(approval.frozenNodes)) return "并联审批";
   if (!Array.isArray(approval.frozenNodes)) return "审批节点未读取";
   const node = approval.frozenNodes[approval.currentNodeIndex];
   if (!node || typeof node !== "object" || Array.isArray(node)) {
@@ -4023,21 +4093,7 @@ function receiptReadSummary(
         >)
     | null,
   discrepancy: Pick<SpotProcurementDiscrepancy, "status"> | null,
-  hasActualPayment = false,
-  workflowFacts?: {
-    actorUserId: string;
-    currentRevisionSubmittedAt: Date | null;
-    activeDelegation: {
-      delegatorUserId: string;
-      delegateUserId: string;
-      scope: string;
-    } | null;
-    hasReview: boolean;
-    hasPdf: boolean;
-    hasInvoiceFact: boolean;
-    hasDraftContent: boolean;
-    refundCount: number;
-  }
+  hasActualPayment = false
 ) {
   if (!receipt) {
     return {
@@ -4058,111 +4114,14 @@ function receiptReadSummary(
     id: receipt.id,
     status: receipt.status,
     statusLabel: receiptStatusLabel(receipt.status),
-    openAfterActualPayment: true,
+    openAfterActualPayment: false,
     hasActualPayment,
-    blockedReason: null,
+    blockedReason: "收货办理已退出，历史记录仍可查询",
     currentRevisionNo: receipt.currentRevisionNo,
     firstSubmittedAt: isoOrNull(receipt.firstSubmittedAt),
     submittedAt: isoOrNull(receipt.submittedAt),
     lockedAt: isoOrNull(receipt.lockedAt),
-    discrepancyStatus: discrepancy?.status ?? null,
-    ...(workflowFacts
-      ? {
-          workflow: receiptWorkflowReadModel({
-            receipt,
-            discrepancy,
-            ...workflowFacts
-          })
-        }
-      : {})
-  };
-}
-
-function receiptWorkflowReadModel(input: {
-  receipt: Pick<
-    SpotProcurementReceipt,
-    | "status"
-    | "currentRevisionNo"
-    | "firstSubmittedAt"
-    | "submittedAt"
-  > &
-    Partial<
-      Pick<
-        SpotProcurementReceipt,
-        "handlerUserId" | "invalidatedAt"
-      >
-    >;
-  discrepancy: Pick<SpotProcurementDiscrepancy, "status"> | null;
-  actorUserId: string;
-  currentRevisionSubmittedAt: Date | null;
-  activeDelegation: {
-    delegatorUserId: string;
-    delegateUserId: string;
-    scope: string;
-  } | null;
-  hasReview: boolean;
-  hasPdf: boolean;
-  hasInvoiceFact: boolean;
-  hasDraftContent: boolean;
-  refundCount: number;
-}) {
-  const isHandler =
-    input.actorUserId === input.receipt.handlerUserId;
-  const isActiveDelegate = Boolean(
-    input.activeDelegation &&
-      input.activeDelegation.delegatorUserId ===
-        input.receipt.handlerUserId &&
-      input.activeDelegation.delegateUserId ===
-        input.actorUserId &&
-      input.activeDelegation.scope === "receipt_confirmation"
-  );
-  const blocker = input.receipt.invalidatedAt
-    ? "收货单已失效，只能查看历史"
-    : input.receipt.status !== "draft" ||
-        input.receipt.firstSubmittedAt !== null ||
-        input.receipt.submittedAt !== null ||
-        input.currentRevisionSubmittedAt !== null
-      ? "只能重置从未提交的当前收货草稿"
-      : input.hasReview
-        ? "收货单已形成主管复核记录"
-        : input.hasPdf
-          ? "收货单已形成正式 PDF 或归档证据"
-          : input.hasInvoiceFact
-            ? "收货单已形成发票或无票业务事实"
-            : input.discrepancy
-              ? "收货单已形成差异或补货事实"
-              : input.refundCount > 0
-                ? "收货单已关联退款事实"
-                : !isHandler && !isActiveDelegate
-                  ? "只有采购经办人或当前有效受托人可以重置收货草稿"
-                  : !input.hasDraftContent
-                    ? "当前收货草稿尚未填写，无需重置"
-                    : null;
-  const stage = input.receipt.status === "submitted"
-    ? "awaiting_supervisor_review"
-    : input.receipt.status === "draft" &&
-        input.receipt.firstSubmittedAt === null &&
-        input.currentRevisionSubmittedAt === null
-      ? input.hasDraftContent
-        ? "reset_unsubmitted_receipt"
-        : "fill_receipt"
-      : "readonly_history";
-  const stageLabels: Record<string, string> = {
-    fill_receipt: "填写收货",
-    reset_unsubmitted_receipt: "可重置未提交收货",
-    awaiting_supervisor_review: "待物资主管复核",
-    readonly_history: "只读历史"
-  };
-  return {
-    stage,
-    stageLabel: stageLabels[stage],
-    resetAction: {
-      key: "reset_receipt_draft",
-      label: "重置未提交收货",
-      enabled: blocker === null,
-      disabledReason: blocker,
-      expectedRevision: input.receipt.currentRevisionNo
-    }
+    discrepancyStatus: discrepancy?.status ?? null
   };
 }
 
@@ -4319,7 +4278,15 @@ function payerManagementReadModel(input: {
       requiresReapproval: false
     };
   }
-  const pendingRoles = pendingRoleKeysForFrozenApprovalNode(
+  if (hasInvalidLegacySerialCutoverMarker(input.approval.frozenNodes)) {
+    return {
+      visible: true,
+      enabled: false,
+      disabledReason: "历史付款审批轮次需要核对后才能调整付款主体",
+      requiresReapproval: false
+    };
+  }
+  const pendingRoles = pendingSpotPaymentPayerApprovalRoles(
     input.approval.frozenNodes,
     input.approval.currentNodeIndex
   );
@@ -4414,7 +4381,10 @@ function versionReadModel(
         applicationName: version.applicationNameSnapshot,
         purchaserName: version.purchaserNameSnapshot,
         purchaserDepartment: version.purchaserDepartmentNameSnapshot,
-        requestedArrivalAt: version.requestedArrivalAt.toISOString()
+        requestedArrivalAt: version.requestedArrivalAt?.toISOString() ?? null,
+        requestProtocolVersion: version.requestProtocolVersion,
+        draftRevision: version.draftRevision,
+        estimatedTotalAmount: version.estimatedTotalAmount?.toString() ?? null
       }
     : {
         ...common,
@@ -4431,7 +4401,9 @@ function lineReadModel(line: SpotProcurementLine, realApplication = false) {
     materialName: line.materialName,
     specification: line.specification,
     unit: line.unit,
-    quantity: line.quantity.toString(),
+    quantity: line.quantity?.toString() ?? null,
+    estimatedUnitPrice: line.estimatedUnitPrice?.toString() ?? null,
+    estimatedAmount: line.estimatedAmount?.toString() ?? null,
     note: line.note
   };
   return realApplication
@@ -4464,7 +4436,7 @@ function procurementMaterialSummary(lines: readonly SpotProcurementLine[]) {
 function procurementQuantitySummary(lines: readonly SpotProcurementLine[]) {
   if (!lines.length) return "批准数量未读取";
   return lines
-    .map((line) => `${line.quantity.toString()} ${line.unit}`)
+    .map((line) => `${line.quantity?.toString() ?? "待确定"} ${line.unit ?? ""}`)
     .join("；");
 }
 
@@ -4772,15 +4744,6 @@ function paginationResult(pagination: ListPagination, total: number) {
   };
 }
 
-function emptyPagedList(pagination: ListPagination, view: "active" | "ended") {
-  return {
-    items: [],
-    view,
-    pagination: paginationResult(pagination, 0),
-    statistics: { total: 0, byStatus: {} as Record<string, number> }
-  };
-}
-
 function statusCounts(rows: Array<{ status: string }>) {
   const byStatus: Record<string, number> = {};
   for (const row of rows) byStatus[row.status] = (byStatus[row.status] ?? 0) + 1;
@@ -4799,4 +4762,36 @@ function groupBy<T>(
     grouped.set(value, group);
   }
   return grouped;
+}
+
+
+const SPOT_PROCUREMENT_LEDGER_COLUMNS: LedgerExcelColumn<Record<string, unknown>>[] = [
+  { header: "采购编号", key: "code", width: 18, required: true },
+  { header: "项目", key: "projectName", width: 24, required: true },
+  { header: "申请人", key: "applicantText", width: 14 },
+  { header: "采购人", key: "purchaserText", width: 14 },
+  { header: "供应商", key: "supplierText", width: 22 },
+  { header: "采购内容与用途", key: "reason", width: 30 },
+  {
+    header: "预计金额（元）",
+    key: "estimatedAmountYuan",
+    width: 18,
+    kind: "number",
+    numFmt: LEDGER_MONEY_FORMAT,
+    align: "right",
+    total: "sum"
+  },
+  { header: "采购状态", key: "statusLabel", width: 14 },
+  { header: "要求到位日期", key: "arrivalDate", width: 14, kind: "date", numFmt: LEDGER_DATE_FORMAT },
+  { header: "更新时间", key: "updatedAtIso", width: 16, kind: "date", numFmt: LEDGER_DATE_FORMAT }
+];
+
+/** 预计金额优先；历史单退回已批准/当前总额的分币字段。未知保持空白。 */
+function spotLedgerAmountYuan(item: Record<string, unknown>): string | null {
+  const estimated = item.estimatedTotalAmount;
+  if (typeof estimated === "string" && estimated.trim() !== "") return estimated;
+  const cents = item.approvedAmountCents ?? item.currentTotalAmountCents;
+  return typeof cents === "string" && /^-?\d+$/u.test(cents)
+    ? formatMoneyCentsAsPlainYuan(BigInt(cents))
+    : null;
 }

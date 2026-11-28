@@ -8,6 +8,8 @@ export interface FrozenApprovalAssignment {
 }
 
 export interface FrozenApprovalNode {
+  protocolVersion?: unknown;
+  executionMode?: unknown;
   name?: unknown;
   mode?: unknown;
   roleKeys?: unknown;
@@ -167,11 +169,11 @@ function uniqueFrozenRole(
   if (mapPresent) {
     const byRole = candidateMap(node.candidateUserIdsByRole);
     const matches = pendingRoles.filter((role) => byRole[role]?.includes(userId));
-    // A single executive OR node needs one actual held role even when one person holds both.
-    // The frozen role order is the deterministic signing-role priority; other ambiguous nodes stay closed.
-    const executiveOr = node.mode === "any" && Array.isArray(node.roleKeys) && node.roleKeys.length === 2 &&
-      node.roleKeys.includes("chairman") && node.roleKeys.includes("general_manager");
-    return matches.length === 1 || (executiveOr && matches.length > 0) ? matches[0] : null;
+    // An OR ("any") node is satisfied by one actual held role even when one person
+    // holds several of its duties (e.g. finance_staff + finance_director). The frozen
+    // role order is the deterministic signing-role priority; all-sign nodes stay closed.
+    const orNode = node.mode === "any" && stringArray(node.roleKeys).length > 1;
+    return matches.length === 1 || (orNode && matches.length > 0) ? matches[0] : null;
   }
   const unionPresent = Object.prototype.hasOwnProperty.call(node, "candidateUserIds");
   if (unionPresent && stringArray(node.candidateUserIds).includes(userId) && pendingRoles.length === 1) {

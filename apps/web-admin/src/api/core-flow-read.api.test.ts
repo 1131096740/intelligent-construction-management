@@ -1,9 +1,15 @@
 import { createPinia, setActivePinia } from "pinia";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import * as apiTransport from "./api-fetch";
+import { createApiFetch } from "./http";
 import {
+  archiveSignedContractV2,
+  confirmContractSealV2,
   fetchContractDetail,
   downloadPrivateFileByTicket,
   fetchContractChangeEligibility,
+  fetchContractTaxRevisions,
+  fetchSignedContractChanges,
   fetchContractLedger,
   fetchContractLifecycleLedger,
   fetchContractWorkbenchLedger,
@@ -12,6 +18,10 @@ import {
   fetchDraftRetentionPreview,
   fetchPaymentDetail,
   fetchPaymentLedger,
+  reviewContractTaxRevision,
+  reviewSignedContractChange,
+  submitContractTaxRevision,
+  submitSignedContractChange,
   fetchPaymentLifecycleLedger,
   fetchPaymentContractOptions,
   fetchSettlementDetail,
@@ -22,6 +32,8 @@ import {
   fetchWorkbenchSummary,
   fetchContractPaymentApplication,
   fetchArchives,
+  createArchiveDownloadPackage,
+  getArchiveDownloadPackageCapability,
   fetchAuditLogs,
   fetchFileDownloadAudits,
   fetchProjectExpenseRequests,
@@ -30,6 +42,9 @@ import {
   fetchProjectSetOperatingProjection,
   downloadOperatingProjectionExport,
   fetchProjectUpstreamFundFacts,
+  fetchProjectConstructionEnterpriseDeductions,
+  recordProjectConstructionEnterpriseDeduction,
+  fetchProjectConstructionEnterpriseDeductionCapability,
   fetchProjects,
   fetchContractCreateProjects,
   fetchProjectAffiliateMappingReport,
@@ -75,7 +90,11 @@ import {
   recordProjectExpenseExecutionWithUpload,
   recordProjectExpenseFinance,
   recordProjectExpensePurchaseExecution,
-  createContractChangeDraft,
+  fetchWorkCompletions,
+  saveWorkCompletionDraft,
+  reviseWorkCompletionDraft,
+  submitWorkCompletion,
+  reviewWorkCompletion,
   createContractTakeover,
   abandonContractTakeover,
   applyContractTakeoverBatchAbandonment,
@@ -112,17 +131,12 @@ import {
   generateContractPdfArchive,
   generatePaymentPdfArchive,
   generateSettlementPdfArchive,
-  approveContractSeal,
-  approveGovernedContractSeal,
-  completeContractSeal,
   executeContractSigningMaterialChange,
   uploadMutuallySignedContract,
   returnMutuallySignedContractForCorrection,
   confirmMutuallySignedContract,
   remindContractApproval,
   remindPaymentApproval,
-  remindSettlementApproval,
-  reviewSettlementApproval,
   uploadContractArchiveFile,
   uploadCanvasSignature,
   createCanvasSignatureHandoff,
@@ -143,11 +157,11 @@ import {
   type PreparePaymentApprovalReviewActionInput,
   withdrawPaymentApproval,
   abandonPaymentRequest,
-  transferSettlementApproval,
-  delegateSettlementApproval,
   transferContractApproval,
   transferPaymentApproval,
   getContractTakeover,
+  getContractTakeoverHandover,
+  saveContractTakeoverHandover,
   listContractTakeovers,
   listApprovalDelegations,
   createApprovalDelegation,
@@ -405,33 +419,81 @@ describe("core flow read API client", () => {
     );
   });
 
-  it("uses contractVersionId routes for contract change eligibility and creation", async () => {
+  it("uses the unified signed-change and tax entry routes with current wrapper payloads", async () => {
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue({
+      ok: true,
+      json: async () => ({ id: "ok" })
+    } as Response);
+
+    await fetchSignedContractChanges("version/1");
+    await submitSignedContractChange("version/1", {
+      fileId: "file-1", summary: "补充协议", amountDeltaYuan: "-100.0000",
+      paymentAgreementText: "验收后付款"
+    });
+    await reviewSignedContractChange("version/1", "change/1", { decision: "reject", reason: "请核对原件" });
+    await fetchContractTaxRevisions("version/1");
+    await submitContractTaxRevision("version/1", {
+      invoiceType: "vat_special", taxRate: "9", explanation: "补充原空税率"
+    });
+    await reviewContractTaxRevision("version/1", "revision/1", { decision: "approve" });
+
+    expect(fetchMock.mock.calls.map((call) => call[0])).toEqual([
+      "/api/contracts/version%2F1/signed-changes",
+      "/api/contracts/version%2F1/signed-changes",
+      "/api/contracts/version%2F1/signed-changes/change%2F1/review",
+      "/api/contracts/version%2F1/tax-revisions",
+      "/api/contracts/version%2F1/tax-revisions",
+      "/api/contracts/version%2F1/tax-revisions/revision%2F1/review"
+    ]);
+    expect(fetchMock.mock.calls[1]?.[1]).toEqual(expect.objectContaining({
+      method: "POST",
+      body: JSON.stringify({
+        fileId: "file-1", summary: "补充协议", amountDeltaYuan: "-100.0000",
+        paymentAgreementText: "验收后付款"
+      })
+    }));
+    expect(fetchMock.mock.calls[5]?.[1]).toEqual(expect.objectContaining({
+      method: "POST",
+      body: JSON.stringify({ decision: "approve" })
+    }));
+  });
+
+  it("uses contractVersionId for historical contract change eligibility", async () => {
     const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue({
       ok: true,
       json: async () => ({ eligible: true })
     } as Response);
 
     await fetchContractChangeEligibility("version/1");
-    await createContractChangeDraft("version/1", {
-      changeType: "change",
-      changeReason: "补充工程量",
-      changeDirection: "increase",
-      changeAmountCents: "100"
-    });
-
     expect(fetchMock.mock.calls.map((call) => call[0])).toEqual([
-      "/api/contracts/version%2F1/change-eligibility",
-      "/api/contracts/version%2F1/change-drafts"
+      "/api/contracts/version%2F1/change-eligibility"
     ]);
-    expect(fetchMock.mock.calls[1]?.[1]).toEqual(expect.objectContaining({
-      method: "POST",
-      body: JSON.stringify({
-        changeType: "change",
-        changeReason: "补充工程量",
-        changeDirection: "increase",
-        changeAmountCents: "100"
-      })
-    }));
+  });
+
+  it("uses version scope and preserves four-place amounts and the selected review duty", async () => {
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue({
+      ok: true, json: async () => ({ entries: [{ amountYuan: "100.0123", exceedsContractAmount: true }] })
+    } as Response);
+    await expect(fetchWorkCompletions("version/1")).resolves.toMatchObject({
+      entries: [{ amountYuan: "100.0123", exceedsContractAmount: true }]
+    });
+    const draft = { work: "核对履约", amountYuan: "100.0123", requestKey: "one" };
+    await saveWorkCompletionDraft("version/1", draft);
+    await reviseWorkCompletionDraft("version/1", "entry/1", { work: "修正履约", amountYuan: "99.0100" });
+    await submitWorkCompletion("version/1", "entry/1");
+    const review = { approvalInstanceId: "round", decision: "reject", dutyIndex: 2, comment: "需要更正" } as const;
+    await reviewWorkCompletion("version/1", "entry/1", review);
+    expect(fetchMock.mock.calls.map(call => call[0])).toEqual([
+      "/api/contracts/version%2F1/work-completions",
+      "/api/contracts/version%2F1/work-completion-drafts",
+      "/api/contracts/version%2F1/work-completions/entry%2F1",
+      "/api/contracts/version%2F1/work-completions/entry%2F1/submission",
+      "/api/contracts/version%2F1/work-completions/entry%2F1/approval"
+    ]);
+    expect(fetchMock.mock.calls[1]?.[1]).toMatchObject({ method: "POST", body: JSON.stringify(draft) });
+    expect(fetchMock.mock.calls[2]?.[1]).toMatchObject({ method: "PATCH",
+      body: JSON.stringify({ work: "修正履约", amountYuan: "99.0100" }) });
+    expect(fetchMock.mock.calls[4]?.[1]).toMatchObject({ method: "POST", body: JSON.stringify(review) });
   });
 
   it("confirms a historical change baseline with canonical cents and password", async () => {
@@ -457,6 +519,42 @@ describe("core flow read API client", () => {
         })
       })
     );
+  });
+
+  it("reads and saves the takeover division handover with stable paths", async () => {
+    const fetchMock = vi.spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ registered: true, revision: 1, assignments: [] })
+      } as Response)
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ registered: true, revision: 2, assignments: [] })
+      } as Response);
+
+    await getContractTakeoverHandover("project/1", "takeover/1");
+    await saveContractTakeoverHandover("project/1", "takeover/1", {
+      contractUserId: "user-contract",
+      financeUserId: "user-finance",
+      supervisorUserId: "user-supervisor",
+      reason: "原经办调岗",
+      idempotencyKey: "11111111-1111-4111-8111-111111111111"
+    });
+
+    expect(fetchMock.mock.calls.map((call) => call[0])).toEqual([
+      "/api/projects/project%2F1/contract-takeovers/takeover%2F1/handover",
+      "/api/projects/project%2F1/contract-takeovers/takeover%2F1/handover"
+    ]);
+    expect(fetchMock.mock.calls[1]?.[1]).toMatchObject({
+      method: "PUT",
+      body: JSON.stringify({
+        contractUserId: "user-contract",
+        financeUserId: "user-finance",
+        supervisorUserId: "user-supervisor",
+        reason: "原经办调岗",
+        idempotencyKey: "11111111-1111-4111-8111-111111111111"
+      })
+    });
   });
 
   it("rejects detail reads with server error messages", async () => {
@@ -537,13 +635,6 @@ describe("core flow read API client", () => {
       json: async () => ({ status: "ok" })
     } as Response);
 
-    await approveGovernedContractSeal("version/1", { confirmationPassword: "current-password" });
-    await completeContractSeal("version/1", {
-      firstPartySignedOrStamped: true,
-      companySealCompleted: true,
-      crossPageSealCompleted: true,
-      signingDateCompleted: true
-    });
     await uploadMutuallySignedContract("version/1", {
       fileId: "file-1",
       sourceRevision: 3,
@@ -569,12 +660,118 @@ describe("core flow read API client", () => {
     });
 
     expect(fetchMock.mock.calls.map((call) => call[0])).toEqual([
-      "/api/contracts/version%2F1/seal/approve",
-      "/api/contracts/version%2F1/seal/complete",
       "/api/contracts/version%2F1/formal-files/final",
       "/api/contracts/version%2F1/formal-files/final/return",
       "/api/contracts/version%2F1/formal-files/final/confirmation"
     ]);
+  });
+
+  it.each([false, true])("keeps V2 seal confirmation single-POST on 401 (account switched: %s)", async (switchAccount) => {
+    let actor = "original-user";
+    let token = "original-token";
+    const refresh = vi.fn(async () => { token = "refreshed-token"; return true; });
+    const onUnauthorized = vi.fn();
+    const fetchMock = vi.fn<Parameters<typeof fetch>, ReturnType<typeof fetch>>()
+      .mockImplementationOnce(async () => {
+        if (switchAccount) { actor = "different-user"; token = "different-token"; }
+        return new Response(null, { status: 401 });
+      })
+      .mockResolvedValueOnce(Response.json({ status: "seal_approved_pending_archive" }));
+    vi.spyOn(apiTransport, "apiFetch").mockImplementation(createApiFetch({
+      getAccessToken: () => token,
+      refresh,
+      onUnauthorized
+    }, fetchMock));
+    const body = {
+      expectedApprovalInstanceId: "approval-1",
+      expectedSealTaskId: "seal-1",
+      documentContentRevision: 3,
+      documentContentFingerprint: "a".repeat(64),
+      confirmed: true
+    } as const;
+
+    await expect(confirmContractSealV2("version/1", body, () => actor === "original-user"))
+      .rejects.toMatchObject({ status: 401 });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const [[url, init]] = fetchMock.mock.calls;
+    expect(url).toBe("/api/contracts/version%2F1/seal-confirmation");
+    expect(init?.method).toBe("POST");
+    expect(init?.body).toBe(JSON.stringify(body));
+    expect(new Headers(init?.headers).get("Authorization")).toBe("Bearer original-token");
+    expect(refresh).not.toHaveBeenCalled();
+    expect(onUnauthorized).toHaveBeenCalledTimes(switchAccount ? 0 : 1);
+  });
+
+  it("posts generated and direct V2 archives through one endpoint without automatic retry", async () => {
+    const result = { archiveId: "archive-1", contractVersionId: "version/1", status: "effective", fileIds: ["file-2", "file-1"] };
+    const transport = vi.spyOn(apiTransport, "apiFetch").mockImplementation(async () => Response.json(result));
+    const common = { archiveProtocolVersion: 2, idempotencyKey: "request-1", fileIds: result.fileIds, confirmedMatchingSignedDocument: true } as const;
+    const generated = { ...common, archiveSource: "generated_approval", expectedApprovalInstanceId: "approval-1",
+      expectedSealTaskId: "seal-1", documentContentRevision: 3, documentContentFingerprint: "a".repeat(64) } as const;
+    const direct = { ...common, archiveSource: "direct_signed", expectedDraftRevision: 2, expectedInputSha256: "b".repeat(64) } as const;
+    const responseIsCurrent = () => false;
+    await expect(archiveSignedContractV2("version/1", generated, responseIsCurrent)).resolves.toEqual(result);
+    await expect(archiveSignedContractV2("version/1", direct, responseIsCurrent)).resolves.toEqual(result);
+    expect(transport.mock.calls).toEqual([
+      ["/contracts/version%2F1/signed-archive", {
+        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(generated),
+        retryUnauthorized: false, responseIsCurrent
+      }],
+      ["/contracts/version%2F1/signed-archive", {
+        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(direct),
+        retryUnauthorized: false, responseIsCurrent
+      }]
+    ]);
+  });
+
+  it("does not replay generated archive with a later account when the first POST returns 401", async () => {
+    const { createApiFetch } = await import("./http");
+    let token = "actor-a";
+    const refresh = vi.fn(async () => true);
+    const onUnauthorized = vi.fn();
+    const onRequestFailure = vi.fn();
+    const attempts: Array<{ path: string; authorization: string | null }> = [];
+    const send = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      attempts.push({ path: String(input), authorization: new Headers(init?.headers).get("Authorization") });
+      token = "actor-b";
+      return Response.json({ message: "请重新登录" }, { status: 401 });
+    });
+    const apiFetch = createApiFetch({ getAccessToken: () => token, refresh, onUnauthorized, onRequestFailure }, send);
+    vi.spyOn(apiTransport, "apiFetch").mockImplementation(apiFetch);
+    const fileIds = ["file-1"];
+    const body = { archiveProtocolVersion: 2, archiveSource: "generated_approval", idempotencyKey: "request-1",
+      fileIds, confirmedMatchingSignedDocument: true, expectedApprovalInstanceId: "approval-1",
+      expectedSealTaskId: "seal-1", documentContentRevision: 3, documentContentFingerprint: "a".repeat(64) } as const;
+
+    await expect(archiveSignedContractV2("version/1", body, () => token === "actor-a")).rejects.toMatchObject({ status: 401 });
+    expect(send).toHaveBeenCalledTimes(1);
+    expect(attempts).toEqual([{ path: "/api/contracts/version%2F1/signed-archive", authorization: "Bearer actor-a" }]);
+    expect(refresh).not.toHaveBeenCalled();
+    expect(onUnauthorized).not.toHaveBeenCalled();
+    expect(onRequestFailure).not.toHaveBeenCalled();
+  });
+
+  it("does not upload a selected signed PDF under a later account after 401", async () => {
+    const { createApiFetch } = await import("./http");
+    let token = "actor-a";
+    const attempts: Array<{ path: string; authorization: string | null; uploadKey: FormDataEntryValue | null }> = [];
+    const send = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const form = init?.body;
+      expect(form).toBeInstanceOf(FormData);
+      attempts.push({ path: String(input), authorization: new Headers(init?.headers).get("Authorization"),
+        uploadKey: (form as FormData).get("idempotencyKey") });
+      token = "actor-b";
+      return Response.json({ message: "请重新登录" }, { status: 401 });
+    });
+    const refresh = vi.fn(async () => true);
+    const onUnauthorized = vi.fn();
+    vi.spyOn(apiTransport, "apiFetch").mockImplementation(createApiFetch({ getAccessToken: () => token, refresh, onUnauthorized }, send));
+
+    await expect(uploadPrivateFile(new Blob(["%PDF-1.4"], { type: "application/pdf" }), "签章.pdf",
+      "upload-1", () => token === "actor-a")).rejects.toMatchObject({ status: 401 });
+    expect(attempts).toEqual([{ path: "/api/files", authorization: "Bearer actor-a", uploadKey: "upload-1" }]);
+    expect(refresh).not.toHaveBeenCalled();
+    expect(onUnauthorized).not.toHaveBeenCalled();
   });
 
   it("freshly verifies signing material-change coordinates before one POST", async () => {
@@ -996,7 +1193,8 @@ describe("core flow read API client", () => {
         scopeKind: "project",
         projectId: "project-1",
         exportKind: "project_operating_ledger_detail",
-        confirmationPassword: "current-password"
+        confirmationPassword: "current-password",
+        numericProtocolVersion: "2"
       })
     }));
     expect(anchor.download).toBe("项目经营台账明细.csv");
@@ -1091,6 +1289,42 @@ describe("core flow read API client", () => {
       JSON.stringify({
         confirmationPassword: "current-password",
         confirmationActionId: "6f9ac3b7-8c5e-4f98-8284-221ce7844a36"
+      })
+    );
+  });
+
+  it("registers and lists construction enterprise deductions through encoded project routes", async () => {
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue({
+      ok: true,
+      json: async () => ({ id: "deduction-1" })
+    } as Response);
+
+    await recordProjectConstructionEnterpriseDeduction("project/1", {
+      feeName: "管理费",
+      amountCents: "5000",
+      occurredAt: "2026-11-20",
+      evidenceFileId: "file-1",
+      idempotencyKey: "11111111-1111-4111-8111-111111111111"
+    });
+    await fetchProjectConstructionEnterpriseDeductions("project/1", {
+      cursor: "cursor/value",
+      pageSize: 100
+    });
+    await fetchProjectConstructionEnterpriseDeductionCapability("project/1");
+
+    expect(fetchMock.mock.calls.map((call) => call[0])).toEqual([
+      "/api/projects/project%2F1/construction-enterprise-deductions",
+      "/api/projects/project%2F1/construction-enterprise-deductions?cursor=cursor%2Fvalue&pageSize=100",
+      "/api/projects/project%2F1/construction-enterprise-deductions/capability"
+    ]);
+    expect(fetchMock.mock.calls[0][1]?.method).toBe("POST");
+    expect(fetchMock.mock.calls[0][1]?.body).toBe(
+      JSON.stringify({
+        feeName: "管理费",
+        amountCents: "5000",
+        occurredAt: "2026-11-20",
+        evidenceFileId: "file-1",
+        idempotencyKey: "11111111-1111-4111-8111-111111111111"
       })
     );
   });
@@ -2343,6 +2577,12 @@ describe("core flow read API client", () => {
         confirmationPassword: "current-password"
       })
     );
+    expect(fetchMock.mock.calls[0][1]?.body).toBe("{}");
+    await withdrawPaymentApproval("FK/并联", "approval-shown-in-dialog");
+    expect(fetchMock.mock.lastCall?.[0]).toBe("/api/payments/FK%2F%E5%B9%B6%E8%81%94/approval-withdrawal");
+    expect(fetchMock.mock.lastCall?.[1]?.body).toBe(JSON.stringify({
+      expectedApprovalInstanceId: "approval-shown-in-dialog"
+    }));
   });
 
   it.each([
@@ -2709,7 +2949,7 @@ describe("core flow read API client", () => {
     vi.unstubAllGlobals();
   });
 
-  it("posts contract and settlement approval actions to the backend", async () => {
+  it("posts contract approval actions to the backend", async () => {
     const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue({
       ok: true,
       json: async () => ({ id: "ok" })
@@ -2723,40 +2963,14 @@ describe("core flow read API client", () => {
     await delegateContractApproval("contract-version-1", {
       toUserId: "contract-delegate-user"
     });
-    await approveContractSeal("contract-version-1");
-    await reviewSettlementApproval("settlement-1", {
-      decision: "approve",
-      selfReviewReason: "不会在非自审页面生成",
-      confirmationPassword: " settlement-password "
-    });
-    await remindSettlementApproval("settlement-1");
-    await transferSettlementApproval("settlement-1", {
-      toUserId: "delegate-user-1"
-    });
-    await delegateSettlementApproval("settlement-1", {
-      toUserId: "agent-user-1"
-    });
-
     expect(fetchMock.mock.calls.map((call) => call[0])).toEqual([
       "/api/contract-number-rules",
       "/api/contracts/contract-version-1/approval-reminder",
       "/api/contracts/contract-version-1/approval-transfer",
-      "/api/contracts/contract-version-1/approval-delegation",
-      "/api/contracts/contract-version-1/seal-approval",
-      "/api/settlements/settlement-1/approval",
-      "/api/settlements/settlement-1/approval-reminder",
-      "/api/settlements/settlement-1/approval-transfer",
-      "/api/settlements/settlement-1/approval-delegation"
+      "/api/contracts/contract-version-1/approval-delegation"
     ]);
     expect(fetchMock.mock.calls[0][1]?.method).toBeUndefined();
     expect(fetchMock.mock.calls.slice(1).every((call) => call[1]?.method === "POST")).toBe(true);
-    expect(fetchMock.mock.calls[5][1]?.body).toBe(
-      JSON.stringify({
-        decision: "approve",
-        selfReviewReason: "不会在非自审页面生成",
-        confirmationPassword: " settlement-password "
-      })
-    );
   });
 
   it.each([
@@ -2810,10 +3024,50 @@ describe("core flow read API client", () => {
       expect(fetchMock).toHaveBeenCalledTimes(1);
       expect(fetchMock).toHaveBeenCalledWith(
         "/api/contracts/route%2Fa",
-        {}
+        { headers: { "x-contract-numeric-protocol": "2" } }
       );
     }
   );
+
+  it("posts the same parallel round after another duty updates both timestamps", async () => {
+    const epoch = "a".repeat(64);
+    const fetchMock = vi.spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(jsonResponse(contractReviewDetail({
+        expectedParallelApprovalEpoch: epoch,
+        expectedContractUpdatedAt: "2026-08-01T00:08:00.000Z",
+        expectedApprovalUpdatedAt: "2026-08-01T00:08:00.000Z"
+      })))
+      .mockResolvedValueOnce(jsonResponse({ id: "approved" }));
+    const input = contractReviewActionInput({ expectedParallelApprovalEpoch: epoch });
+    const prepared = await prepareContractApprovalReviewAction(input);
+
+    await expect(executeContractApprovalReviewAction({
+      decision: "approve",
+      capture: () => prepared.context,
+      preflight: async () => prepared,
+      current: () => true,
+      stale: vi.fn(),
+      complete: vi.fn(),
+      fail: vi.fn(),
+      finish: vi.fn()
+    })).resolves.toMatchObject({ status: "completed" });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(fetchMock.mock.calls[1]?.[1]?.method).toBe("POST");
+    expect(JSON.parse(String(fetchMock.mock.calls[1]?.[1]?.body))).toMatchObject({
+      expectedParallelApprovalEpoch: epoch, expectedApprovalInstanceId: "approval-a", expectedNodeIndex: 1,
+      expectedContractUpdatedAt: input.expectedContractUpdatedAt, expectedApprovalUpdatedAt: input.expectedApprovalUpdatedAt
+    });
+  });
+
+  it.each([undefined, "b".repeat(64)])("refuses a missing or changed parallel epoch before the approval POST", async (freshEpoch) => {
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(jsonResponse(
+      contractReviewDetail({ expectedParallelApprovalEpoch: freshEpoch })
+    ));
+    await expect(prepareContractApprovalReviewAction(contractReviewActionInput({
+      expectedParallelApprovalEpoch: "a".repeat(64)
+    }))).rejects.toThrow("合同审批资格、风险或审批坐标已变化");
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
 
   it("freezes the contract review facts and performs one POST after the fresh GET", async () => {
     const risk = contractOwnerRisk();
@@ -4178,6 +4432,75 @@ describe("core flow read API client", () => {
     expect(fetchMock).toHaveBeenCalledTimes(9);
   });
 
+  it("searches archives by project, contract, counterparty, type, date, and keyword", async () => {
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue({
+      ok: true,
+      json: async () => ({ rows: [], summary: {} })
+    } as Response);
+
+    await fetchArchives({
+      project: "一号项目",
+      contract: "HT-001",
+      counterparty: "钢材",
+      documentType: "合同归档件",
+      archiveStatus: "已确认",
+      dateFrom: "2026-07-01",
+      dateTo: "2026-07-31",
+      keyword: "HT",
+      limit: 50
+    });
+
+    expect(fetchMock.mock.calls[0][0]).toBe(
+      "/api/archives?project=%E4%B8%80%E5%8F%B7%E9%A1%B9%E7%9B%AE&contract=HT-001&counterparty=%E9%92%A2%E6%9D%90&documentType=%E5%90%88%E5%90%8C%E5%BD%92%E6%A1%A3%E4%BB%B6&archiveStatus=%E5%B7%B2%E7%A1%AE%E8%AE%A4&dateFrom=2026-07-01&dateTo=2026-07-31&keyword=HT&limit=50"
+    );
+  });
+
+  it("checks package capability per file before streaming the zip", async () => {
+    const capability = {
+      availableActions: ["download_archive_package"],
+      action: { key: "download_archive_package", enabled: true },
+      fileCount: 2,
+      totalBytes: 2048
+    };
+    const fetchMock = vi.spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(new Response(JSON.stringify(capability)))
+      .mockResolvedValueOnce(new Response("PK-zip", {
+        status: 200,
+        headers: {
+          "content-type": "application/zip",
+          "content-disposition": "attachment; filename*=UTF-8''%E8%B5%84%E6%96%99%E5%BA%93%E6%89%93%E5%8C%85-20261123-1805.zip"
+        }
+      }));
+
+    const checked = await getArchiveDownloadPackageCapability(["file-1", "file-2"]);
+    expect(checked).toEqual(capability);
+    const result = await createArchiveDownloadPackage(["file-1", "file-2"]);
+
+    expect(fetchMock.mock.calls.map((call) => call[0])).toEqual([
+      "/api/files/download-package-capability?fileIds=file-1,file-2",
+      "/api/files/download-package"
+    ]);
+    expect(fetchMock.mock.calls[1][1]).toMatchObject({
+      method: "POST",
+      body: JSON.stringify({ fileIds: ["file-1", "file-2"] })
+    });
+    expect(result.fileName).toBe("资料库打包-20261123-1805.zip");
+    expect(result.blob.size).toBe(6);
+  });
+
+  it("does not post a package when the backend capability is disabled", async () => {
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(new Response(JSON.stringify({
+      availableActions: [],
+      action: { key: "download_archive_package", enabled: false },
+      fileCount: 1,
+      totalBytes: 1
+    })));
+
+    const capability = await getArchiveDownloadPackageCapability(["file-1"]);
+    expect(capability.action.enabled).toBe(false);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
   it("requests private file download tickets through the backend", async () => {
     const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue({
       ok: true,
@@ -4573,6 +4896,7 @@ function contractReviewDetail(
     expectedApprovalInstanceId?: string;
     expectedNodeIndex?: number;
     expectedApprovalUpdatedAt?: string;
+    expectedParallelApprovalEpoch?: string;
     reviewApprovalContext?: null;
     availableActions?: Array<Record<string, unknown>>;
     requiresSelfReviewConfirmation?: boolean;
@@ -4590,6 +4914,7 @@ function contractReviewDetail(
         ? null
         : {
             expectedContractUpdatedAt,
+            expectedParallelApprovalEpoch: overrides.expectedParallelApprovalEpoch,
             expectedApprovalInstanceId:
               overrides.expectedApprovalInstanceId ?? "approval-a",
             expectedNodeIndex: overrides.expectedNodeIndex ?? 1,

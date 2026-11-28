@@ -1,4 +1,4 @@
-import { BadRequestException, Controller, Get, Param, Post, UploadedFile, UseInterceptors } from "@nestjs/common";
+import { BadRequestException, Controller, Get, Headers, Param, Post, Query, UploadedFile, UseInterceptors } from "@nestjs/common";
 import { CurrentUser } from "../auth/decorators/current-user.decorator";
 import type { AuthenticatedUser } from "../auth/auth.types";
 import { FileInterceptor } from "../file/uploaded-file";
@@ -91,8 +91,35 @@ export class MeController {
     return this.me.getWorkbenchSummary(user.id);
   }
 
+  @Get("work-item-notice-keys")
+  workItemNoticeKeys(@CurrentUser() user: AuthenticatedUser, @Query("version") version: string, @Query("after") after?: string) {
+    if (!this.isNoticeVersion(version) || (after !== undefined && !this.isNoticeKey(after))) {
+      throw new BadRequestException("待办提示位置无效，请刷新");
+    }
+    return this.me.getWorkItemNoticeKeys(user.id, version, after);
+  }
+
+  @Get("work-item-notice-details")
+  workItemNoticeDetails(@CurrentUser() user: AuthenticatedUser, @Query("version") version: string, @Query("keys") keys: string) {
+    const requested = typeof keys === "string" && keys.length <= 1289 ? keys.split(",") : [];
+    if (!this.isNoticeVersion(version) || !requested.length || requested.length > 10 || !requested.every(key => this.isNoticeKey(key))) {
+      throw new BadRequestException("待办提示位置无效，请刷新");
+    }
+    return this.me.getWorkItemNoticeDetails(user.id, version, [...new Set(requested)]);
+  }
+
+  private isNoticeVersion(value: unknown) {
+    return typeof value === "string" && /^[0-9a-f]{64}$/u.test(value);
+  }
+
+  private isNoticeKey(value: unknown) {
+    return typeof value === "string" && /^[0-9a-f]{64}(?:[0-9a-f]{64})?$/u.test(value);
+  }
+
   @Get("work-items")
-  workItems(@CurrentUser() user: AuthenticatedUser) {
-    return this.me.getWorkItems(user.id);
+  workItems(@CurrentUser() user: AuthenticatedUser, @Headers("x-work-item-notices") reminders?: string) {
+    if (reminders === undefined) return this.me.getWorkItems(user.id);
+    if (!/^\d{1,10}$/.test(reminders)) throw new BadRequestException("待办列表位置无效，请刷新");
+    return this.me.getWorkItemNotices(user.id, Number(reminders));
   }
 }

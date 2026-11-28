@@ -1,0 +1,16 @@
+--- direct-payment-capacity-concurrency.spec.ts
++++ direct-payment-capacity-concurrency.spec.ts
+@@ -80 +80 @@
+-            assertGenericContractPaymentStageCapacity(
++            assertDirectPaymentApplicationCapacity(
+@@ -84 +84,2 @@
+-              requestedAmountCents: bigint
++              requestedAmountCents: bigint,
++              textAgreementLimit: bigint | null
+@@ -87 +88 @@
+-        ).assertGenericContractPaymentStageCapacity.bind(service);
++        ).assertDirectPaymentApplicationCapacity.bind(service);
+@@ -141 +142,2 @@
+-              600n
++              600n,
++              null

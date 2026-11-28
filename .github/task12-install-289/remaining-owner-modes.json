@@ -1,0 +1,359 @@
+{
+  "project-funding": {
+    "files": {
+      "src/database/project-funding-availability-concurrency.spec.ts": {
+        "sha": "eec5ec7e2c5fba59328e920b6d6ce6c6affb7f78040147d8184a527823017d45",
+        "count": 1
+      }
+    },
+    "flags": {
+      "RUN_PROJECT_FUNDING_DATABASE": "1",
+      "PROJECT_FUNDING_DATABASE_URL": "url",
+      "JG_PROJECT_FUNDING_289_RUN_ID": "run"
+    },
+    "pool": null,
+    "secret": false,
+    "sql": {},
+    "evidence": "e67b0581a04e4ddf14fe51008a46e46100396c55adaa948e23a804ec00b0442e"
+  },
+  "generic-batch": {
+    "files": {
+      "src/contract/contract-approval-route.service.spec.ts": {
+        "sha": "dd1615acc9226c90a12eb516678e6810000b8b566dcf5bb2886334e788ba07c7",
+        "count": 24
+      },
+      "src/database/settlement-contract-cap-concurrency.spec.ts": {
+        "sha": "567e513c06cac85b00a01e4f77a9d1f77f9d12055f86997f35f2de97faeeaf00",
+        "count": 1
+      },
+      "src/database/contract-change-limit-transaction.spec.ts": {
+        "sha": "a6bf19dcd563e6df416b88a7a0037148d76368cf566bc90ca6c0bc4020117fa3",
+        "count": 1
+      },
+      "src/database/project-affiliate-business-fact-db.spec.ts": {
+        "sha": "c94c3abe5a8928ba64f758c7d5a36751fd18ac025457f9da964c9052e72b3c2f",
+        "count": 3
+      },
+      "src/database/approval-review-concurrency.spec.ts": {
+        "sha": "5db371ad4c38a2c484f6da108d9b3bbc9a71bd740f21b0a0ac5ba77e3adb2332",
+        "count": 5
+      },
+      "src/database/contract-change-baseline-concurrency.spec.ts": {
+        "sha": "fa1b9f5fa222a458f1219d98e0f03f48b2fdb3f4cd7913411ca1dcfe96e42db9",
+        "count": 1
+      },
+      "src/database/project-upstream-fund-fact-db.spec.ts": {
+        "sha": "024eabfd2fc18c36e38d678251741ae24d83cdb5629faf311a4f870868c16a0a",
+        "count": 2
+      },
+      "src/database/clearing-concurrency.spec.ts": {
+        "sha": "d7225541161685c2d4a5bc18ec1ef4b8600adb8a096099c0bc20fcd758e1023a",
+        "count": 1
+      },
+      "src/database/operating-source-replay-consistency.spec.ts": {
+        "sha": "cfa360e2596419148a7b3ac4102d5e7ed36b3cbca4e4537deaea8f88b04f2d31",
+        "count": 1
+      },
+      "src/database/pol05-operating-source-facts.spec.ts": {
+        "sha": "26cc7b6102604a92f78457edf036164464a4474a7a0a21b51655c953406f3e95",
+        "count": 2
+      },
+      "src/database/contract-governance-file-concurrency.spec.ts": {
+        "sha": "a1b83a6d3acc22231e46b4707e3b1b332cea566318d6a484f11b505e469fdc64",
+        "count": 1
+      },
+      "src/database/project-external-upstream-db.spec.ts": {
+        "sha": "cc5974bb3c652c0381c3e325c2636aa2aa9d831ec545416159a758d5abbac9bc",
+        "count": 2
+      },
+      "src/database/fund-account-postgres.spec.ts": {
+        "sha": "8581229a50367058aab2ad48940d11ce0f209e87930512d4c34a47e07ec73ee2",
+        "count": 12
+      }
+    },
+    "flags": {
+      "DATABASE_URL": "url",
+      "RUN_CONTRACT_ROUTE_CONCURRENCY": "1",
+      "RUN_SETTLEMENT_CONTRACT_CAP_CONCURRENCY": "1",
+      "RUN_CONTRACT_CHANGE_LIMIT_DATABASE": "1",
+      "RUN_PROJECT_AFFILIATE_BUSINESS_DB_TESTS": "1",
+      "RUN_APPROVAL_REVIEW_CONCURRENCY": "1",
+      "RUN_CONTRACT_CHANGE_BASELINE_CONCURRENCY": "1",
+      "RUN_PROJECT_UPSTREAM_FUND_DB_TESTS": "1",
+      "RUN_CLEARING_DATABASE": "1",
+      "RUN_OPERATING_SOURCE_REPLAY_DATABASE": "1",
+      "RUN_POL05_OPERATING_SOURCE_DATABASE": "1",
+      "OPERATING_LEDGER_DATABASE_URL": "url",
+      "RUN_CONTRACT_GOVERNANCE_CONCURRENCY": "1",
+      "RUN_PROJECT_EXTERNAL_UPSTREAM_DB_TESTS": "1",
+      "RUN_REGISTERED_FUND_ACCOUNT_DATABASE": "1",
+      "JG_GENERIC_289_RUN_ID": "run"
+    },
+    "pool": "default",
+    "secret": true,
+    "sql": {},
+    "evidence": "736262acd4c0ca650238b62c743b41a7729db63833f95b0baa3515e47e83149e"
+  },
+  "operating-ledger": {
+    "files": {
+      "src/database/operating-ledger-concurrency.spec.ts": {
+        "sha": "675c53163e4a0fc2b2deb109ab7705319bdf64a2a0ce28a25419e7c433afa610",
+        "count": 1
+      }
+    },
+    "flags": {
+      "RUN_OPERATING_LEDGER_DATABASE": "1",
+      "OPERATING_LEDGER_DATABASE_URL": "url",
+      "JG_OPERATING_LEDGER_289_RUN_ID": "run"
+    },
+    "pool": "default",
+    "secret": true,
+    "sql": {
+      "20260831120000_pol13d_fund_execution_v7": "a166b7105343f6a19b629de1ba64073a167106731e114eb273db2a848dc22378",
+      "20261019120000_operating_impact_created_at_return": "fd8fe068e6301b39bd004dda88092d9d1279682cd45794652182e1b778a22ff7"
+    },
+    "evidence": "5ffedc8d2aa636009742b67e6364ec13bd4b56b9626fc014016995d02b027422"
+  },
+  "pol215": {
+    "files": {
+      "src/database/operating-takeover-constraints.spec.ts": {
+        "sha": "88a44969d79432d4f699a719623868182f3f6dfe5bb94bbb08fbdf79a0f71b96",
+        "count": 3
+      }
+    },
+    "flags": {
+      "RUN_POL215_DATABASE": "1",
+      "DATABASE_URL": "url"
+    },
+    "pool": null,
+    "secret": false,
+    "sql": {},
+    "evidence": "886852e72e09e73ed2feea61c58a3afd0669b57c98dccd8cb20805141c560205"
+  },
+  "affiliate-subject": {
+    "files": {
+      "src/database/project-affiliate-subject-db.spec.ts": {
+        "sha": "a43e914924b6821a06665cdaee141446fc91f3801b4f9660b31785f6225e1545",
+        "count": 2
+      }
+    },
+    "flags": {
+      "RUN_PROJECT_AFFILIATE_DB_TESTS": "1",
+      "DATABASE_URL": "url"
+    },
+    "pool": null,
+    "secret": false,
+    "sql": {},
+    "evidence": "7a815be7f79af773cc36883a82ba1bf24394fcb101aad75438b39569d293c1d4"
+  },
+  "business-definition": {
+    "files": {
+      "src/database/business-entry-definition-postgres.owned282.spec.ts": {
+        "sha": "a6771b7fb0c936633fc7840edd7ca66402eec3423f9473a0e35408372ae71a90",
+        "count": 8
+      }
+    },
+    "flags": {
+      "RUN_PROJECT_OPERATING_PROFILE_DB_TESTS": "1",
+      "DATABASE_URL": "url",
+      "TASK_BUSINESS_DEFINITION_282_RUN_ID": "run"
+    },
+    "pool": "2",
+    "secret": false,
+    "sql": {},
+    "evidence": "2a1c7b54d38de3389f8517803631376a7d346d2fcd9a948bbbc5dd0e123b2e2f"
+  },
+  "fund-movement": {
+    "files": {
+      "src/database/fund-movement-concurrency.spec.ts": {
+        "sha": "92c54b6d54171ced1e0a791482b7b98d636824b4570ec832a12d46787249501e",
+        "count": 9,
+        "titles": [
+          "rejects a production or non-local database target",
+          "rejects child evidence inserts after submission",
+          "rejects direct writes without the application command context",
+          "rejects a relationship confirmation while the parent is still draft",
+          "rejects a formal OperatingFact attachment while the parent is draft",
+          "rejects authoritative source snapshot projection without its server marker",
+          "does not commit a source snapshot projection before parent confirmation",
+          "freezes submitted actor and timestamp",
+          "rejects project, contract, settlement and relationship coordinate drift"
+        ]
+      }
+    },
+    "flags": {
+      "RUN_FUND_MOVEMENT_DATABASE": "1",
+      "FUND_MOVEMENT_DATABASE_URL": "url",
+      "JG_FUND_MOVEMENT_289_RUN_ID": "run"
+    },
+    "pool": "default",
+    "secret": true,
+    "sql": {},
+    "evidence": "22acbec81ed5e1a85303aa1608ee0f37d21fab02c37ab876f9d8ce670518cfd6"
+  },
+  "takeover-correction": {
+    "files": {
+      "src/database/contract-takeover-correction-concurrency.spec.ts": {
+        "sha": "75911c14bce47cb5117d41a9d522742a3e739536370eb104bfee899242f38b6f",
+        "count": 2
+      }
+    },
+    "flags": {
+      "RUN_CONTRACT_TAKEOVER_CORRECTION_CONCURRENCY": "1",
+      "CONTRACT_TAKEOVER_CORRECTION_DATABASE_URL": "url",
+      "JG_TAKEOVER_CORRECTION_289_RUN_ID": "run"
+    },
+    "pool": null,
+    "secret": false,
+    "sql": {},
+    "evidence": "fa52d7f369f6d43151a076e26e061cf9d332e9e6c4fcda71f411eb5a6a1b92ec"
+  },
+  "participant-history": {
+    "files": {
+      "src/database/project-operating-profile-db.spec.ts": {
+        "sha": "d43545c5ffef576409090ae73c030d4ca0b16e2ac8dfc3a84c107d5d8cf293de",
+        "count": 32,
+        "titles": [
+          "rejects a production or non-local database target",
+          "rejects a non-dedicated participant-history target",
+          "does not lock on approval pending and locks when the expense becomes formal",
+          "locks the configured construction enterprise on a pre-activation formal fact without assignment fields",
+          "rejects a new formal fact before any construction enterprise is configured",
+          "locks a later activation from an existing proxy-payment fact and then forbids clearing the date",
+          "rejects a new receipt that predates the construction enterprise",
+          "revalidates the construction-enterprise period when a non-null ledger date moves earlier",
+          "rejects activation when an existing formal fact references a company outside its participation period",
+          "enforces the inclusive start and exclusive end of a participating-company period",
+          "serializes concurrent participant additions so only one interval wins",
+          "rejects directly truncating a participant period across an existing formal fact",
+          "revalidates formal facts when an arranged stop date is moved earlier",
+          "rejects activation when a legacy formal fact references a replaced construction enterprise",
+          "serializes deactivation against a concurrent formal fact and preserves the fact period",
+          "rejects creating a project with an already-enabled operating ledger",
+          "rejects moving the current construction enterprise after an enabled ledger date",
+          "rejects mutating a locked construction-enterprise identity snapshot in place",
+          "serializes activation against an unlisted-company formal fact",
+          "blocks DELETE and end-date for all six fact roles through stable and frozen identities",
+          "protects independent impact subjects through stable and frozen identities",
+          "allows empty deletion, a later stop, and ignores other companies or projects",
+          "serializes fact and independent-impact writes against DELETE and end-date in both commit orders",
+          "maps a real Repeatable Read 40001 to 409 without retry or dirty fact",
+          "locks inverse multi-participant stable/version roles without deadlock",
+          "serializes operating-ledger activation against direct end-date in both commit orders",
+          "rejects activation when the sole participant has a future end and leaves no continuous successor",
+          "allows activation when adjacent half-open participant periods cover through infinity",
+          "preserves all five legacy formal-flow guards against direct end-date in both commit orders",
+          "serializes different-participant exits through the project fence at every supported isolation level",
+          "lets the least-privileged runtime role use the fixed-schema fence without direct fence writes",
+          "preserves terminal validator semantics and uses all seven directed indexes with the default planner"
+        ]
+      }
+    },
+    "flags": {
+      "RUN_PROJECT_OPERATING_PROFILE_DB_TESTS": "1",
+      "RUN_PARTICIPANT_HISTORY_INTEGRITY_DATABASE": "1",
+      "DATABASE_URL": "url",
+      "PARTICIPANT_HISTORY_INTEGRITY_DATABASE_URL": "url",
+      "JG_PARTICIPANT_HISTORY_289_RUN_ID": "run"
+    },
+    "pool": "default",
+    "secret": true,
+    "sql": {},
+    "evidence": "71972ad9d589cc99d19d683b1d07d396bd9b5e65e5f63894e6af5b4626991501"
+  },
+  "payable-settlement": {
+    "files": {
+      "src/database/payable-settlement-concurrency.spec.ts": {
+        "sha": "cd26b8db3232e7881e18f128e6ab6a4b407001cccf1d4247585bb74fd41c76a8",
+        "count": 20,
+        "titles": [
+          "rejects a production or non-local database target",
+          "allows at most one concurrent allocation when both attempts would exceed the payment",
+          "keeps one durable receipt for a contended idempotency key",
+          "blocks allocation mutation and case mutation after confirmation",
+          "rejects direct non-draft inserts even with complete lifecycle audit fields",
+          "requires a confirmed cross-company case to carry its proxy relationship root",
+          "requires an immutable server-issued bank-holder authority and evidence SoD",
+          "locks the authority evidence row before freezing its hash",
+          "binds proxy payer attestations to an approved finance-director action and its evidence",
+          "rejects direct allocations whose typed source coordinates do not match a confirmed wage ref",
+          "keeps project scope while allowing a separately authorized execution payer",
+          "rejects direct allocations when the request contract lineage crosses project boundaries",
+          "rejects a direct allocation whose amount exceeds the existing execution",
+          "enforces the cumulative wage-binding amount for one payment execution",
+          "enforces cumulative wage-binding balance for one source ref across executions",
+          "enforces one execution total across generic allocations and wage bindings in either write order",
+          "runs the real service with one durable allocation and receipt under an idempotent race",
+          "confirms a cross-company service path while reusing voucher and authorization evidence",
+          "task07 continues a frozen cross-company payment after both directory companies stop new selections",
+          "rolls back case, allocation, receipt and audit when the real service audit step fails"
+        ]
+      }
+    },
+    "flags": {
+      "RUN_PAYABLE_SETTLEMENT_DATABASE": "1",
+      "PAYABLE_SETTLEMENT_DATABASE_URL": "url",
+      "JG_PAYABLE_SETTLEMENT_289_RUN_ID": "run"
+    },
+    "pool": "default",
+    "secret": false,
+    "sql": {},
+    "evidence": "e2dd043a020cdd30561fb99bce6d510f2e6f9b4808ca8d35a0e4110d5e810a18"
+  },
+  "takeover-task1": {
+    "files": {
+      "src/database/contract-takeover-confirmation-concurrency.spec.ts": {
+        "sha": "ba251a0531ad5dab20531272316ba2bfe1a5daccd1c66ec03fdb7c397cd9d6d3",
+        "count": 3
+      },
+      "src/database/contract-takeover-balance-concurrency.spec.ts": {
+        "sha": "46fe9aae3e68837ca6622ce711eda33690126c7813edc54c61b67a48c1d3042d",
+        "count": 2
+      }
+    },
+    "flags": {
+      "RUN_CONTRACT_TAKEOVER_CONFIRMATION_CONCURRENCY": "1",
+      "RUN_CONTRACT_TAKEOVER_BALANCE_CONCURRENCY": "1",
+      "CONTRACT_TAKEOVER_CONFIRMATION_DATABASE_URL": "url",
+      "CONTRACT_TAKEOVER_BALANCE_DATABASE_URL": "url",
+      "JG_TAKEOVER_TASK1_289_RUN_ID": "run"
+    },
+    "pool": "default",
+    "secret": false,
+    "sql": {},
+    "evidence": "5ce6ef5175a280581732a6473b32d6692d3d786ac4c4005254cd745fcb9acd48"
+  },
+  "file-binding-manifest": {
+    "files": {
+      "src/database/file-binding-manifest.spec.ts": {
+        "sha": "9da2b748db9fd014a718c36722e3c459895b84cac80ade88809e93ebd4b05218",
+        "count": 1
+      }
+    },
+    "flags": {
+      "RUN_FILE_BINDING_MANIFEST_DATABASE": "1",
+      "DATABASE_URL": "url"
+    },
+    "pool": null,
+    "secret": false,
+    "sql": {},
+    "evidence": "afa37e8c963dc0688c6eb44afd2616d90a5ef623663c9a1453d6a03fb144a609"
+  },
+  "spot-material": {
+    "files": {
+      "src/database/spot-material-classification-concurrency.owned282.spec.ts": {
+        "sha": "6a0d2e485d9bf899992305274fddaf8a6d123eaab2d4350400548a8469898f14",
+        "count": 1
+      }
+    },
+    "flags": {
+      "RUN_SPOT_MATERIAL_CLASSIFICATION_DATABASE": "1",
+      "SPOT_MATERIAL_CLASSIFICATION_DATABASE_URL": "url",
+      "TASK_SPOT_MATERIAL_282_RUN_ID": "run"
+    },
+    "pool": null,
+    "secret": false,
+    "sql": {},
+    "evidence": "eebbad19a32c9cab7c360b8eba8c4c91a6cd1fe2ba8bcdcdb5a8abdf94664042"
+  }
+}

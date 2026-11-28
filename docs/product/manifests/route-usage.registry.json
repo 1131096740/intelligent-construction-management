@@ -3,25 +3,25 @@
   "authorizationScope": "route_usage_classification_only",
   "exitCandidateSemantics": "candidate_only_no_deletion_authorization",
   "expectations": {
-    "routeCount": 695,
-    "classificationOverrideCount": 222,
-    "derivedProductionPageCount": 473,
-    "classificationOverrideSha256": "7699a4b8cc0fd88e24bfc3300dcd67df59a5cdecdfccc6a9c0c206b76df37a26",
-    "consumerSurfaceOverrideSha256": "3b71acbbd5b304d3589ced222d0c7f364ddea35efbc235f2791f093fcd951a60",
+    "routeCount": 898,
+    "classificationOverrideCount": 301,
+    "derivedProductionPageCount": 597,
+    "classificationOverrideSha256": "8ab76be36b8e6846dca04b7ee021dede876a613986c512c84f1e939f82be8231",
+    "consumerSurfaceOverrideSha256": "c14620f08f076d0b1bc3a7ecfb258a147bdeb7ca120f68c23cdb9ce10521ad49",
     "usageCounts": {
-      "page": 489,
+      "page": 616,
       "external_takeover": 70,
-      "exit_candidate": 99,
-      "internal_task": 37,
+      "exit_candidate": 138,
+      "internal_task": 74,
       "unclassified": 0
     },
     "consumerSurfaceCounts": {
-      "web_api_wrapper": 542,
+      "web_api_wrapper": 668,
       "auth_store": 5,
-      "signed_ticket_delivery": 1,
+      "signed_ticket_delivery": 2,
       "machine_probe": 2,
-      "operator_endpoint": 35,
-      "none": 110
+      "operator_endpoint": 72,
+      "none": 149
     }
   },
   "overrides": [
@@ -64,8 +64,8 @@
     {
       "method": "DELETE",
       "path": "/approval-delegations/:delegationId",
-      "usage": "exit_candidate",
-      "reason": "stage_d_c_p1_03_p1_04_readonly_isolation_candidate_only_no_deletion_authorization"
+      "usage": "page",
+      "reason": "task05_exact_duty_delegation_active_page_with_fresh_server_capability_and_transactional_authorization"
     },
     {
       "method": "DELETE",
@@ -78,12 +78,6 @@
       "path": "/contract-workbench/:contractVersionId/parties/:partySnapshotId",
       "usage": "exit_candidate",
       "reason": "superseded_contract_draft_aggregate_party_write_candidate_only_no_deletion_authorization"
-    },
-    {
-      "method": "GET",
-      "path": "/contract-layout-template-versions/:versionId/preview-generation",
-      "usage": "exit_candidate",
-      "reason": "stage_d_c_p1_02_template_governance_readonly_candidate_only_no_deletion_authorization"
     },
     {
       "method": "GET",
@@ -255,12 +249,6 @@
     },
     {
       "method": "PATCH",
-      "path": "/contract-layout-template-versions/:versionId",
-      "usage": "exit_candidate",
-      "reason": "stage_d_c_p1_02_template_governance_readonly_candidate_only_no_deletion_authorization"
-    },
-    {
-      "method": "PATCH",
       "path": "/contract-number-rules/:ruleId",
       "usage": "exit_candidate",
       "reason": "stage_d_c_p1_02_template_governance_readonly_candidate_only_no_deletion_authorization"
@@ -334,8 +322,8 @@
     {
       "method": "POST",
       "path": "/approval-delegations",
-      "usage": "exit_candidate",
-      "reason": "stage_d_c_p1_03_p1_04_readonly_isolation_candidate_only_no_deletion_authorization"
+      "usage": "page",
+      "reason": "task05_exact_duty_delegation_active_page_with_fresh_server_capability_and_transactional_authorization"
     },
     {
       "method": "POST",
@@ -411,31 +399,7 @@
     },
     {
       "method": "POST",
-      "path": "/contract-layout-template-versions/:versionId/clone",
-      "usage": "exit_candidate",
-      "reason": "stage_d_c_p1_02_template_governance_readonly_candidate_only_no_deletion_authorization"
-    },
-    {
-      "method": "POST",
       "path": "/contract-layout-template-versions/:versionId/discard",
-      "usage": "exit_candidate",
-      "reason": "stage_d_c_p1_02_template_governance_readonly_candidate_only_no_deletion_authorization"
-    },
-    {
-      "method": "POST",
-      "path": "/contract-layout-template-versions/:versionId/inspection",
-      "usage": "exit_candidate",
-      "reason": "stage_d_c_p1_02_template_governance_readonly_candidate_only_no_deletion_authorization"
-    },
-    {
-      "method": "POST",
-      "path": "/contract-layout-template-versions/:versionId/preview-generation",
-      "usage": "exit_candidate",
-      "reason": "stage_d_c_p1_02_template_governance_readonly_candidate_only_no_deletion_authorization"
-    },
-    {
-      "method": "POST",
-      "path": "/contract-layout-template-versions/:versionId/publication",
       "usage": "exit_candidate",
       "reason": "stage_d_c_p1_02_template_governance_readonly_candidate_only_no_deletion_authorization"
     },
@@ -444,24 +408,6 @@
       "path": "/contract-layout-template-versions/:versionId/revoke",
       "usage": "exit_candidate",
       "reason": "replaced_revoke_route_candidate_only_no_deletion_authorization"
-    },
-    {
-      "method": "POST",
-      "path": "/contract-layout-template-versions/:versionId/stop",
-      "usage": "exit_candidate",
-      "reason": "stage_d_c_p1_02_template_governance_readonly_candidate_only_no_deletion_authorization"
-    },
-    {
-      "method": "POST",
-      "path": "/contract-layout-template-versions/:versionId/submission",
-      "usage": "exit_candidate",
-      "reason": "stage_d_c_p1_02_template_governance_readonly_candidate_only_no_deletion_authorization"
-    },
-    {
-      "method": "POST",
-      "path": "/contract-layout-templates",
-      "usage": "exit_candidate",
-      "reason": "stage_d_c_p1_02_template_governance_readonly_candidate_only_no_deletion_authorization"
     },
     {
       "method": "POST",
@@ -600,6 +546,54 @@
       "path": "/draft-retention/controlled-entry",
       "usage": "internal_task",
       "reason": "super_admin_operator_preview_only"
+    },
+    {
+      "method": "GET",
+      "path": "/wage-statements/capabilities",
+      "usage": "internal_task",
+      "reason": "issue_425_historical_wage_access_capabilities_legacy_clients"
+    },
+    {
+      "method": "POST",
+      "path": "/wage-statements/approved-sources",
+      "usage": "exit_candidate",
+      "reason": "issue_425_legacy_wage_mutation_retired_history_reads_preserved"
+    },
+    {
+      "method": "POST",
+      "path": "/wage-statements/drafts",
+      "usage": "exit_candidate",
+      "reason": "issue_425_legacy_wage_mutation_retired_history_reads_preserved"
+    },
+    {
+      "method": "POST",
+      "path": "/wage-statements/:statementId/revisions",
+      "usage": "exit_candidate",
+      "reason": "issue_425_legacy_wage_mutation_retired_history_reads_preserved"
+    },
+    {
+      "method": "POST",
+      "path": "/wage-statements/:statementId/draft",
+      "usage": "exit_candidate",
+      "reason": "issue_425_legacy_wage_mutation_retired_history_reads_preserved"
+    },
+    {
+      "method": "POST",
+      "path": "/wage-statements/:statementId/submit",
+      "usage": "exit_candidate",
+      "reason": "issue_425_legacy_wage_mutation_retired_history_reads_preserved"
+    },
+    {
+      "method": "POST",
+      "path": "/wage-statements/:statementId/return",
+      "usage": "exit_candidate",
+      "reason": "issue_425_legacy_wage_mutation_retired_history_reads_preserved"
+    },
+    {
+      "method": "POST",
+      "path": "/wage-statements/:statementId/confirm",
+      "usage": "exit_candidate",
+      "reason": "issue_425_legacy_wage_mutation_retired_history_reads_preserved"
     },
     {
       "method": "GET",
@@ -906,6 +900,18 @@
       "path": "/projects/:projectId/owner-contracts/:ownerContractId/confirmation",
       "usage": "external_takeover",
       "reason": "project_historical_or_affiliate_external_fact"
+    },
+    {
+      "method": "POST",
+      "path": "/projects/:projectId/financing-quotas",
+      "usage": "exit_candidate",
+      "reason": "fnd_05_new_financing_quota_application_retired_history_preserved"
+    },
+    {
+      "method": "POST",
+      "path": "/projects/:projectId/financing-quotas/file-uploads",
+      "usage": "exit_candidate",
+      "reason": "fnd_05_new_financing_quota_application_retired_history_preserved"
     },
     {
       "method": "POST",
@@ -1353,9 +1359,477 @@
     },
     {
       "method": "POST",
+      "path": "/settlements/:settlementId/approval-withdrawal",
+      "usage": "exit_candidate",
+      "reason": "issue_425_old_serial_settlement_approval_retired_preserve_history"
+    },
+    {
+      "method": "POST",
+      "path": "/settlements/:settlementId/approval-transfer",
+      "usage": "exit_candidate",
+      "reason": "issue_425_old_serial_settlement_approval_retired_preserve_history"
+    },
+    {
+      "method": "POST",
+      "path": "/settlements/:settlementId/approval-delegation",
+      "usage": "exit_candidate",
+      "reason": "issue_425_old_serial_settlement_approval_retired_preserve_history"
+    },
+    {
+      "method": "POST",
+      "path": "/settlements/:settlementId/approval",
+      "usage": "exit_candidate",
+      "reason": "issue_425_old_serial_settlement_approval_retired_preserve_history"
+    },
+    {
+      "method": "POST",
       "path": "/settlements/:settlementId/approval-reminder",
       "usage": "exit_candidate",
-      "reason": "unified_approval_progress_sms_ui_replaces_legacy_reminder_http_410_retired_no_deletion_authorization"
+      "reason": "issue_425_old_serial_settlement_approval_retired_preserve_history"
+    },
+    {
+      "method": "GET",
+      "path": "/contract-business-scenarios/available",
+      "usage": "exit_candidate",
+      "reason": "task09_CON09_manual_selection_replaces_recommendation_test_only_read_candidate_no_deletion_authorization"
+    },
+    {
+      "method": "GET",
+      "path": "/contract-business-scenarios/recommendations",
+      "usage": "exit_candidate",
+      "reason": "task09_CON09_manual_selection_replaces_recommendation_test_only_read_candidate_no_deletion_authorization"
+    },
+    {
+      "method": "GET",
+      "path": "/payment-executions/:paymentId/existing-source/:type/:id",
+      "usage": "internal_task",
+      "reason": "task16_current_company_finance_or_comprehensive_role_authorized_source_identity_read_only_no_web_consumer_options_to_results_is_user_entry_not_production_usage_proof"
+    },
+    {
+      "method": "GET",
+      "path": "/payment-executions/notifications",
+      "usage": "internal_task",
+      "reason": "task16_current_company_role_own_directed_notification_status_read_only_no_dispatch_no_web_consumer_task37_global_ui_pending_not_production_usage_proof"
+    },
+    {
+      "method": "GET",
+      "path": "/contracts/:contractVersionId/change-eligibility",
+      "usage": "exit_candidate",
+      "reason": "contract_change_draft_flow_replaced_by_signed_supplementary_agreement_zero_web_production_calls_candidate_only"
+    },
+    {
+      "method": "GET",
+      "path": "/projects/:projectId/signed-contract-settlements/:id/attachments/:fileId/download",
+      "usage": "page",
+      "reason": "signed_settlement_attachment_ticket_followup_delivery_consumed_by_web_payment_basis_and_signed_registration"
+    },
+    {
+      "method": "POST",
+      "path": "/contracts/:contractVersionId/change-drafts",
+      "usage": "exit_candidate",
+      "reason": "issue_425_old_change_draft_write_returns_410_current_acceptance_uses_signed_supplement"
+    },
+    {
+      "method": "GET",
+      "path": "/payment-financial/payments/:paymentId/corrections",
+      "usage": "internal_task",
+      "reason": "issue_400_finance_correction_and_refund_api_for_unified_entry_page"
+    },
+    {
+      "method": "GET",
+      "path": "/payment-financial/payments/:paymentId/refunds/capability",
+      "usage": "internal_task",
+      "reason": "issue_400_finance_correction_and_refund_api_for_unified_entry_page"
+    },
+    {
+      "method": "POST",
+      "path": "/payment-financial/corrections/:correctionId/confirmation",
+      "usage": "internal_task",
+      "reason": "issue_400_finance_correction_and_refund_api_for_unified_entry_page"
+    },
+    {
+      "method": "POST",
+      "path": "/payment-financial/payments/:paymentId/executions/:executionId/corrections",
+      "usage": "internal_task",
+      "reason": "issue_400_finance_correction_and_refund_api_for_unified_entry_page"
+    },
+    {
+      "method": "POST",
+      "path": "/payment-financial/payments/:paymentId/executions/:executionId/refunds",
+      "usage": "internal_task",
+      "reason": "issue_400_finance_correction_and_refund_api_for_unified_entry_page"
+    },
+    {
+      "method": "GET",
+      "path": "/actual-purchase-batches/:batchId",
+      "usage": "internal_task",
+      "reason": "issue_403_actual_purchase_batch_detail_and_update_api_not_yet_consumed_by_web_page"
+    },
+    {
+      "method": "PATCH",
+      "path": "/actual-purchase-batches/:batchId",
+      "usage": "internal_task",
+      "reason": "issue_403_actual_purchase_batch_detail_and_update_api_not_yet_consumed_by_web_page"
+    },
+    {
+      "method": "POST",
+      "path": "/other-project-payments",
+      "usage": "internal_task",
+      "reason": "issue_405_other_project_payment_write_api_not_yet_consumed_by_web_page"
+    },
+    {
+      "method": "POST",
+      "path": "/other-project-payments/:claimId/submission",
+      "usage": "internal_task",
+      "reason": "issue_405_other_project_payment_write_api_not_yet_consumed_by_web_page"
+    },
+    {
+      "method": "POST",
+      "path": "/other-project-payments/:claimId/approval",
+      "usage": "internal_task",
+      "reason": "issue_405_other_project_payment_write_api_not_yet_consumed_by_web_page"
+    },
+    {
+      "method": "POST",
+      "path": "/other-project-payments/:claimId/payments",
+      "usage": "internal_task",
+      "reason": "issue_405_other_project_payment_write_api_not_yet_consumed_by_web_page"
+    },
+    {
+      "method": "POST",
+      "path": "/other-project-payments/:claimId/payments/:executionId/refunds",
+      "usage": "internal_task",
+      "reason": "issue_405_other_project_payment_write_api_not_yet_consumed_by_web_page"
+    },
+    {
+      "method": "POST",
+      "path": "/other-project-payments/:claimId/corrections",
+      "usage": "internal_task",
+      "reason": "issue_405_other_project_payment_write_api_not_yet_consumed_by_web_page"
+    },
+    {
+      "method": "GET",
+      "path": "/expense-claims",
+      "usage": "internal_task",
+      "reason": "expense_claim_list_has_no_page_consumer_web_uses_ledger_and_create_endpoints_retire_pending_425"
+    },
+    {
+      "method": "POST",
+      "path": "/projects/:projectId/expense-requests/:expenseRequestId/receipt-confirmation",
+      "usage": "exit_candidate",
+      "reason": "issue_425_project_expense_receipt_confirmation_retired_preserve_historical_reads"
+    },
+    {
+      "method": "DELETE",
+      "path": "/spot-procurements/:procurementId/receipt/photos/:photoId",
+      "usage": "exit_candidate",
+      "reason": "issue_425_retired_spot_procurement_receipt_write"
+    },
+    {
+      "method": "GET",
+      "path": "/spot-procurements/:procurementId/receipt/duty-sms",
+      "usage": "internal_task",
+      "reason": "issue_425_historical_receipt_notification_audit_read"
+    },
+    {
+      "method": "PATCH",
+      "path": "/spot-procurements/:procurementId/receipt/draft",
+      "usage": "exit_candidate",
+      "reason": "issue_425_retired_spot_procurement_receipt_write"
+    },
+    {
+      "method": "POST",
+      "path": "/spot-procurements/:procurementId/receipt-photo-file-uploads",
+      "usage": "exit_candidate",
+      "reason": "issue_425_retired_spot_procurement_receipt_write"
+    },
+    {
+      "method": "POST",
+      "path": "/spot-procurements/:procurementId/receipt/delegations",
+      "usage": "exit_candidate",
+      "reason": "issue_425_retired_spot_procurement_receipt_write"
+    },
+    {
+      "method": "POST",
+      "path": "/spot-procurements/:procurementId/receipt/draft-reset",
+      "usage": "exit_candidate",
+      "reason": "issue_425_retired_spot_procurement_receipt_write"
+    },
+    {
+      "method": "POST",
+      "path": "/spot-procurements/:procurementId/receipt/duty-sms/retry",
+      "usage": "exit_candidate",
+      "reason": "issue_425_retired_spot_procurement_receipt_write"
+    },
+    {
+      "method": "POST",
+      "path": "/spot-procurements/:procurementId/receipt/photos",
+      "usage": "exit_candidate",
+      "reason": "issue_425_retired_spot_procurement_receipt_write"
+    },
+    {
+      "method": "POST",
+      "path": "/spot-procurements/:procurementId/receipt/review",
+      "usage": "exit_candidate",
+      "reason": "issue_425_retired_spot_procurement_receipt_write"
+    },
+    {
+      "method": "POST",
+      "path": "/spot-procurements/:procurementId/receipt/review-revocation",
+      "usage": "exit_candidate",
+      "reason": "issue_425_retired_spot_procurement_receipt_write"
+    },
+    {
+      "method": "POST",
+      "path": "/spot-procurements/:procurementId/receipt/submission",
+      "usage": "exit_candidate",
+      "reason": "issue_425_retired_spot_procurement_receipt_write"
+    },
+    {
+      "method": "GET",
+      "path": "/contracts/settlement-create-options",
+      "usage": "internal_task",
+      "reason": "issue_425_legacy_settlement_read_or_nonpersisting_preview_retained_for_historical_interfaces"
+    },
+    {
+      "method": "GET",
+      "path": "/projects/:projectId/settlement-drafts/:draftId/final-preparation",
+      "usage": "internal_task",
+      "reason": "issue_425_legacy_settlement_read_or_nonpersisting_preview_retained_for_historical_interfaces"
+    },
+    {
+      "method": "GET",
+      "path": "/projects/:projectId/settlement-drafts/capability",
+      "usage": "internal_task",
+      "reason": "issue_425_legacy_settlement_read_or_nonpersisting_preview_retained_for_historical_interfaces"
+    },
+    {
+      "method": "GET",
+      "path": "/settlement-workbench/contract-versions/:contractVersionId/import-template",
+      "usage": "internal_task",
+      "reason": "issue_425_legacy_settlement_read_or_nonpersisting_preview_retained_for_historical_interfaces"
+    },
+    {
+      "method": "GET",
+      "path": "/settlement-workbench/contract-versions/:contractVersionId/participant-options",
+      "usage": "internal_task",
+      "reason": "issue_425_legacy_settlement_read_or_nonpersisting_preview_retained_for_historical_interfaces"
+    },
+    {
+      "method": "GET",
+      "path": "/settlement-workbench/contract-versions/:contractVersionId/source-lines",
+      "usage": "internal_task",
+      "reason": "issue_425_legacy_settlement_read_or_nonpersisting_preview_retained_for_historical_interfaces"
+    },
+    {
+      "method": "GET",
+      "path": "/settlement-workbench/projects/:projectId/contract-versions/:contractVersionId/template-recommendations",
+      "usage": "internal_task",
+      "reason": "issue_425_legacy_settlement_read_or_nonpersisting_preview_retained_for_historical_interfaces"
+    },
+    {
+      "method": "GET",
+      "path": "/settlement-workbench/projects/:projectId/imports/:importId/errors.xlsx",
+      "usage": "internal_task",
+      "reason": "issue_425_legacy_settlement_read_or_nonpersisting_preview_retained_for_historical_interfaces"
+    },
+    {
+      "method": "GET",
+      "path": "/settlement-workbench/projects/:projectId/imports/:importId/result.xlsx",
+      "usage": "internal_task",
+      "reason": "issue_425_legacy_settlement_read_or_nonpersisting_preview_retained_for_historical_interfaces"
+    },
+    {
+      "method": "PATCH",
+      "path": "/projects/:projectId/settlement-drafts/:draftId",
+      "usage": "exit_candidate",
+      "reason": "issue_425_legacy_settlement_draft_preparation_write_closed_use_signed_registration"
+    },
+    {
+      "method": "POST",
+      "path": "/projects/:projectId/settlement-drafts",
+      "usage": "exit_candidate",
+      "reason": "issue_425_legacy_settlement_draft_preparation_write_closed_use_signed_registration"
+    },
+    {
+      "method": "POST",
+      "path": "/projects/:projectId/settlement-drafts/:draftId/abandonment",
+      "usage": "exit_candidate",
+      "reason": "issue_425_legacy_settlement_draft_preparation_write_closed_use_signed_registration"
+    },
+    {
+      "method": "POST",
+      "path": "/projects/:projectId/settlement-drafts/:draftId/approval-submission",
+      "usage": "exit_candidate",
+      "reason": "issue_425_legacy_settlement_draft_preparation_write_closed_use_signed_registration"
+    },
+    {
+      "method": "POST",
+      "path": "/projects/:projectId/settlement-drafts/:draftId/copies",
+      "usage": "exit_candidate",
+      "reason": "issue_425_legacy_settlement_draft_preparation_write_closed_use_signed_registration"
+    },
+    {
+      "method": "POST",
+      "path": "/projects/:projectId/settlement-drafts/:draftId/counterparty-signed-documents",
+      "usage": "exit_candidate",
+      "reason": "issue_425_legacy_settlement_draft_preparation_write_closed_use_signed_registration"
+    },
+    {
+      "method": "POST",
+      "path": "/projects/:projectId/settlement-drafts/:draftId/frozen-document",
+      "usage": "exit_candidate",
+      "reason": "issue_425_legacy_settlement_draft_preparation_write_closed_use_signed_registration"
+    },
+    {
+      "method": "POST",
+      "path": "/projects/:projectId/settlement-drafts/:draftId/line-attachments/:attachmentId/invalidation",
+      "usage": "exit_candidate",
+      "reason": "issue_425_legacy_settlement_draft_preparation_write_closed_use_signed_registration"
+    },
+    {
+      "method": "POST",
+      "path": "/projects/:projectId/settlement-drafts/:draftId/lines/:lineKey/attachments",
+      "usage": "exit_candidate",
+      "reason": "issue_425_legacy_settlement_draft_preparation_write_closed_use_signed_registration"
+    },
+    {
+      "method": "POST",
+      "path": "/projects/:projectId/settlement-drafts/files",
+      "usage": "exit_candidate",
+      "reason": "issue_425_legacy_settlement_draft_preparation_write_closed_use_signed_registration"
+    },
+    {
+      "method": "POST",
+      "path": "/settlement-workbench/contract-versions/:contractVersionId/imports/preview",
+      "usage": "exit_candidate",
+      "reason": "issue_425_legacy_settlement_draft_preparation_write_closed_use_signed_registration"
+    },
+    {
+      "method": "POST",
+      "path": "/settlement-workbench/contract-versions/:contractVersionId/preview",
+      "usage": "internal_task",
+      "reason": "issue_425_legacy_settlement_read_or_nonpersisting_preview_retained_for_historical_interfaces"
+    },
+    {
+      "method": "POST",
+      "path": "/settlement-workbench/projects/:projectId/imports/:importId/apply",
+      "usage": "exit_candidate",
+      "reason": "issue_425_legacy_settlement_draft_preparation_write_closed_use_signed_registration"
+    },
+    {
+      "method": "POST",
+      "path": "/expense-claims/:claimId/disbursement-voucher-file-uploads",
+      "usage": "exit_candidate",
+      "reason": "issue_425_employee_loan_cash_writes_retired_preserve_historical_reads"
+    },
+    {
+      "method": "POST",
+      "path": "/expense-claims/:claimId/disbursements",
+      "usage": "exit_candidate",
+      "reason": "issue_425_employee_loan_cash_writes_retired_preserve_historical_reads"
+    },
+    {
+      "method": "POST",
+      "path": "/expense-claims/:claimId/final-disbursement-pdf",
+      "usage": "exit_candidate",
+      "reason": "issue_425_employee_loan_cash_writes_retired_preserve_historical_reads"
+    },
+    {
+      "method": "POST",
+      "path": "/expense-claims/:claimId/repayment-voucher-file-uploads",
+      "usage": "exit_candidate",
+      "reason": "issue_425_employee_loan_cash_writes_retired_preserve_historical_reads"
+    },
+    {
+      "method": "POST",
+      "path": "/expense-claims/:claimId/repayments",
+      "usage": "exit_candidate",
+      "reason": "issue_425_employee_loan_cash_writes_retired_preserve_historical_reads"
+    },
+    {
+      "method": "POST",
+      "path": "/expense-claims/:claimId/repayments/:repaymentId/confirmation",
+      "usage": "exit_candidate",
+      "reason": "issue_425_employee_loan_cash_writes_retired_preserve_historical_reads"
+    },
+    {
+      "method": "POST",
+      "path": "/expense-claims/:claimId/repayments/:repaymentId/reversal",
+      "usage": "exit_candidate",
+      "reason": "issue_425_employee_loan_cash_writes_retired_preserve_historical_reads"
+    },
+    {
+      "method": "GET",
+      "path": "/expense-claims/:claimId/repayments/:repaymentId/capability",
+      "usage": "internal_task",
+      "reason": "issue_425_historical_employee_loan_repayment_capability_read"
+    },
+    {
+      "method": "POST",
+      "path": "/payable-settlements/wage-payable-cases/:payableRef/allocations",
+      "usage": "internal_task",
+      "reason": "issue_425_immutable_wage_settlement_receipt_replay_only"
+    },
+    {
+      "method": "POST",
+      "path": "/payable-settlements/:settlementCaseId/submit",
+      "usage": "internal_task",
+      "reason": "issue_425_immutable_wage_settlement_receipt_replay_only"
+    },
+    {
+      "method": "POST",
+      "path": "/payable-settlements/:settlementCaseId/confirm",
+      "usage": "internal_task",
+      "reason": "issue_425_immutable_wage_settlement_receipt_replay_only"
+    },
+    {
+      "method": "POST",
+      "path": "/payable-settlements/:settlementCaseId/return",
+      "usage": "internal_task",
+      "reason": "issue_425_immutable_wage_settlement_receipt_replay_only"
+    },
+    {
+      "method": "GET",
+      "path": "/payable-settlements/wage-payable-cases/:payableRef/payment-execution-candidates",
+      "usage": "internal_task",
+      "reason": "issue_425_historical_wage_settlement_revision_read"
+    },
+    {
+      "method": "POST",
+      "path": "/payable-settlements/inter-entity-relationships/:relationshipEntryId/evidence",
+      "usage": "internal_task",
+      "reason": "issue_425_retained_inter_entity_return_api_web_routes_through_company_transfer"
+    },
+    {
+      "method": "POST",
+      "path": "/payable-settlements/inter-entity-relationships/:relationshipEntryId/returns",
+      "usage": "internal_task",
+      "reason": "issue_425_retained_inter_entity_return_api_web_routes_through_company_transfer"
+    },
+    {
+      "method": "POST",
+      "path": "/contracts/:contractVersionId/seal-approval",
+      "usage": "exit_candidate",
+      "reason": "issue_425_independent_contract_seal_write_closed_use_parallel_approval_seal_confirmation"
+    },
+    {
+      "method": "POST",
+      "path": "/contracts/:contractVersionId/seal/approve",
+      "usage": "exit_candidate",
+      "reason": "issue_425_independent_contract_seal_write_closed_use_parallel_approval_seal_confirmation"
+    },
+    {
+      "method": "POST",
+      "path": "/contracts/:contractVersionId/seal/complete",
+      "usage": "exit_candidate",
+      "reason": "issue_425_independent_contract_seal_write_closed_use_parallel_approval_seal_confirmation"
+    },
+    {
+      "method": "POST",
+      "path": "/contracts/:contractVersionId/readiness",
+      "usage": "internal_task",
+      "reason": "issue_425_legacy_contract_readiness_retained_for_controlled_diagnostics"
     }
   ],
   "consumerSurfaceOverrides": [
@@ -1414,6 +1888,12 @@
       "path": "/draft-retention/controlled-entry",
       "consumerSurface": "operator_endpoint",
       "reason": "super_admin_controlled_preview_entry_execute_forbidden"
+    },
+    {
+      "method": "GET",
+      "path": "/wage-statements/capabilities",
+      "consumerSurface": "operator_endpoint",
+      "reason": "issue_425_historical_wage_access_capabilities_legacy_clients"
     },
     {
       "method": "GET",
@@ -1594,6 +2074,236 @@
       "path": "/operating-takeovers/historical-wage/scopes/selection-ref",
       "consumerSurface": "operator_endpoint",
       "reason": "pol_219_non_production_historical_wage_takeover_operator_workflow"
+    },
+    {
+      "method": "GET",
+      "path": "/payment-executions/:paymentId/existing-source/:type/:id",
+      "consumerSurface": "operator_endpoint",
+      "reason": "task16_current_company_finance_or_comprehensive_role_authorized_source_identity_read_only_no_web_consumer_options_to_results_is_user_entry_not_production_usage_proof"
+    },
+    {
+      "method": "GET",
+      "path": "/payment-executions/notifications",
+      "consumerSurface": "operator_endpoint",
+      "reason": "task16_current_company_role_own_directed_notification_status_read_only_no_dispatch_no_web_consumer_task37_global_ui_pending_not_production_usage_proof"
+    },
+    {
+      "method": "GET",
+      "path": "/projects/:projectId/signed-contract-settlements/:id/attachments/:fileId/download",
+      "consumerSurface": "signed_ticket_delivery",
+      "reason": "backend_authorized_short_lived_signed_settlement_attachment_ticket_delivery",
+      "ticketFollowups": [
+        {
+          "apiFile": "apps/web-admin/src/api/signed-contract-settlement.api.ts",
+          "wrapper": "readSignedSettlementAttachment",
+          "method": "GET",
+          "ticketField": "downloadUrl"
+        }
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/payment-financial/payments/:paymentId/corrections",
+      "consumerSurface": "operator_endpoint",
+      "reason": "issue_400_finance_correction_and_refund_api_not_yet_consumed_by_web_page"
+    },
+    {
+      "method": "GET",
+      "path": "/payment-financial/payments/:paymentId/refunds/capability",
+      "consumerSurface": "operator_endpoint",
+      "reason": "issue_400_finance_correction_and_refund_api_not_yet_consumed_by_web_page"
+    },
+    {
+      "method": "POST",
+      "path": "/payment-financial/corrections/:correctionId/confirmation",
+      "consumerSurface": "operator_endpoint",
+      "reason": "issue_400_finance_correction_and_refund_api_not_yet_consumed_by_web_page"
+    },
+    {
+      "method": "POST",
+      "path": "/payment-financial/payments/:paymentId/executions/:executionId/corrections",
+      "consumerSurface": "operator_endpoint",
+      "reason": "issue_400_finance_correction_and_refund_api_not_yet_consumed_by_web_page"
+    },
+    {
+      "method": "POST",
+      "path": "/payment-financial/payments/:paymentId/executions/:executionId/refunds",
+      "consumerSurface": "operator_endpoint",
+      "reason": "issue_400_finance_correction_and_refund_api_not_yet_consumed_by_web_page"
+    },
+    {
+      "method": "GET",
+      "path": "/actual-purchase-batches/:batchId",
+      "consumerSurface": "operator_endpoint",
+      "reason": "issue_403_actual_purchase_batch_detail_and_update_api_not_yet_consumed_by_web_page"
+    },
+    {
+      "method": "PATCH",
+      "path": "/actual-purchase-batches/:batchId",
+      "consumerSurface": "operator_endpoint",
+      "reason": "issue_403_actual_purchase_batch_detail_and_update_api_not_yet_consumed_by_web_page"
+    },
+    {
+      "method": "POST",
+      "path": "/other-project-payments",
+      "consumerSurface": "operator_endpoint",
+      "reason": "issue_405_other_project_payment_write_api_not_yet_consumed_by_web_page"
+    },
+    {
+      "method": "POST",
+      "path": "/other-project-payments/:claimId/submission",
+      "consumerSurface": "operator_endpoint",
+      "reason": "issue_405_other_project_payment_write_api_not_yet_consumed_by_web_page"
+    },
+    {
+      "method": "POST",
+      "path": "/other-project-payments/:claimId/approval",
+      "consumerSurface": "operator_endpoint",
+      "reason": "issue_405_other_project_payment_write_api_not_yet_consumed_by_web_page"
+    },
+    {
+      "method": "POST",
+      "path": "/other-project-payments/:claimId/payments",
+      "consumerSurface": "operator_endpoint",
+      "reason": "issue_405_other_project_payment_write_api_not_yet_consumed_by_web_page"
+    },
+    {
+      "method": "POST",
+      "path": "/other-project-payments/:claimId/payments/:executionId/refunds",
+      "consumerSurface": "operator_endpoint",
+      "reason": "issue_405_other_project_payment_write_api_not_yet_consumed_by_web_page"
+    },
+    {
+      "method": "POST",
+      "path": "/other-project-payments/:claimId/corrections",
+      "consumerSurface": "operator_endpoint",
+      "reason": "issue_405_other_project_payment_write_api_not_yet_consumed_by_web_page"
+    },
+    {
+      "method": "GET",
+      "path": "/expense-claims",
+      "consumerSurface": "operator_endpoint",
+      "reason": "internal_list_without_page_consumer_served_via_operator_tooling_until_425"
+    },
+    {
+      "method": "GET",
+      "path": "/spot-procurements/:procurementId/receipt/duty-sms",
+      "consumerSurface": "operator_endpoint",
+      "reason": "issue_425_historical_receipt_notification_audit_read"
+    },
+    {
+      "method": "GET",
+      "path": "/contracts/settlement-create-options",
+      "consumerSurface": "operator_endpoint",
+      "reason": "issue_425_retained_legacy_settlement_read_or_preview_without_current_web_consumer"
+    },
+    {
+      "method": "GET",
+      "path": "/projects/:projectId/settlement-drafts/:draftId/final-preparation",
+      "consumerSurface": "operator_endpoint",
+      "reason": "issue_425_retained_legacy_settlement_read_or_preview_without_current_web_consumer"
+    },
+    {
+      "method": "GET",
+      "path": "/projects/:projectId/settlement-drafts/capability",
+      "consumerSurface": "operator_endpoint",
+      "reason": "issue_425_retained_legacy_settlement_read_or_preview_without_current_web_consumer"
+    },
+    {
+      "method": "GET",
+      "path": "/settlement-workbench/contract-versions/:contractVersionId/import-template",
+      "consumerSurface": "operator_endpoint",
+      "reason": "issue_425_retained_legacy_settlement_read_or_preview_without_current_web_consumer"
+    },
+    {
+      "method": "GET",
+      "path": "/settlement-workbench/contract-versions/:contractVersionId/participant-options",
+      "consumerSurface": "operator_endpoint",
+      "reason": "issue_425_retained_legacy_settlement_read_or_preview_without_current_web_consumer"
+    },
+    {
+      "method": "GET",
+      "path": "/settlement-workbench/contract-versions/:contractVersionId/source-lines",
+      "consumerSurface": "operator_endpoint",
+      "reason": "issue_425_retained_legacy_settlement_read_or_preview_without_current_web_consumer"
+    },
+    {
+      "method": "GET",
+      "path": "/settlement-workbench/projects/:projectId/contract-versions/:contractVersionId/template-recommendations",
+      "consumerSurface": "operator_endpoint",
+      "reason": "issue_425_retained_legacy_settlement_read_or_preview_without_current_web_consumer"
+    },
+    {
+      "method": "GET",
+      "path": "/settlement-workbench/projects/:projectId/imports/:importId/errors.xlsx",
+      "consumerSurface": "operator_endpoint",
+      "reason": "issue_425_retained_legacy_settlement_read_or_preview_without_current_web_consumer"
+    },
+    {
+      "method": "GET",
+      "path": "/settlement-workbench/projects/:projectId/imports/:importId/result.xlsx",
+      "consumerSurface": "operator_endpoint",
+      "reason": "issue_425_retained_legacy_settlement_read_or_preview_without_current_web_consumer"
+    },
+    {
+      "method": "POST",
+      "path": "/settlement-workbench/contract-versions/:contractVersionId/preview",
+      "consumerSurface": "operator_endpoint",
+      "reason": "issue_425_retained_legacy_settlement_read_or_preview_without_current_web_consumer"
+    },
+    {
+      "method": "GET",
+      "path": "/expense-claims/:claimId/repayments/:repaymentId/capability",
+      "consumerSurface": "operator_endpoint",
+      "reason": "issue_425_historical_employee_loan_repayment_capability_read"
+    },
+    {
+      "method": "POST",
+      "path": "/payable-settlements/wage-payable-cases/:payableRef/allocations",
+      "consumerSurface": "operator_endpoint",
+      "reason": "issue_425_immutable_wage_settlement_receipt_replay_only"
+    },
+    {
+      "method": "POST",
+      "path": "/payable-settlements/:settlementCaseId/submit",
+      "consumerSurface": "operator_endpoint",
+      "reason": "issue_425_immutable_wage_settlement_receipt_replay_only"
+    },
+    {
+      "method": "POST",
+      "path": "/payable-settlements/:settlementCaseId/confirm",
+      "consumerSurface": "operator_endpoint",
+      "reason": "issue_425_immutable_wage_settlement_receipt_replay_only"
+    },
+    {
+      "method": "POST",
+      "path": "/payable-settlements/:settlementCaseId/return",
+      "consumerSurface": "operator_endpoint",
+      "reason": "issue_425_immutable_wage_settlement_receipt_replay_only"
+    },
+    {
+      "method": "GET",
+      "path": "/payable-settlements/wage-payable-cases/:payableRef/payment-execution-candidates",
+      "consumerSurface": "operator_endpoint",
+      "reason": "issue_425_historical_wage_settlement_revision_read"
+    },
+    {
+      "method": "POST",
+      "path": "/payable-settlements/inter-entity-relationships/:relationshipEntryId/evidence",
+      "consumerSurface": "operator_endpoint",
+      "reason": "issue_425_retained_inter_entity_return_api_web_routes_through_company_transfer"
+    },
+    {
+      "method": "POST",
+      "path": "/payable-settlements/inter-entity-relationships/:relationshipEntryId/returns",
+      "consumerSurface": "operator_endpoint",
+      "reason": "issue_425_retained_inter_entity_return_api_web_routes_through_company_transfer"
+    },
+    {
+      "method": "POST",
+      "path": "/contracts/:contractVersionId/readiness",
+      "consumerSurface": "operator_endpoint",
+      "reason": "issue_425_legacy_contract_readiness_retained_for_controlled_diagnostics"
     }
   ]
 }

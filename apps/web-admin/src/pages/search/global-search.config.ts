@@ -42,26 +42,24 @@ export const globalSearchColumns: PrimaryTableCol<GlobalSearchItem>[] = [
 export function buildGlobalSearchItems(input: GlobalSearchSources): GlobalSearchItem[] {
   return [
     ...(input.relationships??[]).filter(row=>!row.detailPath.startsWith("/合同管理/")&&!row.detailPath.startsWith("/结算管理/")&&!row.detailPath.startsWith("/付款管理/")).map((row):GlobalSearchItem=>({id:`relationship:${row.section}:${row.id}`,type:row.section==="contracts"?"合同":row.section==="settlements"?"结算":"付款",title:row.reference,subtitle:`${row.relationshipLabel} · ${row.signingParty} · ${row.counterparty}`,project:row.projectName,status:row.statusLabel,updatedAt:row.occurredAt,targetPath:row.detailPath,keywords:`${row.relationshipLabel} ${row.name} ${row.accountingEffect}`})),
-    ...input.contracts.map((row): GlobalSearchItem => ({
-      id: `contract:${row.id}`,
-      type: "合同",
-      title: row.contractNo,
-      subtitle: `${row.contractRelationshipLabel ?? "待确认分类"} · ${row.name} · ${row.counterparty} · ${row.amount}`,
-      project: row.project,
-      status: row.currentNode,
-      updatedAt: row.updatedAt,
-      targetPath: `/合同管理/${encodeURIComponent(row.id)}`,
-      keywords: [
-        row.contractNo,
-        row.name,
-        row.counterparty,
-        row.project,
-        row.amount,
-        row.currentNode,
-        row.pendingOwner,
-        row.nextAction
-      ].join(" ")
-    })),
+    ...input.contracts.map((row): GlobalSearchItem => {
+      const directVersion = (row.originalSignedNumberState === "available" || row.originalSignedNumberState === "unavailable") &&
+        row.contractId && row.contractVersionId
+        ? `${encodeURIComponent(row.contractId)}?versionId=${encodeURIComponent(row.contractVersionId)}`
+        : null;
+      return {
+        id: `contract:${directVersion ?? row.id}`,
+        type: "合同",
+        title: row.contractNo,
+        subtitle: `${row.contractRelationshipLabel ?? "待确认分类"} · ${row.name} · ${row.counterparty} · ${row.amount}`,
+        project: row.project,
+        status: row.currentNode,
+        updatedAt: row.updatedAt,
+        targetPath: `/合同管理/${directVersion ?? encodeURIComponent(row.id)}`,
+        keywords: [row.contractNo, row.name, row.counterparty, row.project, row.amount,
+          row.currentNode, row.pendingOwner, row.nextAction].join(" ")
+      };
+    }),
     ...input.settlements.map((row): GlobalSearchItem => ({
       id: `settlement:${row.id}`,
       type: "结算",

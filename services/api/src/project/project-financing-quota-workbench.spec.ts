@@ -206,7 +206,8 @@ describe("ProjectService project financing quota workbench", () => {
     });
     expect(result.requestAction).toMatchObject({
       key: "request_financing_quota",
-      enabled: true,
+      enabled: false,
+      disabledReason: "项目垫资额度申请已停止，实际到账请登记项目垫资",
       requiredAction: "project.financing_quota.request",
       requiresFile: true
     });
