@@ -173,6 +173,7 @@ while IFS= read -r lane; do
   esac
   memory=4g
   if [[ ( $mode == 346 || $mode == 349 || $mode == 350 || $mode == 352 ) && ( $lane == roster || $lane == reset-case12 ) ]] ||
+    [[ $lane == lifecycle-mobile && $mode == 352 ]] ||
     [[ $lane == reset-case12 && ${GITHUB_ACTIONS-} == true && ( $mode == 331 || $mode == 332 || $mode == 334 ) ]]; then
     memory=6g
   fi
