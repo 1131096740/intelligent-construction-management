@@ -264,9 +264,10 @@ export class PaymentExecutionOperatingSourceAdapter
       throw new BadRequestException("付款执行缺少合同主体或下游相对方快照");
     }
     const textAgreement = request.contractDueBasis === PAYMENT_TEXT_AGREEMENT_BASIS;
+    const netExecutionBasis = textAgreement || request.sourceType === "signed_settlement";
     const approvedAmountCents = request.approvedAmountCents ?? request.requestedAmountCents;
     let executionTotalCents = executionTotal._sum.amountCents ?? 0n;
-    if (textAgreement) {
+    if (netExecutionBasis) {
       const [refunds, corrections] = await Promise.all([
         tx.paymentExecutionRefund.aggregate({
           where: { paymentRequestId: request.id, executionType: "payment_execution" },
@@ -279,8 +280,8 @@ export class PaymentExecutionOperatingSourceAdapter
       ]);
       executionTotalCents += (corrections._sum.amountDeltaCents ?? 0n) - (refunds._sum.amountCents ?? 0n);
     }
-    if (executionTotalCents > approvedAmountCents || (textAgreement &&
-        (request.approvedAmountCents === null || executionTotalCents < 0n))) {
+    if (executionTotalCents > approvedAmountCents || (netExecutionBasis && executionTotalCents < 0n) ||
+        (textAgreement && request.approvedAmountCents === null)) {
       throw new BadRequestException("付款执行累计金额超过付款申请批复金额");
     }
     const affiliate = await readAffiliateSnapshot(tx, {

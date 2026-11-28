@@ -328,6 +328,24 @@ describe("PaymentExecutionOperatingSourceAdapter", () => {
     await expect(adapter.readSourceSnapshot(tx as never, source)).rejects.toThrow("超过付款申请批复金额");
   });
 
+  it("applies refunds when checking signed settlement repayment against approval", async () => {
+    const adapter = new PaymentExecutionOperatingSourceAdapter();
+    const tx = paymentTx();
+    tx.paymentRequest.findUnique.mockResolvedValue({
+      ...(await tx.paymentRequest.findUnique()), sourceType: "signed_settlement", contractDueBasis: null
+    });
+    tx.paymentExecution.aggregate.mockResolvedValue({ _sum: { amountCents: 1_200_00n } });
+    const refunds = jest.fn().mockResolvedValue({ _sum: { amountCents: 200_00n } });
+    Object.assign(tx, {
+      paymentExecutionRefund: { aggregate: refunds },
+      paymentExecutionCorrection: { aggregate: jest.fn().mockResolvedValue({ _sum: { amountDeltaCents: null } }) }
+    });
+    const source = { projectId: "project-1", sourceType: adapter.sourceType, sourceBusinessId: "execution-1" };
+    await expect(adapter.readSourceSnapshot(tx as never, source)).resolves.toBeDefined();
+    refunds.mockResolvedValue({ _sum: { amountCents: 199_99n } });
+    await expect(adapter.readSourceSnapshot(tx as never, source)).rejects.toThrow("超过付款申请批复金额");
+  });
+
   it("fails closed when formal executions exceed the approved amount", async () => {
     const adapter = new PaymentExecutionOperatingSourceAdapter();
     const tx = paymentTx();
@@ -366,6 +384,8 @@ function paymentTx(executionOverrides: Record<string, unknown> = {}) {
     $queryRaw: jest.fn().mockResolvedValue([{ state: "absent" }]),
     registeredPaymentFunding: { findUnique: jest.fn().mockResolvedValue(null) },
     paymentExecutionPayerAttestation: { findUnique: jest.fn().mockResolvedValue(executionOverrides.payerAttestation ?? null) },
+    paymentExecutionRefund: { aggregate: jest.fn().mockResolvedValue({ _sum: { amountCents: null } }) },
+    paymentExecutionCorrection: { aggregate: jest.fn().mockResolvedValue({ _sum: { amountDeltaCents: null } }) },
     project: {
       findUnique: jest.fn().mockResolvedValue({
         operatingLedgerEffectiveDate: new Date("2026-08-01T00:00:00.000Z")
