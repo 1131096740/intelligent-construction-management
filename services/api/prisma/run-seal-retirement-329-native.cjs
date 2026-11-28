@@ -289,7 +289,16 @@ async function migrate({ source, archive, database, directory, sql, url, run, st
       paymentRemainderPredecessor = { count: size, ledgerSha256, sameIdentity: true };
     }
   }
-  if (signed350) assert.deepEqual(readSigned350(), signed350After, "NATIVE_A08_352_SIGNED_GUARDS_TERMINAL");
+  if (signed350) {
+    assert.deepEqual(readSigned350(), signed350After, "NATIVE_A08_352_SIGNED_GUARDS_TERMINAL");
+    const terminalFact = JSON.parse(sql(pendingExpense.readOperatingFactValidator(plan.appName)));
+    const { factBody, ...metadata } = terminalFact;
+    const { factBody: originalFactBody, ...originalMetadata } = expenseFactCatalog[342];
+    assert.equal(factBody, precisionCatalog[346].expectedCostValidatorAfter348, "NATIVE_A08_352_FACT_BODY");
+    assert.equal(terminalFact.safe, true, "NATIVE_A08_352_FACT_FENCE");
+    assert.deepEqual(metadata, originalMetadata, "NATIVE_A08_352_FACT_METADATA");
+    assert.equal(originalFactBody, pendingExpense.afterBody, "NATIVE_A08_342_FACT_PREIMAGE");
+  }
   const verifyAfterBusiness = () => {
     const final = inspect();
     verify(final, source.ledger.length);
@@ -586,6 +595,7 @@ async function main(args) {
       if (a08Is352) {
         stage("A24_PENDING_COST_FACT_CATALOG_352_BEFORE_BUSINESS");
         receipt.a24ExpenseFactCatalog.beforeBusiness352 = JSON.parse(sql(pendingExpense.readOperatingFactValidator(app)));
+        assert.equal(receipt.a24ExpenseFactCatalog.beforeBusiness352.safe, true, "NATIVE_A08_352_FACT_FENCE");
       }
     }
     if (cashVoucher) receipt.a24CashVoucherCatalog = cashVoucherCatalog;
@@ -800,11 +810,7 @@ async function main(args) {
     }
     if (historicalCatalog) {
       stage("A24_HISTORICAL_CATALOG_AFTER_BUSINESS");
-      if (a08Is352) {
-        // verifyAfterBusiness above rechecks the complete 350 signed/historical catalog,
-        // which was verified against 349 and rechecked at the 352 terminal.
-        receipt.a24HistoricalCatalog.afterBusiness352 = "VERIFIED_BY_SIGNED_350_TERMINAL_CATALOG";
-      } else receipt.a24HistoricalCatalog["afterBusiness" + source.ledger.length] = historicalCatalog.verifyAfterBusiness();
+      receipt.a24HistoricalCatalog["afterBusiness" + source.ledger.length] = historicalCatalog.verifyAfterBusiness();
     }
     if (a24Assignment) {
       stage("A24_STANDALONE_ASSIGNMENT_AFTER_BUSINESS");
