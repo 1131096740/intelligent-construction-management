@@ -4,6 +4,7 @@ const assert = require("node:assert/strict");
 const { createHash } = require("node:crypto");
 const { verifyA24Prefix } = require("./task426-a24-native340-profile.cjs");
 const verified346 = new WeakSet();
+const verified352 = new WeakSet();
 const { assertSource: assert331Source } = require("../../../.github/task12-install-295/contract-finance/payment-remainder-331-profile.cjs");
 const { final: base295 } = require("../../../.github/task12-install-295/contract-finance/common/multi-witness.cjs");
 
@@ -36,7 +37,22 @@ function captureA08Direct346Source(sourceSha, sourceTree, ledger) {
   return profile;
 }
 
+function captureA08Direct352Source(sourceSha, sourceTree, ledger) {
+  captureA08Direct346Source(sourceSha, sourceTree, ledger.slice(0, 346));
+  assert.equal(ledger.length, 352);
+  const profile352 = require("../../../.github/task12-install-295/contract-finance/company-history-352-profile.cjs");
+  assert.equal(digest(ledger), profile352.ledgerSha256, "A08_DIRECT_352_LEDGER");
+  const profile = Object.freeze({ mode: "a08-direct-352", sourceSha, sourceTree,
+    migrationCount: ledger.length, ledgerSha256: profile352.ledgerSha256 });
+  verified352.add(profile);
+  return profile;
+}
+
 function assertA08Source(source, sourceSha) {
+  if (source.mode === "a08-direct-352") {
+    assert.ok(verified352.has(source) && source.sourceSha === sourceSha, "A08_DIRECT_352_SOURCE_PROVENANCE");
+    return;
+  }
   if (source.mode === "a08-direct-346") {
     assert.ok(verified346.has(source) && source.sourceSha === sourceSha, "A08_DIRECT_346_SOURCE_PROVENANCE");
     return;
@@ -55,4 +71,4 @@ function assertA08Source(source, sourceSha) {
   assert.deepEqual(source.terminal, terminal);
 }
 
-module.exports = { mode, captureA08SuccessorSource, captureA08Direct346Source, assertA08Source };
+module.exports = { mode, captureA08SuccessorSource, captureA08Direct346Source, captureA08Direct352Source, assertA08Source };

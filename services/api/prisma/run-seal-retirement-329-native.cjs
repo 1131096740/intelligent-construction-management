@@ -37,9 +37,16 @@ function captureSource(candidate, paymentRemainder, a24Profile, expenseTerminal)
   const ledger = git(["ls-tree", "-r", "--name-only", "-z", candidate, "--", "services/api/prisma/migrations"]).toString().split("\0")
     .filter(name => name.endsWith("/migration.sql"))
     .map(name => ({ name: path.basename(path.dirname(name)), sha256: hash(fs.readFileSync(path.join(root, name))), finished: true, rolledBack: false }));
-  if (a24Profile) return a24Profile.qualifyA24Source(
-    candidate, git(["rev-parse", candidate + "^{tree}"]).toString().trim(), ledger, expenseTerminal
-  );
+  if (a24Profile) {
+    const tree = git(["rev-parse", candidate + "^{tree}"]).toString().trim();
+    if (expenseTerminal !== 352) return a24Profile.qualifyA24Source(candidate, tree, ledger, expenseTerminal);
+    const prefix = a24Profile.qualifyA24Source(candidate, tree, ledger.slice(0, 346), 346);
+    const archive = JSON.parse(execFileSync(process.execPath,
+      [path.join(root, ".github/task12-install-295/contract-finance/check-ledger.cjs"), root, candidate, "--company-history-352"], { env }));
+    assert.equal(ledger.length, 352);
+    assert.equal(hash(JSON.stringify(ledger)), archive.ledgerSha256);
+    return { ...prefix, ledger, ledgerDigest: archive.ledgerSha256, a24Prefixes: [...prefix.a24Prefixes, 349, 350, 351, 352] };
+  }
   assert.ok(paymentRemainder ? ledger.length === 331 : ledger.length === 329 || ledger.length === 330);
   const mode = paymentRemainder ? "--payment-remainder-331" : ledger.length === 330 ? "--text-direct-330" : "--current-320";
   const archive = JSON.parse(execFileSync(process.execPath,
@@ -193,6 +200,9 @@ async function migrate({ source, archive, database, directory, sql, url, run, st
   const archiveMaterial = installArchive(archive, sql, runId, port, { name: plan.appName, oid: setup.appOid, nonce: plan.nonce }, stage);
   let paymentRemainderPredecessor;
   const a24Installation = [];
+  const signed350 = source.ledger.length === 352 ? require("../../.." + "/.github/task12-install-295/contract-finance/signed-settlement-350-profile.cjs") : null;
+  let signed350Before, signed350After;
+  const readSigned350 = () => JSON.parse(sql("BEGIN READ ONLY; SET LOCAL search_path=pg_catalog,pg_temp;" + signed350.catalogSql + "ROLLBACK;"));
   const expenseFactCatalog = {};
   const cashVoucherCatalog = {};
   const operatingCashCatalog = {};
@@ -234,11 +244,20 @@ async function migrate({ source, archive, database, directory, sql, url, run, st
     const installed = inspect();
     verify(installed, size);
     if (source.a24Prefixes?.includes(size)) {
-      a24Installation.push(a24Profile.verifyA24Prefix(size, installed.ledger));
+      if (size > 346) {
+        const digest = hash(JSON.stringify(installed.ledger));
+        require("../../.." + "/.github/task12-install-295/contract-finance/company-history-352-profile.cjs").assertPrefix(size, digest);
+        a24Installation.push({ count: size, ledgerSha256: digest, sameIdentity: true });
+      } else a24Installation.push(a24Profile.verifyA24Prefix(size, installed.ledger));
       if (historicalCatalog && [332, 333, 334, 340, 341, 342, 343, 344, 345, 346].includes(size)) {
         stage("A24_HISTORICAL_CATALOG_" + size);
         historicalCatalog.atPrefix(size);
       }
+    }
+    if (signed350 && size === 349) signed350Before = readSigned350();
+    if (signed350 && size === 350) {
+      signed350After = readSigned350();
+      signed350.assertCatalog(signed350After, signed350Before);
     }
     if (pendingExpense && (size === 341 || size === 342)) {
       stage("A24_PENDING_COST_FACT_CATALOG_" + size);
@@ -263,6 +282,7 @@ async function migrate({ source, archive, database, directory, sql, url, run, st
   const verifyAfterBusiness = () => {
     const final = inspect();
     verify(final, source.ledger.length);
+    if (signed350) assert.deepEqual(readSigned350(), signed350After, "NATIVE_A08_352_SIGNED_GUARDS_AFTER_BUSINESS");
     return { count: final.ledger.length, ledgerSha256: hash(JSON.stringify(final.ledger)), sameIdentity: true };
   };
   return { appOid: setup.appOid, app: plan.appName, tailMaterials, archiveMaterial,
@@ -363,11 +383,14 @@ async function main(args) {
   const expenseApproval = args.length === 12 && args.at(-2) === "--payment-remainder-331" && args.at(-1) === "--approval-round-a04";
   const issue430ApprovalSms = args.length === 12 && args.at(-2) === "--payment-remainder-331" && args.at(-1) === "--issue430-approval-sms";
   const businessMode = args.length === 12 && args.at(-2) === "--payment-remainder-331" && args.at(-1);
-  const a08Inside346 = businessMode === "--approval-archive-a08-inside-346";
+  const a08Is352 = ["--approval-archive-a08-inside-352", "--approval-archive-a08-outside-352", "--approval-archive-a08-upward-352"].includes(businessMode);
+  const a08Inside346 = businessMode === "--approval-archive-a08-inside-346" || businessMode === "--approval-archive-a08-inside-352";
   const expenseOperatingCash346 = businessMode === "--expense-cash-a24-combined-346";
   const a08DirectRelationship = new Map([
     ["--approval-archive-a08-outside-346", "outside"],
-    ["--approval-archive-a08-upward-346", "upward"]
+    ["--approval-archive-a08-upward-346", "upward"],
+    ["--approval-archive-a08-outside-352", "outside"],
+    ["--approval-archive-a08-upward-352", "upward"]
   ]).get(businessMode);
   const a08Any346 = a08Inside346 || Boolean(a08DirectRelationship);
   const combined346 = a08Any346 || expenseOperatingCash346;
@@ -385,7 +408,7 @@ async function main(args) {
   assert.ok(args.length === 10 || paymentRemainder);
   const [mode, sha, pgManifest, pgSha, docManifest, docSha, office, officeSha, archiveAdmission, archiveSha] = args;
   assert.ok(["verify", "run"].includes(mode));
-  const source = captureSource(sha, paymentRemainder, a24Profile, combined346 ? 346 : expenseCashVoucher344 ? 344 : expensePending342 ? 342 : expenseAssignment341 ? 341 : undefined);
+  const source = captureSource(sha, paymentRemainder, a24Profile, a08Is352 ? 352 : combined346 ? 346 : expenseCashVoucher344 ? 344 : expensePending342 ? 342 : expenseAssignment341 ? 341 : undefined);
   const normalArchiveRecipeSha = "90b698f5230ae172518e285bf8c4e197eb1d552518c55670c2b3794eb82f1b75";
   file(path.join(__dirname, "task12-normal274-archive-binding.cjs"), normalArchiveRecipeSha);
   const approvalLockRecipeSha = "5d565dc516cd26c64e3fda295b97968be7912abc62f47ab47ffd93be29fd6c2f";
@@ -396,14 +419,14 @@ async function main(args) {
   const receipt = { candidate: sha, sourceTree: source.sourceTree, migrations: source.ledger.length, ledgerSha256: source.ledgerDigest,
     postgresMaterialSha256: pgSha, historicalSourceAdmissionSha256: archiveSha, normalArchiveRecipeSha256: normalArchiveRecipeSha, approvalLockRecipeSha256: approvalLockRecipeSha, documentManifestSha256: docSha, libreOfficeWrapperSha256: officeSha, libreOfficeExecutableSha256: runtime.nativeOfficeSha,
     status: "HOST_MATERIAL_VERIFIED", stages: [], cleanup: "NOT_NEEDED" };
-  if (a08Inside346) receipt.profile = "APPROVAL_ARCHIVE_A08_INSIDE_346";
+  if (a08Inside346) receipt.profile = "APPROVAL_ARCHIVE_A08_INSIDE_" + (a08Is352 ? "352" : "346");
   const a08Runtime = a08DirectRelationship && require("../test-support/task426-a08-native-runtime.cjs");
   let a08Direct;
   if (a08Runtime) {
-    const { captureA08Direct346Source } = require("../test-support/task426-a08-upward-pin-332-profile.cjs");
-    const sourceProfile = captureA08Direct346Source(sha, source.sourceTree, source.ledger);
+    const { captureA08Direct346Source, captureA08Direct352Source } = require("../test-support/task426-a08-upward-pin-332-profile.cjs");
+    const sourceProfile = (a08Is352 ? captureA08Direct352Source : captureA08Direct346Source)(sha, source.sourceTree, source.ledger);
     a08Direct = await a08Runtime.prepareNativeA08Mode({ ...source, sourceProfile }, a08DirectRelationship);
-    receipt.profile = "APPROVAL_ARCHIVE_A08_DIRECT_346";
+    receipt.profile = "APPROVAL_ARCHIVE_A08_DIRECT_" + (a08Is352 ? "352" : "346");
     receipt.a08 = a08Direct.evidence;
     if (mode === "run") a08Runtime.compileNativeA08Application({ root, api, env });
   }
@@ -416,6 +439,11 @@ async function main(args) {
   const a24Plan = baseA24Plan && cashVoucher ? cashVoucher.addCashVoucherAcl(baseA24Plan) : baseA24Plan;
   if (a24Plan) receipt.a24AclSha256 = hash(JSON.stringify(a24Plan));
   if (a24Profile) receipt.a24ExpectedPrefixes = source.a24Prefixes.map(size => {
+    if (size > 346) {
+      const ledgerSha256 = hash(JSON.stringify(source.ledger.slice(0, size)));
+      require("../../.." + "/.github/task12-install-295/contract-finance/company-history-352-profile.cjs").assertPrefix(size, ledgerSha256);
+      return { count: size, ledgerSha256 };
+    }
     const { ledgerSha256 } = a24Profile.verifyA24Prefix(size, source.ledger.slice(0, size));
     return { count: size, ledgerSha256 };
   });
@@ -749,11 +777,11 @@ async function main(args) {
       assert.equal(receipt.proof.candidate, source.candidate);
     }
     if (paymentRemainder) {
-      stage(a08Any346 ? "READBACK_346_AFTER_BUSINESS" : expenseCashA24 ? "READBACK_A24_AFTER_BUSINESS" : "READBACK_331_AFTER_BUSINESS");
+      stage(a08Is352 ? "READBACK_352_AFTER_BUSINESS" : a08Any346 ? "READBACK_346_AFTER_BUSINESS" : expenseCashA24 ? "READBACK_A24_AFTER_BUSINESS" : "READBACK_331_AFTER_BUSINESS");
       receipt.ledgerAfterBusiness = verifyAfterBusiness();
       assert.equal(receipt.ledgerAfterBusiness.ledgerSha256, source.ledgerDigest);
     }
-    if (historicalCatalog) {
+    if (historicalCatalog && !a08Is352) {
       stage("A24_HISTORICAL_CATALOG_AFTER_BUSINESS");
       receipt.a24HistoricalCatalog["afterBusiness" + source.ledger.length] = historicalCatalog.verifyAfterBusiness();
     }
@@ -763,7 +791,7 @@ async function main(args) {
       assert.deepEqual(result, receipt.a24AssignmentLockBefore, "NATIVE_A24_341_ASSIGNMENT_CATALOG_DRIFT");
       receipt.a24AssignmentLockAfter = result;
     }
-    if (pendingExpense) {
+    if (pendingExpense && !a08Is352) {
       stage("A24_PENDING_COST_FACT_CATALOG_AFTER_BUSINESS");
       const result = pendingExpense.verifyOperatingFactValidator(JSON.parse(sql(pendingExpense.readOperatingFactValidator(app))),
         expenseFactCatalog[341]);
