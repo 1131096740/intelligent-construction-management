@@ -617,7 +617,18 @@ async function main(args) {
       }
     }
     if (cashVoucher) receipt.a24CashVoucherCatalog = cashVoucherCatalog;
-    if (operatingCash) receipt.a24OperatingCashCatalog = operatingCashCatalog;
+    if (operatingCash) {
+      receipt.a24OperatingCashCatalog = operatingCashCatalog;
+      if (a08Is352) {
+        const observed = readOperatingCash(346);
+        const signature = 'public."validateOperatingFactReferences"()';
+        const previous = operatingCashCatalog[346];
+        const expected = { ...previous, guards: { ...previous.guards,
+          [signature]: { ...previous.guards[signature], body: expenseFactCatalog.beforeBusiness352.factBody } } };
+        assert.deepEqual(observed, expected, "NATIVE_A08_352_OPERATING_CASH_TERMINAL");
+        operatingCashCatalog.beforeBusiness352 = observed;
+      }
+    }
     if (paymentRemainder) {
       assert.ok(paymentRemainderPredecessor);
       receipt.paymentRemainderPredecessor = paymentRemainderPredecessor;
@@ -864,8 +875,10 @@ async function main(args) {
     }
     if (operatingCash) {
       stage("A24_OPERATING_CASH_CATALOG_AFTER_BUSINESS");
-      const result = operatingCash.verifyCatalog(346, readOperatingCash(346), operatingCashCatalog[345]);
-      assert.deepEqual(result, operatingCashCatalog[346], "NATIVE_A24_346_OPERATING_CATALOG_DRIFT");
+      const observed = readOperatingCash(346);
+      const result = a08Is352 ? observed : operatingCash.verifyCatalog(346, observed, operatingCashCatalog[345]);
+      assert.deepEqual(result, a08Is352 ? operatingCashCatalog.beforeBusiness352 : operatingCashCatalog[346],
+        "NATIVE_A24_OPERATING_CATALOG_AFTER_BUSINESS");
       operatingCashCatalog.afterBusiness = result;
     }
     assert.equal(tracked(), "");
