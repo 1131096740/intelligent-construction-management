@@ -46,6 +46,9 @@ function diagnoseFailure(step, errors, suite) {
   const reason = matchLabel(reasons, message);
   const coldStatus = suite === 'spot' && stripVTControlCharacters(message)
     .match(/^(?:Error: )?POL115_SPOT_COLD_HTTP 200 ([1-5]\d{2})$/mu);
+  const balanceText = suite === 'expense' && stripVTControlCharacters(message).match(/Received (?:string|substring):\s*([^\n]*)/u);
+  const balance = balanceText ? (/¥0\.00/u.test(balanceText[1]) ? 'zero' : /¥0\.01/u.test(balanceText[1]) ? 'expected' : 'other')
+    : /element\(s\) not found/iu.test(message) ? 'missing' : undefined;
   const statusAssertion = suite === 'expense_self_service' && stripVTControlCharacters(message)
     .match(/Expected:\s*(200)\s*\n\s*Received:\s*([1-5]\d{2})\b/u);
   const frames = (step?.error?.stack ?? error?.stack ?? '').slice(0, 4_096);
@@ -53,7 +56,7 @@ function diagnoseFailure(step, errors, suite) {
     .find(([, file, line]) => suites[file] === suite && lineNumber(Number(line)));
   return { ...(operation && { operation }), ...(reason && { reason }), ...(frame && { stepLine: Number(frame[2]) }),
     ...(coldStatus && { expectedStatus: 200, receivedStatus: Number(coldStatus[1]) }),
-    ...(statusAssertion && { expectedStatus: 200, receivedStatus: Number(statusAssertion[2]) }) };
+    ...(statusAssertion && { expectedStatus: 200, receivedStatus: Number(statusAssertion[2]) }), ...(balance && { balance }) };
 }
 
 function testIdentity(test) {
@@ -98,12 +101,13 @@ function emit(row) {
 }
 
 class BrowserWitness {
-  constructor() { this.progressCounts = new Map(); }
+  constructor() { this.progressCounts = new Map(); this.balanceChecks = new Map(); }
 
   onTestBegin(test) {
     const identity = testIdentity(test);
     if (!identity) return;
     this.progressCounts.set(test, 0);
+    this.balanceChecks.set(test, 0);
     emit({ event: 'begin', ...identity });
   }
 
@@ -117,14 +121,27 @@ class BrowserWitness {
     emit({ event: 'step', ...identity, ...detail });
   }
 
+  onStepEnd(test, _result, step) {
+    const identity = testIdentity(test);
+    if (identity?.suite === 'expense' && identity.testLine === 18 && step.category === 'expect'
+      && step.location && basename(step.location.file) === 'pol115-expense-real.e2e.ts'
+      && step.location.line === 30 && !step.error) {
+      this.balanceChecks.set(test, (this.balanceChecks.get(test) ?? 0) + 1);
+    }
+  }
+
   onTestEnd(test, result) {
     const identity = testIdentity(test);
     this.progressCounts.delete(test);
+    const balanceChecks = this.balanceChecks.get(test);
+    this.balanceChecks.delete(test);
     if (!identity) return;
     const step = result.steps.map(failedStep).find(Boolean);
     const failure = diagnoseFailure(step, result.errors, identity.suite);
     emit({ event: 'end', ...identity, status: result.status, durationMs: result.duration,
-      ...failure, ...classifyStep(step, identity.suite) });
+      ...failure, ...classifyStep(step, identity.suite),
+      ...(identity.suite === 'expense' && identity.testLine === 18 && result.status === 'failed'
+        && { balancePhase: balanceChecks === 0 ? 'finance' : balanceChecks === 1 ? 'director' : 'other' }) });
   }
 }
 
@@ -137,7 +154,7 @@ function summarizeBrowserWitness(output) {
     if (events++ >= 512) break;
     let raw;
     try { raw = JSON.parse(json); } catch { continue; }
-    const { event, suite, project, testLine, status, durationMs, category, stepLine, route, operation, reason, expectedStatus, receivedStatus } = raw;
+    const { event, suite, project, testLine, status, durationMs, category, stepLine, route, operation, reason, expectedStatus, receivedStatus, balance, balancePhase } = raw;
     if (!Object.values(suites).includes(suite) || !projects.includes(project) || !lineNumber(testLine)) continue;
     const key = suite + ':' + project + ':' + testLine;
     const identity = { suite, project, testLine };
@@ -158,6 +175,8 @@ function summarizeBrowserWitness(output) {
           ...(typeof operation === 'string' && Object.hasOwn(operations, operation) && { operation }),
           ...(typeof reason === 'string' && Object.hasOwn(reasons, reason) && { reason }),
           ...(['spot', 'expense_self_service'].includes(suite) && expectedStatus === 200 && httpStatus(receivedStatus) && { expectedStatus, receivedStatus }),
+          ...(suite === 'expense' && testLine === 18 && stepLine === 30 && ['zero', 'expected', 'other', 'missing'].includes(balance) && { balance }),
+          ...(suite === 'expense' && testLine === 18 && stepLine === 30 && ['finance', 'director', 'other'].includes(balancePhase) && { balancePhase }),
           ...(Number.isInteger(durationMs) && durationMs >= 0 && durationMs <= 900_000 && { durationMs }) });
       }
     }

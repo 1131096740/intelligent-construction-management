@@ -100,3 +100,23 @@ test('records only status codes from an expense self-service assertion', (t) => 
     testLine: 27, category: 'assertion', stepLine: 11, status: 'failed', durationMs: 91,
     expectedStatus: 200, receivedStatus: 500 }]);
 });
+
+test('classifies a historical balance failure without retaining displayed text', (t) => {
+  const output = [];
+  const write = t.mock.method(process.stdout, 'write', chunk => { output.push(chunk); return true; });
+  const witness = new BrowserWitness();
+  const entry = { location: { file: '/private/pol115-expense-real.e2e.ts', line: 18 },
+    parent: { project: () => ({ name: 'mobile' }) } };
+  const location = { ...entry.location, line: 30 };
+  witness.onTestBegin(entry);
+  witness.onStepEnd(entry, {}, { category: 'expect', location });
+  const error = { message: 'Expected substring: "¥0.01"\nReceived string: "¥0.00 private-test-value"' };
+  witness.onTestEnd(entry, { status: 'failed', duration: 100, errors: [error], steps: [
+    { category: 'expect', title: 'expect.toContainText', location, steps: [], error }
+  ] });
+  write.mock.restore();
+  assert.equal(output.join('').includes('private-test-value'), false);
+  assert.deepEqual(summarizeBrowserWitness(output.join(''))?.failures, [{ suite: 'expense', project: 'mobile',
+    testLine: 18, category: 'assertion', stepLine: 30, status: 'failed', durationMs: 100,
+    balance: 'zero', balancePhase: 'director' }]);
+});
