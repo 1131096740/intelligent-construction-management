@@ -20,7 +20,8 @@ node -e '
 entry=line-a-entry.cjs
 mode=$(node -p 'require(process.argv[1]).mode' "$source")
 case "$mode:${4:-}:${5:-}" in
-  company-history-352:--a28-continuation:|company-history-352:--a28-continuation:--host-only)
+  company-history-352:--a28-continuation:|company-history-352:--a28-continuation:--host-only|\
+  company-history-352:--a29-opening:|company-history-352:--a29-opening:--host-only)
     entry=historical-takeover-333-entry.cjs ;;
   company-history-352:original:|company-history-352:original:--host-only|\
   signed-settlement-350:original:|signed-settlement-350:original:--host-only|\
@@ -188,7 +189,7 @@ node -e '
   const assert=require("node:assert/strict");
   const proof=require(process.argv[1]);
   const source=require(process.argv[3]);
-  if ((source.mode === "signed-settlement-350" || source.mode === "company-history-352") && process.argv[4] !== "--a28-continuation") {
+  if ((source.mode === "signed-settlement-350" || source.mode === "company-history-352") && !["--a28-continuation", "--a29-opening"].includes(process.argv[4])) {
     const full = process.argv[4] === "original";
     assert.equal(proof.status, full ? "LINE_A_SIGNED_SETTLEMENT_" + source.migrationCount + "_PASSED" : "LINE_A_A01_SIGNED_SUBCENT_350_PASSED");
     assert.equal(proof.lineA.registered, 19);
@@ -216,10 +217,10 @@ node -e '
     "--a29-opening":"HISTORICAL_TAKEOVER_A29_OPENING_"+source.migrationCount+"_PASSED",
     "--a28-unknown-overpay":"HISTORICAL_TAKEOVER_A28_UNKNOWN_OVERPAY_334_PASSED"})[process.argv[4]]??expected;
   if(proof.status!==required||proof.sourceSha!==process.argv[2])process.exit(65);
-  if(source.mode === "company-history-352" && process.argv[4] === "--a28-continuation") {
+  if(source.mode === "company-history-352" && ["--a28-continuation", "--a29-opening"].includes(process.argv[4])) {
     require(process.argv[5]).assertInstallation(proof,source);
     assert.equal(proof.a28.complete,true);
-    assert.equal(proof.a28.passed,3);
+    assert.equal(proof.a28.passed, process.argv[4] === "--a29-opening" ? 1 : 3);
     assert.equal(proof.a28.skipped,0);
     assert.equal(proof.cleanup,"POSTMASTER_STOPPED_TMPFS_REMOVED_BY_CONTAINER_EXIT");
   }

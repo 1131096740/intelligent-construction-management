@@ -110,7 +110,7 @@ async function consume({ ownerUrl, database, workDir, candidateTree }) {
 
 async function main() {
   assert.equal(process.argv.length, 2);
-  assert.ok(precision ? scenario === 'a28-continuation'
+  assert.ok(precision ? ['a28-continuation', 'a29-opening'].includes(scenario)
     : expenseWitness ? ['a28-continuation', 'a29-opening'].includes(scenario)
     : !scenario || (historicalSettlement && (opening || unknownOverpay)));
   assert.notEqual(process.getuid(), 0);
@@ -172,6 +172,7 @@ async function main() {
   if (historicalSettlement) assert.equal(receipt.historicalSettlementCatalogAfterBusiness, true);
   assert.equal(receipt.cleanup, 'POSTMASTER_STOPPED_TMPFS_REMOVED_BY_CONTAINER_EXIT');
   assert.ok(receipt.a28.complete, expenseWitness ? purpose + '_HTTP_COVERAGE' : 'A28_333_HTTP_COVERAGE');
+  if (opening) assert.deepEqual(receipt.a28.checkpoints, openingCheckpoints);
   receipt.status = purpose + '_PASSED';
 }
 
