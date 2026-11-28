@@ -348,6 +348,17 @@ describe("PaymentExecutionOperatingSourceAdapter", () => {
     refunds.mockResolvedValue({ _sum: { amountCents: 200_00n } });
     corrections.mockResolvedValue({ _sum: { amountDeltaCents: 1n } });
     await expect(adapter.readSourceSnapshot(tx as never, source)).rejects.toThrow("超过付款申请批复金额");
+    // The pending +2 must be excluded; including it with confirmed -1 would exceed approval.
+    corrections.mockImplementation(async ({ where }: { where: { status?: string } }) => ({
+      _sum: { amountDeltaCents: where.status === "confirmed" ? -1n : 1n }
+    }));
+    await expect(adapter.readSourceSnapshot(tx as never, source)).resolves.toBeDefined();
+    expect(corrections).toHaveBeenCalledWith({
+      where: { paymentRequestId: "payment-request-1", status: "confirmed" },
+      _sum: { amountDeltaCents: true }
+    });
+    refunds.mockResolvedValue({ _sum: { amountCents: 1_200_00n } });
+    await expect(adapter.readSourceSnapshot(tx as never, source)).rejects.toThrow("超过付款申请批复金额");
   });
 
   it("fails closed when formal executions exceed the approved amount", async () => {
