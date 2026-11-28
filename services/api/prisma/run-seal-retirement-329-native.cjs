@@ -45,7 +45,7 @@ function captureSource(candidate, paymentRemainder, a24Profile, expenseTerminal)
       [path.join(root, ".github/task12-install-295/contract-finance/check-ledger.cjs"), root, candidate, "--company-history-352"], { env }));
     assert.equal(ledger.length, 352);
     assert.equal(hash(JSON.stringify(ledger)), archive.ledgerSha256);
-    return { ...prefix, ledger, ledgerDigest: archive.ledgerSha256, a24Prefixes: [...prefix.a24Prefixes, 349, 350, 351, 352] };
+    return { ...prefix, ledger, ledgerDigest: archive.ledgerSha256, a24Prefixes: [...prefix.a24Prefixes, 347, 348, 349, 350, 351, 352] };
   }
   assert.ok(paymentRemainder ? ledger.length === 331 : ledger.length === 329 || ledger.length === 330);
   const mode = paymentRemainder ? "--payment-remainder-331" : ledger.length === 330 ? "--text-direct-330" : "--current-320";
@@ -201,6 +201,8 @@ async function migrate({ source, archive, database, directory, sql, url, run, st
   let paymentRemainderPredecessor;
   const a24Installation = [];
   const signed350 = source.ledger.length === 352 ? require("../../.." + "/.github/task12-install-295/contract-finance/signed-settlement-350-profile.cjs") : null;
+  const precision349 = signed350 && require("../../.." + "/.github/task12-install-295/contract-finance/expense-witness-349-profile.cjs");
+  const precisionCatalog = {};
   let signed350Before, signed350After;
   const readSigned350 = () => JSON.parse(sql("BEGIN READ ONLY; SET LOCAL search_path=pg_catalog,pg_temp;" + signed350.catalogSql + "ROLLBACK;"));
   const expenseFactCatalog = {};
@@ -254,7 +256,15 @@ async function migrate({ source, archive, database, directory, sql, url, run, st
         historicalCatalog.atPrefix(size);
       }
     }
-    if (signed350 && size === 349) signed350Before = readSigned350();
+    if (precision349 && size >= 346 && size <= 349) {
+      const observed = JSON.parse(sql("BEGIN READ ONLY; SET LOCAL search_path=pg_catalog,pg_temp;" + precision349.catalogSql + "ROLLBACK;"));
+      precision349.assertCheckpoint(size, observed, precisionCatalog[346], precisionCatalog[347], precisionCatalog[348]);
+      precisionCatalog[size] = observed;
+    }
+    if (signed350 && size === 349) {
+      signed350Before = readSigned350();
+      assert.deepEqual(signed350Before.expense, precisionCatalog[349], "NATIVE_A08_352_SIGNED_PREIMAGE");
+    }
     if (signed350 && size === 350) {
       signed350After = readSigned350();
       signed350.assertCatalog(signed350After, signed350Before);
