@@ -31,5 +31,7 @@
   "services/api/prisma/task16-current259-payment-case.test.cjs": "a0ff3b7ad2a854a19e567cd2c446962436ae804d320e9ca7300dd27d5cff46f8",
   "services/api/scripts/business-zeroing-policy.cjs": "cc8581b795bf86a1d9e8e7f9d68bbcb3b7436f90a9f5021d8d2d93ec289bb1e4",
   "services/api/scripts/business-zeroing-tool.test.cjs": "fb09393a28c9b1ddc4efcee08d77f2718ff7c061bb5a612c7b8db534da4a8fea",
-  "services/api/src/contract-template/task10-net-export.http.spec.ts": "7790330b975e45d9c002174a2dbaf7d44b9c3a2ffddb403e44d0052f192eb301"
+  "services/api/src/contract-template/task10-net-export.http.spec.ts": "7790330b975e45d9c002174a2dbaf7d44b9c3a2ffddb403e44d0052f192eb301",
+  "services/api/src/payment/payment-operating-source.adapter.spec.ts": "9db0a80eabae1b90caeb4533ece0e93e7932e006a2b3369618e90aecfbd511e9",
+  "services/api/src/payment/payment-operating-source.adapter.ts": "077242d3a820801bbe73095a23920ba0990adc3ffeeb1f2832113d7c76d6a0df"
 }

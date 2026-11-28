@@ -143,5 +143,15 @@
     "path": "services/api/src/contract-template/task10-net-export.http.spec.ts",
     "expected": "d9f99116703d618104d75c4ad394ced33660e1e2daccbac560a5e864a83c68fe",
     "candidate": "7790330b975e45d9c002174a2dbaf7d44b9c3a2ffddb403e44d0052f192eb301"
+  },
+  {
+    "path": "services/api/src/payment/payment-operating-source.adapter.spec.ts",
+    "expected": "4bb00e4fe252e01958d770368f3555289080b35eb8267acb4b1c463b60cce7fb",
+    "candidate": "9db0a80eabae1b90caeb4533ece0e93e7932e006a2b3369618e90aecfbd511e9"
+  },
+  {
+    "path": "services/api/src/payment/payment-operating-source.adapter.ts",
+    "expected": "bdb65e534f76d069eb7089f53c1e1d429d5a3666aa6868567ac72c82dc798768",
+    "candidate": "077242d3a820801bbe73095a23920ba0990adc3ffeeb1f2832113d7c76d6a0df"
   }
 ]
