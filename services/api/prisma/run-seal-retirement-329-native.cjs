@@ -507,7 +507,16 @@ async function main(args) {
         ?.replace(/postgres(?:ql)?:\/\/\S+/gu, "[database URL]")
         ?.replace(/\/private\/tmp\/[^\s"']+/gu, "[owned path]")
         ?.replace(/\b(?:jg_task01_|jg_fixture_app_)?[a-f0-9]{24,}\b/gu, "[private id]");
+      const lifecycleFailure = phase === "PUBLIC_LIFECYCLE" ? {
+        typescript: [...new Set(errorText.match(/\bTS[0-9]{4}\b/gu) ?? [])].slice(0, 8),
+        missingModule: /Cannot find module/u.test(errorText),
+        timeout: /Exceeded timeout/u.test(errorText),
+        assertion: /(?:Expected:|Received:|expect\()/u.test(errorText),
+        lines: [...new Set([...errorText.matchAll(/seal-retirement-329[.]native[.]test-support[.]ts:(\d{1,5}):\d{1,5}/gu)]
+          .map(match => Number(match[1])))].slice(0, 8)
+      } : undefined;
       firstFailure ??= { stage: phase, exit: result.status, signal: result.signal ?? undefined, prismaCode, sqlState, migration, reason,
+        ...(lifecycleFailure ? { lifecycleFailure } : {}),
         ...(firstSqlError ? { firstSqlError } : {}),
         ...(diagnostic ? { diagnostic: JSON.parse(diagnostic) } : {}) };
       throw new Error("NATIVE_329_COMMAND");
